@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
     Zap,
@@ -18,6 +19,7 @@ import {
     Plus,
     Minus,
     MessageCircle,
+    Mail,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -167,13 +169,81 @@ interface FormData {
 /* ─── Component ─── */
 
 export default function GetStartedPage() {
+    const router = useRouter()
     const [step, setStep] = useState(1)
     const [submitting, setSubmitting] = useState(false)
     const [submitted, setSubmitted] = useState(false)
+    const [submitError, setSubmitError] = useState<string | null>(null)
     const [uploadingLogo, setUploadingLogo] = useState(false)
     const [uploadingPhotos, setUploadingPhotos] = useState(false)
+    const [authUserId, setAuthUserId] = useState<string | null>(null)
+    const [checkingAuth, setCheckingAuth] = useState(true)
+    const [signupEmail, setSignupEmail] = useState('')
+    const [signupLoading, setSignupLoading] = useState(false)
+    const [signupSent, setSignupSent] = useState(false)
+    const [signupError, setSignupError] = useState<string | null>(null)
     const logoInputRef = useRef<HTMLInputElement>(null)
     const photosInputRef = useRef<HTMLInputElement>(null)
+
+    // Check if user is already logged in
+    useEffect(() => {
+        async function checkAuth() {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                setAuthUserId(user.id)
+                // Pre-fill email if logged in
+                setForm(prev => ({ ...prev, email: user.email || '' }))
+
+                // Check if user already has a client (already onboarded)
+                const { data: client } = await supabase
+                    .from('clients')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .maybeSingle()
+
+                if (client) {
+                    // Already onboarded — go straight to dashboard
+                    router.replace('/dashboard')
+                    return
+                }
+            }
+            setCheckingAuth(false)
+        }
+        checkAuth()
+
+        // Listen for auth state changes (e.g. magic link clicked)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            if (session?.user) {
+                setAuthUserId(session.user.id)
+                setForm(prev => ({ ...prev, email: session.user.email || '' }))
+                setCheckingAuth(false)
+            }
+        })
+
+        return () => subscription.unsubscribe()
+    }, [router])
+
+    // Sign up handler
+    async function handleSignup(e: React.FormEvent) {
+        e.preventDefault()
+        setSignupLoading(true)
+        setSignupError(null)
+
+        const { error } = await supabase.auth.signInWithOtp({
+            email: signupEmail,
+            options: {
+                emailRedirectTo: `${window.location.origin}/get-started`,
+            },
+        })
+
+        setSignupLoading(false)
+
+        if (error) {
+            setSignupError(error.message)
+        } else {
+            setSignupSent(true)
+        }
+    }
 
     const [form, setForm] = useState<FormData>({
         businessName: '',
@@ -199,7 +269,7 @@ export default function GetStartedPage() {
         chatBusinessHours: '24_7',
         contactName: '',
         email: '',
-        phone: '+254',
+        phone: '',
     })
 
     /* ─── Field Helpers ─── */
@@ -329,6 +399,7 @@ export default function GetStartedPage() {
 
     async function handleSubmit() {
         setSubmitting(true)
+        setSubmitError(null)
 
         try {
             // Upload files to Supabase Storage first
@@ -337,23 +408,35 @@ export default function GetStartedPage() {
 
             if (form.logo) {
                 const ext = form.logo.name.split('.').pop() || 'png'
-                const path = `onboarding/${Date.now()}-logo.${ext}`
-                const { data } = await supabase.storage
+                const safeName = form.logo.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+                const path = `onboarding/${Date.now()}-${safeName}`
+                const { data, error: uploadError } = await supabase.storage
                     .from('assets')
-                    .upload(path, form.logo, { upsert: true })
-                if (data) {
+                    .upload(path, form.logo, {
+                        upsert: true,
+                        contentType: form.logo.type || 'image/png',
+                    })
+                if (uploadError) {
+                    console.warn('Logo upload failed:', uploadError.message)
+                    // Don't block submission — logo is optional
+                } else if (data) {
                     const { data: urlData } = supabase.storage.from('assets').getPublicUrl(data.path)
                     logoUrl = urlData.publicUrl
                 }
             }
 
             for (const photo of form.brandPhotos) {
-                const ext = photo.name.split('.').pop() || 'jpg'
-                const path = `onboarding/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-                const { data } = await supabase.storage
+                const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+                const path = `onboarding/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+                const { data, error: uploadError } = await supabase.storage
                     .from('assets')
-                    .upload(path, photo, { upsert: true })
-                if (data) {
+                    .upload(path, photo, {
+                        upsert: true,
+                        contentType: photo.type || 'image/jpeg',
+                    })
+                if (uploadError) {
+                    console.warn('Photo upload failed:', uploadError.message)
+                } else if (data) {
                     const { data: urlData } = supabase.storage.from('assets').getPublicUrl(data.path)
                     photoUrls.push(urlData.publicUrl)
                 }
@@ -386,18 +469,36 @@ export default function GetStartedPage() {
                 tiktok_handle: extractHandle(form.tiktokUrl, 'tiktok'),
                 facebook_handle: extractHandle(form.facebookUrl, 'facebook'),
                 twitter_handle: extractHandle(form.twitterUrl, 'twitter'),
+                // Link to authenticated user if logged in
+                user_id: authUserId,
             }
 
-            await fetch('https://n8n.srv1166077.hstgr.cloud/webhook/blink-onboard', {
+            console.log('Submitting onboarding payload:', payload)
+
+            // Call the proxy route (avoids CORS issues with n8n)
+            const response = await fetch('/api/onboard', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             })
 
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+                console.error('Onboard proxy error:', response.status, errorData)
+                throw new Error(errorData.error || `Submission failed (${response.status}). Please try again.`)
+            }
+
+            console.log('Onboarding submitted successfully')
             setSubmitted(true)
+
+            // Redirect to dashboard after a delay if authenticated
+            if (authUserId) {
+                setTimeout(() => router.push('/dashboard'), 3000)
+            }
         } catch (err) {
             console.error('Onboarding submit error:', err)
-            setSubmitted(true) // still show success
+            const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+            setSubmitError(message)
         } finally {
             setSubmitting(false)
         }
@@ -416,13 +517,13 @@ export default function GetStartedPage() {
                         Welcome to Blink! ⚡
                     </h1>
                     <p className="text-gray-500 leading-relaxed">
-                        We&apos;re extracting your brand DNA now. You&apos;ll receive an email when your dashboard is ready — usually within 24 hours.
+                        Your dashboard is being set up. Redirecting you now...
                     </p>
                     <div className="pt-2">
-                        <Link href="/">
-                            <Button variant="outline" className="gap-2">
-                                <ArrowLeft className="h-4 w-4" />
-                                Back to Home
+                        <Link href="/dashboard">
+                            <Button className="gap-2 bg-blink-primary hover:bg-blink-primary/90">
+                                Go to Dashboard
+                                <ArrowRight className="h-4 w-4" />
                             </Button>
                         </Link>
                     </div>
@@ -431,7 +532,136 @@ export default function GetStartedPage() {
         )
     }
 
-    /* ─── Main Form ─── */
+    /* ─── Loading State ─── */
+
+    if (checkingAuth) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-blink-primary/5 via-white to-blink-secondary/5 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
+            </div>
+        )
+    }
+
+    /* ─── Auth Gate: Sign up first ─── */
+
+    if (!authUserId) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-blink-primary/5 via-white to-blink-secondary/5 flex items-center justify-center px-4">
+                <div className="w-full max-w-md">
+                    {/* Logo */}
+                    <div className="flex items-center justify-center gap-2 mb-8">
+                        <Zap className="h-8 w-8 text-blink-secondary" />
+                        <span className="text-3xl font-bold text-blink-dark font-heading tracking-tight">
+                            Blink
+                        </span>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+                        {signupSent ? (
+                            <div className="text-center space-y-4">
+                                <div className="mx-auto h-14 w-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                                    <Mail className="h-7 w-7 text-emerald-600" />
+                                </div>
+                                <h2 className="text-xl font-semibold text-blink-dark font-heading">
+                                    Check your email
+                                </h2>
+                                <p className="text-sm text-gray-500">
+                                    We sent a magic link to <strong>{signupEmail}</strong>. Click the link to create your account and continue setup.
+                                </p>
+                                <button
+                                    className="text-sm text-blink-primary hover:text-blink-primary/80 font-medium"
+                                    onClick={() => {
+                                        setSignupSent(false)
+                                        setSignupEmail('')
+                                    }}
+                                >
+                                    Use a different email
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                <div className="text-center">
+                                    <h2 className="text-xl font-semibold text-blink-dark font-heading">
+                                        Create your account
+                                    </h2>
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Sign up first, then we&apos;ll set up your brand profile
+                                    </p>
+                                </div>
+
+                                {/* Steps preview */}
+                                <div className="rounded-lg bg-gray-50 border border-gray-100 p-4">
+                                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">How it works</p>
+                                    <div className="space-y-2">
+                                        {[
+                                            { num: '1', text: 'Create your account (you are here)', active: true },
+                                            { num: '2', text: 'Tell us about your business' },
+                                            { num: '3', text: 'Connect your social media accounts' },
+                                            { num: '4', text: 'AI extracts your brand DNA' },
+                                        ].map((item) => (
+                                            <div key={item.num} className={`flex items-center gap-3 ${item.active ? 'text-blink-primary' : 'text-gray-400'}`}>
+                                                <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold ${item.active ? 'bg-blink-primary text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                                    {item.num}
+                                                </div>
+                                                <span className="text-sm">{item.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <form onSubmit={handleSignup} className="space-y-4">
+                                    <div>
+                                        <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                                            Email address
+                                        </label>
+                                        <input
+                                            id="signup-email"
+                                            type="email"
+                                            value={signupEmail}
+                                            onChange={(e) => setSignupEmail(e.target.value)}
+                                            placeholder="you@business.com"
+                                            required
+                                            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blink-primary/30 focus:border-blink-primary transition-colors"
+                                        />
+                                    </div>
+
+                                    {signupError && (
+                                        <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">
+                                            {signupError}
+                                        </p>
+                                    )}
+
+                                    <Button
+                                        type="submit"
+                                        disabled={signupLoading || !signupEmail}
+                                        className="w-full bg-blink-primary hover:bg-blink-primary/90 text-white py-2.5 rounded-lg font-medium transition-colors"
+                                    >
+                                        {signupLoading ? (
+                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        ) : (
+                                            <ArrowRight className="h-4 w-4 mr-2" />
+                                        )}
+                                        {signupLoading ? 'Sending link...' : 'Create account & continue'}
+                                    </Button>
+                                </form>
+
+                                <div className="text-center pt-2 border-t border-gray-100">
+                                    <p className="text-sm text-gray-500 pt-4">
+                                        Already have an account?{' '}
+                                        <Link href="/login" className="text-blink-primary font-medium hover:underline">
+                                            Sign in
+                                        </Link>
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    /* ─── Main Form (only shown when authenticated) ─── */
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blink-primary/5 via-white to-blink-secondary/5">
@@ -1230,6 +1460,25 @@ export default function GetStartedPage() {
                             </Button>
                         )}
                     </div>
+
+                    {/* Error Banner */}
+                    {submitError && (
+                        <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-start gap-3">
+                            <div className="shrink-0 mt-0.5">
+                                <X className="h-4 w-4 text-red-500" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-medium text-red-800">Submission failed</p>
+                                <p className="text-xs text-red-600 mt-0.5">{submitError}</p>
+                            </div>
+                            <button
+                                onClick={() => setSubmitError(null)}
+                                className="shrink-0 p-1 rounded hover:bg-red-100 text-red-400 hover:text-red-600 transition-colors"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

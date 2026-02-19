@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import {
     Brain,
@@ -36,10 +36,11 @@ import {
 import { ContentCard } from '@/components/content/ContentCard'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useClient } from '@/hooks/useClient'
 import { triggerWorkflow, triggerWorkflowWithFile } from '@/lib/workflows'
 import type { Content, Platform } from '@/types/database'
 
-const TEST_CLIENT_ID = '1cc01f92-090a-43d2-b5db-15b1791fe131'
+
 
 const platformOptions: { label: string; value: Platform; icon: string }[] = [
     { label: 'Instagram', value: 'instagram', icon: '📸' },
@@ -60,6 +61,7 @@ interface PipelineStep {
 }
 
 export default function GeneratePage() {
+    const { clientId, loading: clientLoading } = useClient()
     const [wizardStep, setWizardStep] = useState(1)
 
     // Step 1 form state
@@ -96,6 +98,45 @@ export default function GeneratePage() {
     const [modalRefPreview, setModalRefPreview] = useState<string | null>(null)
     const [modalGenerating, setModalGenerating] = useState(false)
     const modalRefInputRef = useRef<HTMLInputElement>(null)
+
+    // State for client-specific topic suggestions
+    const [clientDescription, setClientDescription] = useState<string | null>(null)
+    const [brandVoice, setBrandVoice] = useState<string | null>(null)
+    const [clientIndustry, setClientIndustry] = useState<string | null>(null)
+
+    // Fetch client and brand data to pre-populate context
+    useEffect(() => {
+        if (!clientId) return
+
+        async function loadClientContext() {
+            const [clientRes, brandRes] = await Promise.all([
+                supabase
+                    .from('clients')
+                    .select('company_name, industry, website_url, onboarding_notes, social_links')
+                    .eq('id', clientId)
+                    .single(),
+                supabase
+                    .from('brand_profiles')
+                    .select('brand_voice, tone_keywords, image_style, dos, donts')
+                    .eq('client_id', clientId)
+                    .eq('is_active', true)
+                    .single(),
+            ])
+
+            if (clientRes.data) {
+                const c = clientRes.data as Record<string, unknown>
+                setClientIndustry((c.industry as string) || null)
+                if (c.onboarding_notes) {
+                    setClientDescription(c.onboarding_notes as string)
+                }
+            }
+            if (brandRes.data) {
+                const b = brandRes.data as Record<string, unknown>
+                setBrandVoice((b.brand_voice as string) || null)
+            }
+        }
+        loadClientContext()
+    }, [clientId])
 
     // Helpers
     const togglePlatform = (p: Platform) => {
@@ -172,7 +213,7 @@ export default function GeneratePage() {
             // Step 1: Strategy
             updateStep('strategy', { status: 'running' })
             await triggerWorkflow('blink-generate-strategy', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId,
                 post_count: postCount,
                 platforms,
                 topics: topics || undefined,
@@ -182,7 +223,7 @@ export default function GeneratePage() {
             // Step 2: Captions
             updateStep('captions', { status: 'running' })
             await triggerWorkflow('blink-write-captions', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId,
                 post_count: postCount,
                 platforms,
             })
@@ -192,7 +233,7 @@ export default function GeneratePage() {
             const { data: newContent } = await supabase
                 .from('content')
                 .select('*')
-                .eq('client_id', TEST_CLIENT_ID)
+                .eq('client_id', clientId!)
                 .order('created_at', { ascending: false })
                 .limit(postCount)
 
@@ -213,7 +254,7 @@ export default function GeneratePage() {
                             await triggerWorkflowWithFile(
                                 'blink-generate-images',
                                 {
-                                    client_id: TEST_CLIENT_ID,
+                                    client_id: clientId!,
                                     post_id: contentItems[i].id,
                                     topic: contentItems[i].caption_short || contentItems[i].caption?.substring(0, 60) || '',
                                     content_type: contentItems[i].content_type,
@@ -223,7 +264,7 @@ export default function GeneratePage() {
                             )
                         } else {
                             await triggerWorkflow('blink-generate-images', {
-                                client_id: TEST_CLIENT_ID,
+                                client_id: clientId,
                                 post_id: contentItems[i].id,
                                 topic: contentItems[i].caption_short || contentItems[i].caption?.substring(0, 60) || '',
                                 content_type: contentItems[i].content_type,
@@ -250,7 +291,7 @@ export default function GeneratePage() {
                     const { data: polledContent } = await supabase
                         .from('content')
                         .select('*')
-                        .eq('client_id', TEST_CLIENT_ID)
+                        .eq('client_id', clientId!)
                         .order('created_at', { ascending: false })
                         .limit(postCount)
 
@@ -291,7 +332,7 @@ export default function GeneratePage() {
         setRegeneratingCaption(item.id)
         try {
             await triggerWorkflow('blink-write-captions', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId,
                 post_id: item.id,
                 regenerate: true,
             })
@@ -344,7 +385,7 @@ export default function GeneratePage() {
                 await triggerWorkflowWithFile(
                     'blink-generate-images',
                     {
-                        client_id: TEST_CLIENT_ID,
+                        client_id: clientId!,
                         post_id: imageModalTarget.id,
                         topic: imageModalTarget.caption_short || imageModalTarget.caption?.substring(0, 60) || '',
                         content_type: imageModalTarget.content_type,
@@ -354,7 +395,7 @@ export default function GeneratePage() {
                 )
             } else {
                 await triggerWorkflow('blink-generate-images', {
-                    client_id: TEST_CLIENT_ID,
+                    client_id: clientId,
                     post_id: imageModalTarget.id,
                     topic: imageModalTarget.caption_short || imageModalTarget.caption?.substring(0, 60) || '',
                     content_type: imageModalTarget.content_type,
@@ -542,11 +583,27 @@ export default function GeneratePage() {
                         <label className="text-sm font-medium text-gray-700">
                             Any specific topics or themes? <span className="text-gray-400">(optional)</span>
                         </label>
+                        {clientDescription && (
+                            <div className="rounded-lg bg-blink-primary/5 border border-blink-primary/10 p-3 space-y-1.5">
+                                <p className="text-xs font-medium text-blink-primary">💡 From your brand profile:</p>
+                                <p className="text-xs text-gray-600 leading-relaxed">{clientDescription}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => setTopics((prev) => prev ? `${prev}\n${clientDescription}` : clientDescription)}
+                                    className="text-xs text-blink-primary font-medium hover:underline"
+                                >
+                                    + Use this as a starting point
+                                </button>
+                            </div>
+                        )}
                         <Textarea
                             value={topics}
                             onChange={(e) => setTopics(e.target.value)}
                             rows={3}
-                            placeholder="Describe what you want to post about — e.g. a new menu item, a seasonal sale, a behind-the-scenes look at your team. The more detail, the better the AI output."
+                            placeholder={clientDescription
+                                ? "Add more details or customize what you want..."
+                                : "Describe what you want to post about — e.g. a new menu item, a seasonal sale, a behind-the-scenes look at your team. The more detail, the better the AI output."
+                            }
                             className="resize-none"
                         />
                         {/* Smart topic suggestions */}

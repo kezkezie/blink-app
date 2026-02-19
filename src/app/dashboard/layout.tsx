@@ -1,17 +1,18 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { MobileNav } from '@/components/layout/MobileNav'
+import { supabase } from '@/lib/supabase'
 
 const pageTitles: Record<string, string> = {
     '/dashboard': 'Dashboard',
     '/dashboard/content': 'Content',
     '/dashboard/generate': 'Generate Content',
     '/dashboard/approvals': 'Approvals',
-    '/dashboard/brand': 'Brand Profile',
     '/dashboard/analytics': 'Analytics',
     '/dashboard/settings': 'Settings',
 }
@@ -22,6 +23,13 @@ export default function DashboardLayout({
     children: React.ReactNode
 }) {
     const pathname = usePathname()
+    const [userEmail, setUserEmail] = useState<string | null>(null)
+
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) setUserEmail(user.email || null)
+        })
+    }, [])
 
     // Resolve page title: exact match first, then prefix match
     const pageTitle =
@@ -35,7 +43,7 @@ export default function DashboardLayout({
         <TooltipProvider delayDuration={0}>
             <div className="flex min-h-screen bg-blink-light">
                 {/* Desktop Sidebar */}
-                <Sidebar />
+                <Sidebar userEmail={userEmail} />
 
                 {/* Main Area */}
                 <div className="flex-1 flex flex-col min-w-0">
@@ -54,3 +62,4 @@ export default function DashboardLayout({
         </TooltipProvider>
     )
 }
+

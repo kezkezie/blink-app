@@ -18,6 +18,9 @@ import {
     X,
     Wand2,
     Eye,
+    Zap,
+    ExternalLink,
+    AlertCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,11 +36,12 @@ import {
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { PlatformIcon } from '@/components/shared/PlatformIcon'
 import { supabase } from '@/lib/supabase'
+import { useClient } from '@/hooks/useClient'
 import { triggerWorkflow, triggerWorkflowWithFile } from '@/lib/workflows'
 import type { Content, ContentStatus, Platform } from '@/types/database'
 import { cn } from '@/lib/utils'
 
-const TEST_CLIENT_ID = '1cc01f92-090a-43d2-b5db-15b1791fe131'
+
 
 export default function ContentDetailPage({
     params,
@@ -45,6 +49,7 @@ export default function ContentDetailPage({
     params: Promise<{ id: string }>
 }) {
     const { id } = use(params)
+    const { clientId } = useClient()
     const router = useRouter()
 
     const [content, setContent] = useState<Content | null>(null)
@@ -62,6 +67,16 @@ export default function ContentDetailPage({
     // Reject modal
     const [rejectOpen, setRejectOpen] = useState(false)
     const [rejectionReason, setRejectionReason] = useState('')
+
+    // Post for Me posting state
+    const [posting, setPosting] = useState(false)
+    const [postError, setPostError] = useState<string | null>(null)
+    const [postSuccess, setPostSuccess] = useState(false)
+    const [postformePostId, setPostformePostId] = useState<string | null>(null)
+    const [postResults, setPostResults] = useState<Array<{ id: string; success: boolean; error: unknown; platform_data: { id?: string; url?: string }; social_account_id: string }>>([]
+    )
+    const [scheduleMode, setScheduleMode] = useState(false)
+    const [scheduleDate, setScheduleDate] = useState('')
 
     // Image generation modal
     const [imageModalOpen, setImageModalOpen] = useState(false)
@@ -125,6 +140,87 @@ export default function ContentDetailPage({
         }
     }
 
+    // Post via Post for Me API
+    async function handlePost(scheduledAt: string | null) {
+        if (!content) return
+        setPosting(true)
+        setPostError(null)
+        setPostSuccess(false)
+
+        try {
+            const platforms = content.target_platforms || ['instagram']
+
+            const res = await fetch('/api/social-posts/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contentId: content.id,
+                    clientId: clientId!,
+                    platforms,
+                    scheduledAt,
+                }),
+            })
+
+            const data = await res.json()
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to post')
+            }
+
+            setPostSuccess(true)
+            setPostformePostId(data.postformePostId)
+
+            // Update local content status
+            const newStatus = scheduledAt ? 'scheduled' : 'posted'
+            setContent((prev) =>
+                prev ? { ...prev, status: newStatus as ContentStatus } : null
+            )
+
+            // Fetch results after a delay (give time for processing)
+            if (!scheduledAt && data.postformePostId) {
+                setTimeout(() => fetchPostResults(data.postformePostId), 5000)
+            }
+        } catch (err) {
+            console.error('Post error:', err)
+            setPostError(err instanceof Error ? err.message : 'Unknown error')
+        } finally {
+            setPosting(false)
+            setScheduleMode(false)
+        }
+    }
+
+    // Fetch post results from Post for Me
+    async function fetchPostResults(postId: string) {
+        try {
+            const res = await fetch(`/api/post-results?postId=${encodeURIComponent(postId)}`)
+            if (res.ok) {
+                const data = await res.json()
+                if (data.results && data.results.length > 0) {
+                    setPostResults(data.results)
+                } else {
+                    // Results may not be ready yet — retry once more after 10s
+                    setTimeout(() => retryFetchResults(postId), 10000)
+                }
+            }
+        } catch (err) {
+            console.error('Failed to fetch post results:', err)
+        }
+    }
+
+    async function retryFetchResults(postId: string) {
+        try {
+            const res = await fetch(`/api/post-results?postId=${encodeURIComponent(postId)}`)
+            if (res.ok) {
+                const data = await res.json()
+                if (data.results) {
+                    setPostResults(data.results)
+                }
+            }
+        } catch (err) {
+            console.error('Retry fetch results error:', err)
+        }
+    }
+
     // Generate image (with optional reference) + poll for result
     async function handleGenerateImage() {
         if (!content) return
@@ -135,7 +231,7 @@ export default function ContentDetailPage({
                 await triggerWorkflowWithFile(
                     'blink-generate-images',
                     {
-                        client_id: TEST_CLIENT_ID,
+                        client_id: clientId!,
                         post_id: content.id,
                         topic: captionShort || caption?.substring(0, 60) || '',
                         content_type: content.content_type,
@@ -145,7 +241,7 @@ export default function ContentDetailPage({
                 )
             } else {
                 await triggerWorkflow('blink-generate-images', {
-                    client_id: TEST_CLIENT_ID,
+                    client_id: clientId!,
                     post_id: content.id,
                     topic: captionShort || caption?.substring(0, 60) || '',
                     content_type: content.content_type,
@@ -224,7 +320,7 @@ export default function ContentDetailPage({
 
         try {
             await triggerWorkflow('blink-send-approval', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId!,
                 post_id: content.id,
                 caption: content.caption,
                 image_url: content.image_url,
@@ -259,7 +355,7 @@ export default function ContentDetailPage({
                 .eq('id', content.id)
 
             await triggerWorkflow('blink-approval-response', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId!,
                 post_id: content.id,
                 action: 'approved',
             })
@@ -291,7 +387,7 @@ export default function ContentDetailPage({
                 .eq('id', content.id)
 
             await triggerWorkflow('blink-approval-response', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId!,
                 post_id: content.id,
                 action: 'rejected',
                 reason: rejectionReason.trim(),
@@ -592,12 +688,92 @@ export default function ContentDetailPage({
                                 </>
                             )}
 
-                            {/* Approved actions */}
+                            {/* Approved actions — Post Now / Schedule */}
                             {content.status === 'approved' && (
-                                <Button variant="outline" className="w-full justify-start gap-2" disabled>
-                                    <CalendarIcon className="h-4 w-4 text-blink-primary" />
-                                    Schedule (Coming Soon)
-                                </Button>
+                                <div className="space-y-3">
+                                    {/* Post Now */}
+                                    <Button
+                                        onClick={() => handlePost(null)}
+                                        disabled={posting || postSuccess}
+                                        className="w-full justify-start gap-2 bg-blink-primary hover:bg-blink-primary/90 text-white"
+                                    >
+                                        {posting && !scheduleMode ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Zap className="h-4 w-4" />
+                                        )}
+                                        {posting && !scheduleMode ? 'Publishing...' : 'Post Now'}
+                                    </Button>
+
+                                    {/* Schedule */}
+                                    <div className="space-y-2">
+                                        <div className="flex gap-2">
+                                            <Input
+                                                type="datetime-local"
+                                                value={scheduleDate}
+                                                onChange={(e) => setScheduleDate(e.target.value)}
+                                                className="flex-1 text-sm"
+                                                min={new Date().toISOString().slice(0, 16)}
+                                            />
+                                            <Button
+                                                onClick={() => {
+                                                    if (!scheduleDate) return
+                                                    setScheduleMode(true)
+                                                    handlePost(new Date(scheduleDate).toISOString())
+                                                }}
+                                                disabled={posting || postSuccess || !scheduleDate}
+                                                variant="outline"
+                                                className="gap-1"
+                                            >
+                                                {posting && scheduleMode ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <CalendarIcon className="h-4 w-4" />
+                                                )}
+                                                Schedule
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* Error */}
+                                    {postError && (
+                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                                            <AlertCircle className="h-4 w-4 shrink-0" />
+                                            {postError}
+                                        </div>
+                                    )}
+
+                                    {/* Success */}
+                                    {postSuccess && (
+                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
+                                            <CheckCircle className="h-4 w-4 shrink-0" />
+                                            Post submitted successfully!
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Post Results (for posted content) */}
+                            {(content.status === 'posted' || postformePostId) && postResults.length > 0 && (
+                                <div className="space-y-2 pt-2">
+                                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Post Results</h4>
+                                    {postResults.map((r) => (
+                                        <div key={r.id} className={cn(
+                                            'flex items-center justify-between p-2.5 rounded-lg text-xs',
+                                            r.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                                        )}>
+                                            <span className="flex items-center gap-1.5">
+                                                {r.success ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                                                {r.success ? 'Published' : 'Failed'}
+                                            </span>
+                                            {r.platform_data?.url && (
+                                                <a href={r.platform_data.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:underline">
+                                                    View <ExternalLink className="h-3 w-3" />
+                                                </a>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             )}
 
                             {/* Rejected actions */}

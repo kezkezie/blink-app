@@ -1,16 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
     LayoutDashboard,
     FileText,
     Sparkles,
     CheckCircle,
-    Palette,
     BarChart3,
     Settings,
     Zap,
+    LogOut,
+    User,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -18,23 +19,30 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { supabase } from '@/lib/supabase'
 
 const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Content', href: '/dashboard/content', icon: FileText },
     { label: 'Generate', href: '/dashboard/generate', icon: Sparkles },
     { label: 'Approvals', href: '/dashboard/approvals', icon: CheckCircle },
-    { label: 'Brand', href: '/dashboard/brand', icon: Palette },
     { label: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
     { label: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]
 
 interface SidebarProps {
     collapsed?: boolean
+    userEmail?: string | null
 }
 
-export function Sidebar({ collapsed = false }: SidebarProps) {
+export function Sidebar({ collapsed = false, userEmail }: SidebarProps) {
     const pathname = usePathname()
+    const router = useRouter()
+
+    async function handleLogout() {
+        await supabase.auth.signOut()
+        router.replace('/login')
+    }
 
     return (
         <aside
@@ -92,8 +100,46 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
                 })}
             </nav>
 
+            {/* User Info + Logout */}
+            <div className="px-3 py-3 border-t border-white/10 space-y-2">
+                {/* User email */}
+                {!collapsed && userEmail && (
+                    <div className="flex items-center gap-2 px-3 py-2">
+                        <div className="h-7 w-7 rounded-full bg-blink-primary/20 flex items-center justify-center shrink-0">
+                            <User className="h-3.5 w-3.5 text-blink-secondary" />
+                        </div>
+                        <span className="text-xs text-white/50 truncate">{userEmail}</span>
+                    </div>
+                )}
+
+                {/* Logout button */}
+                {collapsed ? (
+                    <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                            <button
+                                onClick={handleLogout}
+                                className="flex items-center justify-center w-full px-3 py-2.5 rounded-lg text-white/60 hover:text-white hover:bg-white/8 transition-colors"
+                            >
+                                <LogOut className="h-5 w-5" />
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="font-medium">
+                            Sign Out
+                        </TooltipContent>
+                    </Tooltip>
+                ) : (
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/8 transition-colors"
+                    >
+                        <LogOut className="h-5 w-5 shrink-0" />
+                        <span>Sign Out</span>
+                    </button>
+                )}
+            </div>
+
             {/* Footer */}
-            <div className="px-5 py-4 border-t border-white/10">
+            <div className="px-5 py-3 border-t border-white/10">
                 {!collapsed && (
                     <p className="text-xs text-white/40">© 2026 Blink</p>
                 )}

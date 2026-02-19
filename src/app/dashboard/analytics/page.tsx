@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useClient } from '@/hooks/useClient'
 import {
     FileText,
     Send,
@@ -31,7 +32,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { PlatformIcon } from '@/components/shared/PlatformIcon'
 import type { ContentStatus, Platform } from '@/types/database'
 
-const CLIENT_ID = '1cc01f92-090a-43d2-b5db-15b1791fe131'
+
 
 /* ─── Types ─── */
 interface ContentRow {
@@ -89,22 +90,25 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 export default function AnalyticsPage() {
+    const { clientId, loading: clientLoading } = useClient()
     const [allContent, setAllContent] = useState<ContentRow[]>([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
+        if (!clientId) return
+
         async function load() {
             const { data } = await supabase
                 .from('content')
                 .select('id, caption, caption_short, content_type, status, target_platforms, image_url, created_at')
-                .eq('client_id', CLIENT_ID)
+                .eq('client_id', clientId)
                 .order('created_at', { ascending: false })
 
             if (data) setAllContent(data as ContentRow[])
             setLoading(false)
         }
         load()
-    }, [])
+    }, [clientId])
 
     /* ─── Computed stats ─── */
     const stats = useMemo(() => {
@@ -175,7 +179,7 @@ export default function AnalyticsPage() {
         return allContent.slice(0, 10)
     }, [allContent])
 
-    if (loading) {
+    if (loading || clientLoading) {
         return (
             <div className="flex items-center justify-center py-32">
                 <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />

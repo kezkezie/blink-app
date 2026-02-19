@@ -36,7 +36,7 @@ export function CalendarView({ content, currentMonth, onMonthChange, onContentUp
         // Group content by day — use scheduled_date first, then created_at
         const contentByDay: Record<number, Content[]> = {}
         content.forEach((item) => {
-            const dateStr = (item as Record<string, unknown>).scheduled_date as string | null
+            const dateStr = ((item as unknown) as Record<string, unknown>).scheduled_date as string | null
             const date = new Date(dateStr || item.created_at)
             if (date.getFullYear() === year && date.getMonth() === month) {
                 const day = date.getDate()
@@ -132,7 +132,7 @@ export function CalendarView({ content, currentMonth, onMonthChange, onContentUp
                 ...draggedItem,
                 updated_at: isoDate,
             }
-            ;(updatedItem as Record<string, unknown>).scheduled_date = isoDate
+                ; (updatedItem as Record<string, unknown>).scheduled_date = isoDate
             onContentUpdate?.(updatedItem)
         } catch (err) {
             console.error('Failed to update content date:', err)

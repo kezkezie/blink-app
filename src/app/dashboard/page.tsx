@@ -16,9 +16,10 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { PlatformIcon } from '@/components/shared/PlatformIcon'
 import { supabase } from '@/lib/supabase'
+import { useClient } from '@/hooks/useClient'
 import type { Content, ContentStatus, Platform } from '@/types/database'
 
-const TEST_CLIENT_ID = '1cc01f92-090a-43d2-b5db-15b1791fe131'
+
 
 interface Stats {
     total: number
@@ -59,18 +60,21 @@ const statCards = [
 ]
 
 export default function DashboardPage() {
+    const { clientId, loading: clientLoading } = useClient()
     const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, approved: 0, published: 0 })
     const [recentContent, setRecentContent] = useState<Content[]>([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
+        if (!clientId) return
+
         async function fetchData() {
             try {
                 // Fetch all content for the client
                 const { data, error } = await supabase
                     .from('content')
                     .select('*')
-                    .eq('client_id', TEST_CLIENT_ID)
+                    .eq('client_id', clientId)
                     .order('created_at', { ascending: false })
 
                 if (error) {
@@ -99,9 +103,9 @@ export default function DashboardPage() {
         }
 
         fetchData()
-    }, [])
+    }, [clientId])
 
-    if (loading) {
+    if (loading || clientLoading) {
         return (
             <div className="flex items-center justify-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />

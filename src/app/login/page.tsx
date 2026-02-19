@@ -1,15 +1,29 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Zap, Mail, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
+    const router = useRouter()
     const [email, setEmail] = useState('')
     const [loading, setLoading] = useState(false)
     const [sent, setSent] = useState(false)
     const [error, setError] = useState<string | null>(null)
+
+    // If already logged in, redirect to dashboard
+    useEffect(() => {
+        async function checkAuth() {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                router.replace('/dashboard')
+            }
+        }
+        checkAuth()
+    }, [router])
 
     async function handleLogin(e: React.FormEvent) {
         e.preventDefault()
@@ -118,6 +132,16 @@ export default function LoginPage() {
                                     {loading ? 'Sending link...' : 'Send magic link'}
                                 </Button>
                             </form>
+
+                            {/* Signup CTA */}
+                            <div className="text-center pt-2 border-t border-gray-100">
+                                <p className="text-sm text-gray-500 pt-4">
+                                    Don&apos;t have an account?{' '}
+                                    <Link href="/get-started" className="text-blink-primary font-medium hover:underline">
+                                        Get started for free
+                                    </Link>
+                                </p>
+                            </div>
                         </div>
                     )}
                 </div>

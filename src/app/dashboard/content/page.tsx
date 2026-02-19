@@ -13,9 +13,10 @@ import { ContentCard } from '@/components/content/ContentCard'
 import { CalendarView } from '@/components/content/CalendarView'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useClient } from '@/hooks/useClient'
 import type { Content, ContentStatus, Platform } from '@/types/database'
 
-const TEST_CLIENT_ID = '1cc01f92-090a-43d2-b5db-15b1791fe131'
+
 
 const statusFilters: { label: string; value: ContentStatus | 'all' }[] = [
     { label: 'All', value: 'all' },
@@ -36,6 +37,7 @@ const platformFilters: { label: string; value: Platform | 'all' }[] = [
 ]
 
 export default function ContentPage() {
+    const { clientId, loading: clientLoading } = useClient()
     const [content, setContent] = useState<Content[]>([])
     const [loading, setLoading] = useState(true)
     const [view, setView] = useState<'list' | 'calendar'>('list')
@@ -44,12 +46,14 @@ export default function ContentPage() {
     const [currentMonth, setCurrentMonth] = useState(new Date())
 
     useEffect(() => {
+        if (!clientId) return
+
         async function fetchContent() {
             try {
                 const { data, error } = await supabase
                     .from('content')
                     .select('*')
-                    .eq('client_id', TEST_CLIENT_ID)
+                    .eq('client_id', clientId)
                     .order('created_at', { ascending: false })
 
                 if (error) {
@@ -66,7 +70,7 @@ export default function ContentPage() {
         }
 
         fetchContent()
-    }, [])
+    }, [clientId])
 
     // Apply filters
     const filteredContent = useMemo(() => {
@@ -85,7 +89,7 @@ export default function ContentPage() {
         return result
     }, [content, statusFilter, platformFilter])
 
-    if (loading) {
+    if (loading || clientLoading) {
         return (
             <div className="flex items-center justify-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
@@ -177,7 +181,7 @@ export default function ContentPage() {
                 /* List View — 3-column grid */
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredContent.map((item) => (
-                        <ContentCard key={item.id} content={item} />
+                        <ContentCard key={item.id} content={item} clientId={clientId} />
                     ))}
                 </div>
             ) : (

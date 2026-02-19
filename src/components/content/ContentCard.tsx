@@ -10,14 +10,15 @@ import { supabase } from '@/lib/supabase'
 import { triggerWorkflow } from '@/lib/workflows'
 import type { Content, ContentStatus, Platform } from '@/types/database'
 
-const TEST_CLIENT_ID = '1cc01f92-090a-43d2-b5db-15b1791fe131'
+
 
 interface ContentCardProps {
     content: Content
+    clientId?: string | null
     onUpdate?: (updated: Content) => void
 }
 
-export function ContentCard({ content, onUpdate }: ContentCardProps) {
+export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
     const [regeneratingCaption, setRegeneratingCaption] = useState(false)
     const [regeneratingImage, setRegeneratingImage] = useState(false)
     const isActionable = content.status === 'draft' || content.status === 'rejected'
@@ -29,7 +30,7 @@ export function ContentCard({ content, onUpdate }: ContentCardProps) {
 
         try {
             await triggerWorkflow('blink-write-captions', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId,
                 post_id: content.id,
                 regenerate: true,
             })
@@ -67,7 +68,7 @@ export function ContentCard({ content, onUpdate }: ContentCardProps) {
 
         try {
             await triggerWorkflow('blink-generate-images', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId,
                 post_id: content.id,
                 topic: content.caption_short || content.caption?.substring(0, 60) || '',
                 content_type: content.content_type,

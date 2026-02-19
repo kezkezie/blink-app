@@ -71,6 +71,7 @@ export type WorkflowStatus = 'running' | 'success' | 'failed' | 'review_needed'
 
 export interface Client {
     id: string
+    user_id: string | null
     company_name: string
     contact_name: string
     contact_email: string
@@ -153,6 +154,7 @@ export interface SocialAccount {
     account_name: string | null
     account_id: string | null
     blotato_profile_id: string | null
+    postforme_account_id: string | null
     meta_page_id: string | null
     meta_page_token: string | null
     is_active: boolean
@@ -193,6 +195,7 @@ export interface ContentSchedule {
     scheduled_at: string
     posted_at: string | null
     blotato_post_id: string | null
+    postforme_post_id: string | null
     status: ScheduleStatus
     error_message: string | null
     platform_post_id: string | null

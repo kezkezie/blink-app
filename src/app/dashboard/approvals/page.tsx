@@ -23,12 +23,14 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { PlatformIcon } from '@/components/shared/PlatformIcon'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useClient } from '@/hooks/useClient'
 import { triggerWorkflow } from '@/lib/workflows'
 import type { Content, Platform } from '@/types/database'
 
-const TEST_CLIENT_ID = '1cc01f92-090a-43d2-b5db-15b1791fe131'
+
 
 export default function ApprovalsPage() {
+    const { clientId, loading: clientLoading } = useClient()
     const [items, setItems] = useState<Content[]>([])
     const [loading, setLoading] = useState(true)
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
@@ -39,12 +41,14 @@ export default function ApprovalsPage() {
     const [rejectionReason, setRejectionReason] = useState('')
 
     useEffect(() => {
+        if (!clientId) return
+
         async function fetchPending() {
             try {
                 const { data, error } = await supabase
                     .from('content')
                     .select('*')
-                    .eq('client_id', TEST_CLIENT_ID)
+                    .eq('client_id', clientId)
                     .eq('status', 'pending_approval')
                     .order('created_at', { ascending: false })
 
@@ -62,7 +66,7 @@ export default function ApprovalsPage() {
         }
 
         fetchPending()
-    }, [])
+    }, [clientId])
 
     // Animate out then remove
     function animateOut(id: string) {
@@ -88,7 +92,7 @@ export default function ApprovalsPage() {
                 .eq('id', item.id)
 
             await triggerWorkflow('blink-approval-response', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId,
                 post_id: item.id,
                 action: 'approved',
             })
@@ -116,7 +120,7 @@ export default function ApprovalsPage() {
                 .eq('id', rejectTarget.id)
 
             await triggerWorkflow('blink-approval-response', {
-                client_id: TEST_CLIENT_ID,
+                client_id: clientId,
                 post_id: rejectTarget.id,
                 action: 'rejected',
                 reason: rejectionReason.trim(),
@@ -133,7 +137,7 @@ export default function ApprovalsPage() {
         }
     }
 
-    if (loading) {
+    if (loading || clientLoading) {
         return (
             <div className="flex items-center justify-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
