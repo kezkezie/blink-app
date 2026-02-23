@@ -1,42 +1,54 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { generateAuthUrl } from '@/lib/postforme'
+import { NextResponse } from "next/server";
 
-/**
- * POST /api/social-accounts/auth-url
- * 
- * Generates an OAuth URL for connecting a social media account via Post for Me.
- * The frontend redirects the user to this URL to initiate the OAuth flow.
- * 
- * Body: { platform: string, clientId: string }
- * Returns: { url: string, platform: string }
- */
-export async function POST(request: NextRequest) {
-    try {
-        const body = await request.json()
-        const { platform, clientId } = body
+export async function POST(request: Request) {
+  try {
+    const { platform, clientId } = await request.json();
 
-        if (!platform || !clientId) {
-            return NextResponse.json(
-                { error: 'Missing required fields: platform, clientId' },
-                { status: 400 }
-            )
-        }
-
-        // Build the callback URL — this is where Post for Me redirects after OAuth
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-        const callbackUrl = `${appUrl}/api/social-accounts/callback?clientId=${encodeURIComponent(clientId)}`
-
-        const result = await generateAuthUrl(platform, clientId, callbackUrl)
-
-        return NextResponse.json({
-            url: result.url,
-            platform: result.platform,
-        })
-    } catch (error) {
-        console.error('Error generating auth URL:', error)
-        return NextResponse.json(
-            { error: error instanceof Error ? error.message : 'Failed to generate auth URL' },
-            { status: 500 }
-        )
+    if (!platform || !clientId) {
+      return NextResponse.json(
+        { error: "Missing platform or client ID" },
+        { status: 400 }
+      );
     }
+
+    // The URL where Post For Me should send the user AFTER they log in successfully.
+    // We include the clientId so we know whose account to update in the database!
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const redirectUrl = `${baseUrl}/api/social-accounts/callback?client_id=${clientId}&platform=${platform}`;
+
+    // Based on your api-1 postformedocs.json
+    const POST_FOR_ME_API_URL =
+      "https://api.postforme.dev/v1/social-accounts/auth-url";
+
+    const response = await fetch(POST_FOR_ME_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.NEXT_PUBLIC_POSTFORME_API_KEY}`,
+      },
+      body: JSON.stringify({
+        platform: platform,
+        redirect_url_override: redirectUrl, // Using the exact key from the docs
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Post For Me Error:", data);
+      return NextResponse.json(
+        { error: data.message || "Failed to generate connection link" },
+        { status: response.status }
+      );
+    }
+
+    // Returns { url: "https://..." }
+    return NextResponse.json({ url: data.url });
+  } catch (error) {
+    console.error("Auth URL Error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
 }

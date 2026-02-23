@@ -1,65 +1,62 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { usePathname } from 'next/navigation'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import { Sidebar } from '@/components/layout/Sidebar'
-import { TopBar } from '@/components/layout/TopBar'
-import { MobileNav } from '@/components/layout/MobileNav'
-import { supabase } from '@/lib/supabase'
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { TopBar } from "@/components/layout/TopBar";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { supabase } from "@/lib/supabase";
 
 const pageTitles: Record<string, string> = {
-    '/dashboard': 'Dashboard',
-    '/dashboard/content': 'Content',
-    '/dashboard/generate': 'Generate Content',
-    '/dashboard/approvals': 'Approvals',
-    '/dashboard/analytics': 'Analytics',
-    '/dashboard/settings': 'Settings',
-}
+  "/dashboard": "Dashboard",
+  "/dashboard/content": "Content",
+  "/dashboard/generate": "Generate Content",
+  "/dashboard/approvals": "Approvals",
+  "/dashboard/analytics": "Analytics",
+  "/dashboard/settings": "Settings",
+};
 
 export default function DashboardLayout({
-    children,
+  children,
 }: {
-    children: React.ReactNode
+  children: React.ReactNode;
 }) {
-    const pathname = usePathname()
-    const [userEmail, setUserEmail] = useState<string | null>(null)
+  const pathname = usePathname();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            if (user) setUserEmail(user.email || null)
-        })
-    }, [])
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserEmail(user.email || null);
+    });
+  }, []);
 
-    // Resolve page title: exact match first, then prefix match
-    const pageTitle =
-        pageTitles[pathname] ||
-        Object.entries(pageTitles).find(([path]) =>
-            pathname.startsWith(path) && path !== '/dashboard'
-        )?.[1] ||
-        'Dashboard'
+  // Resolve page title: exact match first, then prefix match
+  const pageTitle =
+    pageTitles[pathname] ||
+    Object.entries(pageTitles).find(
+      ([path]) => pathname.startsWith(path) && path !== "/dashboard"
+    )?.[1] ||
+    "Dashboard";
 
-    return (
-        <TooltipProvider delayDuration={0}>
-            <div className="flex min-h-screen bg-blink-light">
-                {/* Desktop Sidebar */}
-                <Sidebar userEmail={userEmail} />
+  return (
+    <TooltipProvider delayDuration={0}>
+      <div className="flex min-h-screen bg-blink-light">
+        {/* Desktop Sidebar */}
+        <Sidebar userEmail={userEmail} />
 
-                {/* Main Area */}
-                <div className="flex-1 flex flex-col min-w-0">
-                    <TopBar pageTitle={pageTitle} />
+        {/* Main Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopBar pageTitle={pageTitle} />
 
-                    <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
-                        <div className="mx-auto max-w-7xl">
-                            {children}
-                        </div>
-                    </main>
-                </div>
+          <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
+            <div className="mx-auto max-w-7xl">{children}</div>
+          </main>
+        </div>
 
-                {/* Mobile Navigation */}
-                <MobileNav />
-            </div>
-        </TooltipProvider>
-    )
+        {/* Mobile Navigation */}
+        <MobileNav />
+      </div>
+    </TooltipProvider>
+  );
 }
-
