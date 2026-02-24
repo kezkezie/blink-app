@@ -1,0 +1,466 @@
+{
+  "name": "Blink - 3.3. Image Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Blink - 3.3. Image Generator (Smart Router v2)\n\n**Flow:**\n1. Webhook responds to Next.js.\n2. Parse inputs (URLs, Style, Mode).\n3. Fetch Brand DNA (Colors, Logo, Tone).\n4. **Build Payload Router:**\n   - **Style Transfer:** Applies selected style + brand colors + composites logo (nano-banana-pro).\n   - **Layers:** Free-form compositing (nano-banana-pro).\n   - **Edit:** Tweaks existing image (qwen/image-edit).\n   - **Generate:** Creates from scratch (nano-banana).\n5. Send to Kie.ai -> Poll until done -> Save to DB -> Notify.",
+        "height": 360,
+        "width": 540,
+        "color": 5
+      },
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        80
+      ],
+      "id": "ig-010"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "blink-generate-images",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        120,
+        500
+      ],
+      "id": "946b945f-ae33-49e8-a5d7-8bc23b9f59fa",
+      "webhookId": "0a6ed12e-4a60-4dfe-8a4f-5dc98949d4f1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Image generation queued in background\"\n}",
+        "options": {}
+      },
+      "name": "Respond Instantly",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        320,
+        500
+      ],
+      "id": "c1f7b88e-4d89-4a0b-8d6e-9c7f1f3a2b1c"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\n\nconst refUrls = Array.isArray(body.reference_image_urls) ? body.reference_image_urls : [];\nif (body.reference_image_url && typeof body.reference_image_url === 'string' && !refUrls.includes(body.reference_image_url)) {\n    refUrls.unshift(body.reference_image_url);\n}\n\nreturn [{\n  json: {\n    clientId: body.client_id || 'MISSING',\n    postId: body.post_id || null,\n    topic: body.topic || '',\n    platform: body.platform || 'instagram',\n    contentType: body.content_type || 'post_image',\n    industry: body.industry || 'general',\n    mode: body.mode || 'generate',\n    style: body.style || null, // New Style parameter\n    kieModel: body.kie_model || 'google/nano-banana',\n    referenceImageUrls: refUrls,\n    logoUrl: body.logo_url || null\n  }\n}];"
+      },
+      "name": "Parse Input URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        500
+      ],
+      "id": "2aebd8cd-0139-434e-97e5-aad7b66e658c"
+    },
+    {
+      "parameters": {
+        "url": "=https://hzkufspjozkgmloznkvp.supabase.co/rest/v1/brand_profiles?client_id=eq.{{ $json.clientId }}&select=*",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Fetch Brand DNA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        720,
+        500
+      ],
+      "id": "a41ee2a8-727f-444f-8b43-40fb64d5587a"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Parse Input URLs').first().json;\nconst brand = (Array.isArray($json) ? $json[0] : $json) || {};\n\nconst mode = input.mode || 'generate';\nconst style = input.style || 'realistic';\nconst topic = input.topic || 'promotional post';\nlet baseImageUrls = input.referenceImageUrls || [];\nlet logoImageUrl = input.logoUrl || brand.logo_url;\n\n// Resolve Size\nconst sizeMap = { 'post_image': '1:1', 'stories': '9:16', 'reels': '9:16', 'carousel': '1:1', 'landscape': '16:9', 'portrait': '4:5' };\nconst qwenSizeMap = { 'post_image': 'square', 'stories': 'portrait_16_9', 'reels': 'portrait_16_9', 'carousel': 'square', 'landscape': 'landscape_16_9', 'portrait': 'portrait_4_3' };\n\nlet toneKeywords = 'friendly';\ntry { toneKeywords = JSON.parse(brand.tone_keywords).join(', '); } catch(e) {}\nconst primaryColor = brand.primary_color || '#2563EB';\nconst secondaryColor = brand.secondary_color || '#F59E0B';\n\nlet finalPrompt = '';\nlet finalModel = '';\nlet apiInput = {};\nlet imageSize = sizeMap[input.contentType || 'post_image'] || '1:1';\n\n// --- ROUTING LOGIC ---\n\nif (mode === 'style_transfer') {\n    // New Mode: Apply Style + Brand Colors + Auto-Logo\n    finalModel = 'nano-banana-pro';\n    const styleMap = {\n        'realistic': 'hyper-realistic, highly detailed photograph, professional product shot lighting',\n        'cinematic': 'cinematic, dramatic lighting, shallow depth of field, film grain, moody',\n        '3d_render': '3D render, octane render, unreal engine 5, highly polished, studio lighting',\n        'studio': 'clean studio shot, white background, soft even lighting, minimalist',\n        'illustrative': 'modern illustration, vector art style, clean lines, vibrant',\n        '2d_flat': '2D flat design, simple shapes, minimal textures, clean UI style'\n    };\n    const selectedStylePrompt = styleMap[style] || styleMap['realistic'];\n    \n    finalPrompt = `Transform the provided reference images into a high-quality professional graphic. Style: ${selectedStylePrompt}. Incorporate brand colors: ${primaryColor} and ${secondaryColor}. Seamlessly composite the provided brand logo into the scene in a natural, professional way. Topic context: ${topic}.`;\n\n    const allImages = [...baseImageUrls.slice(0, 4)]; // Limit to 4 refs\n    if (logoImageUrl && !allImages.includes(logoImageUrl)) allImages.push(logoImageUrl); // Auto-add logo\n\n    apiInput = {\n        prompt: finalPrompt,\n        image_input: allImages,\n        aspect_ratio: imageSize,\n        resolution: '1K',\n        output_format: 'png'\n    };\n\n} else if (mode === 'layers') { \n    // Renamed "Add Brand/Logo" -> Freeform compositing\n    finalModel = 'nano-banana-pro';\n    finalPrompt = topic ? topic : `Create a highly dynamic, professional graphic. Seamlessly composite and blend all provided image layers into a cohesive scene.`;\n    apiInput = {\n        prompt: finalPrompt,\n        image_input: baseImageUrls.slice(0, 8),\n        aspect_ratio: imageSize,\n        resolution: '1K',\n        output_format: 'png'\n    };\n\n} else if (mode === 'edit') {\n    // Edit existing image\n    finalModel = 'qwen/image-edit';\n    finalPrompt = topic;\n    imageSize = qwenSizeMap[input.contentType || 'post_image'] || 'square';\n    apiInput = {\n        prompt: finalPrompt,\n        image_url: baseImageUrls[0] || '',\n        image_urls: baseImageUrls.length > 0 ? [baseImageUrls[0]] : [],\n        image_size: imageSize,\n        output_format: 'png'\n    };\n\n} else {\n    // Pure Generate\n    finalModel = 'google/nano-banana';\n    finalPrompt = `Create a high-quality social media graphic. Visual Style: ${toneKeywords}. Industry: ${input.industry}. Topic: ${topic}. Primary color: ${primaryColor}. Secondary color: ${secondaryColor}. Make it look highly professional and on-brand. DO NOT include any text, typography, letters, words, or logos.`;\n    apiInput = {\n        prompt: finalPrompt,\n        image_size: imageSize,\n        output_format: 'png'\n    };\n}\n\nreturn [{ \n  json: { \n    payload: { model: finalModel, input: apiInput }, \n    meta: { ...input, finalModel, mode, style } \n  } \n}];"
+      },
+      "name": "Build Payload Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        500
+      ],
+      "id": "14f04464-476d-42e4-af2b-036f117bd118"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.kie.ai/api/v1/jobs/createTask",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 2114cdd4b00f4f207ccfd165e8f8cd16"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {}
+      },
+      "name": "Create Kie Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1120,
+        500
+      ],
+      "id": "549685ac-f4dd-4448-989a-aecc76c96463"
+    },
+    {
+      "parameters": {
+        "jsCode": "await new Promise(r => setTimeout(r, 4000));\nreturn $input.all();"
+      },
+      "name": "Wait 4s",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        500
+      ],
+      "id": "68bbc37f-2ba3-41f5-9b36-e353221d1b80"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.kie.ai/api/v1/jobs/recordInfo?taskId={{ $('Create Kie Task').first().json.data.taskId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 2114cdd4b00f4f207ccfd165e8f8cd16"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Poll Task Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1520,
+        500
+      ],
+      "id": "fb6d77cb-75f9-45ab-b9f2-8cd6098e097f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "2a014a51-9e5b-4396-8eb3-23a5e8b394f9",
+              "leftValue": "={{ $json.data.state }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "e6f98721-cb3a-42c2-bfa1-e6e289f64cd1",
+              "leftValue": "={{ $json.data.state }}",
+              "rightValue": "fail",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "name": "Is Task Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1720,
+        500
+      ],
+      "id": "5e57c82b-e043-418a-ab71-bee13363cf83"
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $json;\nconst meta = $('Build Payload Router').first().json.meta;\n\nlet imageUrl = null;\nif (result.data && result.data.resultJson) {\n  try {\n    const parsed = JSON.parse(result.data.resultJson);\n    if (parsed.resultUrls && parsed.resultUrls.length > 0) imageUrl = parsed.resultUrls[0];\n  } catch(e) {}\n}\nif (!imageUrl && result.data && result.data.output) imageUrl = result.data.output;\n\nreturn [{\n  json: {\n    imageUrl,\n    postId: meta.postId,\n    clientId: meta.clientId,\n    platform: meta.platform,\n    mode: meta.mode,\n    style: meta.style,\n    status: imageUrl ? 'success' : 'failed'\n  }\n}];"
+      },
+      "name": "Extract Final Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        480
+      ],
+      "id": "7f0a5ee3-31df-4219-9590-36554935639e"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-post",
+              "leftValue": "={{ $json.postId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Has Post ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2180,
+        480
+      ],
+      "id": "65a665dd-fc05-4221-9ad2-26ad03065b18"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://hzkufspjozkgmloznkvp.supabase.co/rest/v1/content?id=eq.{{ $json.postId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ image_urls: $json.imageUrl ? [$json.imageUrl] : [], updated_at: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "name": "Save to DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2400,
+        460
+      ],
+      "id": "ed95ac15-0dc3-47bd-80b5-421348bc6f9c"
+    },
+    {
+      "parameters": {
+        "chatId": "2004897059",
+        "text": "=🖼 <b>Image Generation Report</b>\n\n📱 Platform: {{ $('Extract Final Image').first().json.platform }}\n🎯 Mode: {{ $('Extract Final Image').first().json.mode }}\n{{ $('Extract Final Image').first().json.style ? '🎨 Style: ' + $('Extract Final Image').first().json.style + '\n' : '' }}🔗 Image: <a href=\"{{ $('Extract Final Image').first().json.imageUrl || '#' }}\">View Image</a>\n📊 Status: {{ $('Extract Final Image').first().json.status }}\n🆔 Client: {{ $('Extract Final Image').first().json.clientId }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "name": "Notify Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2620,
+        460
+      ],
+      "id": "f7a41a6c-682b-4a14-9a94-57ffa5fc8b97",
+      "credentials": {
+        "telegramApi": {
+          "id": "XlpKWLcTlgQOWjhb",
+          "name": "Dev demo"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond Instantly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Instantly": {
+      "main": [
+        [
+          {
+            "node": "Parse Input URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input URLs": {
+      "main": [
+        [
+          {
+            "node": "Fetch Brand DNA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Brand DNA": {
+      "main": [
+        [
+          {
+            "node": "Build Payload Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Payload Router": {
+      "main": [
+        [
+          {
+            "node": "Create Kie Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Kie Task": {
+      "main": [
+        [
+          {
+            "node": "Wait 4s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 4s": {
+      "main": [
+        [
+          {
+            "node": "Poll Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Task Status": {
+      "main": [
+        [
+          {
+            "node": "Is Task Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Task Done?": {
+      "main": [
+        [
+          {
+            "node": "Extract Final Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 4s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Final Image": {
+      "main": [
+        [
+          {
+            "node": "Has Post ID?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Post ID?": {
+      "main": [
+        [
+          {
+            "node": "Save to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to DB": {
+      "main": [
+        [
+          {
+            "node": "Notify Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "id": "LXINWLmOghHWzRgA"
+}

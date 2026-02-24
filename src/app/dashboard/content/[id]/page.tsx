@@ -15,13 +15,13 @@ import {
   Calendar as CalendarIcon,
   Upload,
   X,
-  Wand2,
   Eye,
   Zap,
   ZoomIn,
   Trash2,
   Layers,
   ImagePlus,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,12 +34,18 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { PlatformIcon } from "@/components/shared/PlatformIcon";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow } from "@/lib/workflows";
-import type { Content, ContentStatus, Platform } from "@/types/database";
+import type { Content, ContentStatus } from "@/types/database";
 import { cn } from "@/lib/utils";
 
 const parseArray = (data: any): any[] => {
@@ -54,7 +60,16 @@ const parseArray = (data: any): any[] => {
   return [];
 };
 
-type GenerationMode = "generate" | "enhance" | "edit" | "brand";
+type GenerationMode = "generate" | "style_transfer" | "edit" | "layers";
+
+const STYLE_OPTIONS = [
+  { value: "realistic", label: "Hyper-Realistic Photo" },
+  { value: "cinematic", label: "Cinematic Lighting" },
+  { value: "3d_render", label: "3D Product Render" },
+  { value: "studio", label: "Clean Studio Shot" },
+  { value: "illustrative", label: "Modern Illustration" },
+  { value: "2d_flat", label: "2D Flat Design" },
+];
 
 export default function ContentDetailPage({
   params,
@@ -79,7 +94,6 @@ export default function ContentDetailPage({
   const [callToAction, setCallToAction] = useState("");
 
   const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const [posting, setPosting] = useState(false);
@@ -87,15 +101,18 @@ export default function ContentDetailPage({
   const [scheduleDate, setScheduleDate] = useState("");
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
-
-  // ✨ UPDATED: Instead of a boolean, we store the URL of the image to preview
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   const [refFiles, setRefFiles] = useState<File[]>([]);
   const [refPreviews, setRefPreviews] = useState<string[]>([]);
+
+  // ✨ NEW: State to track if current image should be used as a reference
+  const [useCurrentImageAsRef, setUseCurrentImageAsRef] = useState(false);
+
   const [generationMode, setGenerationMode] =
     useState<GenerationMode>("generate");
   const [customPrompt, setCustomPrompt] = useState("");
+  const [selectedStyle, setSelectedStyle] = useState("realistic");
   const refInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -119,9 +136,7 @@ export default function ContentDetailPage({
           setHashtags(item.hashtags || "");
           setCallToAction(item.call_to_action || "");
         }
-        if (brandRes.data?.logo_url) {
-          setBrandLogo(brandRes.data.logo_url);
-        }
+        if (brandRes.data?.logo_url) setBrandLogo(brandRes.data.logo_url);
       } catch (err) {
         console.error("Fetch error:", err);
       } finally {
@@ -138,7 +153,6 @@ export default function ContentDetailPage({
     setGeneratingImage(true);
     let attempts = 0;
     let found = false;
-
     while (attempts < 60 && !found) {
       const { data } = await supabase
         .from("content")
@@ -146,10 +160,9 @@ export default function ContentDetailPage({
         .eq("id", contentId)
         .single();
       if (data) {
-        const item = data as unknown as Content;
-        const newImg = parseArray(item.image_urls)[0];
+        const newImg = parseArray((data as unknown as Content).image_urls)[0];
         if (newImg && newImg !== originalImgUrl) {
-          setContent(item);
+          setContent(data as unknown as Content);
           found = true;
           break;
         }
@@ -157,7 +170,6 @@ export default function ContentDetailPage({
       attempts++;
       await new Promise((r) => setTimeout(r, 3000));
     }
-
     if (!found) {
       const { data } = await supabase
         .from("content")
@@ -166,7 +178,6 @@ export default function ContentDetailPage({
         .single();
       if (data) setContent(data as unknown as Content);
     }
-
     setGeneratingImage(false);
     localStorage.removeItem(`regenerating_img_${contentId}`);
   };
@@ -176,8 +187,7 @@ export default function ContentDetailPage({
     const checkRecovery = async () => {
       const timestamp = localStorage.getItem(`regenerating_img_${content.id}`);
       if (timestamp && Date.now() - parseInt(timestamp) < 5 * 60 * 1000) {
-        const currentImg = parseArray(content.image_urls)[0];
-        await pollForImageUpdate(content.id, currentImg);
+        pollForImageUpdate(content.id, parseArray(content.image_urls)[0]);
       } else {
         localStorage.removeItem(`regenerating_img_${content.id}`);
       }
@@ -244,7 +254,7 @@ export default function ContentDetailPage({
         prev ? { ...prev, status: "pending_approval" as ContentStatus } : null
       );
     } catch (err) {
-      console.error("Send for approval error:", err);
+      console.error(err);
     } finally {
       setActionLoading(false);
     }
@@ -254,25 +264,22 @@ export default function ContentDetailPage({
     if (!content) return;
     setActionLoading(true);
     try {
+      const now = new Date().toISOString();
       await supabase
         .from("content")
         .update({
           status: "approved",
-          approved_at: new Date().toISOString(),
+          approved_at: now,
           approved_by: "admin",
         } as Record<string, unknown>)
         .eq("id", content.id);
       setContent((prev) =>
         prev
-          ? {
-              ...prev,
-              status: "approved" as ContentStatus,
-              approved_at: new Date().toISOString(),
-            }
+          ? { ...prev, status: "approved" as ContentStatus, approved_at: now }
           : null
       );
     } catch (err) {
-      console.error("Approve error:", err);
+      console.error(err);
     } finally {
       setActionLoading(false);
     }
@@ -282,14 +289,13 @@ export default function ContentDetailPage({
     if (!content) return;
     setPosting(true);
     try {
-      const platforms = content.target_platforms || ["instagram"];
       await fetch("/api/social-posts/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contentId: content.id,
           clientId: clientId!,
-          platforms,
+          platforms: content.target_platforms || ["instagram"],
           scheduledAt,
         }),
       });
@@ -302,7 +308,7 @@ export default function ContentDetailPage({
           : null
       );
     } catch (err) {
-      console.error("Post error:", err);
+      console.error(err);
     } finally {
       setPosting(false);
       setScheduleMode(false);
@@ -310,34 +316,45 @@ export default function ContentDetailPage({
   }
 
   function handleRefFilesSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []);
-    addRefFiles(files);
+    addRefFiles(Array.from(e.target.files || []));
     if (e.target) e.target.value = "";
   }
-
   function handleRefFilesDrop(e: React.DragEvent) {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith("image/")
+    addRefFiles(
+      Array.from(e.dataTransfer.files).filter((f) =>
+        f.type.startsWith("image/")
+      )
     );
-    addRefFiles(files);
   }
 
   function addRefFiles(newFiles: File[]) {
+    const maxFiles = generationMode === "style_transfer" ? 4 : 8;
+    // Calculate remaining slots, accounting for current image if selected
+    const usedSlots = refFiles.length + (useCurrentImageAsRef ? 1 : 0);
+    const remainingSlots = maxFiles - usedSlots;
+
+    if (remainingSlots <= 0) {
+      alert(`Maximum ${maxFiles} reference images allowed for this mode.`);
+      return;
+    }
+
     let validFiles = newFiles.filter((f) => f.size <= 30 * 1024 * 1024);
     if (validFiles.length < newFiles.length)
       alert("Some files were skipped because they exceed 30MB.");
 
-    if (refFiles.length + validFiles.length > 8) {
-      alert("Maximum 8 files allowed.");
-      validFiles = validFiles.slice(0, 8 - refFiles.length);
+    if (validFiles.length > remainingSlots) {
+      alert(
+        `Adding first ${remainingSlots} files to respect the ${maxFiles} image limit.`
+      );
+      validFiles = validFiles.slice(0, remainingSlots);
     }
 
     setRefFiles((prev) => [...prev, ...validFiles]);
     validFiles.forEach((f) => {
       const reader = new FileReader();
-      reader.onload = (event) =>
-        setRefPreviews((prev) => [...prev, event.target?.result as string]);
+      reader.onload = (e) =>
+        setRefPreviews((prev) => [...prev, e.target?.result as string]);
       reader.readAsDataURL(f);
     });
   }
@@ -351,11 +368,9 @@ export default function ContentDetailPage({
     if (!content) return;
     setGeneratingImage(true);
     setImageModalOpen(false);
-
     const finalTopic =
       customPrompt.trim() || captionShort || caption?.substring(0, 60) || "";
     const displayImage = parseArray(content.image_urls)[0];
-
     try {
       await supabase
         .from("content")
@@ -365,21 +380,25 @@ export default function ContentDetailPage({
         prev ? { ...prev, image_prompt_used: finalTopic } : null
       );
 
+      // 1. Upload new files
       let uploadedUrls: string[] = [];
       for (const file of refFiles) {
-        const fileExt = file.name.split(".").pop();
         const filePath = `references/${clientId}/${Date.now()}_${Math.random()
           .toString(36)
-          .substring(7)}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
+          .substring(7)}.${file.name.split(".").pop()}`;
+        const { error } = await supabase.storage
           .from("assets")
           .upload(filePath, file);
-        if (!uploadError) {
-          const { data } = supabase.storage
-            .from("assets")
-            .getPublicUrl(filePath);
-          uploadedUrls.push(data.publicUrl);
-        }
+        if (!error)
+          uploadedUrls.push(
+            supabase.storage.from("assets").getPublicUrl(filePath).data
+              .publicUrl
+          );
+      }
+
+      // ✨ NEW: Add current image to references if selected
+      if (useCurrentImageAsRef && displayImage) {
+        uploadedUrls.unshift(displayImage);
       }
 
       await triggerWorkflow("blink-generate-images", {
@@ -391,11 +410,14 @@ export default function ContentDetailPage({
         reference_image_url: displayImage || null,
         reference_image_urls: uploadedUrls,
         logo_url: brandLogo || null,
+        style: generationMode === "style_transfer" ? selectedStyle : null,
       });
 
+      // Reset states
       setRefFiles([]);
       setRefPreviews([]);
       setCustomPrompt("");
+      setUseCurrentImageAsRef(false);
       setGenerationMode("generate");
 
       localStorage.setItem(
@@ -404,7 +426,7 @@ export default function ContentDetailPage({
       );
       pollForImageUpdate(content.id, displayImage);
     } catch (err) {
-      console.error("Image generation error:", err);
+      console.error(err);
       setGeneratingImage(false);
     }
   }
@@ -413,6 +435,8 @@ export default function ContentDetailPage({
     setRefFiles([]);
     setRefPreviews([]);
     setCustomPrompt("");
+    // ✨ NEW: Reset current image usage state
+    setUseCurrentImageAsRef(false);
     setGenerationMode(parseArray(content?.image_urls)[0] ? "edit" : "generate");
     setImageModalOpen(true);
   }
@@ -437,10 +461,16 @@ export default function ContentDetailPage({
       </div>
     );
 
-  const imageUrlsArray = parseArray(content.image_urls);
-  const displayImage = imageUrlsArray[0];
+  const displayImage = parseArray(content.image_urls)[0];
   const referenceImageUrl = (content as unknown as Record<string, unknown>)
     .reference_image_url as string | null;
+
+  // Helper to check if generation is disabled
+  const isGenerationDisabled =
+    generatingImage ||
+    ((generationMode === "style_transfer" || generationMode === "layers") &&
+      refFiles.length === 0 &&
+      !useCurrentImageAsRef);
 
   return (
     <div className="space-y-5">
@@ -450,7 +480,6 @@ export default function ContentDetailPage({
       >
         <ArrowLeft className="h-4 w-4" /> Back to content
       </button>
-
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <div className="lg:col-span-3 space-y-5">
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -486,7 +515,6 @@ export default function ContentDetailPage({
               )}
             </div>
           </div>
-
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -557,7 +585,6 @@ export default function ContentDetailPage({
             </div>
           </div>
         </div>
-
         <div className="lg:col-span-2 space-y-5">
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -566,7 +593,6 @@ export default function ContentDetailPage({
               </h3>
               <StatusBadge status={content.status as ContentStatus} size="md" />
             </div>
-
             {content.status === "rejected" && content.rejection_reason && (
               <div className="bg-red-50 border border-red-100 rounded-lg p-3">
                 <p className="text-xs font-medium text-red-700 mb-1">
@@ -577,7 +603,6 @@ export default function ContentDetailPage({
                 </p>
               </div>
             )}
-
             <div className="space-y-2">
               {content.status === "draft" && (
                 <>
@@ -608,7 +633,6 @@ export default function ContentDetailPage({
                   </Button>
                 </>
               )}
-
               {content.status === "pending_approval" && (
                 <>
                   <Button
@@ -633,7 +657,6 @@ export default function ContentDetailPage({
                   </Button>
                 </>
               )}
-
               {content.status === "approved" && (
                 <div className="space-y-3">
                   <Button
@@ -678,7 +701,6 @@ export default function ContentDetailPage({
                   </div>
                 </div>
               )}
-
               {content.status === "rejected" && (
                 <Button
                   onClick={async () => {
@@ -709,7 +731,6 @@ export default function ContentDetailPage({
               )}
             </div>
           </div>
-
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-3">
             <h3 className="text-sm font-semibold text-blink-dark font-heading">
               Details
@@ -750,7 +771,6 @@ export default function ContentDetailPage({
                 </div>
               )}
             </div>
-
             {content.image_prompt_used && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <span className="block text-gray-500 text-xs mb-1.5 font-medium">
@@ -762,8 +782,6 @@ export default function ContentDetailPage({
               </div>
             )}
           </div>
-
-          {/* ✨ NEW: Aesthetically Pleasing Reference Source Card */}
           {referenceImageUrl && (
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-3">
               <h3 className="text-sm font-semibold text-blink-dark font-heading flex items-center gap-2">
@@ -786,7 +804,6 @@ export default function ContentDetailPage({
               </div>
             </div>
           )}
-
           <div className="pt-2">
             <Button
               variant="ghost"
@@ -798,8 +815,6 @@ export default function ContentDetailPage({
           </div>
         </div>
       </div>
-
-      {/* ✨ UPDATED: Universal Preview Modal */}
       <Dialog
         open={!!previewImageUrl}
         onOpenChange={(open) => !open && setPreviewImageUrl(null)}
@@ -815,7 +830,6 @@ export default function ContentDetailPage({
           )}
         </DialogContent>
       </Dialog>
-
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -845,7 +859,6 @@ export default function ContentDetailPage({
         </DialogContent>
       </Dialog>
 
-      {/* REGENERATION MODAL */}
       <Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
@@ -854,7 +867,6 @@ export default function ContentDetailPage({
               {displayImage ? "Regenerate Image" : "Generate Image"}
             </DialogTitle>
           </DialogHeader>
-
           <div className="py-2 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div
@@ -882,12 +894,11 @@ export default function ContentDetailPage({
                   </h4>
                 </div>
               </div>
-
               <div
-                onClick={() => setGenerationMode("enhance")}
+                onClick={() => setGenerationMode("style_transfer")}
                 className={cn(
                   "flex flex-col items-center text-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-colors",
-                  generationMode === "enhance"
+                  generationMode === "style_transfer"
                     ? "border-amber-400 bg-amber-50"
                     : "border-gray-100 hover:border-gray-200"
                 )}
@@ -895,20 +906,19 @@ export default function ContentDetailPage({
                 <div
                   className={cn(
                     "p-2.5 rounded-full",
-                    generationMode === "enhance"
+                    generationMode === "style_transfer"
                       ? "bg-amber-100 text-amber-600"
                       : "bg-gray-50 text-gray-400"
                   )}
                 >
-                  <Upload className="h-5 w-5" />
+                  <Palette className="h-5 w-5" />
                 </div>
                 <div>
                   <h4 className="text-[13px] font-semibold text-blink-dark">
-                    Upload Source
+                    Style Transfer
                   </h4>
                 </div>
               </div>
-
               {displayImage && (
                 <>
                   <div
@@ -936,12 +946,11 @@ export default function ContentDetailPage({
                       </h4>
                     </div>
                   </div>
-
                   <div
-                    onClick={() => setGenerationMode("brand")}
+                    onClick={() => setGenerationMode("layers")}
                     className={cn(
                       "flex flex-col items-center text-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-colors",
-                      generationMode === "brand"
+                      generationMode === "layers"
                         ? "border-purple-400 bg-purple-50"
                         : "border-gray-100 hover:border-gray-200"
                     )}
@@ -949,7 +958,7 @@ export default function ContentDetailPage({
                     <div
                       className={cn(
                         "p-2.5 rounded-full",
-                        generationMode === "brand"
+                        generationMode === "layers"
                           ? "bg-purple-100 text-purple-600"
                           : "bg-gray-50 text-gray-400"
                       )}
@@ -958,7 +967,7 @@ export default function ContentDetailPage({
                     </div>
                     <div>
                       <h4 className="text-[13px] font-semibold text-blink-dark">
-                        Add Logo / Brand
+                        Layers
                       </h4>
                     </div>
                   </div>
@@ -967,6 +976,28 @@ export default function ContentDetailPage({
             </div>
 
             <div className="space-y-4 pt-4 border-t border-gray-100">
+              {generationMode === "style_transfer" && (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="text-sm font-medium text-gray-700">
+                    Target Style
+                  </label>
+                  <Select
+                    value={selectedStyle}
+                    onValueChange={setSelectedStyle}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a style" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STYLE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700 flex justify-between">
                   Custom Prompt{" "}
@@ -977,7 +1008,7 @@ export default function ContentDetailPage({
                   onChange={(e) => setCustomPrompt(e.target.value)}
                   rows={2}
                   placeholder={
-                    generationMode === "brand"
+                    generationMode === "layers"
                       ? "E.g., Place the logo elegantly in the corner..."
                       : "Describe what you want the AI to generate..."
                   }
@@ -985,26 +1016,53 @@ export default function ContentDetailPage({
                 />
               </div>
 
-              {(generationMode === "enhance" || generationMode === "brand") && (
+              {(generationMode === "style_transfer" ||
+                generationMode === "layers") && (
                 <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <label className="text-sm font-medium text-gray-700 flex justify-between">
-                    {generationMode === "brand"
-                      ? "Brand Logo"
-                      : "Reference Photos"}
-                    {generationMode === "brand" &&
-                      brandLogo &&
-                      refFiles.length === 0 && (
-                        <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full font-medium">
-                          Using Saved Profile Logo
-                        </span>
+                  {/* ✨ NEW: Toggle to use current display image */}
+                  {displayImage && (
+                    <div
+                      onClick={() =>
+                        setUseCurrentImageAsRef(!useCurrentImageAsRef)
+                      }
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors",
+                        useCurrentImageAsRef
+                          ? "border-blink-primary bg-blink-primary/5"
+                          : "border-gray-100 hover:border-gray-200 bg-gray-50"
                       )}
-                    {generationMode === "enhance" && (
-                      <span className="text-xs text-gray-400 font-normal">
-                        (Up to 8)
-                      </span>
-                    )}
-                  </label>
+                    >
+                      <div className="relative h-12 w-12 rounded-lg overflow-hidden border border-gray-200">
+                        <img
+                          src={displayImage}
+                          alt="Current"
+                          className="h-full w-full object-cover"
+                        />
+                        {useCurrentImageAsRef && (
+                          <div className="absolute inset-0 bg-blink-primary/20 flex items-center justify-center">
+                            <CheckCircle className="h-6 w-6 text-blink-primary drop-shadow-md" />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium text-blink-dark">
+                          Use Current Image
+                        </h4>
+                        <p className="text-xs text-gray-500">
+                          Include this image as a reference layer.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
+                  <label className="text-sm font-medium text-gray-700 flex justify-between">
+                    {generationMode === "layers"
+                      ? "Upload Layers"
+                      : "Upload Reference Photos"}
+                    <span className="text-xs text-gray-400 font-normal">
+                      (Max {generationMode === "style_transfer" ? 4 : 8} total)
+                    </span>
+                  </label>
                   {refPreviews.length > 0 && (
                     <div className="grid grid-cols-4 gap-2 mb-2">
                       {refPreviews.map((preview, idx) => (
@@ -1027,27 +1085,24 @@ export default function ContentDetailPage({
                       ))}
                     </div>
                   )}
-
-                  {refFiles.length < 8 && (
-                    <div
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={handleRefFilesDrop}
-                      onClick={() => refInputRef.current?.click()}
-                      className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-blink-primary/40 group"
-                    >
-                      <div className="h-12 w-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                        <ImagePlus className="h-6 w-6 text-gray-400 group-hover:text-blink-primary transition-colors" />
-                      </div>
-                      <p className="text-sm font-medium text-blink-dark mb-1">
-                        Click to upload or drag and drop
-                      </p>
-                      <p className="text-xs text-gray-500 text-center max-w-[250px]">
-                        Supported formats: JPEG, PNG, WEBP
-                        <br />
-                        Maximum file size: 30MB; Maximum files: 8
-                      </p>
+                  <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleRefFilesDrop}
+                    onClick={() => refInputRef.current?.click()}
+                    className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-blink-primary/40 group"
+                  >
+                    <div className="h-12 w-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                      <ImagePlus className="h-6 w-6 text-gray-400 group-hover:text-blink-primary transition-colors" />
                     </div>
-                  )}
+                    <p className="text-sm font-medium text-blink-dark mb-1">
+                      Click to upload or drag and drop
+                    </p>
+                    <p className="text-xs text-gray-500 text-center max-w-[250px]">
+                      Supported formats: JPEG, PNG, WEBP
+                      <br />
+                      Maximum file size: 30MB
+                    </p>
+                  </div>
                   <input
                     ref={refInputRef}
                     type="file"
@@ -1058,28 +1113,30 @@ export default function ContentDetailPage({
                   />
                 </div>
               )}
+              {generationMode === "style_transfer" && brandLogo && (
+                <div className="flex items-center gap-2 p-3 bg-purple-50 text-purple-700 rounded-lg text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-300">
+                  <Layers className="h-4 w-4" /> Your brand logo will be
+                  automatically added to the final image.
+                </div>
+              )}
             </div>
           </div>
-
           <DialogFooter>
             <Button variant="outline" onClick={() => setImageModalOpen(false)}>
               Cancel
             </Button>
             <Button
               onClick={handleGenerateImage}
-              disabled={
-                generatingImage ||
-                (generationMode === "enhance" && refFiles.length === 0)
-              }
+              disabled={isGenerationDisabled}
               className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-2"
             >
               <Sparkles className="h-4 w-4" />{" "}
-              {generationMode === "enhance"
-                ? "Enhance Photo"
+              {generationMode === "style_transfer"
+                ? "Transfer Style"
                 : generationMode === "edit"
                 ? "Edit Image"
-                : generationMode === "brand"
-                ? "Add Logo"
+                : generationMode === "layers"
+                ? "Composite Layers"
                 : "Generate Image"}
             </Button>
           </DialogFooter>
