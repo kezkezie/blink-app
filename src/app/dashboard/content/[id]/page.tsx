@@ -95,9 +95,6 @@ export default function ContentDetailPage({
 
   const [rejectOpen, setRejectOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-
-  const [posting, setPosting] = useState(false);
-  const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduleDate, setScheduleDate] = useState("");
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
@@ -105,8 +102,6 @@ export default function ContentDetailPage({
 
   const [refFiles, setRefFiles] = useState<File[]>([]);
   const [refPreviews, setRefPreviews] = useState<string[]>([]);
-
-  // ✨ NEW: State to track if current image should be used as a reference
   const [useCurrentImageAsRef, setUseCurrentImageAsRef] = useState(false);
 
   const [generationMode, setGenerationMode] =
@@ -193,7 +188,6 @@ export default function ContentDetailPage({
       }
     };
     checkRecovery();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content?.id]);
 
   async function handleSave() {
@@ -260,35 +254,20 @@ export default function ContentDetailPage({
     }
   }
 
-  async function handleApprove() {
+  async function handleApproveAndPublishNow() {
     if (!content) return;
     setActionLoading(true);
     try {
-      const now = new Date().toISOString();
       await supabase
         .from("content")
         .update({
           status: "approved",
-          approved_at: now,
+          approved_at: new Date().toISOString(),
           approved_by: "admin",
+          scheduled_at: null, // Clear any schedule if publishing now
         } as Record<string, unknown>)
         .eq("id", content.id);
-      setContent((prev) =>
-        prev
-          ? { ...prev, status: "approved" as ContentStatus, approved_at: now }
-          : null
-      );
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setActionLoading(false);
-    }
-  }
 
-  async function handlePost(scheduledAt: string | null) {
-    if (!content) return;
-    setPosting(true);
-    try {
       await fetch("/api/social-posts/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -296,22 +275,84 @@ export default function ContentDetailPage({
           contentId: content.id,
           clientId: clientId!,
           platforms: content.target_platforms || ["instagram"],
-          scheduledAt,
+          scheduledAt: null,
         }),
       });
+
       setContent((prev) =>
         prev
           ? {
               ...prev,
-              status: (scheduledAt ? "scheduled" : "posted") as ContentStatus,
+              status: "posted" as ContentStatus,
+              scheduled_at: null as any,
             }
           : null
       );
+      alert("Post approved and sent live! 🚀");
     } catch (err) {
-      console.error(err);
+      console.error("Publish error:", err);
+      alert("Failed to publish post.");
     } finally {
-      setPosting(false);
-      setScheduleMode(false);
+      setActionLoading(false);
+    }
+  }
+
+  async function handleApproveAndSchedule() {
+    if (!content || !scheduleDate) return;
+    setActionLoading(true);
+    try {
+      const scheduledTime = new Date(scheduleDate).toISOString();
+
+      const { error } = await supabase
+        .from("content")
+        .update({
+          status: "approved",
+          approved_at: new Date().toISOString(),
+          approved_by: "admin",
+          scheduled_at: scheduledTime,
+        } as Record<string, unknown>)
+        .eq("id", content.id);
+
+      if (error) throw error;
+
+      setContent((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "approved" as ContentStatus,
+              scheduled_at: scheduledTime as string,
+            }
+          : null
+      );
+      setScheduleDate("");
+    } catch (err) {
+      console.error("Schedule error:", err);
+      alert("Failed to schedule post.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleCancelSchedule() {
+    if (!content) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from("content")
+        .update({
+          scheduled_at: null,
+        } as Record<string, unknown>)
+        .eq("id", content.id);
+
+      if (error) throw error;
+
+      setContent((prev) =>
+        prev ? { ...prev, scheduled_at: null as any } : null
+      );
+    } catch (err) {
+      console.error("Cancel schedule error:", err);
+    } finally {
+      setActionLoading(false);
     }
   }
 
@@ -330,7 +371,6 @@ export default function ContentDetailPage({
 
   function addRefFiles(newFiles: File[]) {
     const maxFiles = generationMode === "style_transfer" ? 4 : 8;
-    // Calculate remaining slots, accounting for current image if selected
     const usedSlots = refFiles.length + (useCurrentImageAsRef ? 1 : 0);
     const remainingSlots = maxFiles - usedSlots;
 
@@ -380,7 +420,6 @@ export default function ContentDetailPage({
         prev ? { ...prev, image_prompt_used: finalTopic } : null
       );
 
-      // 1. Upload new files
       let uploadedUrls: string[] = [];
       for (const file of refFiles) {
         const filePath = `references/${clientId}/${Date.now()}_${Math.random()
@@ -396,10 +435,8 @@ export default function ContentDetailPage({
           );
       }
 
-      // ✨ NEW: Add current image to references if selected
-      if (useCurrentImageAsRef && displayImage) {
+      if (useCurrentImageAsRef && displayImage)
         uploadedUrls.unshift(displayImage);
-      }
 
       await triggerWorkflow("blink-generate-images", {
         client_id: clientId!,
@@ -413,13 +450,11 @@ export default function ContentDetailPage({
         style: generationMode === "style_transfer" ? selectedStyle : null,
       });
 
-      // Reset states
       setRefFiles([]);
       setRefPreviews([]);
       setCustomPrompt("");
       setUseCurrentImageAsRef(false);
       setGenerationMode("generate");
-
       localStorage.setItem(
         `regenerating_img_${content.id}`,
         Date.now().toString()
@@ -435,7 +470,6 @@ export default function ContentDetailPage({
     setRefFiles([]);
     setRefPreviews([]);
     setCustomPrompt("");
-    // ✨ NEW: Reset current image usage state
     setUseCurrentImageAsRef(false);
     setGenerationMode(parseArray(content?.image_urls)[0] ? "edit" : "generate");
     setImageModalOpen(true);
@@ -465,7 +499,6 @@ export default function ContentDetailPage({
   const referenceImageUrl = (content as unknown as Record<string, unknown>)
     .reference_image_url as string | null;
 
-  // Helper to check if generation is disabled
   const isGenerationDisabled =
     generatingImage ||
     ((generationMode === "style_transfer" || generationMode === "layers") &&
@@ -603,6 +636,7 @@ export default function ContentDetailPage({
                 </p>
               </div>
             )}
+
             <div className="space-y-2">
               {content.status === "draft" && (
                 <>
@@ -633,74 +667,120 @@ export default function ContentDetailPage({
                   </Button>
                 </>
               )}
-              {content.status === "pending_approval" && (
-                <>
-                  <Button
-                    onClick={handleApprove}
-                    disabled={actionLoading}
-                    className="w-full justify-start gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle className="h-4 w-4" />
-                    )}{" "}
-                    Approve
-                  </Button>
-                  <Button
-                    onClick={() => setRejectOpen(true)}
-                    disabled={actionLoading}
-                    variant="outline"
-                    className="w-full justify-start gap-2 border-red-200 text-red-600 hover:bg-red-50"
-                  >
-                    <XCircle className="h-4 w-4" /> Reject
-                  </Button>
-                </>
-              )}
-              {content.status === "approved" && (
-                <div className="space-y-3">
-                  <Button
-                    onClick={() => handlePost(null)}
-                    disabled={posting || scheduleMode}
-                    className="w-full justify-start gap-2 bg-blink-primary hover:bg-blink-primary/90 text-white"
-                  >
-                    {posting && !scheduleMode ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Zap className="h-4 w-4" />
-                    )}{" "}
-                    {posting && !scheduleMode ? "Publishing..." : "Post Now"}
-                  </Button>
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
-                      <Input
-                        type="datetime-local"
-                        value={scheduleDate}
-                        onChange={(e) => setScheduleDate(e.target.value)}
-                        className="flex-1 text-sm"
-                        min={new Date().toISOString().slice(0, 16)}
-                      />
+
+              {/* ✨ NEW STREAMLINED APPROVAL FLOW */}
+              {(content.status === "pending_approval" ||
+                content.status === "approved") && (
+                <div className="space-y-3 pt-1">
+                  {content.status === "pending_approval" && (
+                    <div className="p-2.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium mb-1 border border-blue-100">
+                      Post looks good? Choose how to proceed:
+                    </div>
+                  )}
+
+                  {/* 👻 GHOST POSTER ACTIVE STATE - FIXED BUTTON LAYOUT */}
+                  {content.status === "approved" &&
+                  (content as any).scheduled_at ? (
+                    <div className="p-4 border border-emerald-200 rounded-xl bg-emerald-50 shadow-inner space-y-3 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-emerald-700 font-bold">
+                          <CheckCircle className="h-5 w-5" />
+                          Ghost Poster Active 👻
+                        </div>
+                      </div>
+                      <p className="text-xs text-emerald-700/80 leading-relaxed">
+                        This post is queued. The AI will automatically publish
+                        it on{" "}
+                        <b>
+                          {new Date(
+                            (content as any).scheduled_at
+                          ).toLocaleString()}
+                        </b>
+                        .
+                      </p>
+                      <div className="flex flex-col gap-2 pt-2">
+                        <Button
+                          onClick={handleApproveAndPublishNow}
+                          disabled={actionLoading}
+                          className="w-full text-xs h-9 gap-1.5 bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                        >
+                          {actionLoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Zap className="h-3.5 w-3.5" />
+                          )}{" "}
+                          Publish Now Instead
+                        </Button>
+                        <Button
+                          onClick={handleCancelSchedule}
+                          disabled={actionLoading}
+                          variant="outline"
+                          className="w-full text-xs h-9 gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100 bg-white"
+                        >
+                          <XCircle className="h-3.5 w-3.5" /> Cancel Schedule
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                       <Button
-                        onClick={() => {
-                          if (!scheduleDate) return;
-                          setScheduleMode(true);
-                          handlePost(new Date(scheduleDate).toISOString());
-                        }}
-                        disabled={posting || !scheduleDate}
-                        variant="outline"
-                        className="gap-1"
+                        onClick={handleApproveAndPublishNow}
+                        disabled={actionLoading}
+                        className="w-full justify-start gap-2 bg-blink-primary hover:bg-blink-primary/90 text-white"
                       >
-                        {posting && scheduleMode ? (
+                        {actionLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <CalendarIcon className="h-4 w-4" />
+                          <Zap className="h-4 w-4" />
                         )}{" "}
-                        Schedule
+                        {content.status === "pending_approval"
+                          ? "Approve & Publish Now"
+                          : "Publish Now"}
                       </Button>
-                    </div>
-                  </div>
+
+                      <div className="p-3 border border-gray-100 rounded-xl bg-gray-50 shadow-inner inset-0 space-y-2.5">
+                        <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                          <CalendarIcon className="h-3.5 w-3.5 text-emerald-600" />{" "}
+                          {content.status === "pending_approval"
+                            ? "Approve & Schedule"
+                            : "Schedule Post"}
+                        </label>
+                        <Input
+                          type="datetime-local"
+                          value={scheduleDate}
+                          onChange={(e) => setScheduleDate(e.target.value)}
+                          className="w-full text-sm bg-white border-gray-200 focus:ring-emerald-500"
+                          min={new Date().toISOString().slice(0, 16)}
+                        />
+                        <Button
+                          onClick={handleApproveAndSchedule}
+                          disabled={actionLoading || !scheduleDate}
+                          className="w-full justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        >
+                          {actionLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4" />
+                          )}{" "}
+                          Schedule for later
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                  {content.status === "pending_approval" && (
+                    <Button
+                      onClick={() => setRejectOpen(true)}
+                      disabled={actionLoading}
+                      variant="outline"
+                      className="w-full justify-start gap-2 border-red-200 text-red-600 hover:bg-red-50 mt-2"
+                    >
+                      <XCircle className="h-4 w-4" /> Reject & Request Edit
+                    </Button>
+                  )}
                 </div>
               )}
+
               {content.status === "rejected" && (
                 <Button
                   onClick={async () => {
@@ -762,6 +842,24 @@ export default function ContentDetailPage({
                   })}
                 </span>
               </div>
+              {(content as any).scheduled_at && (
+                <div className="flex justify-between">
+                  <span className="text-emerald-600 font-semibold">
+                    Scheduled For
+                  </span>
+                  <span className="text-emerald-700 font-bold">
+                    {new Date((content as any).scheduled_at).toLocaleString(
+                      "en-US",
+                      {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      }
+                    )}
+                  </span>
+                </div>
+              )}
               {content.ai_model && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">AI Model</span>
@@ -1019,7 +1117,6 @@ export default function ContentDetailPage({
               {(generationMode === "style_transfer" ||
                 generationMode === "layers") && (
                 <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                  {/* ✨ NEW: Toggle to use current display image */}
                   {displayImage && (
                     <div
                       onClick={() =>
@@ -1058,7 +1155,7 @@ export default function ContentDetailPage({
                   <label className="text-sm font-medium text-gray-700 flex justify-between">
                     {generationMode === "layers"
                       ? "Upload Layers"
-                      : "Upload Reference Photos"}
+                      : "Upload Reference Photos"}{" "}
                     <span className="text-xs text-gray-400 font-normal">
                       (Max {generationMode === "style_transfer" ? 4 : 8} total)
                     </span>
