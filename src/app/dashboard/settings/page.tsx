@@ -20,18 +20,20 @@ import {
   AlertCircle,
   Share2 as Share2Icon,
   Palette,
+  Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
 
@@ -59,16 +61,6 @@ const PFM_SUPPORTED_PLATFORMS = [
   "pinterest",
   "threads",
 ];
-const industries = [
-  "Food & Beverage",
-  "Retail",
-  "Beauty & Wellness",
-  "Health & Fitness",
-  "Technology",
-  "Education",
-  "Real Estate",
-  "Other",
-];
 
 const platformConfig: Record<
   string,
@@ -86,17 +78,6 @@ const platformConfig: Record<
   youtube: { label: "YouTube", emoji: "▶️", color: "bg-red-600" },
   pinterest: { label: "Pinterest", emoji: "📌", color: "bg-red-700" },
   threads: { label: "Threads", emoji: "🔗", color: "bg-gray-800" },
-};
-
-const planTiers: Record<
-  string,
-  { name: string; price: string; color: string }
-> = {
-  starter: { name: "Starter", price: "KES 5,000", color: "text-gray-600" },
-  pro: { name: "Growth", price: "KES 12,000", color: "text-blink-primary" },
-  agency: { name: "Business", price: "KES 25,000", color: "text-amber-600" },
-  enterprise: { name: "Enterprise", price: "Custom", color: "text-purple-600" },
-  custom: { name: "Custom", price: "Custom", color: "text-gray-600" },
 };
 
 const defaultDmTopics: Record<string, string> = {
@@ -187,7 +168,6 @@ interface SocialAccount {
   connected_at: string;
 }
 
-// ✨ UPDATED: Added 4 Colors
 interface BrandProfileData {
   logo_url: string | null;
   primary_color: string;
@@ -223,6 +203,9 @@ export default function SettingsPage() {
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null
   );
+  const [activeAuthUrl, setActiveAuthUrl] = useState<string | null>(null);
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<{
     type: "success" | "error";
@@ -243,9 +226,6 @@ export default function SettingsPage() {
   });
   const [socials, setSocials] = useState<SocialAccount[]>([]);
 
-  const [telegramAlerts, setTelegramAlerts] = useState(true);
-  const [emailReports, setEmailReports] = useState(false);
-
   const [aiConfig, setAiConfig] = useState<AutoReplyConfig>(
     defaultAutoReplyConfig
   );
@@ -256,7 +236,8 @@ export default function SettingsPage() {
     if (!clientId) return;
 
     async function load() {
-      const [clientRes, brandRes, socialsRes] = await Promise.all([
+      // 1. Fetch local app data
+      const [clientRes, brandRes] = await Promise.all([
         supabase
           .from("clients")
           .select(
@@ -269,11 +250,6 @@ export default function SettingsPage() {
           .select("*")
           .eq("client_id", clientId)
           .maybeSingle(),
-        supabase
-          .from("social_accounts")
-          .select("*")
-          .eq("client_id", clientId)
-          .order("connected_at", { ascending: true }),
       ]);
 
       if (clientRes.data) {
@@ -288,7 +264,6 @@ export default function SettingsPage() {
         });
       }
 
-      // ✨ Parse Brand Profile Data (4 Colors & Logo)
       if (brandRes.data) {
         const addColors = parseArray(brandRes.data.additional_colors);
         setBrandProfile({
@@ -309,9 +284,44 @@ export default function SettingsPage() {
           setAiConfig({ ...defaultAutoReplyConfig, ...JSON.parse(stored) });
       } catch {}
 
+      // ✨ NEW: 2. Background Auto-Sync with Post For Me
+      try {
+        const syncRes = await fetch(
+          `/api/social-accounts/list?clientId=${clientId}`
+        );
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          const liveAccounts = syncData.accounts || [];
+
+          if (liveAccounts.length > 0) {
+            // Upsert the live truth from Post For Me into Supabase
+            const upsertData = liveAccounts.map((acc: any) => ({
+              id: acc.id,
+              client_id: clientId,
+              platform: acc.platform,
+              account_name: acc.username || acc.platform,
+              is_active: acc.status === "connected",
+            }));
+            await supabase
+              .from("social_accounts")
+              .upsert(upsertData, { onConflict: "id" });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to sync accounts from Post For Me", err);
+      }
+
+      // 3. Fetch the final synced accounts for the UI
+      const socialsRes = await supabase
+        .from("social_accounts")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("connected_at", { ascending: true });
       if (socialsRes.data) setSocials(socialsRes.data as SocialAccount[]);
+
       setLoading(false);
     }
+
     load();
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -347,13 +357,17 @@ export default function SettingsPage() {
           throw new Error(
             (await res.json()).error || "Failed to generate auth URL"
           );
-        window.location.href = (await res.json()).url;
+
+        const { url } = await res.json();
+        setActiveAuthUrl(url);
+        setConnectModalOpen(true);
       } catch (err) {
         setConnectionMessage({
           type: "error",
           text:
             err instanceof Error ? err.message : "Failed to connect account",
         });
+      } finally {
         setConnectingPlatform(null);
       }
     },
@@ -364,6 +378,14 @@ export default function SettingsPage() {
     setDisconnecting(accountId);
     setConnectionMessage(null);
     try {
+      // ✨ NEW: Inform Post For Me to sever the connection via the new backend route
+      await fetch("/api/social-accounts/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId }),
+      });
+
+      // Update Supabase and local UI
       await supabase
         .from("social_accounts")
         .update({ is_active: false } as Record<string, unknown>)
@@ -401,7 +423,6 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 3000);
   }
 
-  /* ─── ✨ BRAND SETTINGS SAVE & UPLOAD (Fixed Double-Stringification) ─── */
   async function handleSaveBrand() {
     setSavingBrand(true);
     try {
@@ -412,19 +433,16 @@ export default function SettingsPage() {
           primary_color: brandProfile.primary_color,
           secondary_color: brandProfile.secondary_color,
           accent_color: brandProfile.accent_color,
-          // ✅ FIXED: Pass arrays directly! Supabase handles the JSON stringification.
           additional_colors: brandProfile.additional_colors,
           uploaded_assets: brandProfile.uploaded_assets,
         })
         .eq("client_id", clientId);
-
       setConnectionMessage({
         type: "success",
         text: "Brand Identity saved successfully!",
       });
       setTimeout(() => setConnectionMessage(null), 3000);
     } catch (err) {
-      console.error(err);
       setConnectionMessage({
         type: "error",
         text: "Failed to save brand settings",
@@ -440,34 +458,27 @@ export default function SettingsPage() {
   ) {
     const file = e.target.files?.[0];
     if (!file || !clientId) return;
-
     if (type === "logo") setUploadingLogo(true);
     else setUploadingAsset(true);
-
     try {
       const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random()
         .toString(36)
         .substring(7)}.${fileExt}`;
       const filePath = `onboarding/${fileName}`;
-
       const { error: uploadError } = await supabase.storage
         .from("assets")
         .upload(filePath, file);
       if (uploadError) throw uploadError;
-
       const { data } = supabase.storage.from("assets").getPublicUrl(filePath);
-
-      if (type === "logo") {
+      if (type === "logo")
         setBrandProfile((prev) => ({ ...prev, logo_url: data.publicUrl }));
-      } else {
+      else
         setBrandProfile((prev) => ({
           ...prev,
           uploaded_assets: [...prev.uploaded_assets, data.publicUrl],
         }));
-      }
     } catch (err) {
-      console.error("Upload failed", err);
       alert(
         "Failed to upload image. Ensure you have an 'assets' bucket in Supabase."
       );
@@ -486,12 +497,10 @@ export default function SettingsPage() {
       ),
     }));
   }
-
   function removeLogo() {
     setBrandProfile((prev) => ({ ...prev, logo_url: null }));
   }
 
-  /* ─── AI Config Save & Helpers ─── */
   async function handleSaveAI() {
     setSavingAI(true);
     setSavedAI(false);
@@ -501,20 +510,7 @@ export default function SettingsPage() {
         .from("clients")
         .update({ auto_reply_config: aiConfig } as Record<string, unknown>)
         .eq("id", clientId);
-      if (error) {
-        localStorage.setItem(
-          `blink_auto_reply_config_${clientId}`,
-          JSON.stringify(aiConfig)
-        );
-        setAiSaveError(
-          "Saved locally — will sync to database when the column is available"
-        );
-      }
-      setSavedAI(true);
-      setTimeout(() => {
-        setSavedAI(false);
-        setAiSaveError(null);
-      }, 4000);
+      if (error) throw error;
     } catch {
       localStorage.setItem(
         `blink_auto_reply_config_${clientId}`,
@@ -523,12 +519,12 @@ export default function SettingsPage() {
       setAiSaveError(
         "Saved locally — will sync to database when the column is available"
       );
+    } finally {
       setSavedAI(true);
       setTimeout(() => {
         setSavedAI(false);
         setAiSaveError(null);
       }, 4000);
-    } finally {
       setSavingAI(false);
     }
   }
@@ -600,27 +596,16 @@ export default function SettingsPage() {
       },
     }));
   }
-  function togglePublicRestriction(key: string) {
-    setAiConfig((prev) => ({
-      ...prev,
-      public_restrictions: {
-        ...prev.public_restrictions,
-        [key]: !prev.public_restrictions[key],
-      },
-    }));
-  }
 
-  if (loading) {
+  if (loading)
     return (
       <div className="flex items-center justify-center py-32">
         <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
       </div>
     );
-  }
 
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* ─── Main Tab Selector ─── */}
       <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 overflow-x-auto">
         <button
           onClick={() => setMainTab("general")}
@@ -670,7 +655,7 @@ export default function SettingsPage() {
             <CheckCircle className="h-4 w-4" />
           ) : (
             <AlertCircle className="h-4 w-4" />
-          )}
+          )}{" "}
           {connectionMessage.text}
           <button
             onClick={() => setConnectionMessage(null)}
@@ -681,9 +666,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ═══════════════════════════════════ */}
-      {/* ═══ GENERAL SETTINGS TAB ═══ */}
-      {/* ═══════════════════════════════════ */}
       {mainTab === "general" && (
         <>
           <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-5">
@@ -720,23 +702,13 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Industry
                 </label>
-                <Select
+                <Input
                   value={client.industry}
-                  onValueChange={(v) =>
-                    setClient((p) => ({ ...p, industry: v }))
+                  onChange={(e) =>
+                    setClient((p) => ({ ...p, industry: e.target.value }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select industry" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {industries.map((ind) => (
-                      <SelectItem key={ind} value={ind}>
-                        {ind}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="e.g. Real Estate, Tech, E-commerce"
+                />
               </div>
             </div>
             <div className="flex items-center gap-3 pt-1">
@@ -808,7 +780,7 @@ export default function SettingsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
                             Connected
                           </span>
                           <Button
@@ -891,12 +863,8 @@ export default function SettingsPage() {
         </>
       )}
 
-      {/* ═══════════════════════════════════ */}
-      {/* ═══ ✨ BRAND IDENTITY TAB (4 Colors) ═══ */}
-      {/* ═══════════════════════════════════ */}
       {mainTab === "brand" && (
         <div className="space-y-6">
-          {/* Brand Colors */}
           <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-5 shadow-sm">
             <div>
               <h3 className="text-base font-semibold text-blink-dark">
@@ -1022,8 +990,6 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
-
-          {/* Logo Section */}
           <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-5 shadow-sm">
             <div>
               <h3 className="text-base font-semibold text-blink-dark">
@@ -1033,7 +999,6 @@ export default function SettingsPage() {
                 Your official company logo.
               </p>
             </div>
-
             <div className="w-48">
               {brandProfile.logo_url ? (
                 <div className="relative aspect-square rounded-lg border border-gray-200 bg-gray-50 overflow-hidden group">
@@ -1070,8 +1035,6 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
-
-          {/* Additional Visual Assets */}
           <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-5 shadow-sm">
             <div>
               <h3 className="text-base font-semibold text-blink-dark">
@@ -1082,7 +1045,6 @@ export default function SettingsPage() {
                 for the AI to study.
               </p>
             </div>
-
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {brandProfile.uploaded_assets.map((url, i) => (
                 <div
@@ -1121,7 +1083,6 @@ export default function SettingsPage() {
               </label>
             </div>
           </div>
-
           <div className="flex justify-start pt-2">
             <Button
               onClick={handleSaveBrand}
@@ -1139,9 +1100,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ═══════════════════════════════════ */}
-      {/* ═══ AI REPLY RULES TAB ═══ */}
-      {/* ═══════════════════════════════════ */}
       {mainTab === "ai-rules" && (
         <>
           <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
@@ -1169,7 +1127,6 @@ export default function SettingsPage() {
             </button>
           </div>
 
-          {/* AI RULES FORMS - Retained exactly as you had them */}
           {aiTab === "dm" && (
             <div className="space-y-4">
               <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -1517,7 +1474,6 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
-
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <Button
               onClick={handleSaveAI}
@@ -1536,6 +1492,83 @@ export default function SettingsPage() {
           </div>
         </>
       )}
+
+      {/* Dual-Mode Social Connection Modal */}
+      <Dialog
+        open={connectModalOpen}
+        onOpenChange={(open) => {
+          setConnectModalOpen(open);
+          if (!open) setActiveAuthUrl(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Connect Account</DialogTitle>
+            <DialogDescription>
+              Choose how you want to securely log in to{" "}
+              {connectingPlatform
+                ? platformConfig[connectingPlatform]?.label
+                : "this platform"}
+              .
+            </DialogDescription>
+          </DialogHeader>
+          {activeAuthUrl ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
+              <div className="flex flex-col items-center justify-center space-y-4 p-5 rounded-xl border border-gray-200 bg-white shadow-sm text-center">
+                <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
+                  <ExternalLink className="h-6 w-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-blink-dark">
+                    This Device
+                  </h4>
+                  <p className="text-xs text-gray-500 mt-1 px-2">
+                    Continue the login process in a new tab
+                  </p>
+                </div>
+                <Button
+                  onClick={() => (window.location.href = activeAuthUrl)}
+                  className="w-full bg-blink-primary hover:bg-blink-primary/90 text-white"
+                >
+                  Log In Here
+                </Button>
+              </div>
+              <div className="flex flex-col items-center justify-center space-y-4 p-5 rounded-xl border border-gray-200 bg-white shadow-sm text-center">
+                <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-100">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=0&data=${encodeURIComponent(
+                      activeAuthUrl
+                    )}`}
+                    alt="QR Code"
+                    className="h-36 w-36 object-contain"
+                  />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-blink-dark flex items-center justify-center gap-1.5">
+                    <Smartphone className="h-4 w-4" /> Use Phone
+                  </h4>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Scan to securely log in on your mobile
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setConnectModalOpen(false);
+                    window.location.reload();
+                  }}
+                  className="text-[10px] text-amber-700 font-bold bg-amber-100 border border-amber-200 hover:bg-amber-200 px-3 py-1.5 rounded-full w-full transition-colors"
+                >
+                  I finished logging in ↻
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

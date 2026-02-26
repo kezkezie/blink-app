@@ -188,6 +188,7 @@ export default function ContentDetailPage({
       }
     };
     checkRecovery();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content?.id]);
 
   async function handleSave() {
@@ -264,7 +265,7 @@ export default function ContentDetailPage({
           status: "approved",
           approved_at: new Date().toISOString(),
           approved_by: "admin",
-          scheduled_at: null, // Clear any schedule if publishing now
+          scheduled_at: null,
         } as Record<string, unknown>)
         .eq("id", content.id);
 
@@ -435,8 +436,25 @@ export default function ContentDetailPage({
           );
       }
 
-      if (useCurrentImageAsRef && displayImage)
+      // ✨ THE FIX: Dynamically determine the true base image!
+      let primaryBaseImage = null;
+
+      if (useCurrentImageAsRef && displayImage) {
+        // Option A: User toggled ON "Use Current Image"
+        primaryBaseImage = displayImage;
+      } else if (!useCurrentImageAsRef && uploadedUrls.length > 0) {
+        // Option B: User toggled OFF current image, and uploaded a new photo.
+        // We MUST pass their new photo as the base canvas!
+        primaryBaseImage = uploadedUrls[0];
+      } else {
+        // Option C: Fallback
+        primaryBaseImage = displayImage || null;
+      }
+
+      // Ensure all references (including the current image if checked) go to the secondary reference array
+      if (useCurrentImageAsRef && displayImage) {
         uploadedUrls.unshift(displayImage);
+      }
 
       await triggerWorkflow("blink-generate-images", {
         client_id: clientId!,
@@ -444,7 +462,7 @@ export default function ContentDetailPage({
         topic: finalTopic,
         content_type: content.content_type,
         mode: generationMode,
-        reference_image_url: displayImage || null,
+        reference_image_url: primaryBaseImage, // <--- Fixed parameter!
         reference_image_urls: uploadedUrls,
         logo_url: brandLogo || null,
         style: generationMode === "style_transfer" ? selectedStyle : null,
@@ -455,14 +473,18 @@ export default function ContentDetailPage({
       setCustomPrompt("");
       setUseCurrentImageAsRef(false);
       setGenerationMode("generate");
+
+      // Let the TopBar know we are busy
       localStorage.setItem(
         `regenerating_img_${content.id}`,
         Date.now().toString()
       );
+
       pollForImageUpdate(content.id, displayImage);
     } catch (err) {
       console.error(err);
       setGeneratingImage(false);
+      localStorage.removeItem(`regenerating_img_${content.id}`);
     }
   }
 
@@ -668,7 +690,7 @@ export default function ContentDetailPage({
                 </>
               )}
 
-              {/* ✨ NEW STREAMLINED APPROVAL FLOW */}
+              {/* ✨ STREAMLINED APPROVAL FLOW */}
               {(content.status === "pending_approval" ||
                 content.status === "approved") && (
                 <div className="space-y-3 pt-1">
@@ -678,7 +700,7 @@ export default function ContentDetailPage({
                     </div>
                   )}
 
-                  {/* 👻 GHOST POSTER ACTIVE STATE - FIXED BUTTON LAYOUT */}
+                  {/* 👻 GHOST POSTER ACTIVE STATE */}
                   {content.status === "approved" &&
                   (content as any).scheduled_at ? (
                     <div className="p-4 border border-emerald-200 rounded-xl bg-emerald-50 shadow-inner space-y-3 animate-in fade-in">

@@ -41,7 +41,6 @@ import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow, triggerWorkflowWithFile } from "@/lib/workflows";
 import type { Content, Platform } from "@/types/database";
 
-// ✨ ADDED: Complete list of all supported platforms
 const ALL_PLATFORMS: { label: string; value: Platform; icon: string }[] = [
   { label: "Instagram", value: "instagram", icon: "📸" },
   { label: "TikTok", value: "tiktok", icon: "🎵" },
@@ -83,7 +82,6 @@ export default function GeneratePage() {
   // Step 1 form state
   const [postCount, setPostCount] = useState(7);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
-  // ✨ NEW: State to track which platforms are visible in the main grid
   const [visiblePlatformValues, setVisiblePlatformValues] = useState<
     Platform[]
   >(["instagram", "tiktok", "facebook", "twitter"]);
@@ -193,11 +191,7 @@ export default function GeneratePage() {
         const activePlatforms = socialRes.data.map(
           (s) => s.platform as Platform
         );
-
-        // Auto-select connected platforms
         setPlatforms(activePlatforms);
-
-        // Ensure connected platforms are visible in the grid
         setVisiblePlatformValues((prev) => {
           const newSet = new Set([...prev, ...activePlatforms]);
           return Array.from(newSet);
@@ -261,6 +255,9 @@ export default function GeneratePage() {
   async function startGeneration() {
     setWizardStep(3);
     const isIndividual = imageMode === "individual";
+
+    // ✨ NEW: Tell the TopBar that we are generating in the background!
+    localStorage.setItem("regenerating_img_batch", Date.now().toString());
 
     const pipelineSteps: PipelineStep[] = [
       {
@@ -436,11 +433,19 @@ export default function GeneratePage() {
           error: err instanceof Error ? err.message : "An error occurred",
         });
       }
+    } finally {
+      // ✨ NEW: Remove the global TopBar indicator once finished or errored
+      localStorage.removeItem("regenerating_img_batch");
     }
   }
 
   async function handleRegenerateCaption(item: Content) {
     setRegeneratingCaption(item.id);
+    // ✨ NEW: Trigger the TopBar indicator
+    localStorage.setItem(
+      `regenerating_img_cap_${item.id}`,
+      Date.now().toString()
+    );
     try {
       await triggerWorkflow("blink-write-captions", {
         client_id: clientId,
@@ -475,6 +480,8 @@ export default function GeneratePage() {
       console.error("Regenerate caption error:", err);
     } finally {
       setRegeneratingCaption(null);
+      // ✨ NEW: Remove the TopBar indicator
+      localStorage.removeItem(`regenerating_img_cap_${item.id}`);
     }
   }
 
@@ -490,6 +497,12 @@ export default function GeneratePage() {
     if (!imageModalTarget) return;
     setModalGenerating(true);
     setRegeneratingImage(imageModalTarget.id);
+
+    // ✨ NEW: Trigger the TopBar indicator for single image generation
+    localStorage.setItem(
+      `regenerating_img_modal_${imageModalTarget.id}`,
+      Date.now().toString()
+    );
 
     const kieModel = modalEnhanceMode
       ? "google/nano-banana-edit"
@@ -568,6 +581,8 @@ export default function GeneratePage() {
     } finally {
       setModalGenerating(false);
       setRegeneratingImage(null);
+      // ✨ NEW: Remove the TopBar indicator
+      localStorage.removeItem(`regenerating_img_modal_${imageModalTarget.id}`);
     }
   }
 

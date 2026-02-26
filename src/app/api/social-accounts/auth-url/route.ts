@@ -1,36 +1,68 @@
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const { platform, clientId } = await request.json();
+    const body = await req.json();
+    const { platform, clientId } = body;
 
     if (!platform || !clientId) {
       return NextResponse.json(
-        { error: "Missing platform or client ID" },
+        { error: "Platform and clientId are required" },
         { status: 400 }
       );
     }
 
-    // The URL where Post For Me should send the user AFTER they log in successfully.
-    // We include the clientId so we know whose account to update in the database!
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const redirectUrl = `${baseUrl}/api/social-accounts/callback?client_id=${clientId}&platform=${platform}`;
+    const apiKey = process.env.POSTFORME_API_KEY;
 
-    // Based on your api-1 postformedocs.json
-    const POST_FOR_ME_API_URL =
-      "https://api.postforme.dev/v1/social-accounts/auth-url";
+    if (!apiKey) {
+      console.error("Missing POSTFORME_API_KEY environment variable.");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
 
-    const response = await fetch(POST_FOR_ME_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_POSTFORME_API_KEY}`,
-      },
-      body: JSON.stringify({
-        platform: platform,
-        redirect_url_override: redirectUrl, // Using the exact key from the docs
-      }),
-    });
+    // ✨ NEW: Construct platform-specific required data based on the API docs
+    let platformData = undefined;
+
+    if (platform === "instagram") {
+      platformData = {
+        instagram: {
+          connection_type: "facebook", // "facebook" is strictly required for auto-posting & analytics
+        },
+      };
+    } else if (platform === "linkedin") {
+      platformData = {
+        linkedin: {
+          connection_type: "organization", // Required when using standard app credentials
+        },
+      };
+    }
+
+    // Build the final request payload
+    const requestBody: any = {
+      platform: platform,
+      external_id: clientId, // This links the social account to the user in your database
+      permissions: ["posts", "feeds"], // Requesting feeds so you can pull analytics later
+    };
+
+    // Attach platform_data if it exists
+    if (platformData) {
+      requestBody.platform_data = platformData;
+    }
+
+    // Request the secure OAuth URL from Post For Me
+    const response = await fetch(
+      "https://api.postforme.dev/v1/social-accounts/auth-url",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      }
+    );
 
     const data = await response.json();
 
@@ -42,12 +74,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Returns { url: "https://..." }
+    // Return the secure URL to the frontend so it can generate the QR code
     return NextResponse.json({ url: data.url });
   } catch (error) {
-    console.error("Auth URL Error:", error);
+    console.error("Auth URL Route Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
