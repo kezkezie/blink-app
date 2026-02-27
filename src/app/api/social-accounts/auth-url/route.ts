@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { platform, clientId } = body;
+
+    // ✨ FIXED: Changed 'const' to 'let' so we can safely reassign 'platform'
+    let { platform, clientId } = body;
+
+    if (platform === "twitter") {
+      platform = "x";
+    }
 
     if (!platform || !clientId) {
       return NextResponse.json(
@@ -22,7 +28,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✨ NEW: Construct platform-specific required data based on the API docs
+    // Construct platform-specific required data based on the API docs
     let platformData = undefined;
 
     if (platform === "instagram") {

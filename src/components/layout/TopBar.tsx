@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, Brain, Loader2, Sparkles } from "lucide-react";
+import { Bell, Brain, Loader2, Sparkles, Wand2, Search } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,40 +21,38 @@ interface TopBarProps {
 export function TopBar({ pageTitle }: TopBarProps) {
   const [brandModalOpen, setBrandModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // ✨ NEW: Global Background Task Listener
+  // Global Background Task Listener
   useEffect(() => {
-    const checkBackgroundTasks = () => {
-      let activeGenerations = false;
+    const checkStatus = () => {
+      // Check standard image gen
+      const batchTime = localStorage.getItem("regenerating_img_batch");
+      const modalTime = Object.keys(localStorage).some((k) =>
+        k.startsWith("regenerating_img_")
+      );
+      setIsGenerating(!!batchTime || modalTime);
 
-      // Scan localStorage to see if any components left a "regenerating" token
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith("regenerating_img_")) {
-          const timestamp = parseInt(localStorage.getItem(key) || "0");
-          // If the token is less than 5 minutes old, it's actively generating
-          if (Date.now() - timestamp < 5 * 60 * 1000) {
-            activeGenerations = true;
-            break;
-          } else {
-            // Clean up old stuck tokens
-            localStorage.removeItem(key);
-          }
-        }
-      }
-      setIsGenerating(activeGenerations);
+      // Check Brand DNA Extraction
+      const extractingTime = localStorage.getItem("blink_extracting_dna");
+      setIsExtracting(!!extractingTime);
+
+      // Check Video Analysis
+      const analyzingTime = Object.keys(localStorage).some((k) =>
+        k.startsWith("blink_analyzing_media_")
+      );
+      setIsAnalyzing(analyzingTime);
     };
 
-    // Check immediately, then check every 2 seconds
-    checkBackgroundTasks();
-    const interval = setInterval(checkBackgroundTasks, 2000);
-
+    checkStatus();
+    const interval = setInterval(checkStatus, 2000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-6 bg-white border-b border-gray-200">
+      <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-6 bg-white border-b border-gray-200 shadow-sm">
         {/* Page Title */}
         <div className="flex-1">
           <h1 className="text-xl font-semibold text-blink-dark font-heading">
@@ -62,20 +60,31 @@ export function TopBar({ pageTitle }: TopBarProps) {
           </h1>
         </div>
 
-        {/* ✨ NEW: Global Generation Indicator (Centered) */}
-        <div className="flex-1 flex justify-center">
-          <div
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full text-blue-700 text-xs font-semibold shadow-sm transition-all duration-500",
-              isGenerating
-                ? "opacity-100 translate-y-0"
-                : "opacity-0 -translate-y-4 pointer-events-none"
-            )}
-          >
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
-            <span>AI is working in background...</span>
-            <Sparkles className="h-3 w-3 text-blue-400 ml-1" />
-          </div>
+        {/* Global Generation Indicators (Centered) */}
+        <div className="flex-1 flex justify-center gap-2">
+          {isGenerating && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full text-blue-700 text-xs font-semibold shadow-sm animate-pulse">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+              <span className="hidden sm:inline">Generating Images...</span>
+              <Sparkles className="h-3 w-3 text-blue-400 sm:ml-1" />
+            </div>
+          )}
+
+          {isExtracting && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-full text-purple-700 text-xs font-semibold shadow-sm animate-pulse">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-600" />
+              <span className="hidden sm:inline">Extracting Brand DNA...</span>
+              <Wand2 className="h-3 w-3 text-purple-400 sm:ml-1" />
+            </div>
+          )}
+
+          {isAnalyzing && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-700 text-xs font-semibold shadow-sm animate-pulse">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+              <span className="hidden sm:inline">Analyzing Media...</span>
+              <Search className="h-3 w-3 text-emerald-400 sm:ml-1" />
+            </div>
+          )}
         </div>
 
         {/* Right Actions */}

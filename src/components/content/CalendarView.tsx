@@ -411,6 +411,13 @@ export function CalendarView({
               ) : (
                 unscheduledPosts.map((post) => {
                   const displayImage = parseArray(post.image_urls)[0];
+                  // ✨ FIXED: Check if the media is a video
+                  const isVideo =
+                    displayImage &&
+                    (post.content_type === "video" ||
+                      post.content_type === "reel" ||
+                      displayImage.includes(".mp4") ||
+                      displayImage.includes(".mov"));
                   const isDragging = draggedItemId === post.id;
 
                   return (
@@ -431,11 +438,22 @@ export function CalendarView({
                           <GripVertical className="h-4 w-4" />
                         </div>
                         {displayImage ? (
-                          <img
-                            src={displayImage}
-                            alt="thumbnail"
-                            className="h-10 w-10 rounded object-cover shrink-0"
-                          />
+                          isVideo ? (
+                            // ✨ FIXED: Added #t=0.1 to extract the first frame safely without autoplaying!
+                            <video
+                              src={`${displayImage}#t=0.1`}
+                              className="h-10 w-10 rounded object-cover shrink-0 bg-black"
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                          ) : (
+                            <img
+                              src={displayImage}
+                              alt="thumbnail"
+                              className="h-10 w-10 rounded object-cover shrink-0"
+                            />
+                          )
                         ) : (
                           <div className="h-10 w-10 rounded bg-gray-100 flex items-center justify-center shrink-0">
                             <ImageIcon className="h-4 w-4 text-gray-300" />
@@ -497,6 +515,13 @@ export function CalendarView({
               ) : (
                 selectedDayPosts.map((post) => {
                   const displayImage = parseArray(post.image_urls)[0];
+                  // ✨ FIXED: Check if the media is a video
+                  const isVideo =
+                    displayImage &&
+                    (post.content_type === "video" ||
+                      post.content_type === "reel" ||
+                      displayImage.includes(".mp4") ||
+                      displayImage.includes(".mov"));
                   const timeVal = formatTimeForInput(
                     (post as any).scheduled_at
                   );
@@ -518,11 +543,22 @@ export function CalendarView({
                           <GripVertical className="h-4 w-4" />
                         </div>
                         {displayImage ? (
-                          <img
-                            src={displayImage}
-                            alt="thumbnail"
-                            className="h-10 w-10 rounded object-cover shrink-0"
-                          />
+                          isVideo ? (
+                            // ✨ FIXED: Added #t=0.1 to extract the first frame safely without autoplaying!
+                            <video
+                              src={`${displayImage}#t=0.1`}
+                              className="h-10 w-10 rounded object-cover shrink-0 bg-black"
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                          ) : (
+                            <img
+                              src={displayImage}
+                              alt="thumbnail"
+                              className="h-10 w-10 rounded object-cover shrink-0"
+                            />
+                          )
                         ) : (
                           <div className="h-10 w-10 rounded bg-gray-100 flex items-center justify-center shrink-0">
                             <ImageIcon className="h-4 w-4 text-gray-300" />
@@ -548,7 +584,6 @@ export function CalendarView({
                       </div>
 
                       <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-2">
-                        {/* ✨ FIXED: Wrapped in <label>, increased width, and added showPicker() */}
                         <label
                           className="flex items-center gap-1.5 bg-gray-100 hover:bg-blink-primary/10 border border-gray-200 hover:border-blink-primary/30 px-2.5 py-1.5 rounded-md transition-colors group/time cursor-pointer"
                           title="Click to edit time"

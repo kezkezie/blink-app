@@ -22,7 +22,6 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
   const isActionable =
     content.status === "draft" || content.status === "rejected";
 
-  // ✅ NEW: Helper function to safely parse stringified database arrays
   const parseArray = (data: any): any[] => {
     if (Array.isArray(data)) return data;
     if (typeof data === "string") {
@@ -121,6 +120,12 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
   }
 
   const isLoading = regeneratingCaption || regeneratingImage;
+  const isVideo =
+    hasImage &&
+    (content.content_type === "video" ||
+      content.content_type === "reel" ||
+      displayImage.includes(".mp4") ||
+      displayImage.includes(".mov"));
 
   return (
     <div className="relative group">
@@ -128,17 +133,31 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
         href={`/dashboard/content/${content.id}`}
         className="block rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-all overflow-hidden"
       >
-        {/* Image */}
+        {/* Image / Video Wrapper */}
         <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden">
           {hasImage ? (
-            <img
-              src={displayImage}
-              alt=""
-              className={cn(
-                "h-full w-full object-cover group-hover:scale-105 transition-transform duration-300",
-                isLoading && "opacity-50"
-              )}
-            />
+            isVideo ? (
+              <video
+                src={displayImage}
+                className={cn(
+                  "h-full w-full object-cover group-hover:scale-105 transition-transform duration-300 bg-black",
+                  isLoading && "opacity-50"
+                )}
+                muted
+                loop
+                playsInline
+                // autoPlay
+              />
+            ) : (
+              <img
+                src={displayImage}
+                alt={content.caption_short || "Content Preview"}
+                className={cn(
+                  "h-full w-full object-cover group-hover:scale-105 transition-transform duration-300",
+                  isLoading && "opacity-50"
+                )}
+              />
+            )
           ) : (
             <div className="h-full w-full flex items-center justify-center">
               <ImageIcon className="h-8 w-8 text-gray-300" />

@@ -256,7 +256,6 @@ export default function GeneratePage() {
     setWizardStep(3);
     const isIndividual = imageMode === "individual";
 
-    // ✨ NEW: Tell the TopBar that we are generating in the background!
     localStorage.setItem("regenerating_img_batch", Date.now().toString());
 
     const pipelineSteps: PipelineStep[] = [
@@ -339,15 +338,13 @@ export default function GeneratePage() {
         const imageLabel = enhanceMode
           ? "🎨 AI is enhancing your photo..."
           : "✨ AI is painting from your prompt...";
-        updateStep("images", {
-          status: "running",
-          label: imageLabel,
-          detail: `Image 0 of ${contentItems.length}...`,
-        });
 
+        // ✨ FIXED: Trigger loop now has a safer delay to prevent rate limits
         for (let i = 0; i < contentItems.length; i++) {
           updateStep("images", {
-            detail: `Image ${i + 1} of ${contentItems.length}...`,
+            status: "running",
+            label: imageLabel,
+            detail: `Queueing image ${i + 1} of ${contentItems.length}...`,
           });
           const kieModel = enhanceMode
             ? "google/nano-banana-edit"
@@ -386,17 +383,13 @@ export default function GeneratePage() {
           } catch (imgErr) {
             console.error(`Image ${i + 1} generation error:`, imgErr);
           }
-          if (i < contentItems.length - 1) await delay(2000);
+          // Wait 3.5 seconds between sending requests to avoid AI rate limits
+          if (i < contentItems.length - 1) await delay(3500);
         }
 
-        updateStep("images", {
-          status: "done",
-          detail: undefined,
-          label: "Images generated",
-        });
-
+        // ✨ FIXED: Vastly improved polling logic with progress tracking
         let pollAttempts = 0;
-        const maxPollAttempts = 15;
+        const maxPollAttempts = 60; // 60 attempts * 5s = 5 full minutes of waiting!
         let finalItems: Content[] = [];
 
         while (pollAttempts < maxPollAttempts) {
@@ -408,15 +401,35 @@ export default function GeneratePage() {
             .limit(postCount);
 
           finalItems = (polledContent || []) as unknown as Content[];
-          const allHaveImages = finalItems.every(
-            (c) => parseArray(c.image_urls).length > 0
-          );
 
-          if (allHaveImages && finalItems.length > 0) break;
+          // Count how many images actually successfully generated
+          const completedImagesCount = finalItems.filter(
+            (c) => parseArray(c.image_urls).length > 0
+          ).length;
+
+          updateStep("images", {
+            status: "running",
+            detail: `AI has finished ${completedImagesCount} of ${contentItems.length} images...`,
+          });
+
+          // If all images are done, we break out early
+          if (
+            completedImagesCount === contentItems.length &&
+            finalItems.length > 0
+          ) {
+            break;
+          }
 
           pollAttempts++;
-          if (pollAttempts < maxPollAttempts) await delay(3000);
+          if (pollAttempts < maxPollAttempts) await delay(5000);
         }
+
+        updateStep("images", {
+          status: "done",
+          detail: undefined,
+          label: "Images generated",
+        });
+
         setGeneratedContent(finalItems);
       } else {
         setGeneratedContent(contentItems);
@@ -434,14 +447,12 @@ export default function GeneratePage() {
         });
       }
     } finally {
-      // ✨ NEW: Remove the global TopBar indicator once finished or errored
       localStorage.removeItem("regenerating_img_batch");
     }
   }
 
   async function handleRegenerateCaption(item: Content) {
     setRegeneratingCaption(item.id);
-    // ✨ NEW: Trigger the TopBar indicator
     localStorage.setItem(
       `regenerating_img_cap_${item.id}`,
       Date.now().toString()
@@ -480,7 +491,6 @@ export default function GeneratePage() {
       console.error("Regenerate caption error:", err);
     } finally {
       setRegeneratingCaption(null);
-      // ✨ NEW: Remove the TopBar indicator
       localStorage.removeItem(`regenerating_img_cap_${item.id}`);
     }
   }
@@ -498,7 +508,6 @@ export default function GeneratePage() {
     setModalGenerating(true);
     setRegeneratingImage(imageModalTarget.id);
 
-    // ✨ NEW: Trigger the TopBar indicator for single image generation
     localStorage.setItem(
       `regenerating_img_modal_${imageModalTarget.id}`,
       Date.now().toString()
@@ -581,7 +590,6 @@ export default function GeneratePage() {
     } finally {
       setModalGenerating(false);
       setRegeneratingImage(null);
-      // ✨ NEW: Remove the TopBar indicator
       localStorage.removeItem(`regenerating_img_modal_${imageModalTarget.id}`);
     }
   }
@@ -1164,7 +1172,7 @@ export default function GeneratePage() {
         </div>
       )}
 
-      {/* ✨ Platform Selection Modal */}
+      {/* Platform Selection Modal */}
       <Dialog open={isPlatformModalOpen} onOpenChange={setIsPlatformModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
