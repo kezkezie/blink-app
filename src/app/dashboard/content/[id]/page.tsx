@@ -492,10 +492,9 @@ export default function ContentDetailPage({
 
   const isVideo =
     displayImage &&
-    (content.content_type === "video" ||
-      content.content_type === "reel" ||
-      displayImage.includes(".mp4") ||
-      displayImage.includes(".mov"));
+    (displayImage.toLowerCase().includes(".mp4") ||
+      displayImage.toLowerCase().includes(".mov") ||
+      displayImage.toLowerCase().includes(".webm"));
   const isGenerationDisabled =
     generatingImage ||
     ((generationMode === "style_transfer" || generationMode === "layers") &&

@@ -19,8 +19,10 @@ interface ContentCardProps {
 export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
   const [regeneratingCaption, setRegeneratingCaption] = useState(false);
   const [regeneratingImage, setRegeneratingImage] = useState(false);
+
+  // Notice we now allow 'failed' drafts to be actionable (so they can be deleted or modified if needed)
   const isActionable =
-    content.status === "draft" || content.status === "rejected";
+    content.status === "draft" || content.status === "rejected" || content.status === "failed";
 
   const parseArray = (data: any): any[] => {
     if (Array.isArray(data)) return data;
@@ -120,12 +122,14 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
   }
 
   const isLoading = regeneratingCaption || regeneratingImage;
+
+  // ✨ FIXED: ONLY check the actual file extension, NOT the content_type!
   const isVideo =
     hasImage &&
-    (content.content_type === "video" ||
-      content.content_type === "reel" ||
-      displayImage.includes(".mp4") ||
-      displayImage.includes(".mov"));
+    displayImage &&
+    (displayImage.toLowerCase().includes(".mp4") ||
+      displayImage.toLowerCase().includes(".mov") ||
+      displayImage.toLowerCase().includes(".webm"));
 
   return (
     <div className="relative group">
@@ -137,16 +141,16 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
         <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden">
           {hasImage ? (
             isVideo ? (
+              // ✨ FIXED: Appended #t=0.1 to force a thumbnail, removed autoPlay
               <video
-                src={displayImage}
+                src={`${displayImage}#t=0.1`}
                 className={cn(
                   "h-full w-full object-cover group-hover:scale-105 transition-transform duration-300 bg-black",
                   isLoading && "opacity-50"
                 )}
                 muted
-                loop
                 playsInline
-                // autoPlay
+                preload="metadata"
               />
             ) : (
               <img
@@ -164,8 +168,31 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
             </div>
           )}
 
+          {/* 👇 THE NEW FAILED BADGE 👇 */}
+          {content.status === "failed" && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4 bg-gray-50/90 backdrop-blur-sm border-b-2 border-red-200">
+              <div className="bg-white border border-red-200 shadow-sm rounded-xl p-4 w-full max-w-[280px]">
+                <div className="flex items-center gap-2 text-red-600 mb-2">
+                  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span className="font-bold text-sm">Generation Failed</span>
+                </div>
+                <div className="text-[11px] text-gray-600 leading-relaxed space-y-1.5">
+                  <p>Something went wrong with the AI processing. Please check the following:</p>
+                  <ul className="list-disc pl-3 text-red-500 space-y-0.5">
+                    <li><span className="text-gray-600"><b>Safety Filter:</b> Face resembles a celebrity or is cropped too tightly.</span></li>
+                    <li><span className="text-gray-600"><b>Invalid Image:</b> File format is unsupported or too large.</span></li>
+                  </ul>
+                  <p className="pt-2 text-gray-400 font-medium">Please delete this draft and try again.</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* 👆 END OF FAILED BADGE 👆 */}
+
           {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
               <div className="flex items-center gap-2 bg-white/90 rounded-full px-3 py-1.5 shadow-md">
                 <Loader2 className="h-4 w-4 animate-spin text-blink-primary" />
                 <span className="text-xs font-medium text-blink-dark">
@@ -177,12 +204,15 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
             </div>
           )}
 
-          <div className="absolute top-2 right-2">
-            <StatusBadge status={content.status as ContentStatus} />
-          </div>
+          {/* Only show the status badge if it hasn't failed, otherwise it clashes with our big error box */}
+          {content.status !== "failed" && (
+            <div className="absolute top-2 right-2 z-30">
+              <StatusBadge status={content.status as ContentStatus} />
+            </div>
+          )}
 
-          {isActionable && !isLoading && (
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent p-3 pt-8 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          {isActionable && !isLoading && content.status !== "failed" && (
+            <div className="absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/70 via-black/40 to-transparent p-3 pt-8 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <div className="flex gap-2">
                 <button
                   onClick={handleRegenCaption}
@@ -190,12 +220,15 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
                 >
                   <RefreshCw className="h-3 w-3" /> Regen Caption
                 </button>
-                <button
-                  onClick={handleRegenImage}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-white/90 hover:bg-white text-blink-dark text-xs font-medium transition-colors"
-                >
-                  <Palette className="h-3 w-3" /> Regen Image
-                </button>
+                {/* Hide the image regen button if the media is actually a video file */}
+                {!isVideo && (
+                  <button
+                    onClick={handleRegenImage}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-white/90 hover:bg-white text-blink-dark text-xs font-medium transition-colors"
+                  >
+                    <Palette className="h-3 w-3" /> Regen Image
+                  </button>
+                )}
               </div>
             </div>
           )}

@@ -15,6 +15,7 @@ import {
   UploadCloud,
   Palette,
   CalendarDays,
+  Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -24,12 +25,14 @@ import {
 } from "@/components/ui/tooltip";
 import { supabase } from "@/lib/supabase";
 
+// ✨ Added the Video route here!
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Content Grid", href: "/dashboard/content", icon: FileText },
-  { label: "Calendar", href: "/dashboard/calendar", icon: CalendarDays }, // ✨ NEW
+  { label: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
   { label: "Upload", href: "/dashboard/upload", icon: UploadCloud },
-  { label: "Generate", href: "/dashboard/generate", icon: Sparkles },
+  { label: "Image Studio", href: "/dashboard/generate", icon: Sparkles }, // Renamed
+  { label: "Video Studio", href: "/dashboard/video", icon: Video }, // ✨ NEW
   { label: "Brand Identity", href: "/dashboard/brand", icon: Palette },
   { label: "Approvals", href: "/dashboard/approvals", icon: CheckCircle },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },

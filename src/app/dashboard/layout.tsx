@@ -13,7 +13,8 @@ const pageTitles: Record<string, string> = {
   "/dashboard/content": "Content",
   "/dashboard/upload": "Your Content",
   "/dashboard/calendar": "Content Calendar",
-  "/dashboard/generate": "Generate Content",
+  "/dashboard/generate": "Image Studio", // ✨ Updated
+  "/dashboard/video": "Video Studio", // ✨ NEW
   "/dashboard/brand": "Brand Identity", // ✨ NEW
   "/dashboard/approvals": "Approvals",
   "/dashboard/analytics": "Analytics",
