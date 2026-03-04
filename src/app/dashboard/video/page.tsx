@@ -18,10 +18,8 @@ import {
   ArrowLeft,
   Video,
   X,
-  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -36,7 +34,6 @@ import { ProductRevealSetup } from "@/components/video/ProductRevealSetup";
 import { StorytellingSetup } from "@/components/video/StorytellingSetup";
 import type { BRollScene } from "@/components/video/types";
 
-// ─── Video Modes ──────────────────────────────────────────────────────────────
 const VIDEO_MODES = [
   {
     id: "ugc",
@@ -80,15 +77,11 @@ const VIDEO_MODES = [
   },
 ];
 
-// ─── Main Page Component ──────────────────────────────────────────────────────
 export default function VideoStudioPage() {
   const router = useRouter();
   const { clientId } = useClient();
 
-  // Tab State
   const [activeTab, setActiveTab] = useState<"studio" | "editor">("studio");
-
-  // Studio State
   const [step, setStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -99,31 +92,27 @@ export default function VideoStudioPage() {
   });
   const [selectedMode, setSelectedMode] = useState("ugc");
 
-  // Standard Mode State
   const [prompt, setPrompt] = useState("");
   const [primaryFile, setPrimaryFile] = useState<File | null>(null);
   const [primaryPreview, setPrimaryPreview] = useState<string | null>(null);
   const [secondaryFile, setSecondaryFile] = useState<File | null>(null);
   const [secondaryPreview, setSecondaryPreview] = useState<string | null>(null);
 
-  // Storytelling B-Roll State
   const [bRollConcept, setBRollConcept] = useState("");
   const [bRollScenes, setBRollScenes] = useState<BRollScene[]>([]);
-
-  // AI Model Selection
   const [selectedAiModel, setSelectedAiModel] = useState("auto");
 
-  // ✨ Tracking the background generation & Errors
   const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(
+    null
+  );
   const [generationError, setGenerationError] = useState<string | null>(null);
 
-  const primaryInputRef = useRef<HTMLInputElement>(null);
-  const secondaryInputRef = useRef<HTMLInputElement>(null);
+  const primaryInputRef = useRef<HTMLInputElement | null>(null);
+  const secondaryInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeModeConfig = VIDEO_MODES.find((m) => m.id === selectedMode)!;
 
-  // Load Brand Context
   useEffect(() => {
     if (!clientId) return;
     async function loadBrand() {
@@ -149,11 +138,9 @@ export default function VideoStudioPage() {
     loadBrand();
   }, [clientId]);
 
-  // ✨ Listen for n8n to finish (Hybrid: WebSockets + Polling Fallback)
   useEffect(() => {
     if (!generatingPostId) return;
 
-    // 1. WebSocket Listener (Instant Update)
     const channel = supabase
       .channel("video-generation-updates")
       .on(
@@ -165,9 +152,8 @@ export default function VideoStudioPage() {
           filter: `id=eq.${generatingPostId}`,
         },
         (payload) => {
-          // Catch Backend Failures
           if (payload.new.status === "failed") {
-            setGenerationError("The AI engine failed to process this request. The image format might be unsupported, or a safety filter rejected the prompt.");
+            setGenerationError("The AI engine failed to process this request.");
           }
           const newUrls = payload.new.image_urls;
           if (newUrls && Array.isArray(newUrls) && newUrls.length > 0) {
@@ -177,16 +163,14 @@ export default function VideoStudioPage() {
       )
       .subscribe();
 
-    // 2. Polling Fallback (Checks every 5 seconds)
     const pollInterval = setInterval(async () => {
       const { data, error } = await supabase
         .from("content")
         .select("image_urls, status")
         .eq("id", generatingPostId)
         .single();
-
       if (data?.status === "failed") {
-        setGenerationError("The AI engine failed to process this request. The image format might be unsupported, or a safety filter rejected the prompt.");
+        setGenerationError("The AI engine failed to process this request.");
         clearInterval(pollInterval);
       } else if (
         !error &&
@@ -205,7 +189,6 @@ export default function VideoStudioPage() {
     };
   }, [generatingPostId]);
 
-  // Handle Image Upload Previews
   function handleFileSelect(
     e: React.ChangeEvent<HTMLInputElement>,
     type: "primary" | "secondary"
@@ -225,7 +208,6 @@ export default function VideoStudioPage() {
     reader.readAsDataURL(file);
   }
 
-  // Generate standard prompt via AI
   async function handleAISuggest() {
     setIsSuggesting(true);
     try {
@@ -249,38 +231,44 @@ export default function VideoStudioPage() {
     }
   }
 
-  // Generate B-Roll Scenes (Timeline)
   async function handleGenerateScenes() {
     if (!bRollConcept.trim()) return alert("Please enter a concept first.");
     setIsSuggesting(true);
-
     try {
-      setTimeout(() => {
-        const mockScenes: BRollScene[] = [
-          {
+      const res = await fetch("/api/video/storyboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          concept: bRollConcept,
+          brandName: businessInfo.name,
+          industry: businessInfo.industry,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.scenes && Array.isArray(data.scenes)) {
+        const formattedScenes: BRollScene[] = data.scenes.map(
+          (s: any, idx: number) => ({
             id: crypto.randomUUID(),
-            scene_number: 1,
-            image_prompt:
-              "Cinematic wide shot of a modern, brightly lit product studio.",
-            video_action:
-              "Slow drone push-in to establish the setting. Soft morning light.",
-            duration: "5s",
-          },
-          {
-            id: crypto.randomUUID(),
-            scene_number: 2,
-            image_prompt:
-              "Macro close-up of the product texture, elegant styling.",
-            video_action:
-              "Smooth pan left across the surface showing fine details.",
-            duration: "5s",
-          },
-        ];
-        setBRollScenes(mockScenes);
-        setIsSuggesting(false);
-      }, 2000);
+            scene_number: idx + 1,
+            mode: s.mode || "showcase",
+            primaryFile: null,
+            primaryPreview: null,
+            secondaryFile: null,
+            secondaryPreview: null,
+            prompt: s.prompt,
+            duration: s.duration || "5",
+          })
+        );
+        setBRollScenes(formattedScenes);
+      } else {
+        throw new Error("Invalid format received from AI");
+      }
     } catch (err) {
       console.error(err);
+      alert("Failed to auto-generate sequence.");
+    } finally {
       setIsSuggesting(false);
     }
   }
@@ -289,14 +277,18 @@ export default function VideoStudioPage() {
     const newScene: BRollScene = {
       id: crypto.randomUUID(),
       scene_number: bRollScenes.length + 1,
-      image_prompt: "",
-      video_action: "",
-      duration: "5s",
+      mode: "showcase",
+      primaryFile: null,
+      primaryPreview: null,
+      secondaryFile: null,
+      secondaryPreview: null,
+      prompt: "",
+      duration: "5",
     };
     setBRollScenes([...bRollScenes, newScene]);
   }
 
-  function updateScene(id: string, field: keyof BRollScene, value: string) {
+  function updateScene(id: string, field: string, value: any) {
     setBRollScenes((scenes) =>
       scenes.map((s) => (s.id === id ? { ...s, [field]: value } : s))
     );
@@ -309,30 +301,118 @@ export default function VideoStudioPage() {
     });
   }
 
-  // Final Generation Dispatch to n8n Webhook
   async function handleGenerate() {
     if (!clientId) return;
     setIsGenerating(true);
-    setGenerationError(null); // Reset error state on new generation
-    localStorage.setItem(
-      `blink_analyzing_media_${clientId}`,
-      Date.now().toString()
-    );
+    setGenerationError(null);
 
     try {
+      // ==========================================================
+      // ROUTE A: THE MULTI-SCENE STORYBOARD LOOP
+      // ==========================================================
+      if (selectedMode === "storytelling") {
+
+        let lastRecordId = null; // Track the final video in the sequence
+
+        for (let i = 0; i < bRollScenes.length; i++) {
+          const scene = bRollScenes[i];
+          let pUrl = null;
+          let sUrl = null;
+
+          const activePrimaryFile =
+            scene.primaryFile || (i === 0 ? primaryFile : null);
+          const activePrimaryPreview =
+            scene.primaryPreview || (i === 0 ? primaryPreview : null);
+
+          // Upload Primary Image
+          if (activePrimaryFile) {
+            const ext = activePrimaryFile.name.split(".").pop() || "png";
+            const path = `videos/${clientId}/scene_${i}_primary_${Date.now()}.${ext}`;
+            await supabase.storage
+              .from("assets")
+              .upload(path, activePrimaryFile);
+            pUrl = supabase.storage.from("assets").getPublicUrl(path)
+              .data.publicUrl;
+          } else if (
+            activePrimaryPreview &&
+            activePrimaryPreview.startsWith("http")
+          ) {
+            pUrl = activePrimaryPreview;
+          }
+
+          // Upload Secondary Image (End Frame)
+          if (scene.secondaryFile) {
+            const ext = scene.secondaryFile.name.split(".").pop() || "png";
+            const path = `videos/${clientId}/scene_${i}_secondary_${Date.now()}.${ext}`;
+            await supabase.storage
+              .from("assets")
+              .upload(path, scene.secondaryFile);
+            sUrl = supabase.storage.from("assets").getPublicUrl(path)
+              .data.publicUrl;
+          } else if (
+            scene.secondaryPreview &&
+            scene.secondaryPreview.startsWith("http")
+          ) {
+            sUrl = scene.secondaryPreview;
+          }
+
+          let targetModel = selectedAiModel;
+          if (targetModel === "auto") {
+            targetModel =
+              scene.mode === "showcase" || scene.mode === "logo_reveal" || scene.mode === "keyframe"
+                ? "bytedance/seedance-1.5-pro"
+                : "kling-3.0/video";
+          }
+
+          const { data: clipRecord, error: dbError } = await supabase
+            .from("content")
+            .insert({
+              client_id: clientId,
+              content_type: "sequence_clip",
+              caption: `🎬 AI Scene ${i + 1}: ${scene.mode}`,
+              status: "draft",
+              ai_model: targetModel,
+            })
+            .select()
+            .single();
+
+          if (dbError)
+            throw new Error(`Database Insert Failed: ${dbError.message}`);
+
+          lastRecordId = clipRecord.id;
+
+          // Trigger n8n with both primary and secondary URLs
+          await triggerWorkflow("blink-generate-video-v1", {
+            client_id: clientId,
+            post_id: clipRecord.id,
+            video_mode: scene.mode,
+            primary_image_url: pUrl,
+            secondary_image_url: sUrl,
+            user_prompt: scene.prompt,
+            is_sequence: false,
+            brand_name: businessInfo.name,
+            brand_info: businessInfo.desc,
+            ai_model_override: targetModel,
+            duration: scene.duration || "5",
+          });
+        }
+
+        // ✨ THE FIX: Route the user to the loading screen and wait for the final clip
+        setGeneratingPostId(lastRecordId);
+        setStep(3);
+        return;
+      }
+
+      // ==========================================================
+      // ROUTE B: STANDARD SINGLE VIDEO
+      // ==========================================================
       let primaryUrl = null,
         secondaryUrl = null;
 
-      // Ensure 'assets' bucket exists in your Supabase project!
       if (primaryFile) {
         const ext = primaryFile.name.split(".").pop();
         const path = `videos/${clientId}/primary_${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from("assets")
-          .upload(path, primaryFile);
-        if (uploadError)
-          throw new Error(`Primary Upload Failed: ${uploadError.message}`);
-
+        await supabase.storage.from("assets").upload(path, primaryFile);
         primaryUrl = supabase.storage.from("assets").getPublicUrl(path)
           .data.publicUrl;
       }
@@ -340,31 +420,19 @@ export default function VideoStudioPage() {
       if (secondaryFile) {
         const ext = secondaryFile.name.split(".").pop();
         const path = `videos/${clientId}/secondary_${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from("assets")
-          .upload(path, secondaryFile);
-        if (uploadError)
-          throw new Error(`Secondary Upload Failed: ${uploadError.message}`);
-
+        await supabase.storage.from("assets").upload(path, secondaryFile);
         secondaryUrl = supabase.storage.from("assets").getPublicUrl(path)
           .data.publicUrl;
       }
 
-      const payloadPrompt =
-        selectedMode === "storytelling" ? JSON.stringify(bRollScenes) : prompt;
-
-      // 1. Determine the correct model based on the mode
       let targetModel = selectedAiModel;
-
-      // If user left it on Auto, do the smart routing
       if (targetModel === "auto") {
-        targetModel = "sora-2-image-to-video";
-        if (selectedMode === "showcase" || selectedMode === "logo_reveal") {
-          targetModel = "bytedance/seedance-1.5-pro";
-        }
+        targetModel =
+          selectedMode === "showcase" || selectedMode === "logo_reveal"
+            ? "bytedance/seedance-1.5-pro"
+            : "sora-2-image-to-video";
       }
 
-      // 2. Insert into database
       const { data: contentRecord, error: dbError } = await supabase
         .from("content")
         .insert({
@@ -388,25 +456,25 @@ export default function VideoStudioPage() {
         video_mode: selectedMode,
         primary_image_url: primaryUrl,
         secondary_image_url: secondaryUrl,
-        user_prompt: payloadPrompt,
-        is_sequence: selectedMode === "storytelling",
+        user_prompt: prompt,
+        is_sequence: false,
         brand_name: businessInfo.name,
         brand_info: businessInfo.desc,
+        ai_model_override: targetModel,
       });
 
       setStep(3);
     } catch (err: any) {
       console.error("Full Generation Error:", err);
-      alert(`Generation Failed: ${err.message || JSON.stringify(err)}`);
-      setIsGenerating(false);
+      setGenerationError(err.message || JSON.stringify(err));
+      setStep(3);
     } finally {
-      localStorage.removeItem(`blink_analyzing_media_${clientId}`);
+      if (selectedMode !== "storytelling") setIsGenerating(false);
     }
   }
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6 pb-20">
-      {/* ── Hero Banner ── */}
       <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
         <div className="relative z-10">
           <h1 className="text-3xl font-bold font-heading flex items-center gap-3">
@@ -422,7 +490,6 @@ export default function VideoStudioPage() {
         </div>
       </div>
 
-      {/* ── Tabs ── */}
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
         <button
           onClick={() => setActiveTab("studio")}
@@ -448,7 +515,6 @@ export default function VideoStudioPage() {
         </button>
       </div>
 
-      {/* ── Tab: Generate Video ── */}
       {activeTab === "studio" && (
         <div className="space-y-6 max-w-5xl">
           {step === 1 && (
@@ -523,7 +589,6 @@ export default function VideoStudioPage() {
                 </h2>
               </div>
 
-              {/* ── Render the correct Setup component for the selected mode ── */}
               {(() => {
                 const sharedProps = {
                   primaryFile,
@@ -543,7 +608,6 @@ export default function VideoStudioPage() {
                   handleAISuggest,
                   activeModeConfig,
                 };
-
                 switch (selectedMode) {
                   case "ugc":
                     return <UgcSetup {...sharedProps} />;
@@ -572,23 +636,25 @@ export default function VideoStudioPage() {
                 }
               })()}
 
-              {/* AI Engine Picker + Generate Button */}
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
                 <div className="flex items-center gap-3">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">AI Engine</label>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    AI Engine
+                  </label>
                   <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 gap-0.5">
                     {[
                       { value: "auto", label: "🌟 Auto" },
                       { value: "bytedance/seedance-1.5-pro", label: "Seedance 1.5" },
                       { value: "kling-3.0/video", label: "Kling 3.0" },
                       { value: "sora-2-image-to-video", label: "Sora 2" },
+                      { value: "grok-imagine/text-to-video", label: "Grok (Uncensored)" },
                     ].map((engine) => (
                       <button
                         key={engine.value}
                         onClick={() => setSelectedAiModel(engine.value)}
                         className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
-                            ? "bg-white text-purple-700 shadow-sm ring-1 ring-purple-200"
-                            : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
+                          ? "bg-white text-purple-700 shadow-sm ring-1 ring-purple-200"
+                          : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
                           }`}
                       >
                         {engine.label}
@@ -629,7 +695,6 @@ export default function VideoStudioPage() {
           {step === 3 && (
             <div className="bg-white rounded-xl border border-gray-200 p-10 text-center shadow-sm animate-in fade-in">
               {generationError ? (
-                // 🚨 ERROR STATE
                 <div className="space-y-6 animate-in zoom-in duration-500">
                   <div className="h-20 w-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto shadow-md">
                     <X className="h-10 w-10" />
@@ -658,34 +723,29 @@ export default function VideoStudioPage() {
                   </div>
                 </div>
               ) : !generatedVideoUrl ? (
-                // ⏳ LOADING STATE
                 <div className="space-y-6">
                   <div className="h-24 w-24 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
                     <Loader2 className="h-10 w-10 animate-spin" />
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-blink-dark font-heading">
-                      Generating Masterpiece... 🎬
+                      Generating Sequence... 🎬
                     </h2>
                     <p className="text-gray-500 mt-2 max-w-md mx-auto leading-relaxed">
-                      The AI Director is rendering your prompt. This process
-                      takes exactly <b>2 to 5 minutes</b>. Please keep this tab
-                      open.
+                      The AI is parallel-rendering your clips. This will take roughly <b>2 to 5 minutes</b>.
                     </p>
                   </div>
                 </div>
               ) : (
-                // ✅ SUCCESS STATE
                 <div className="space-y-6 animate-in zoom-in duration-500">
                   <div className="h-20 w-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-md">
                     <CheckCircle className="h-10 w-10" />
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-blink-dark font-heading">
-                      Your Video is Ready! 🎉
+                      Your Sequence is Ready! 🎉
                     </h2>
                   </div>
-
                   <div className="mt-6 aspect-video max-w-lg mx-auto bg-black rounded-lg overflow-hidden shadow-xl ring-4 ring-purple-500/20">
                     <video
                       src={generatedVideoUrl}
@@ -694,7 +754,6 @@ export default function VideoStudioPage() {
                       className="w-full h-full object-contain"
                     />
                   </div>
-
                   <div className="mt-8 flex justify-center gap-4">
                     <Button
                       variant="outline"
@@ -725,7 +784,6 @@ export default function VideoStudioPage() {
         </div>
       )}
 
-      {/* ── Tab: Video Editor ── */}
       {activeTab === "editor" && (
         <div className="animate-in fade-in w-full">
           <div className="mb-4">
@@ -734,7 +792,6 @@ export default function VideoStudioPage() {
               Timeline-based editor for your AI generated assets.
             </p>
           </div>
-
           <VideoEditorUI />
         </div>
       )}
