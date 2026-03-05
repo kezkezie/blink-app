@@ -331,8 +331,7 @@ export default function VideoStudioPage() {
             await supabase.storage
               .from("assets")
               .upload(path, activePrimaryFile);
-            pUrl = supabase.storage.from("assets").getPublicUrl(path)
-              .data.publicUrl;
+            pUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
           } else if (
             activePrimaryPreview &&
             activePrimaryPreview.startsWith("http")
@@ -347,8 +346,7 @@ export default function VideoStudioPage() {
             await supabase.storage
               .from("assets")
               .upload(path, scene.secondaryFile);
-            sUrl = supabase.storage.from("assets").getPublicUrl(path)
-              .data.publicUrl;
+            sUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
           } else if (
             scene.secondaryPreview &&
             scene.secondaryPreview.startsWith("http")
@@ -368,7 +366,7 @@ export default function VideoStudioPage() {
             .from("content")
             .insert({
               client_id: clientId,
-              content_type: "sequence_clip",
+              content_type: "sequence_clip", // ✨ DATABASE WILL NOW ACCEPT THIS!
               caption: `🎬 AI Scene ${i + 1}: ${scene.mode}`,
               status: "draft",
               ai_model: targetModel,
@@ -397,7 +395,7 @@ export default function VideoStudioPage() {
           });
         }
 
-        // ✨ THE FIX: Route the user to the loading screen and wait for the final clip
+        // Route the user to the loading screen and wait for the final clip
         setGeneratingPostId(lastRecordId);
         setStep(3);
         return;
@@ -413,16 +411,14 @@ export default function VideoStudioPage() {
         const ext = primaryFile.name.split(".").pop();
         const path = `videos/${clientId}/primary_${Date.now()}.${ext}`;
         await supabase.storage.from("assets").upload(path, primaryFile);
-        primaryUrl = supabase.storage.from("assets").getPublicUrl(path)
-          .data.publicUrl;
+        primaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
       }
 
       if (secondaryFile) {
         const ext = secondaryFile.name.split(".").pop();
         const path = `videos/${clientId}/secondary_${Date.now()}.${ext}`;
         await supabase.storage.from("assets").upload(path, secondaryFile);
-        secondaryUrl = supabase.storage.from("assets").getPublicUrl(path)
-          .data.publicUrl;
+        secondaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
       }
 
       let targetModel = selectedAiModel;

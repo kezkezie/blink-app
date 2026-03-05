@@ -14,10 +14,8 @@ export default function ContentPage() {
   const [content, setContent] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ✨ Tab State
   const [activeTab, setActiveTab] = useState<"finished" | "sequences">("finished");
 
-  // Batch Deletion State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -31,11 +29,16 @@ export default function ContentPage() {
       .eq("client_id", clientId)
       .order("created_at", { ascending: false });
 
-    // ✨ FIXED: Filter using the officially approved "raw_clip" tag
+    // ✨ FIXED: Now correctly routing the official tags to their proper tabs
     if (activeTab === "finished") {
-      query = query.neq("content_type", "raw_clip");
+      // Hide raw clips, story sequences, and audio files from the main feed
+      query = query
+        .neq("content_type", "raw_clip")
+        .neq("content_type", "sequence_clip")
+        .neq("content_type", "generated_audio");
     } else if (activeTab === "sequences") {
-      query = query.eq("content_type", "raw_clip");
+      // ONLY fetch the sequence building blocks for this tab
+      query = query.eq("content_type", "sequence_clip");
     }
 
     const { data } = await query;
@@ -43,7 +46,6 @@ export default function ContentPage() {
     setLoading(false);
   }
 
-  // Refetch content AND clear selections whenever the tab changes
   useEffect(() => {
     fetchContent();
     setSelectedIds(new Set());
@@ -58,9 +60,9 @@ export default function ContentPage() {
 
   const selectAll = () => {
     if (selectedIds.size === content.length) {
-      setSelectedIds(new Set()); // Deselect all
+      setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(content.map((c) => c.id))); // Select all
+      setSelectedIds(new Set(content.map((c) => c.id)));
     }
   };
 
@@ -73,7 +75,7 @@ export default function ContentPage() {
     try {
       await supabase.from("content").delete().in("id", Array.from(selectedIds));
       setSelectedIds(new Set());
-      await fetchContent(); // Refresh the list
+      await fetchContent();
     } catch (err) {
       console.error("Failed to delete", err);
     } finally {
@@ -84,7 +86,6 @@ export default function ContentPage() {
   return (
     <div className="space-y-6 pb-20">
 
-      {/* ✨ Top Tab Navigation ✨ */}
       <div className="flex gap-2 p-1 bg-gray-100 rounded-xl w-fit">
         <button
           onClick={() => setActiveTab("finished")}
@@ -110,7 +111,6 @@ export default function ContentPage() {
         </button>
       </div>
 
-      {/* Floating Batch Action Bar */}
       <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-200 shadow-sm sticky top-20 z-20">
         <div className="flex items-center gap-3">
           <Button
@@ -148,7 +148,6 @@ export default function ContentPage() {
         )}
       </div>
 
-      {/* Content Rendering */}
       {loading ? (
         <div className="flex justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
@@ -173,7 +172,6 @@ export default function ContentPage() {
                     : "hover:shadow-md"
                   }`}
               >
-                {/* Overlay Checkbox */}
                 <div
                   onClick={() => toggleSelect(item.id)}
                   className={`absolute top-3 left-3 z-10 h-6 w-6 rounded-md border-2 flex items-center justify-center cursor-pointer transition-colors backdrop-blur-sm

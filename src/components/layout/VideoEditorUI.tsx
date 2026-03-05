@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music,
   Image as ImageIcon, UploadCloud, Settings, Download,
-  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown
+  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 interface MediaAsset {
   id: string;
@@ -52,17 +55,28 @@ interface TextLayer {
 
 export function VideoEditorUI() {
   const { clientId } = useClient();
+  const router = useRouter();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState<"assets" | "text">("assets");
 
-  // ✨ Pagination State
+  // ✨ NEW: Added "audio" to the filter state
+  const [assetFilter, setAssetFilter] = useState<"library" | "sequence" | "audio">("library");
+
   const [isLoadingDB, setIsLoadingDB] = useState(false);
-  const [assetPageLimit, setAssetPageLimit] = useState(12);
+  const [assetPageLimit, setAssetPageLimit] = useState(4);
   const [hasMoreAssets, setHasMoreAssets] = useState(true);
+
+  const [isRendering, setIsRendering] = useState(false);
+  const ffmpegRef = useRef(new FFmpeg());
+  const [renderProgress, setRenderProgress] = useState(0);
 
   const [zoom, setZoom] = useState(2);
   const [globalTime, setGlobalTime] = useState(0);
+
+  const isScrubbingRef = useRef(false);
+  const [isScrubbingUI, setIsScrubbingUI] = useState(false);
+
   const PIXELS_PER_SECOND = 10 * zoom;
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -87,38 +101,68 @@ export function VideoEditorUI() {
   const trimRef = useRef<{ id: string; type: "video" | "audio" | "text"; edge: "start" | "end"; startMouseX: number; initTrim: number; initTimeline: number; } | null>(null);
   const clipDragRef = useRef<{ id: string; type: "video" | "audio" | "text"; startMouseX: number; initTimelineStart: number; } | null>(null);
 
-  // ✨ Backend Pagination Fetch
-  async function loadDatabaseContent(limit: number) {
+  async function loadDatabaseContent(limit: number, filterType: "library" | "sequence" | "audio") {
     if (!clientId) return;
     setIsLoadingDB(true);
-    const { data, error } = await supabase
+
+    let query = supabase
       .from("content")
       .select("*")
       .eq("client_id", clientId)
       .order("created_at", { ascending: false })
-      .limit(limit); // Prevent crashing by limiting results
+      .limit(limit);
+
+    // ✨ NEW: Backend Filtering to sort the media types perfectly
+    if (filterType === "sequence") {
+      query = query.eq("content_type", "sequence_clip");
+    } else if (filterType === "audio") {
+      query = query.in("content_type", ["generated_audio", "raw_clip"]);
+    } else {
+      query = query.neq("content_type", "sequence_clip").neq("content_type", "generated_audio");
+    }
+
+    const { data, error } = await query;
 
     if (data) {
       const dbAssets: MediaAsset[] = [];
       data.forEach((item) => {
         if (item.image_urls && Array.isArray(item.image_urls)) {
           item.image_urls.forEach((url: string, idx: number) => {
-            const isVid = url.includes(".mp4") || url.includes(".mov") || item.ai_model === "veo-3-1" || item.ai_model === "sora-2-image-to-video";
+            const isAudio = url.includes(".mp3") || url.includes(".wav") || item.content_type === "generated_audio";
+            const isVid = url.includes(".mp4") || url.includes(".mov") || item.ai_model === "veo-3-1" || item.ai_model === "sora-2-image-to-video" || item.ai_model === "kling-3.0/video";
+
+            // Frontend safety check to keep tabs clean
+            if (filterType === "audio" && !isAudio) return;
+            if (filterType === "library" && isAudio) return;
+
+            const mediaType = isAudio ? "audio" : isVid ? "video" : "image";
+            const thumbUrl = isAudio ? "https://images.unsplash.com/photo-1619983081563-430f63602796?w=400&q=80" : url;
+
             dbAssets.push({
-              id: `db-${item.id}-${idx}`, type: isVid ? "video" : "image", url, thumb: url, name: `${item.content_type || "Generated"} Media`,
+              id: `db-${item.id}-${idx}`,
+              type: mediaType,
+              url: url,
+              thumb: thumbUrl,
+              name: `${item.content_type || "Generated"} Media`,
             });
           });
         }
       });
       setAssets(dbAssets);
-      setHasMoreAssets(data.length === limit); // If it returned the max, there is likely more
+      setHasMoreAssets(data.length === limit);
     }
     setIsLoadingDB(false);
   }
 
   useEffect(() => {
-    loadDatabaseContent(assetPageLimit);
-  }, [clientId, assetPageLimit]);
+    loadDatabaseContent(assetPageLimit, assetFilter);
+  }, [clientId, assetPageLimit, assetFilter]);
+
+  const handleFilterSwitch = (mode: "library" | "sequence" | "audio") => {
+    setAssetFilter(mode);
+    setAssetPageLimit(4);
+    setAssets([]);
+  };
 
   useEffect(() => {
     let animationFrameId: number;
@@ -186,6 +230,96 @@ export function VideoEditorUI() {
     }
   }
 
+  // ✨ WASM Render Engine
+  const handleRender = async () => {
+    if (!clientId) return;
+    const orderedVideos = [...videoClips].sort((a, b) => a.timelineStart - b.timelineStart);
+    if (orderedVideos.length === 0) return alert("Please add at least one video to the timeline!");
+
+    setIsRendering(true);
+    setIsPlaying(false);
+    setRenderProgress(10);
+
+    try {
+      const ffmpeg = ffmpegRef.current;
+
+      if (!ffmpeg.loaded) {
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+        await ffmpeg.load({
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        });
+      }
+
+      setRenderProgress(30);
+
+      let listTxt = "";
+      for (let i = 0; i < orderedVideos.length; i++) {
+        const v = orderedVideos[i];
+        const fileName = `vid${i}.mp4`;
+        await ffmpeg.writeFile(fileName, await fetchFile(v.url));
+        listTxt += `file '${fileName}'\n`;
+      }
+
+      await ffmpeg.writeFile('list.txt', listTxt);
+      setRenderProgress(50);
+
+      const hasAudio = audioClips.length > 0;
+      if (hasAudio) {
+        await ffmpeg.writeFile('audio.mp3', await fetchFile(audioClips[0].url));
+      }
+      setRenderProgress(70);
+
+      if (hasAudio) {
+        await ffmpeg.exec([
+          '-f', 'concat', '-safe', '0', '-i', 'list.txt',
+          '-i', 'audio.mp3',
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-map', '0:v:0', '-map', '1:a:0',
+          '-shortest',
+          'output.mp4'
+        ]);
+      } else {
+        await ffmpeg.exec([
+          '-f', 'concat', '-safe', '0', '-i', 'list.txt',
+          '-c', 'copy',
+          'output.mp4'
+        ]);
+      }
+
+      setRenderProgress(90);
+
+      const data = await ffmpeg.readFile('output.mp4');
+      const finalBlob = new Blob([new Uint8Array(data as Uint8Array)], { type: 'video/mp4' });
+
+      const path = `videos/${clientId}/final_render_${Date.now()}.mp4`;
+      await supabase.storage.from("assets").upload(path, finalBlob);
+      const finalUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+
+      const { error } = await supabase.from('content').insert({
+        client_id: clientId,
+        content_type: 'reel',
+        caption: '🎬 Finished AI Commercial',
+        status: 'draft',
+        video_urls: [finalUrl],
+        ai_model: 'blink-wasm-editor'
+      });
+
+      if (error) throw error;
+      setRenderProgress(100);
+
+      router.push('/dashboard/content');
+
+    } catch (err) {
+      console.error("Render failed:", err);
+      alert("Failed to render the video. Check console for details.");
+    } finally {
+      setIsRendering(false);
+      setRenderProgress(0);
+    }
+  };
+
   function handleDragStart(e: React.DragEvent, asset: MediaAsset) { e.dataTransfer.setData("application/json", JSON.stringify(asset)); }
   function deleteAsset(id: string) { setAssets((prev) => prev.filter((a) => a.id !== id)); }
 
@@ -247,8 +381,12 @@ export function VideoEditorUI() {
   const updateVideoClip = (id: string, updates: Partial<TrackClip>) => setVideoClips(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   const updateAudioClip = (id: string, updates: Partial<TrackClip>) => setAudioClips(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
 
-  function handleTimelineScrub(e: React.MouseEvent) {
+  function handleTimelineMouseDown(e: React.MouseEvent) {
     if (!timelineRef.current) return;
+    isScrubbingRef.current = true;
+    setIsScrubbingUI(true);
+    setIsPlaying(false);
+
     const rect = timelineRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft;
     const exactDropX = clickX - 128;
@@ -308,10 +446,29 @@ export function VideoEditorUI() {
         let setClips: any = type === "video" ? setVideoClips : type === "audio" ? setAudioClips : setTextLayers;
         setClips((prev: any[]) => prev.map((clip: any) => clip.id === id ? { ...clip, timelineStart: newTimelineStart } : clip));
       }
+
+      if (isScrubbingRef.current) {
+        if (!timelineRef.current) return;
+        const rect = timelineRef.current.getBoundingClientRect();
+        const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft;
+        const exactDropX = clickX - 128;
+        if (exactDropX >= 0) setGlobalTime(exactDropX / PIXELS_PER_SECOND);
+      }
     }
 
-    function onMouseUp() { dragTextRef.current = null; trimRef.current = null; clipDragRef.current = null; }
-    window.addEventListener("mousemove", onMouseMove); window.addEventListener("mouseup", onMouseUp);
+    function onMouseUp() {
+      dragTextRef.current = null;
+      trimRef.current = null;
+      clipDragRef.current = null;
+
+      if (isScrubbingRef.current) {
+        isScrubbingRef.current = false;
+        setIsScrubbingUI(false);
+      }
+    }
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
     return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
   }, [PIXELS_PER_SECOND]);
 
@@ -335,15 +492,32 @@ export function VideoEditorUI() {
 
   const contentMax = Math.max(30, ...videoClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), ...audioClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), ...textLayers.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), globalTime) + 60;
   const maxVisibleTime = Math.min(contentMax, 3600);
+
   let rulerStep = 1;
   if (zoom < 5) rulerStep = 5;
   if (zoom < 1) rulerStep = 30;
   if (zoom < 0.2) rulerStep = 60;
 
   return (
-    <div className="flex flex-col h-[850px] bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden shadow-sm select-none">
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-col h-[850px] bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden shadow-sm select-none relative">
 
+      {isRendering && (
+        <div className="absolute inset-0 z-50 bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
+          <Loader2 className="w-12 h-12 animate-spin text-purple-400 mb-6" />
+          <h2 className="text-2xl font-bold tracking-widest uppercase mb-2">Rendering Sequence</h2>
+          <p className="text-gray-400 text-sm mb-6">Stitching media in your browser...</p>
+
+          <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-purple-500 transition-all duration-300 ease-out"
+              style={{ width: `${renderProgress}%` }}
+            />
+          </div>
+          <p className="text-xs text-purple-300 mt-2 font-bold">{renderProgress}%</p>
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
         {/* LEFT PANEL: Media/Text */}
         <div className="w-72 bg-white border-r border-gray-200 flex flex-col z-10">
           <div className="flex border-b border-gray-100">
@@ -354,21 +528,52 @@ export function VideoEditorUI() {
           <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
             {activeTab === "assets" && (
               <div className="space-y-4">
+
+                {/* ✨ NEW: 3-Way Media Toggle */}
+                <div className="bg-gray-100 p-1 rounded-lg flex items-center justify-between">
+                  <button
+                    onClick={() => handleFilterSwitch('library')}
+                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", assetFilter === 'library' ? "bg-white shadow-sm text-gray-800" : "text-gray-500 hover:text-gray-700")}
+                  >
+                    General
+                  </button>
+                  <button
+                    onClick={() => handleFilterSwitch('sequence')}
+                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all flex items-center justify-center gap-1", assetFilter === 'sequence' ? "bg-white shadow-sm text-purple-700" : "text-gray-500 hover:text-gray-700")}
+                  >
+                    <Layers className="w-3 h-3" /> Scenes
+                  </button>
+                  <button
+                    onClick={() => handleFilterSwitch('audio')}
+                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all flex items-center justify-center gap-1", assetFilter === 'audio' ? "bg-white shadow-sm text-green-600" : "text-gray-500 hover:text-gray-700")}
+                  >
+                    <Mic className="w-3 h-3" /> Audio
+                  </button>
+                </div>
+
                 <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" onChange={handleManualUpload} />
-                <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full border-dashed border-2 border-purple-200 text-purple-600 hover:bg-purple-50 h-12">
+                <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full border-dashed border-2 border-purple-200 text-purple-600 hover:bg-purple-50 h-10">
                   <UploadCloud className="w-4 h-4 mr-2" /> Upload File
                 </Button>
 
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <p className="text-xs font-bold text-gray-400 uppercase">Your Library</p>
+                    <p className="text-xs font-bold text-gray-400 uppercase">
+                      {assetFilter === 'library' && 'Your Library'}
+                      {assetFilter === 'sequence' && 'Story Sequences'}
+                      {assetFilter === 'audio' && 'AI Voiceovers'}
+                    </p>
                     {isLoadingDB && <Loader2 className="w-3 h-3 text-purple-400 animate-spin" />}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pb-2">
                     {assets.map((asset) => (
                       <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className="group relative aspect-square bg-black rounded-lg overflow-hidden cursor-grab active:cursor-grabbing hover:ring-2 ring-purple-500 transition-all border border-gray-200">
-                        {asset.type === "video" ? <video src={asset.url} className="w-full h-full object-cover opacity-80" /> : <img src={asset.thumb} alt="Asset" className="w-full h-full object-cover" />}
+                        {asset.type === "video" ? (
+                          <video src={asset.url} className="w-full h-full object-cover opacity-80" preload="metadata" muted playsInline />
+                        ) : (
+                          <img src={asset.thumb} alt="Asset" className="w-full h-full object-cover" />
+                        )}
                         <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-sm text-white p-1 rounded">
                           {asset.type === "video" ? <Video className="w-3 h-3" /> : asset.type === "audio" ? <Music className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                         </div>
@@ -379,14 +584,21 @@ export function VideoEditorUI() {
                     ))}
                   </div>
 
-                  {/* ✨ PAGINATION LOAD MORE BUTTON */}
-                  {hasMoreAssets && (
+                  {assets.length === 0 && !isLoadingDB && (
+                    <div className="text-center p-4 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-xs">
+                      {assetFilter === 'library' && 'No standard media found.'}
+                      {assetFilter === 'sequence' && 'No sequences found. Generate a Storytelling B-Roll first!'}
+                      {assetFilter === 'audio' && 'No voiceovers found. Use Dedicated TTS to generate one!'}
+                    </div>
+                  )}
+
+                  {hasMoreAssets && assets.length > 0 && (
                     <Button
-                      onClick={() => setAssetPageLimit(prev => prev + 12)}
+                      onClick={() => setAssetPageLimit(prev => prev + 4)}
                       variant="ghost"
                       className="w-full text-xs font-bold text-gray-500 hover:text-purple-600 border border-gray-200 bg-gray-50 hover:bg-purple-50 transition-colors mt-2"
                     >
-                      {isLoadingDB ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronDown className="w-3 h-3 mr-1" />} Load More Assets
+                      {isLoadingDB ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronDown className="w-3 h-3 mr-1" />} Load More
                     </Button>
                   )}
                 </div>
@@ -406,8 +618,15 @@ export function VideoEditorUI() {
         <div className="flex-1 bg-gray-100 flex flex-col relative" onClick={() => setSelectedElement(null)}>
           <div className="h-12 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0">
             <span className="text-sm font-semibold text-gray-600">Preview Canvas</span>
-            <Button size="sm" className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md">
-              <Download className="w-4 h-4 mr-2" /> Export
+
+            <Button
+              size="sm"
+              onClick={handleRender}
+              disabled={isRendering || videoClips.length === 0}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-md transition-all duration-200"
+            >
+              {isRendering ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Film className="w-4 h-4 mr-2" />}
+              Render & Finish
             </Button>
           </div>
 
@@ -439,6 +658,15 @@ export function VideoEditorUI() {
                   </div>
                 )
               })}
+
+              {isScrubbingUI && (
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-50 flex items-center justify-center pointer-events-none animate-in fade-in duration-150">
+                  <div className="bg-black/60 px-4 py-2 rounded-full flex items-center gap-2 text-white/90 shadow-xl border border-white/10">
+                    <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                    <span className="text-xs font-bold tracking-widest uppercase">Seeking...</span>
+                  </div>
+                </div>
+              )}
 
               {!videoClips.some(clip => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart)) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 z-0">
@@ -629,10 +857,9 @@ export function VideoEditorUI() {
             ))}
           </div>
 
-          <div ref={timelineRef} className="flex-1 overflow-x-auto relative bg-gray-50/50" onClick={handleTimelineScrub}>
+          <div ref={timelineRef} className="flex-1 overflow-x-auto relative bg-gray-50/50" onMouseDown={handleTimelineMouseDown}>
             <div style={{ width: `${maxVisibleTime * PIXELS_PER_SECOND}px`, minWidth: "100%", height: "100%", position: "relative" }}>
 
-              {/* ✨ OPTIMIZED PLAYHEAD (Uses transform instead of left for GPU acceleration) */}
               <div
                 className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-50 pointer-events-none will-change-transform"
                 style={{ transform: `translateX(${globalTime * PIXELS_PER_SECOND}px)` }}
