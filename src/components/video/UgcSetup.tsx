@@ -1,7 +1,9 @@
 "use client";
 
-import { Upload, X, UserCircle, Sparkles, Loader2, Info } from "lucide-react";
+import { useState } from "react";
+import { Upload, X, UserCircle, Sparkles, Loader2, Info, FolderOpen } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
 import type { VideoSetupProps } from "./types";
 
 export function UgcSetup({
@@ -20,6 +22,19 @@ export function UgcSetup({
     handleAISuggest,
     activeModeConfig,
 }: VideoSetupProps) {
+    const [libraryTarget, setLibraryTarget] = useState<"primary" | "secondary" | null>(null);
+
+    const handleLibrarySelect = (url: string) => {
+        if (libraryTarget === "primary") {
+            setPrimaryFile(null);
+            setPrimaryPreview(url);
+        } else if (libraryTarget === "secondary") {
+            setSecondaryFile(null);
+            setSecondaryPreview(url);
+        }
+        setLibraryTarget(null);
+    };
+
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in">
             {/* Primary Image (Product) */}
@@ -41,13 +56,21 @@ export function UgcSetup({
                         </button>
                     </div>
                 ) : (
-                    <div
-                        onClick={() => primaryInputRef.current?.click()}
-                        className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-400 hover:bg-purple-50 flex flex-col items-center justify-center cursor-pointer transition-colors text-center p-6"
-                    >
-                        <Upload className="h-8 w-8 text-gray-400 mb-3" />
-                        <p className="text-sm font-medium text-blink-dark">Upload {activeModeConfig.primaryLabel}</p>
-                        <p className="text-xs text-gray-400 mt-1">PNG or JPG of the product</p>
+                    <div className="space-y-2">
+                        <div
+                            onClick={() => primaryInputRef.current?.click()}
+                            className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-400 hover:bg-purple-50 flex flex-col items-center justify-center cursor-pointer transition-colors text-center p-6"
+                        >
+                            <Upload className="h-8 w-8 text-gray-400 mb-3" />
+                            <p className="text-sm font-medium text-blink-dark">Upload {activeModeConfig.primaryLabel}</p>
+                            <p className="text-xs text-gray-400 mt-1">PNG or JPG of the product</p>
+                        </div>
+                        <button
+                            onClick={() => setLibraryTarget("primary")}
+                            className="w-full flex items-center justify-center gap-2 text-xs font-bold text-blue-600 hover:bg-blue-50 py-2 rounded-lg border border-blue-200 transition-colors"
+                        >
+                            <FolderOpen className="h-3.5 w-3.5" /> Select from Library
+                        </button>
                     </div>
                 )}
                 <input ref={primaryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileSelect(e, "primary")} />
@@ -73,13 +96,21 @@ export function UgcSetup({
                             </button>
                         </div>
                     ) : (
-                        <div
-                            onClick={() => secondaryInputRef.current?.click()}
-                            className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-400 hover:bg-purple-50 flex flex-col items-center justify-center cursor-pointer transition-colors text-center p-6"
-                        >
-                            <UserCircle className="h-8 w-8 text-gray-400 mb-3" />
-                            <p className="text-sm font-medium text-blink-dark">Upload {activeModeConfig.secondaryLabel}</p>
-                            <p className="text-xs text-gray-400 mt-1">Clear, front-facing portrait</p>
+                        <div className="space-y-2">
+                            <div
+                                onClick={() => secondaryInputRef.current?.click()}
+                                className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-400 hover:bg-purple-50 flex flex-col items-center justify-center cursor-pointer transition-colors text-center p-6"
+                            >
+                                <UserCircle className="h-8 w-8 text-gray-400 mb-3" />
+                                <p className="text-sm font-medium text-blink-dark">Upload {activeModeConfig.secondaryLabel}</p>
+                                <p className="text-xs text-gray-400 mt-1">Clear, front-facing portrait</p>
+                            </div>
+                            <button
+                                onClick={() => setLibraryTarget("secondary")}
+                                className="w-full flex items-center justify-center gap-2 text-xs font-bold text-blue-600 hover:bg-blue-50 py-2 rounded-lg border border-blue-200 transition-colors"
+                            >
+                                <FolderOpen className="h-3.5 w-3.5" /> Select from Library
+                            </button>
                         </div>
                     )}
                     <input ref={secondaryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileSelect(e, "secondary")} />
@@ -118,6 +149,13 @@ export function UgcSetup({
                     </div>
                 </div>
             </div>
+
+            {/* Asset Selection Modal */}
+            <AssetSelectionModal
+                open={libraryTarget !== null}
+                onClose={() => setLibraryTarget(null)}
+                onSelect={handleLibrarySelect}
+            />
         </div>
     );
 }

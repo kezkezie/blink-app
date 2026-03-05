@@ -512,7 +512,7 @@ export default function VideoStudioPage() {
       </div>
 
       {activeTab === "studio" && (
-        <div className="space-y-6 max-w-5xl">
+        <div className="space-y-6 w-full">
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in">
               <h2 className="text-xl font-bold text-blink-dark">

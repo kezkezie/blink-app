@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music,
   Image as ImageIcon, UploadCloud, Settings, Download,
-  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic
+  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -59,20 +59,24 @@ export function VideoEditorUI() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState<"assets" | "text">("assets");
-
-  // ✨ NEW: Added "audio" to the filter state
   const [assetFilter, setAssetFilter] = useState<"library" | "sequence" | "audio">("library");
 
   const [isLoadingDB, setIsLoadingDB] = useState(false);
   const [assetPageLimit, setAssetPageLimit] = useState(4);
   const [hasMoreAssets, setHasMoreAssets] = useState(true);
 
+  // ✨ NEW: Upgraded Render States for Success Screen
   const [isRendering, setIsRendering] = useState(false);
+  const [renderComplete, setRenderComplete] = useState(false);
+  const [renderStatusText, setRenderStatusText] = useState("Preparing render engine...");
   const ffmpegRef = useRef(new FFmpeg());
   const [renderProgress, setRenderProgress] = useState(0);
 
   const [zoom, setZoom] = useState(2);
   const [globalTime, setGlobalTime] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  const [isMagnetEnabled, setIsMagnetEnabled] = useState(true);
 
   const isScrubbingRef = useRef(false);
   const [isScrubbingUI, setIsScrubbingUI] = useState(false);
@@ -112,13 +116,13 @@ export function VideoEditorUI() {
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    // ✨ NEW: Backend Filtering to sort the media types perfectly
+    // ✨ FIXED: Extremely broad audio filter to ensure nothing gets missed
     if (filterType === "sequence") {
       query = query.eq("content_type", "sequence_clip");
     } else if (filterType === "audio") {
-      query = query.in("content_type", ["generated_audio", "raw_clip"]);
+      query = query.in("content_type", ["generated_audio", "audio", "voiceover", "music"]);
     } else {
-      query = query.neq("content_type", "sequence_clip").neq("content_type", "generated_audio");
+      query = query.not("content_type", "in", '("sequence_clip","generated_audio","audio","voiceover","music")');
     }
 
     const { data, error } = await query;
@@ -126,27 +130,30 @@ export function VideoEditorUI() {
     if (data) {
       const dbAssets: MediaAsset[] = [];
       data.forEach((item) => {
-        if (item.image_urls && Array.isArray(item.image_urls)) {
-          item.image_urls.forEach((url: string, idx: number) => {
-            const isAudio = url.includes(".mp3") || url.includes(".wav") || item.content_type === "generated_audio";
-            const isVid = url.includes(".mp4") || url.includes(".mov") || item.ai_model === "veo-3-1" || item.ai_model === "sora-2-image-to-video" || item.ai_model === "kling-3.0/video";
-
-            // Frontend safety check to keep tabs clean
-            if (filterType === "audio" && !isAudio) return;
-            if (filterType === "library" && isAudio) return;
-
-            const mediaType = isAudio ? "audio" : isVid ? "video" : "image";
-            const thumbUrl = isAudio ? "https://images.unsplash.com/photo-1619983081563-430f63602796?w=400&q=80" : url;
-
-            dbAssets.push({
-              id: `db-${item.id}-${idx}`,
-              type: mediaType,
-              url: url,
-              thumb: thumbUrl,
-              name: `${item.content_type || "Generated"} Media`,
-            });
-          });
+        let parsedUrls: string[] = [];
+        if (Array.isArray(item.image_urls)) {
+          parsedUrls = item.image_urls;
+        } else if (typeof item.image_urls === 'string') {
+          try { parsedUrls = JSON.parse(item.image_urls); } catch (e) { }
         }
+
+        parsedUrls.forEach((url: string, idx: number) => {
+          const isAudio = url.includes(".mp3") || url.includes(".wav") || url.includes("audios/") || item.content_type === "generated_audio";
+          const isVid = url.includes(".mp4") || url.includes(".mov") || item.content_type === "sequence_clip" || item.content_type === "reel";
+
+          if (filterType === "audio" && !isAudio) return;
+          if (filterType === "library" && isAudio) return;
+
+          const mediaType = isAudio ? "audio" : isVid ? "video" : "image";
+
+          dbAssets.push({
+            id: `db-${item.id}-${idx}`,
+            type: mediaType,
+            url: url,
+            thumb: url,
+            name: `${item.content_type || "Generated"} Media`,
+          });
+        });
       });
       setAssets(dbAssets);
       setHasMoreAssets(data.length === limit);
@@ -160,7 +167,7 @@ export function VideoEditorUI() {
 
   const handleFilterSwitch = (mode: "library" | "sequence" | "audio") => {
     setAssetFilter(mode);
-    setAssetPageLimit(4);
+    setAssetPageLimit(8);
     setAssets([]);
   };
 
@@ -230,18 +237,21 @@ export function VideoEditorUI() {
     }
   }
 
-  // ✨ WASM Render Engine
+  // ✨ UPGRADED: Auto-Downloading Render Engine ✨
   const handleRender = async () => {
     if (!clientId) return;
     const orderedVideos = [...videoClips].sort((a, b) => a.timelineStart - b.timelineStart);
-    if (orderedVideos.length === 0) return alert("Please add at least one video to the timeline!");
+    if (orderedVideos.length === 0) return alert("Please add at least one visual layer (image or video) to the timeline!");
 
     setIsRendering(true);
+    setRenderComplete(false);
     setIsPlaying(false);
-    setRenderProgress(10);
+    setRenderProgress(5);
+    setRenderStatusText("Booting AI Render Engine...");
 
     try {
       const ffmpeg = ffmpegRef.current;
+      ffmpeg.on('log', ({ message }) => console.log('[FFmpeg]', message));
 
       if (!ffmpeg.loaded) {
         const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
@@ -251,47 +261,157 @@ export function VideoEditorUI() {
         });
       }
 
-      setRenderProgress(30);
+      setRenderProgress(15);
 
-      let listTxt = "";
+      let hasFont = false;
+      if (textLayers.length > 0) {
+        setRenderStatusText("Loading font libraries...");
+        try {
+          const fontData = await fetchFile('https://raw.githubusercontent.com/ffmpegwasm/testdata/master/arial.ttf');
+          await ffmpeg.writeFile('arial.ttf', fontData);
+          hasFont = true;
+        } catch (e) {
+          console.warn("Could not load font.", e);
+        }
+      }
+
+      const inputArgs: string[] = [];
+      const filterSteps: string[] = [];
+      let concatStreams = "";
+
       for (let i = 0; i < orderedVideos.length; i++) {
-        const v = orderedVideos[i];
-        const fileName = `vid${i}.mp4`;
-        await ffmpeg.writeFile(fileName, await fetchFile(v.url));
-        listTxt += `file '${fileName}'\n`;
+        setRenderStatusText(`Processing visual media ${i + 1} of ${orderedVideos.length}...`);
+        const clip = orderedVideos[i];
+        const isImg = clip.type === 'image';
+        const ext = isImg ? 'png' : 'mp4';
+        const fileName = `media_${i}.${ext}`;
+        const duration = clip.trimEnd - clip.trimStart;
+
+        try {
+          await ffmpeg.writeFile(fileName, await fetchFile(clip.url));
+        } catch (err) {
+          throw new Error(`Failed to download media item ${i + 1}.`);
+        }
+
+        if (isImg) {
+          inputArgs.push('-loop', '1', '-framerate', '30', '-t', String(duration), '-i', fileName);
+        } else {
+          inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
+        }
+
+        filterSteps.push(`[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p[v${i}]`);
+        concatStreams += `[v${i}]`;
+
+        setRenderProgress(15 + Math.floor((i / orderedVideos.length) * 30));
       }
 
-      await ffmpeg.writeFile('list.txt', listTxt);
-      setRenderProgress(50);
+      setRenderStatusText("Stitching sequence...");
+      filterSteps.push(`${concatStreams}concat=n=${orderedVideos.length}:v=1:a=0[outv]`);
 
-      const hasAudio = audioClips.length > 0;
-      if (hasAudio) {
-        await ffmpeg.writeFile('audio.mp3', await fetchFile(audioClips[0].url));
+      let finalVideoMap = '[outv]';
+
+      if (textLayers.length > 0 && hasFont) {
+        setRenderStatusText("Baking text layers...");
+        let textFilters: string[] = [];
+        textLayers.forEach((layer) => {
+          const start = layer.timelineStart;
+          const end = layer.timelineStart + (layer.trimEnd - layer.trimStart);
+          const x = `(w*${layer.x}/100)`;
+          const y = `(h*${layer.y}/100)`;
+          const size = layer.fontSize * 2;
+          const safeText = layer.text.replace(/'/g, "\u2019").replace(/:/g, "\\:");
+          textFilters.push(`drawtext=fontfile=arial.ttf:text='${safeText}':fontcolor=${layer.color || 'white'}:fontsize=${size}:x=${x}:y=${y}:enable='between(t,${start},${end})'`);
+        });
+        if (textFilters.length > 0) {
+          filterSteps.push(`[outv]${textFilters.join(',')}[textout]`);
+          finalVideoMap = '[textout]';
+        }
       }
+
+      let hasAudio = false;
+      if (audioClips.length > 0) {
+        setRenderStatusText("Mixing and syncing audio layers...");
+
+        if (audioClips.length === 1) {
+          const clip = audioClips[0];
+          const fileName = `audio_0.mp3`;
+          const duration = clip.trimEnd - clip.trimStart;
+          await ffmpeg.writeFile(fileName, await fetchFile(clip.url));
+
+          inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
+
+          const delayMs = Math.floor(clip.timelineStart * 1000);
+          const audioInputIndex = orderedVideos.length;
+          filterSteps.push(`[${audioInputIndex}:a]adelay=${delayMs}|${delayMs}[outa]`);
+          hasAudio = true;
+        } else {
+          let audioMixStr = "";
+          for (let i = 0; i < audioClips.length; i++) {
+            const clip = audioClips[i];
+            const fileName = `audio_${i}.mp3`;
+            const duration = clip.trimEnd - clip.trimStart;
+            await ffmpeg.writeFile(fileName, await fetchFile(clip.url));
+
+            inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
+
+            const delayMs = Math.floor(clip.timelineStart * 1000);
+            const audioInputIndex = orderedVideos.length + i;
+            filterSteps.push(`[${audioInputIndex}:a]adelay=${delayMs}|${delayMs}[a${i}]`);
+            audioMixStr += `[a${i}]`;
+            hasAudio = true;
+            setRenderProgress(40 + Math.floor((i / audioClips.length) * 20));
+          }
+          filterSteps.push(`${audioMixStr}amix=inputs=${audioClips.length}:duration=longest:dropout_transition=0[outa]`);
+        }
+      }
+
       setRenderProgress(70);
+      const finalFilterGraph = filterSteps.join(';');
+
+      const maxVideoTime = orderedVideos.reduce((max, clip) => Math.max(max, clip.timelineStart + (clip.trimEnd - clip.trimStart)), 0);
+
+      setRenderStatusText("Encoding final masterpiece...");
+      const execArgs = [
+        ...inputArgs,
+        '-filter_complex', finalFilterGraph,
+        '-map', finalVideoMap
+      ];
 
       if (hasAudio) {
-        await ffmpeg.exec([
-          '-f', 'concat', '-safe', '0', '-i', 'list.txt',
-          '-i', 'audio.mp3',
-          '-c:v', 'copy',
-          '-c:a', 'aac',
-          '-map', '0:v:0', '-map', '1:a:0',
-          '-shortest',
-          'output.mp4'
-        ]);
-      } else {
-        await ffmpeg.exec([
-          '-f', 'concat', '-safe', '0', '-i', 'list.txt',
-          '-c', 'copy',
-          'output.mp4'
-        ]);
+        execArgs.push('-map', '[outa]');
+        execArgs.push('-c:a', 'aac', '-b:a', '192k');
+      }
+
+      if (maxVideoTime > 0) {
+        execArgs.push('-t', String(maxVideoTime));
+      }
+
+      execArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', 'output.mp4');
+
+      const retCode = await ffmpeg.exec(execArgs);
+
+      if (retCode !== 0) {
+        throw new Error(`Engine failed (Exit code: ${retCode}).`);
       }
 
       setRenderProgress(90);
+      setRenderStatusText("File successfully baked! Preparing download...");
 
       const data = await ffmpeg.readFile('output.mp4');
+      if (data.length === 0) throw new Error("Render produced an empty file.");
+
       const finalBlob = new Blob([new Uint8Array(data as Uint8Array)], { type: 'video/mp4' });
+      const localUrl = URL.createObjectURL(finalBlob);
+
+      // ✨ INSTANT LOCAL DOWNLOAD ✨
+      const downloadLink = document.createElement('a');
+      downloadLink.href = localUrl;
+      downloadLink.download = `Blink_Commercial_${Date.now()}.mp4`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+
+      setRenderStatusText("Saving backup to your Content Grid...");
 
       const path = `videos/${clientId}/final_render_${Date.now()}.mp4`;
       await supabase.storage.from("assets").upload(path, finalBlob);
@@ -300,23 +420,24 @@ export function VideoEditorUI() {
       const { error } = await supabase.from('content').insert({
         client_id: clientId,
         content_type: 'reel',
-        caption: '🎬 Finished AI Commercial',
+        caption: '🎬 Final Edited Commercial',
         status: 'draft',
         video_urls: [finalUrl],
+        image_urls: [finalUrl],
         ai_model: 'blink-wasm-editor'
       });
 
       if (error) throw error;
+
       setRenderProgress(100);
+      setRenderComplete(true);
 
-      router.push('/dashboard/content');
-
-    } catch (err) {
+    } catch (err: any) {
       console.error("Render failed:", err);
-      alert("Failed to render the video. Check console for details.");
-    } finally {
+      alert(`Render failed: ${err.message}`);
       setIsRendering(false);
       setRenderProgress(0);
+      setRenderStatusText("");
     }
   };
 
@@ -412,12 +533,13 @@ export function VideoEditorUI() {
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (dragTextRef.current && canvasRef.current) {
+        const currentDrag = dragTextRef.current;
         const rect = canvasRef.current.getBoundingClientRect();
-        const dx = ((e.clientX - dragTextRef.current.startX) / rect.width) * 100;
-        const dy = ((e.clientY - dragTextRef.current.startY) / rect.height) * 100;
-        const newX = Math.min(95, Math.max(5, dragTextRef.current.initX + dx));
-        const newY = Math.min(95, Math.max(5, dragTextRef.current.initY + dy));
-        setTextLayers((prev) => prev.map((l) => l.id === dragTextRef.current!.id ? { ...l, x: newX, y: newY } : l));
+        const dx = ((e.clientX - currentDrag.startX) / rect.width) * 100;
+        const dy = ((e.clientY - currentDrag.startY) / rect.height) * 100;
+        const newX = Math.min(95, Math.max(5, currentDrag.initX + dx));
+        const newY = Math.min(95, Math.max(5, currentDrag.initY + dy));
+        setTextLayers((prev) => prev.map((l) => l.id === currentDrag.id ? { ...l, x: newX, y: newY } : l));
       }
 
       if (trimRef.current) {
@@ -442,9 +564,44 @@ export function VideoEditorUI() {
       if (clipDragRef.current) {
         const { id, type, startMouseX, initTimelineStart } = clipDragRef.current;
         const deltaSeconds = (e.clientX - startMouseX) / PIXELS_PER_SECOND;
-        const newTimelineStart = Math.max(0, initTimelineStart + deltaSeconds);
+        let newTimelineStart = Math.max(0, initTimelineStart + deltaSeconds);
+
         let setClips: any = type === "video" ? setVideoClips : type === "audio" ? setAudioClips : setTextLayers;
-        setClips((prev: any[]) => prev.map((clip: any) => clip.id === id ? { ...clip, timelineStart: newTimelineStart } : clip));
+
+        setClips((prev: any[]) => prev.map((clip: any) => {
+          if (clip.id !== id) return clip;
+
+          if (isMagnetEnabled) {
+            const snapThreshold = 15 / PIXELS_PER_SECOND;
+            let bestSnapDist = snapThreshold;
+            let bestSnapTime = newTimelineStart;
+            const duration = clip.trimEnd - clip.trimStart;
+
+            const allClips = [...videoClips, ...audioClips, ...textLayers];
+
+            allClips.forEach(other => {
+              if (other.id === id) return;
+              const otherStart = other.timelineStart;
+              const otherEnd = other.timelineStart + (other.trimEnd - other.trimStart);
+
+              if (Math.abs(newTimelineStart - otherEnd) < bestSnapDist) {
+                bestSnapDist = Math.abs(newTimelineStart - otherEnd);
+                bestSnapTime = otherEnd;
+              }
+              if (Math.abs(newTimelineStart - otherStart) < bestSnapDist) {
+                bestSnapDist = Math.abs(newTimelineStart - otherStart);
+                bestSnapTime = otherStart;
+              }
+              if (Math.abs((newTimelineStart + duration) - otherStart) < bestSnapDist) {
+                bestSnapDist = Math.abs((newTimelineStart + duration) - otherStart);
+                bestSnapTime = otherStart - duration;
+              }
+            });
+            newTimelineStart = bestSnapTime;
+          }
+
+          return { ...clip, timelineStart: newTimelineStart };
+        }));
       }
 
       if (isScrubbingRef.current) {
@@ -470,7 +627,7 @@ export function VideoEditorUI() {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
-  }, [PIXELS_PER_SECOND]);
+  }, [PIXELS_PER_SECOND, isMagnetEnabled, videoClips, audioClips, textLayers]);
 
   function addTextLayer() {
     const id = crypto.randomUUID();
@@ -501,19 +658,49 @@ export function VideoEditorUI() {
   return (
     <div className="flex flex-col h-[850px] bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden shadow-sm select-none relative">
 
+      {/* ✨ UPGRADED FULLSCREEN RENDER OVERLAY ✨ */}
       {isRendering && (
         <div className="absolute inset-0 z-50 bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
-          <Loader2 className="w-12 h-12 animate-spin text-purple-400 mb-6" />
-          <h2 className="text-2xl font-bold tracking-widest uppercase mb-2">Rendering Sequence</h2>
-          <p className="text-gray-400 text-sm mb-6">Stitching media in your browser...</p>
+          {!renderComplete ? (
+            <>
+              <Loader2 className="w-12 h-12 animate-spin text-purple-400 mb-6" />
+              <h2 className="text-2xl font-bold tracking-widest uppercase mb-2">Rendering Sequence</h2>
+              <p className="text-gray-400 text-sm mb-6 text-center max-w-sm">{renderStatusText}</p>
 
-          <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-purple-500 transition-all duration-300 ease-out"
-              style={{ width: `${renderProgress}%` }}
-            />
-          </div>
-          <p className="text-xs text-purple-300 mt-2 font-bold">{renderProgress}%</p>
+              <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-purple-500 transition-all duration-300 ease-out"
+                  style={{ width: `${renderProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-purple-300 mt-2 font-bold">{renderProgress}%</p>
+            </>
+          ) : (
+            <div className="flex flex-col items-center animate-in zoom-in duration-300">
+              <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(34,197,94,0.4)]">
+                <Check className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-3xl font-bold tracking-widest uppercase mb-3">Render Complete!</h2>
+              <p className="text-gray-300 text-base mb-8 text-center max-w-md leading-relaxed">
+                Your video has been successfully downloaded to your computer and securely backed up to your Content Grid.
+              </p>
+              <div className="flex gap-4">
+                <Button
+                  onClick={() => { setIsRendering(false); setRenderComplete(false); }}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:text-white hover:bg-gray-800 font-bold h-12 px-6"
+                >
+                  Back to Editor
+                </Button>
+                <Button
+                  onClick={() => router.push('/dashboard/content')}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold h-12 px-6 shadow-lg"
+                >
+                  View in Content Grid
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -529,7 +716,6 @@ export function VideoEditorUI() {
             {activeTab === "assets" && (
               <div className="space-y-4">
 
-                {/* ✨ NEW: 3-Way Media Toggle */}
                 <div className="bg-gray-100 p-1 rounded-lg flex items-center justify-between">
                   <button
                     onClick={() => handleFilterSwitch('library')}
@@ -571,9 +757,15 @@ export function VideoEditorUI() {
                       <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className="group relative aspect-square bg-black rounded-lg overflow-hidden cursor-grab active:cursor-grabbing hover:ring-2 ring-purple-500 transition-all border border-gray-200">
                         {asset.type === "video" ? (
                           <video src={asset.url} className="w-full h-full object-cover opacity-80" preload="metadata" muted playsInline />
+                        ) : asset.type === "audio" ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 border-2 border-green-500/30 text-green-400 group-hover:bg-gray-800 transition-colors">
+                            <Mic className="w-8 h-8 mb-2 opacity-80" />
+                            <span className="text-[10px] font-bold text-center w-full truncate px-2">{asset.name || "Voiceover"}</span>
+                          </div>
                         ) : (
                           <img src={asset.thumb} alt="Asset" className="w-full h-full object-cover" />
                         )}
+
                         <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-sm text-white p-1 rounded">
                           {asset.type === "video" ? <Video className="w-3 h-3" /> : asset.type === "audio" ? <Music className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                         </div>
@@ -625,7 +817,7 @@ export function VideoEditorUI() {
               disabled={isRendering || videoClips.length === 0}
               className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-md transition-all duration-200"
             >
-              {isRendering ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Film className="w-4 h-4 mr-2" />}
+              <Film className="w-4 h-4 mr-2" />
               Render & Finish
             </Button>
           </div>
@@ -829,17 +1021,26 @@ export function VideoEditorUI() {
             <button onClick={deleteSelected} disabled={!selectedElement} className="p-1.5 hover:bg-gray-200 rounded text-red-500 disabled:opacity-30 transition-colors"><Trash2 className="w-4 h-4" /></button>
           </div>
           <div className="flex items-center gap-3">
+
+            <button
+              onClick={() => setIsMagnetEnabled(!isMagnetEnabled)}
+              className={cn("p-1.5 rounded transition-colors flex items-center gap-1", isMagnetEnabled ? "bg-purple-100 text-purple-600" : "text-gray-400 hover:bg-gray-100")}
+              title={isMagnetEnabled ? "Snapping Enabled" : "Snapping Disabled"}
+            >
+              <Magnet className="w-4 h-4" />
+            </button>
+            <div className="w-px h-4 bg-gray-300 mx-1"></div>
+
             <ZoomOut className="w-4 h-4 text-gray-400" />
             <input type="range" min="0.1" max="20" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-32 accent-purple-500 h-1" />
             <ZoomIn className="w-4 h-4 text-gray-400" />
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-y-auto overflow-x-hidden relative custom-scrollbar">
+        <div className="flex-1 flex overflow-hidden relative bg-gray-50/50">
 
-          <div className="w-32 flex-shrink-0 bg-white border-r border-gray-200 z-30 sticky left-0 top-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+          <div className="w-32 flex-shrink-0 bg-white border-r border-gray-200 z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] relative">
             <div className="h-6 border-b border-gray-200 bg-gray-50"></div>
-
             {Array.from({ length: videoTrackCount }).map((_, i) => (
               <div key={`vlabel-${i}`} className="h-14 border-b border-gray-100 flex items-center px-3 gap-2 text-gray-600 bg-blue-50/30">
                 <Video className="w-4 h-4" /> <span className="text-xs font-semibold">V{i + 1}</span>
@@ -857,17 +1058,15 @@ export function VideoEditorUI() {
             ))}
           </div>
 
-          <div ref={timelineRef} className="flex-1 overflow-x-auto relative bg-gray-50/50" onMouseDown={handleTimelineMouseDown}>
+          <div
+            ref={timelineRef}
+            className="flex-1 overflow-x-auto relative custom-scrollbar"
+            onMouseDown={handleTimelineMouseDown}
+            onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
+          >
             <div style={{ width: `${maxVisibleTime * PIXELS_PER_SECOND}px`, minWidth: "100%", height: "100%", position: "relative" }}>
 
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-50 pointer-events-none will-change-transform"
-                style={{ transform: `translateX(${globalTime * PIXELS_PER_SECOND}px)` }}
-              >
-                <div className="absolute -top-0 -left-1.5 w-3 h-3 bg-red-500 rounded-sm"></div>
-              </div>
-
-              <div className="h-6 border-b border-gray-200 bg-white relative overflow-hidden pointer-events-none">
+              <div className="h-6 border-b border-gray-200 bg-white sticky top-0 z-10 overflow-hidden pointer-events-none">
                 {Array.from({ length: Math.ceil(maxVisibleTime / rulerStep) }).map((_, i) => (
                   <div key={i} className="absolute text-[9px] text-gray-400 border-l border-gray-300 pl-1" style={{ left: `${i * rulerStep * PIXELS_PER_SECOND}px`, bottom: 0, height: "12px" }}>{i * rulerStep}s</div>
                 ))}
@@ -922,9 +1121,18 @@ export function VideoEditorUI() {
                   ))}
                 </div>
               ))}
-
             </div>
           </div>
+
+          <div className="absolute top-0 bottom-0 pointer-events-none z-50 overflow-hidden" style={{ left: '8rem', right: 0 }}>
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-red-500 will-change-transform"
+              style={{ transform: `translateX(${(globalTime * PIXELS_PER_SECOND) - scrollLeft}px)` }}
+            >
+              <div className="absolute -top-0 -left-1.5 w-3 h-3 bg-red-500 rounded-sm shadow-md"></div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
