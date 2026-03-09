@@ -121,9 +121,10 @@ export function UgcSetup({
             <div className="md:col-span-2 bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4 relative overflow-hidden">
                 <div className="flex justify-between items-start">
                     <div>
-                        <label className="text-sm font-bold text-blink-dark">Visual Anchor (Action)</label>
+                        {/* ✨ UPDATED LABEL & DESCRIPTION FOR UGC STRATEGY */}
+                        <label className="text-sm font-bold text-blink-dark">Viral Hook & Pain Point</label>
                         <p className="text-xs text-gray-500 mt-1 max-w-md">
-                            Describe what the influencer is doing with the product in a few words. Our AI Director will handle the cinematic lighting, background, and spoken script automatically.
+                            Describe the customer's problem or the catchy hook. Our AI will automatically generate a viral TikTok/Reels script, captions, and visual action.
                         </p>
                     </div>
                     <button
@@ -137,15 +138,16 @@ export function UgcSetup({
                 </div>
 
                 <div className="relative">
+                    {/* ✨ UPDATED PLACEHOLDER */}
                     <Textarea
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         rows={3}
-                        placeholder="e.g., A diverse influencer smiling and applying the sunscreen in a sunny bathroom..."
+                        placeholder="e.g., 'Stop scrolling! If you struggle with organizing your messy room, you need to see this...'"
                         className="resize-none border-gray-300 focus-visible:ring-purple-500 text-sm p-4 bg-gray-50"
                     />
                     <div className="absolute bottom-3 right-3 flex items-center gap-1 text-xs text-gray-400">
-                        <Info className="h-3.5 w-3.5" /> Keep it under 15 words
+                        <Info className="h-3.5 w-3.5" /> Focus on the viewer's problem
                     </div>
                 </div>
             </div>

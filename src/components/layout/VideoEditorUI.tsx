@@ -62,10 +62,9 @@ export function VideoEditorUI() {
   const [assetFilter, setAssetFilter] = useState<"library" | "sequence" | "audio">("library");
 
   const [isLoadingDB, setIsLoadingDB] = useState(false);
-  const [assetPageLimit, setAssetPageLimit] = useState(4);
+  const [assetPageLimit, setAssetPageLimit] = useState(8);
   const [hasMoreAssets, setHasMoreAssets] = useState(true);
 
-  // ✨ NEW: Upgraded Render States for Success Screen
   const [isRendering, setIsRendering] = useState(false);
   const [renderComplete, setRenderComplete] = useState(false);
   const [renderStatusText, setRenderStatusText] = useState("Preparing render engine...");
@@ -116,13 +115,13 @@ export function VideoEditorUI() {
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    // ✨ FIXED: Extremely broad audio filter to ensure nothing gets missed
+    // ✨ FIXED: Strict Database Level Filtering so Audio is guaranteed to fetch
     if (filterType === "sequence") {
       query = query.eq("content_type", "sequence_clip");
     } else if (filterType === "audio") {
-      query = query.in("content_type", ["generated_audio", "audio", "voiceover", "music"]);
+      query = query.in("content_type", ["generated_audio", "audio", "music", "voiceover"]);
     } else {
-      query = query.not("content_type", "in", '("sequence_clip","generated_audio","audio","voiceover","music")');
+      query = query.not("content_type", "in", '("sequence_clip","generated_audio")');
     }
 
     const { data, error } = await query;
@@ -131,18 +130,30 @@ export function VideoEditorUI() {
       const dbAssets: MediaAsset[] = [];
       data.forEach((item) => {
         let parsedUrls: string[] = [];
-        if (Array.isArray(item.image_urls)) {
+
+        if (Array.isArray(item.image_urls) && item.image_urls.length > 0) {
           parsedUrls = item.image_urls;
-        } else if (typeof item.image_urls === 'string') {
+        } else if (typeof item.image_urls === 'string' && item.image_urls.length > 5) {
           try { parsedUrls = JSON.parse(item.image_urls); } catch (e) { }
         }
 
+        if (parsedUrls.length === 0) {
+          if (Array.isArray(item.video_urls) && item.video_urls.length > 0) {
+            parsedUrls = item.video_urls;
+          } else if (typeof item.video_urls === 'string' && item.video_urls.length > 5) {
+            try { parsedUrls = JSON.parse(item.video_urls); } catch (e) { }
+          }
+        }
+
         parsedUrls.forEach((url: string, idx: number) => {
-          const isAudio = url.includes(".mp3") || url.includes(".wav") || url.includes("audios/") || item.content_type === "generated_audio";
+          const isAudioUrl = url.includes(".mp3") || url.includes(".wav") || url.includes("audios/");
+          const isAudioType = item.content_type === "generated_audio";
+          const isAudio = isAudioUrl || isAudioType;
+
           const isVid = url.includes(".mp4") || url.includes(".mov") || item.content_type === "sequence_clip" || item.content_type === "reel";
 
           if (filterType === "audio" && !isAudio) return;
-          if (filterType === "library" && isAudio) return;
+          if (filterType === "library" && (isAudio || item.content_type === "sequence_clip")) return;
 
           const mediaType = isAudio ? "audio" : isVid ? "video" : "image";
 
@@ -151,12 +162,13 @@ export function VideoEditorUI() {
             type: mediaType,
             url: url,
             thumb: url,
-            name: `${item.content_type || "Generated"} Media`,
+            // ✨ THE FIX: Uses the database caption (e.g. "🎬 Scene 1 Video" or "🎙️ Scene 1 Audio")
+            name: item.caption || (isAudio ? `Voiceover/Music` : `${item.content_type || "Generated"} Media`),
           });
         });
       });
       setAssets(dbAssets);
-      setHasMoreAssets(data.length === limit);
+      setHasMoreAssets(data.length >= limit);
     }
     setIsLoadingDB(false);
   }
@@ -237,7 +249,11 @@ export function VideoEditorUI() {
     }
   }
 
-  // ✨ UPGRADED: Auto-Downloading Render Engine ✨
+  const getProxyUrl = (originalUrl: string) => {
+    if (originalUrl.startsWith('blob:')) return originalUrl;
+    return `/api/fetch-media?url=${encodeURIComponent(originalUrl)}`;
+  };
+
   const handleRender = async () => {
     if (!clientId) return;
     const orderedVideos = [...videoClips].sort((a, b) => a.timelineStart - b.timelineStart);
@@ -267,7 +283,7 @@ export function VideoEditorUI() {
       if (textLayers.length > 0) {
         setRenderStatusText("Loading font libraries...");
         try {
-          const fontData = await fetchFile('https://raw.githubusercontent.com/ffmpegwasm/testdata/master/arial.ttf');
+          const fontData = await fetchFile(getProxyUrl('https://raw.githubusercontent.com/ffmpegwasm/testdata/master/arial.ttf'));
           await ffmpeg.writeFile('arial.ttf', fontData);
           hasFont = true;
         } catch (e) {
@@ -288,7 +304,7 @@ export function VideoEditorUI() {
         const duration = clip.trimEnd - clip.trimStart;
 
         try {
-          await ffmpeg.writeFile(fileName, await fetchFile(clip.url));
+          await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
         } catch (err) {
           throw new Error(`Failed to download media item ${i + 1}.`);
         }
@@ -336,7 +352,7 @@ export function VideoEditorUI() {
           const clip = audioClips[0];
           const fileName = `audio_0.mp3`;
           const duration = clip.trimEnd - clip.trimStart;
-          await ffmpeg.writeFile(fileName, await fetchFile(clip.url));
+          await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
 
           inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
 
@@ -350,7 +366,7 @@ export function VideoEditorUI() {
             const clip = audioClips[i];
             const fileName = `audio_${i}.mp3`;
             const duration = clip.trimEnd - clip.trimStart;
-            await ffmpeg.writeFile(fileName, await fetchFile(clip.url));
+            await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
 
             inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
 
@@ -403,7 +419,6 @@ export function VideoEditorUI() {
       const finalBlob = new Blob([new Uint8Array(data as Uint8Array)], { type: 'video/mp4' });
       const localUrl = URL.createObjectURL(finalBlob);
 
-      // ✨ INSTANT LOCAL DOWNLOAD ✨
       const downloadLink = document.createElement('a');
       downloadLink.href = localUrl;
       downloadLink.download = `Blink_Commercial_${Date.now()}.mp4`;
@@ -658,7 +673,6 @@ export function VideoEditorUI() {
   return (
     <div className="flex flex-col h-[850px] bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden shadow-sm select-none relative">
 
-      {/* ✨ UPGRADED FULLSCREEN RENDER OVERLAY ✨ */}
       {isRendering && (
         <div className="absolute inset-0 z-50 bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
           {!renderComplete ? (
@@ -786,7 +800,7 @@ export function VideoEditorUI() {
 
                   {hasMoreAssets && assets.length > 0 && (
                     <Button
-                      onClick={() => setAssetPageLimit(prev => prev + 4)}
+                      onClick={() => setAssetPageLimit(prev => prev + 8)}
                       variant="ghost"
                       className="w-full text-xs font-bold text-gray-500 hover:text-purple-600 border border-gray-200 bg-gray-50 hover:bg-purple-50 transition-colors mt-2"
                     >

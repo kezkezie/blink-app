@@ -79,7 +79,8 @@ const VIDEO_MODES = [
 
 export default function VideoStudioPage() {
   const router = useRouter();
-  const { clientId } = useClient();
+  // Get the client ID from the hook
+  const { clientId: hookClientId } = useClient();
 
   const [activeTab, setActiveTab] = useState<"studio" | "editor">("studio");
   const [step, setStep] = useState(1);
@@ -114,12 +115,12 @@ export default function VideoStudioPage() {
   const activeModeConfig = VIDEO_MODES.find((m) => m.id === selectedMode)!;
 
   useEffect(() => {
-    if (!clientId) return;
+    if (!hookClientId) return;
     async function loadBrand() {
       const { data } = await supabase
         .from("clients")
         .select("company_name, industry, onboarding_notes")
-        .eq("id", clientId)
+        .eq("id", hookClientId)
         .single();
       if (data) {
         let desc = "";
@@ -136,7 +137,7 @@ export default function VideoStudioPage() {
       }
     }
     loadBrand();
-  }, [clientId]);
+  }, [hookClientId]);
 
   useEffect(() => {
     if (!generatingPostId) return;
@@ -153,7 +154,7 @@ export default function VideoStudioPage() {
         },
         (payload) => {
           if (payload.new.status === "failed") {
-            setGenerationError("The AI engine failed to process this request.");
+            setGenerationError(payload.new.error_message || "The AI engine failed to process this request.");
           }
           const newUrls = payload.new.image_urls;
           if (newUrls && Array.isArray(newUrls) && newUrls.length > 0) {
@@ -166,11 +167,11 @@ export default function VideoStudioPage() {
     const pollInterval = setInterval(async () => {
       const { data, error } = await supabase
         .from("content")
-        .select("image_urls, status")
+        .select("image_urls, status, error_message")
         .eq("id", generatingPostId)
         .single();
       if (data?.status === "failed") {
-        setGenerationError("The AI engine failed to process this request.");
+        setGenerationError(data.error_message || "The AI engine failed to process this request.");
         clearInterval(pollInterval);
       } else if (
         !error &&
@@ -302,71 +303,69 @@ export default function VideoStudioPage() {
   }
 
   async function handleGenerate() {
-    if (!clientId) return;
+    // ✨ SAFETY LOCK: Ensure we have a valid client ID before starting
+    const safeClientId = hookClientId;
+    if (!safeClientId) {
+      alert("User session not found. Please refresh the page and try again.");
+      return;
+    }
+
     setIsGenerating(true);
     setGenerationError(null);
 
+    const base64ToBlob = (base64: string, mimeType: string) => {
+      const byteCharacters = atob(base64.split(',')[1]);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      return new Blob([byteArray], { type: mimeType });
+    };
+
     try {
       // ==========================================================
-      // ROUTE A: THE MULTI-SCENE STORYBOARD LOOP
+      // ROUTE A: STORYTELLING
       // ==========================================================
       if (selectedMode === "storytelling") {
-
-        let lastRecordId = null; // Track the final video in the sequence
+        let lastRecordId = null;
 
         for (let i = 0; i < bRollScenes.length; i++) {
           const scene = bRollScenes[i];
           let pUrl = null;
           let sUrl = null;
 
-          const activePrimaryFile =
-            scene.primaryFile || (i === 0 ? primaryFile : null);
-          const activePrimaryPreview =
-            scene.primaryPreview || (i === 0 ? primaryPreview : null);
+          const activePrimaryFile = scene.primaryFile || (i === 0 ? primaryFile : null);
+          const activePrimaryPreview = scene.primaryPreview || (i === 0 ? primaryPreview : null);
 
-          // Upload Primary Image
           if (activePrimaryFile) {
             const ext = activePrimaryFile.name.split(".").pop() || "png";
-            const path = `videos/${clientId}/scene_${i}_primary_${Date.now()}.${ext}`;
-            await supabase.storage
-              .from("assets")
-              .upload(path, activePrimaryFile);
+            const path = `videos/${safeClientId}/scene_${i}_primary_${Date.now()}.${ext}`;
+            await supabase.storage.from("assets").upload(path, activePrimaryFile);
             pUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
-          } else if (
-            activePrimaryPreview &&
-            activePrimaryPreview.startsWith("http")
-          ) {
+          } else if (activePrimaryPreview && activePrimaryPreview.startsWith("http")) {
             pUrl = activePrimaryPreview;
           }
 
-          // Upload Secondary Image (End Frame)
           if (scene.secondaryFile) {
             const ext = scene.secondaryFile.name.split(".").pop() || "png";
-            const path = `videos/${clientId}/scene_${i}_secondary_${Date.now()}.${ext}`;
-            await supabase.storage
-              .from("assets")
-              .upload(path, scene.secondaryFile);
+            const path = `videos/${safeClientId}/scene_${i}_secondary_${Date.now()}.${ext}`;
+            await supabase.storage.from("assets").upload(path, scene.secondaryFile);
             sUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
-          } else if (
-            scene.secondaryPreview &&
-            scene.secondaryPreview.startsWith("http")
-          ) {
+          } else if (scene.secondaryPreview && scene.secondaryPreview.startsWith("http")) {
             sUrl = scene.secondaryPreview;
           }
 
           let targetModel = selectedAiModel;
           if (targetModel === "auto") {
-            targetModel =
-              scene.mode === "showcase" || scene.mode === "logo_reveal" || scene.mode === "keyframe"
-                ? "bytedance/seedance-1.5-pro"
-                : "kling-3.0/video";
+            targetModel = scene.mode === "showcase" || scene.mode === "logo_reveal" ? "bytedance/seedance-1.5-pro" : "kling-3.0/video";
           }
 
           const { data: clipRecord, error: dbError } = await supabase
             .from("content")
             .insert({
-              client_id: clientId,
-              content_type: "sequence_clip", // ✨ DATABASE WILL NOW ACCEPT THIS!
+              client_id: safeClientId,
+              content_type: "sequence_clip",
               caption: `🎬 AI Scene ${i + 1}: ${scene.mode}`,
               status: "draft",
               ai_model: targetModel,
@@ -374,14 +373,11 @@ export default function VideoStudioPage() {
             .select()
             .single();
 
-          if (dbError)
-            throw new Error(`Database Insert Failed: ${dbError.message}`);
-
+          if (dbError) throw new Error(`Database Insert Failed: ${dbError.message}`);
           lastRecordId = clipRecord.id;
 
-          // Trigger n8n with both primary and secondary URLs
           await triggerWorkflow("blink-generate-video-v1", {
-            client_id: clientId,
+            client_id: safeClientId,
             post_id: clipRecord.id,
             video_mode: scene.mode,
             primary_image_url: pUrl,
@@ -394,45 +390,92 @@ export default function VideoStudioPage() {
             duration: scene.duration || "5",
           });
         }
-
-        // Route the user to the loading screen and wait for the final clip
         setGeneratingPostId(lastRecordId);
         setStep(3);
         return;
       }
 
       // ==========================================================
-      // ROUTE B: STANDARD SINGLE VIDEO
+      // ROUTE B: SINGLE VIDEO (UGC/CLOTHING/SHOWCASE)
       // ==========================================================
-      let primaryUrl = null,
-        secondaryUrl = null;
+      let primaryUrl = null;
+      let secondaryUrl = null;
 
+      let targetModel = selectedAiModel;
+      if (targetModel === "auto") {
+        targetModel = selectedMode === "showcase" || selectedMode === "logo_reveal" ? "bytedance/seedance-1.5-pro" : selectedMode === "ugc" || selectedMode === "clothing" ? "kling-3.0/video" : "sora-2-image-to-video";
+      }
+
+      // 1. Upload initial files to get Public URLs
       if (primaryFile) {
         const ext = primaryFile.name.split(".").pop();
-        const path = `videos/${clientId}/primary_${Date.now()}.${ext}`;
+        // ✨ FIX: Use safeClientId to prevent "undefined" in URL
+        const path = `videos/${safeClientId}/primary_${Date.now()}.${ext}`;
         await supabase.storage.from("assets").upload(path, primaryFile);
         primaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      } else if (primaryPreview && primaryPreview.startsWith("http")) {
+        primaryUrl = primaryPreview;
       }
 
       if (secondaryFile) {
         const ext = secondaryFile.name.split(".").pop();
-        const path = `videos/${clientId}/secondary_${Date.now()}.${ext}`;
+        // ✨ FIX: Use safeClientId to prevent "undefined" in URL
+        const path = `videos/${safeClientId}/secondary_${Date.now()}.${ext}`;
         await supabase.storage.from("assets").upload(path, secondaryFile);
         secondaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      } else if (secondaryPreview && secondaryPreview.startsWith("http")) {
+        secondaryUrl = secondaryPreview;
       }
 
-      let targetModel = selectedAiModel;
-      if (targetModel === "auto") {
-        targetModel =
-          selectedMode === "showcase" || selectedMode === "logo_reveal"
-            ? "bytedance/seedance-1.5-pro"
-            : "sora-2-image-to-video";
+      // 2. Auto-Merge (Nano Banana) Interceptor
+      if ((selectedMode === "ugc" || selectedMode === "clothing") && secondaryUrl && primaryUrl) {
+        const mergePrompt = selectedMode === "ugc"
+          ? `A highly realistic, viral TikTok style smartphone photo of an influencer interacting with the product. ${prompt}`
+          : `A highly realistic fashion editorial photo of a model wearing the clothing. ${prompt}`;
+
+        try {
+          const mergeRes = await fetch("/api/video/nano-banana", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mode: 'generator',
+              prompt: mergePrompt,
+              refImage: primaryUrl,
+              styleRefImage: secondaryUrl
+            })
+          });
+
+          const mergeData = await mergeRes.json();
+
+          if (mergeData.url) {
+            const mergedUrl = mergeData.url;
+            setPrimaryPreview(mergedUrl);
+            setSecondaryPreview(null);
+            setSecondaryFile(null);
+
+            if (mergedUrl.startsWith('data:')) {
+              const mimeMatch = mergedUrl.match(/data:(.*?);/);
+              const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+              const blob = base64ToBlob(mergedUrl, mime);
+              // ✨ FIX: Use safeClientId to prevent "undefined" in URL
+              const path = `videos/${safeClientId}/merged_primary_${Date.now()}.png`;
+              await supabase.storage.from("assets").upload(path, blob);
+              primaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+            } else {
+              primaryUrl = mergedUrl;
+            }
+            secondaryUrl = null;
+          }
+        } catch (e) {
+          console.error("Auto-merge failed, falling back.", e);
+        }
       }
 
+      // 3. Create DB Record
       const { data: contentRecord, error: dbError } = await supabase
         .from("content")
         .insert({
-          client_id: clientId,
+          client_id: safeClientId,
           content_type: "reel",
           caption: `🎬 AI Draft: ${activeModeConfig.title}`,
           status: "draft",
@@ -441,13 +484,12 @@ export default function VideoStudioPage() {
         .select()
         .single();
 
-      if (dbError)
-        throw new Error(`Database Insert Failed: ${dbError.message}`);
-
+      if (dbError) throw new Error(`Database Insert Failed: ${dbError.message}`);
       setGeneratingPostId(contentRecord.id);
 
+      // 4. Trigger Video Engine
       await triggerWorkflow("blink-generate-video-v1", {
-        client_id: clientId,
+        client_id: safeClientId,
         post_id: contentRecord.id,
         video_mode: selectedMode,
         primary_image_url: primaryUrl,
@@ -666,7 +708,7 @@ export default function VideoStudioPage() {
                       bRollScenes.length === 0) ||
                     (selectedMode !== "storytelling" &&
                       !!activeModeConfig.primaryLabel &&
-                      !primaryFile)
+                      !primaryFile && !primaryPreview)
                   }
                   className="bg-purple-600 hover:bg-purple-700 text-white h-12 px-10 text-base shadow-lg"
                 >
@@ -699,7 +741,7 @@ export default function VideoStudioPage() {
                     <h2 className="text-2xl font-bold text-blink-dark font-heading">
                       Generation Failed
                     </h2>
-                    <p className="text-gray-500 mt-2 max-w-md mx-auto leading-relaxed">
+                    <p className="text-red-500 mt-2 max-w-md mx-auto leading-relaxed font-medium bg-red-50 p-3 rounded-lg border border-red-100">
                       {generationError}
                     </p>
                   </div>
@@ -725,11 +767,15 @@ export default function VideoStudioPage() {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-blink-dark font-heading">
-                      Generating Sequence... 🎬
+                      Rendering Your AI Video... 🎬
                     </h2>
-                    <p className="text-gray-500 mt-2 max-w-md mx-auto leading-relaxed">
-                      The AI is parallel-rendering your clips. This will take roughly <b>2 to 5 minutes</b>.
+                    <p className="text-gray-500 mt-3 max-w-md mx-auto leading-relaxed">
+                      Our cinematic AI engine is currently animating your scene pixel by pixel.
                     </p>
+                    {/* ✨ UPDATED REALISTIC TIMELINE MESSAGE ✨ */}
+                    <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-100 text-sm text-purple-800">
+                      ⏱️ High-fidelity video generation typically takes <b>5 to 15 minutes</b> depending on server load. You can leave this tab open and grab a coffee!
+                    </div>
                   </div>
                 </div>
               ) : (

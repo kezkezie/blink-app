@@ -13,11 +13,12 @@ import type { VideoSetupProps } from "./types";
 
 const yellowLabBtnClass = "bg-[#f1c40f] hover:bg-[#d4ac0d] text-white shadow-md font-bold border-none";
 
-// ✨ Added audioPrompt to the scene state
 type StoryboardScene = any & {
   videoUrl?: string | null;
   isGeneratingVideo?: boolean;
   audioPrompt?: string;
+  sceneAudioUrl?: string | null;
+  isGeneratingAudio?: boolean;
 };
 
 export interface StorytellingSetupProps extends VideoSetupProps {
@@ -63,7 +64,14 @@ export function StorytellingSetup({
   const { clientId } = useClient();
 
   useEffect(() => {
-    if (bRollScenes.length === 0) {
+    const savedScenes = localStorage.getItem('blink_storyboard_scenes');
+    if (savedScenes) {
+      try {
+        setBRollScenes(JSON.parse(savedScenes));
+      } catch (e) {
+        console.error("Failed to parse saved scenes", e);
+      }
+    } else if (bRollScenes.length === 0) {
       const defaultScenes = Array.from({ length: 4 }).map((_, i) => ({
         id: crypto.randomUUID(),
         scene_number: i + 1,
@@ -73,7 +81,9 @@ export function StorytellingSetup({
         secondaryFile: null,
         secondaryPreview: null,
         prompt: "",
-        audioPrompt: "", // ✨ Initialize empty audio prompt
+        audioPrompt: "",
+        sceneAudioUrl: null,
+        isGeneratingAudio: false,
         duration: "5",
         videoUrl: null,
         isGeneratingVideo: false
@@ -81,6 +91,12 @@ export function StorytellingSetup({
       setBRollScenes(defaultScenes);
     }
   }, []);
+
+  useEffect(() => {
+    if (bRollScenes.length > 0) {
+      localStorage.setItem('blink_storyboard_scenes', JSON.stringify(bRollScenes));
+    }
+  }, [bRollScenes]);
 
   const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary' } | null>(null);
   const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary' } | null>(null);
@@ -123,12 +139,23 @@ export function StorytellingSetup({
   };
 
   const callN8n = async (mode: 'director' | 'generator' | 'manual' | 'scene_video_generator', body: any) => {
-    const res = await fetch("/api/video/nano-banana", {
+    const endpoint = "/api/video/nano-banana";
+
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode, ...body })
     });
-    const data = await res.json();
+
+    const rawText = await res.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      console.error("Non-JSON Response:", rawText);
+      throw new Error(`Server returned an invalid response. Check console.`);
+    }
+
     if (!res.ok) throw new Error(data.error || `Error from ${mode} generator.`);
     return data;
   };
@@ -141,6 +168,16 @@ export function StorytellingSetup({
     return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
   };
 
+  const base64ToBlob = (base64: string, mimeType: string) => {
+    const byteCharacters = atob(base64.split(',')[1]);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  };
+
   const generateScriptAndAudio = async (): Promise<string[]> => {
     setIsWritingScript(true);
     let generatedPrompts: string[] = [];
@@ -148,7 +185,8 @@ export function StorytellingSetup({
       const totalDuration = bRollScenes.reduce((sum, scene) => sum + parseInt(scene.duration || "5"), 0);
 
       const directorData = await callN8n('director', {
-        prompt: bRollConcept,
+        clientId: clientId,
+        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into ${bRollScenes.length} scenes. For each scene, you MUST return an "image_prompt" (visuals) AND an "audio_prompt" (the exact spoken English narration script or sound effects for that specific scene).`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         audioEngine: audioEngine,
         totalDuration: totalDuration,
@@ -157,10 +195,9 @@ export function StorytellingSetup({
 
       const scenesData = directorData.scenes || [];
 
-      // Extract new prompts and update UI state
       generatedPrompts = bRollScenes.map((scene, i) => {
         const newVisualPrompt = scenesData[i]?.video_prompt || scenesData[i]?.image_prompt || "";
-        const newAudioPrompt = scenesData[i]?.audio_prompt || `English narration about ${bRollConcept}`; // Fallback to English to prevent Chinese
+        const newAudioPrompt = scenesData[i]?.audio_prompt || scenesData[i]?.narration || scenesData[i]?.script || "";
 
         if (!scene.prompt?.trim()) updateScene(scene.id, "prompt", newVisualPrompt);
         if (!scene.audioPrompt?.trim()) updateScene(scene.id, "audioPrompt", newAudioPrompt);
@@ -168,30 +205,10 @@ export function StorytellingSetup({
         return scene.prompt?.trim() || newVisualPrompt;
       });
 
-      // Master Audio Voiceover
-      if (directorData.audioUrl && clientId) {
-        try {
-          const audioRes = await fetch(directorData.audioUrl);
-          const audioBlob = await audioRes.blob();
-          const localAudioUrl = URL.createObjectURL(audioBlob);
-          setGeneratedAudioUrl(localAudioUrl);
-
-          const audioPath = `audios/${clientId}/ai_voiceover_${Date.now()}.mp3`;
-          await supabase.storage.from("assets").upload(audioPath, audioBlob);
-          const audioPublicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
-
-          await supabase.from("content").insert({
-            client_id: clientId,
-            content_type: "generated_audio",
-            caption: `🎙️ AI Voiceover: ${bRollConcept.substring(0, 30)}...`,
-            status: "success",
-            image_urls: [audioPublicUrl],
-            ai_model: "openai-tts"
-          });
-        } catch (audioErr) {
-          console.error("Failed to save voiceover:", audioErr);
-        }
+      if (directorData.audioUrl) {
+        setGeneratedAudioUrl(directorData.audioUrl);
       }
+
     } catch (err: any) {
       alert(`Script generation failed: ${err.message}`);
       throw err;
@@ -212,7 +229,7 @@ export function StorytellingSetup({
     try {
       const sceneMode = SCENE_MODES.find(m => m.id === bRollScenes[index].mode)?.label || "Cinematic Pan";
       const directorData = await callN8n('director', {
-        prompt: `Write a visual image prompt AND an english audio narration script for Scene ${index + 1} based on this concept: "${bRollConcept}". The camera movement/style is "${sceneMode}".`,
+        prompt: `Write a visual image prompt AND the exact English spoken narration script for Scene ${index + 1} based on this concept: "${bRollConcept}". The camera movement/style is "${sceneMode}".`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         audioEngine: "video_native",
         totalDuration: 5
@@ -225,6 +242,50 @@ export function StorytellingSetup({
       console.error(err);
     } finally {
       setSuggestingPromptIndex(null);
+    }
+  };
+
+  const handleGenerateSceneAudio = async (index: number) => {
+    const scene = bRollScenes[index];
+    if (!scene.audioPrompt?.trim() || !clientId) return alert("Please write an audio script first.");
+
+    updateScene(scene.id, "isGeneratingAudio", true);
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: scene.audioPrompt })
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      const blob = await res.blob();
+      const localUrl = URL.createObjectURL(blob);
+      updateScene(scene.id, "sceneAudioUrl", localUrl);
+
+      const audioPath = `videos/${clientId}/scene_${index + 1}_audio_${Date.now()}.mp3`;
+      const { error: uploadError } = await supabase.storage.from("assets").upload(audioPath, blob);
+      if (uploadError) throw new Error(`Storage Upload Error: ${uploadError.message}`);
+
+      const publicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
+
+      const { error: dbError } = await supabase.from("content").insert({
+        client_id: clientId,
+        content_type: "generated_audio",
+        caption: `🎙️ Scene ${index + 1} Audio`,
+        status: "draft",
+        video_urls: [publicUrl],
+        image_urls: [publicUrl],
+        ai_model: "openai-tts"
+      }).select();
+
+      if (dbError) throw new Error(`Database Insert Error: ${dbError.message}`);
+
+    } catch (err: any) {
+      console.error("Audio generation failed:", err);
+      alert(`Audio generation failed: ${err.message}`);
+    } finally {
+      updateScene(scene.id, "isGeneratingAudio", false);
     }
   };
 
@@ -285,32 +346,139 @@ export function StorytellingSetup({
     setIsGeneratingAllImages(false);
   };
 
-  // ✨ NEW: Sending audioPrompt to the Video Generator 
   const handleGenerateSingleVideo = async (slotIndex: number) => {
     const scene = bRollScenes[slotIndex];
-    if (!scene.primaryPreview) return alert("Please generate or upload a primary image first.");
+    if (!scene.primaryPreview || !clientId) return alert("Please generate or upload a primary image first.");
 
     updateScene(scene.id, "isGeneratingVideo", true);
 
     try {
-      const videoData = await callN8n('scene_video_generator', {
-        primaryImage: scene.primaryPreview,
-        secondaryImage: scene.secondaryPreview,
-        prompt: scene.prompt || bRollConcept,
-        audioPrompt: scene.audioPrompt || "English language narration", // Stops the default Chinese!
+      let finalPrimaryUrl = scene.primaryPreview;
+      let finalSecondaryUrl = scene.secondaryPreview;
+
+      // ✨ THE GENIUS "AUTO-MERGE" WORKFLOW FOR UGC & CLOTHING ✨
+      if ((scene.mode === 'ugc' || scene.mode === 'clothing') && scene.secondaryPreview) {
+        const mergePrompt = scene.mode === 'ugc'
+          ? `A highly realistic, viral TikTok style smartphone photo of an influencer interacting with the product. ${scene.prompt || bRollConcept}`
+          : `A highly realistic fashion editorial photo of a model wearing the clothing. ${scene.prompt || bRollConcept}`;
+
+        // 1. Call Nano-Banana to merge the Product and the Face into one perfect image
+        const mergedImageData = await callN8n('generator', {
+          prompt: mergePrompt,
+          refImage: scene.primaryPreview, // Product
+          styleRefImage: scene.secondaryPreview, // Influencer Face
+        });
+
+        if (mergedImageData.url) {
+          finalPrimaryUrl = mergedImageData.url;
+          finalSecondaryUrl = null; // Wipe out the secondary frame so the Video Engine doesn't try to morph them!
+
+          // Update the UI so the user can actually see the awesome merged image!
+          updateScene(scene.id, "primaryPreview", finalPrimaryUrl);
+          updateScene(scene.id, "secondaryPreview", null);
+        }
+      }
+
+      // 2. Stop Next.js from crashing by uploading huge Base64 strings to Supabase first
+      if (finalPrimaryUrl.startsWith('data:')) {
+        const mimeMatch = finalPrimaryUrl.match(/data:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+        const blob = base64ToBlob(finalPrimaryUrl, mime);
+        const path = `videos/${clientId}/scene_frame_1_${Date.now()}.png`;
+        await supabase.storage.from("assets").upload(path, blob);
+        finalPrimaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      }
+
+      if (finalSecondaryUrl && finalSecondaryUrl.startsWith('data:')) {
+        const mimeMatch = finalSecondaryUrl.match(/data:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+        const blob = base64ToBlob(finalSecondaryUrl, mime);
+        const path = `videos/${clientId}/scene_frame_2_${Date.now()}.png`;
+        await supabase.storage.from("assets").upload(path, blob);
+        finalSecondaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      }
+
+      // 3. Create Placeholder Row (Must be status: "draft")
+      const { data: insertData, error: insertError } = await supabase
+        .from('content')
+        .insert({
+          client_id: clientId,
+          content_type: "sequence_clip",
+          caption: `🎬 Scene ${slotIndex + 1} Video`,
+          status: "draft",
+          ai_model: "video_native"
+        })
+        .select('id')
+        .single();
+
+      if (insertError || !insertData) {
+        console.error("Supabase Insert Error details:", insertError);
+        throw new Error(`Database Error: Failed to create placeholder row. ${insertError?.message || ''}`);
+      }
+      const postId = insertData.id;
+
+      // 4. Trigger n8n with post_id and the safe, lightweight Supabase URLs!
+      await callN8n('scene_video_generator', {
+        post_id: postId,
+        client_id: clientId,
+        primary_image_url: finalPrimaryUrl,
+        secondary_image_url: finalSecondaryUrl,
+        user_prompt: scene.prompt || bRollConcept,
         duration: scene.duration,
-        mode: scene.mode,
-        style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
+        video_mode: scene.mode,
       });
 
-      if (videoData.url) {
-        updateScene(scene.id, "videoUrl", videoData.url);
-      } else {
-        throw new Error("No video URL returned");
+      // 5. Radar Polling
+      let attempts = 0;
+      const maxAttempts = 180; // 15 minutes max
+      let foundVideoUrl = null;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        attempts++;
+
+        const { data, error } = await supabase
+          .from('content')
+          .select('*')
+          .eq('id', postId)
+          .single();
+
+        if (data) {
+          if (data.status === 'failed') {
+            throw new Error("n8n Video Engine reported a failure. Check your n8n logs.");
+          }
+
+          let urls = [];
+          if (Array.isArray(data.video_urls) && data.video_urls.length > 0) urls = data.video_urls;
+          else if (typeof data.video_urls === 'string') {
+            try { urls = JSON.parse(data.video_urls); } catch (e) { urls = [data.video_urls]; }
+          }
+
+          if (urls.length === 0) {
+            if (Array.isArray(data.image_urls)) urls = data.image_urls;
+            else if (typeof data.image_urls === 'string') {
+              try { urls = JSON.parse(data.image_urls); } catch (e) { urls = [data.image_urls]; }
+            }
+          }
+
+          const mp4Url = urls.find((u: string) => typeof u === 'string' && u.includes('.mp4'));
+
+          if (mp4Url) {
+            foundVideoUrl = mp4Url;
+            break;
+          }
+        }
       }
+
+      if (foundVideoUrl) {
+        updateScene(scene.id, "videoUrl", foundVideoUrl);
+      } else {
+        throw new Error("Video generation timed out after 15 minutes.");
+      }
+
     } catch (err: any) {
       console.error(`Failed to generate video for scene ${slotIndex + 1}:`, err);
-      alert(`Failed to generate video: ${err.message}`);
+      alert(`Failed to retrieve video: ${err.message}`);
     } finally {
       updateScene(scene.id, "isGeneratingVideo", false);
     }
@@ -535,32 +703,61 @@ export function StorytellingSetup({
                         )}
                       </div>
 
-                      {/* ✨ THE BIG SWITCH: Prompts vs Video Player vs Loader ✨ */}
-                      <div className="flex-1 min-h-[140px] relative rounded-md overflow-hidden border border-gray-200 bg-gray-50 flex flex-col">
+                      <div className="flex-1 min-h-[220px] rounded-md overflow-hidden border border-gray-200 bg-gray-50 flex flex-col">
                         {scene.isGeneratingVideo ? (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-green-50/80 gap-2 z-20">
+                          <div className="flex-1 flex flex-col items-center justify-center bg-green-50/80 gap-2 p-4">
                             <Loader2 className="h-8 w-8 text-green-600 animate-spin" />
                             <span className="text-xs font-bold text-green-700 uppercase tracking-wider animate-pulse">Rendering Video...</span>
+                            <span className="text-[10px] text-green-800 text-center px-4">Polling Supabase for the finished file...</span>
                           </div>
                         ) : scene.videoUrl ? (
-                          <video src={scene.videoUrl} controls className="w-full h-full object-cover absolute inset-0 bg-black" playsInline />
+                          <video src={scene.videoUrl} controls className="w-full h-full object-cover bg-black" playsInline />
                         ) : (
-                          <div className="flex flex-col h-full absolute inset-0">
-                            {/* Visual Prompt */}
+                          <div className="flex flex-col flex-1 h-full">
+                            {/* ✨ DYNAMIC PLACEHOLDERS BASED ON MODE ✨ */}
                             <Textarea
                               value={scene.prompt}
                               onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}
-                              className="flex-1 w-full text-xs p-3 resize-none bg-white border-b border-gray-200 focus-visible:ring-0 leading-snug custom-scrollbar rounded-none"
-                              placeholder="Visual prompt: Describe the camera movement and aesthetics..."
+                              className="flex-1 w-full text-xs p-3 resize-none bg-white border-b border-gray-200 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[80px]"
+                              placeholder={
+                                scene.mode === 'ugc'
+                                  ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
+                                  : "Visual prompt: Describe the camera movement and aesthetics..."
+                              }
                             />
-                            {/* ✨ Audio/Narration Prompt ✨ */}
                             <Textarea
                               value={scene.audioPrompt || ""}
                               onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
-                              className="flex-1 w-full text-xs p-3 resize-none bg-blue-50/30 border-none focus-visible:ring-0 leading-snug custom-scrollbar rounded-none"
-                              placeholder="Audio prompt: Enter the english narration or sound effects..."
+                              className="flex-1 w-full text-xs p-3 resize-none bg-blue-50/20 border-b border-blue-100 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[80px]"
+                              placeholder={
+                                scene.mode === 'ugc'
+                                  ? "TikTok Hook: Enter the pain point or viral hook (e.g., 'Stop scrolling! If you hate a messy room...')"
+                                  : "Audio prompt: Enter the english narration or sound effects..."
+                              }
                             />
-                            <div className="p-2 border-t border-gray-200 bg-gray-100 flex justify-between items-center shrink-0">
+
+                            {/* AUDIO GENERATION TOOLBAR */}
+                            <div className="p-2 border-b border-blue-100 bg-blue-50 flex justify-between items-center shrink-0">
+                              {scene.sceneAudioUrl ? (
+                                <audio controls src={scene.sceneAudioUrl} className="h-7 w-full max-w-[180px]" />
+                              ) : (
+                                <span className="text-[9px] font-medium text-blue-500 uppercase tracking-wider">
+                                  {scene.audioPrompt ? "Ready for TTS" : "Requires script"}
+                                </span>
+                              )}
+                              <Button
+                                size="sm"
+                                onClick={() => handleGenerateSceneAudio(index)}
+                                disabled={!scene.audioPrompt || scene.isGeneratingAudio}
+                                className={cn("h-7 text-[10px] font-bold px-3 transition-colors", scene.audioPrompt ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm" : "bg-blue-200 text-blue-400")}
+                              >
+                                {scene.isGeneratingAudio ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <Mic className="w-3 h-3 mr-1.5" />}
+                                {scene.sceneAudioUrl ? "Regenerate Audio" : "Generate Audio"}
+                              </Button>
+                            </div>
+
+                            {/* VIDEO GENERATION TOOLBAR */}
+                            <div className="p-2 bg-gray-100 flex justify-between items-center shrink-0">
                               <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wider">
                                 {scene.primaryPreview ? "Ready for animation" : "Requires an image"}
                               </span>
