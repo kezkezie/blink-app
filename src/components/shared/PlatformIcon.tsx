@@ -42,6 +42,11 @@ const platformMeta: Record<Platform, { label: string; color: string; icon: strin
         color: 'text-green-700 bg-green-50',
         icon: '🛍️',
     },
+    threads: {
+        label: 'Threads',
+        color: 'text-gray-900 bg-gray-100',
+        icon: '🧵',
+    },
 }
 
 interface PlatformIconProps {
