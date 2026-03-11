@@ -15,14 +15,9 @@ import {
   Calendar as CalendarIcon,
   Upload,
   X,
-  Eye,
-  Zap,
   ZoomIn,
   Trash2,
-  Layers,
-  ImagePlus,
-  Palette,
-  Video,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +43,6 @@ import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow } from "@/lib/workflows";
 import type { Content, ContentStatus } from "@/types/database";
-import { cn } from "@/lib/utils";
 
 const parseArray = (data: any): any[] => {
   if (Array.isArray(data)) return data;
@@ -106,8 +100,7 @@ export default function ContentDetailPage({
   const [refPreviews, setRefPreviews] = useState<string[]>([]);
   const [useCurrentImageAsRef, setUseCurrentImageAsRef] = useState(false);
 
-  const [generationMode, setGenerationMode] =
-    useState<GenerationMode>("generate");
+  const [generationMode, setGenerationMode] = useState<GenerationMode>("generate");
   const [customPrompt, setCustomPrompt] = useState("");
   const [selectedStyle, setSelectedStyle] = useState("realistic");
   const refInputRef = useRef<HTMLInputElement>(null);
@@ -142,55 +135,6 @@ export default function ContentDetailPage({
     }
     fetchData();
   }, [id, clientId]);
-
-  const pollForImageUpdate = async (
-    contentId: string,
-    originalImgUrl: string | undefined
-  ) => {
-    setGeneratingImage(true);
-    let attempts = 0;
-    let found = false;
-    while (attempts < 60 && !found) {
-      const { data } = await supabase
-        .from("content")
-        .select("*")
-        .eq("id", contentId)
-        .single();
-      if (data) {
-        const newImg = parseArray((data as unknown as Content).image_urls)[0];
-        if (newImg && newImg !== originalImgUrl) {
-          setContent(data as unknown as Content);
-          found = true;
-          break;
-        }
-      }
-      attempts++;
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-    if (!found) {
-      const { data } = await supabase
-        .from("content")
-        .select("*")
-        .eq("id", contentId)
-        .single();
-      if (data) setContent(data as unknown as Content);
-    }
-    setGeneratingImage(false);
-    localStorage.removeItem(`regenerating_img_${contentId}`);
-  };
-
-  useEffect(() => {
-    if (!content || generatingImage) return;
-    const checkRecovery = async () => {
-      const timestamp = localStorage.getItem(`regenerating_img_${content.id}`);
-      if (timestamp && Date.now() - parseInt(timestamp) < 5 * 60 * 1000) {
-        pollForImageUpdate(content.id, parseArray(content.image_urls)[0]);
-      } else {
-        localStorage.removeItem(`regenerating_img_${content.id}`);
-      }
-    };
-    checkRecovery();
-  }, [content?.id]);
 
   async function handleSave() {
     if (!content) return;
@@ -365,9 +309,7 @@ export default function ContentDetailPage({
     const usedSlots = refFiles.length + (useCurrentImageAsRef ? 1 : 0);
     const remainingSlots = maxFiles - usedSlots;
     if (remainingSlots <= 0)
-      return alert(
-        `Maximum ${maxFiles} reference images allowed for this mode.`
-      );
+      return alert(`Maximum ${maxFiles} reference images allowed for this mode.`);
 
     let validFiles = newFiles.filter((f) => f.size <= 30 * 1024 * 1024);
     if (validFiles.length < newFiles.length)
@@ -389,72 +331,97 @@ export default function ContentDetailPage({
     setRefPreviews((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // ✨ COMPLETELY REBUILT GENERATION LOGIC ✨
   async function handleGenerateImage() {
     if (!content) return;
-    setGeneratingImage(true);
+
+    // Close modal immediately and show loading overlay
     setImageModalOpen(false);
-    const finalTopic =
-      customPrompt.trim() || captionShort || caption?.substring(0, 60) || "";
+    setGeneratingImage(true);
+
+    const finalTopic = customPrompt.trim() || captionShort || caption?.substring(0, 60) || "";
     const displayImage = parseArray(content.image_urls)[0];
+
     try {
+      // 1. Save the new prompt text to the DB
       await supabase
         .from("content")
         .update({ image_prompt_used: finalTopic })
         .eq("id", content.id);
-      setContent((prev) =>
-        prev ? { ...prev, image_prompt_used: finalTopic } : null
-      );
 
+      // 2. Upload any newly dragged reference images to Supabase Storage
       let uploadedUrls: string[] = [];
       for (const file of refFiles) {
-        const filePath = `references/${clientId}/${Date.now()}_${Math.random()
-          .toString(36)
-          .substring(7)}.${file.name.split(".").pop()}`;
-        const { error } = await supabase.storage
-          .from("assets")
-          .upload(filePath, file);
-        if (!error)
-          uploadedUrls.push(
-            supabase.storage.from("assets").getPublicUrl(filePath).data
-              .publicUrl
-          );
+        const ext = file.name.split(".").pop() || "png";
+        const filePath = `references/${clientId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+        const { error } = await supabase.storage.from("assets").upload(filePath, file);
+        if (!error) {
+          uploadedUrls.push(supabase.storage.from("assets").getPublicUrl(filePath).data.publicUrl);
+        }
       }
 
-      let primaryBaseImage = null;
-      if (useCurrentImageAsRef && displayImage) primaryBaseImage = displayImage;
-      else if (!useCurrentImageAsRef && uploadedUrls.length > 0)
-        primaryBaseImage = uploadedUrls[0];
-      else primaryBaseImage = displayImage || null;
+      // 3. Auto-inject the current image if needed
+      // If we are editing or styling, we absolutely need the current image as a reference
+      if ((useCurrentImageAsRef || generationMode === 'edit') && displayImage) {
+        // Prevent duplicate URLs in the array
+        if (!uploadedUrls.includes(displayImage)) {
+          uploadedUrls.unshift(displayImage);
+        }
+      }
 
-      if (useCurrentImageAsRef && displayImage)
-        uploadedUrls.unshift(displayImage);
-
-      await triggerWorkflow("blink-generate-images", {
+      // 4. Trigger the n8n webhook SYNCHRONOUSLY
+      const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId!,
         post_id: content.id,
         topic: finalTopic,
         content_type: content.content_type,
         mode: generationMode,
-        reference_image_url: primaryBaseImage,
         reference_image_urls: uploadedUrls,
         logo_url: brandLogo || null,
-        style: generationMode === "style_transfer" ? selectedStyle : null,
+        style: (generationMode === "style_transfer" || generationMode === "generate") ? selectedStyle : null,
+        is_sync: true // ✨ Wait for the response!
       });
 
+      // 5. Parse the returned URLs
+      let newUrls: string[] = [];
+      if (response && Array.isArray(response.imageUrls)) {
+        newUrls = response.imageUrls as string[];
+      } else if (response && response.imageUrls) {
+        newUrls = response.imageUrls as string[];
+      }
+
+      if (newUrls.length === 0) throw new Error("No images were returned by the AI generator.");
+
+      // 6. Instantly update the database with the final generated image
+      const { data: updatedContent, error: updateError } = await supabase
+        .from("content")
+        .update({
+          image_urls: newUrls,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", content.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      // 7. Instantly update the UI
+      if (updatedContent) {
+        setContent(updatedContent as unknown as Content);
+      }
+
+      // Reset Modal states
       setRefFiles([]);
       setRefPreviews([]);
       setCustomPrompt("");
       setUseCurrentImageAsRef(false);
       setGenerationMode("generate");
-      localStorage.setItem(
-        `regenerating_img_${content.id}`,
-        Date.now().toString()
-      );
-      pollForImageUpdate(content.id, displayImage);
-    } catch (err) {
+
+    } catch (err: any) {
       console.error(err);
+      alert(`Generation failed: ${err.message || "Unknown error"}`);
+    } finally {
       setGeneratingImage(false);
-      localStorage.removeItem(`regenerating_img_${content.id}`);
     }
   }
 
@@ -463,6 +430,7 @@ export default function ContentDetailPage({
     setRefPreviews([]);
     setCustomPrompt("");
     setUseCurrentImageAsRef(false);
+    // If they already have an image, default to Edit mode, otherwise default to Generate
     setGenerationMode(parseArray(content?.image_urls)[0] ? "edit" : "generate");
     setImageModalOpen(true);
   }
@@ -488,19 +456,15 @@ export default function ContentDetailPage({
     );
 
   const displayImage = parseArray(content.image_urls)[0];
-  const referenceImageUrl = (content as unknown as Record<string, unknown>)
-    .reference_image_url as string | null;
 
   const isVideo =
     displayImage &&
     (displayImage.toLowerCase().includes(".mp4") ||
       displayImage.toLowerCase().includes(".mov") ||
       displayImage.toLowerCase().includes(".webm"));
-  const isGenerationDisabled =
-    generatingImage ||
-    ((generationMode === "style_transfer" || generationMode === "layers") &&
-      refFiles.length === 0 &&
-      !useCurrentImageAsRef);
+
+  // Disable if they chose edit/style transfer but provided absolutely no reference material
+  const isGenerationDisabled = generatingImage || ((generationMode === "style_transfer" || generationMode === "layers") && refFiles.length === 0 && !useCurrentImageAsRef && !displayImage);
 
   return (
     <div className="space-y-5">

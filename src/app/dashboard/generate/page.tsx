@@ -1,1331 +1,632 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import Link from "next/link";
-import {
-  Brain,
-  PenTool,
-  Palette,
-  CheckCircle,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
-  ArrowRight,
-  ArrowLeft,
-  Send,
-  Upload,
-  X,
-  ImageIcon,
-  Wand2,
-  Sparkles,
-  Layers,
-  Eye,
-  Plus,
-} from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useDropzone } from "react-dropzone";
+import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Palette, Layers, Download, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { ContentCard } from "@/components/content/ContentCard";
+import { Slider } from "@/components/ui/slider";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { triggerWorkflow, triggerWorkflowWithFile } from "@/lib/workflows";
-import type { Content, Platform } from "@/types/database";
+import { supabase } from "@/lib/supabase";
+import { triggerWorkflow } from "@/lib/workflows";
 
-const ALL_PLATFORMS: { label: string; value: Platform; icon: string }[] = [
-  { label: "Instagram", value: "instagram", icon: "📸" },
-  { label: "TikTok", value: "tiktok", icon: "🎵" },
-  { label: "Facebook", value: "facebook", icon: "📘" },
-  { label: "Twitter / X", value: "twitter", icon: "🐦" },
-  { label: "LinkedIn", value: "linkedin", icon: "💼" },
-  { label: "YouTube", value: "youtube", icon: "▶️" },
-  { label: "Pinterest", value: "pinterest", icon: "📌" },
-  { label: "Threads", value: "threads", icon: "🔗" },
+// --- Configuration ---
+const IMAGE_MODES = [
+  { id: "standard", title: "Standard Generation", icon: ImageIcon, desc: "Generate stunning AI photos from scratch or enhance a reference image.", requiresUpload: false, maxUploads: 1 },
+  { id: "product_drop", title: "Product Drop", icon: Box, desc: "Upload a transparent product PNG and AI will blend it into a beautiful scene.", requiresUpload: true, maxUploads: 1 },
+  { id: "organic_blend", title: "Organic Composition", icon: Layers, desc: "Upload 2 to 8 items. AI will arrange them naturally into a realistic, cohesive scene.", requiresUpload: true, maxUploads: 8 },
+  { id: "grid", title: "Campaign Grid", icon: LayoutGrid, desc: "Upload 2 to 8 images and let AI arrange them into an aesthetic moodboard.", requiresUpload: true, maxUploads: 8 }
 ];
 
-type StepStatus = "idle" | "running" | "done" | "error";
+// ✨ Universal Marketing Styles
+const MARKETING_STYLES = [
+  { id: "studio", label: "📸 Studio Product Shoot", promptAddon: "Professional studio lighting, clean infinite background, high-end commercial product photography, 8k resolution, highly detailed." },
+  { id: "lifestyle", label: "🌿 Lifestyle Photography", promptAddon: "Candid lifestyle photography, natural sunlight, authentic, relatable, shot on 35mm lens, depth of field." },
+  { id: "cinematic", label: "🎬 Cinematic", promptAddon: "Cinematic lighting, dramatic shadows, anamorphic lens, movie still, highly detailed, moody aesthetic." },
+  { id: "poster", label: "📝 Poster / Ad Design", promptAddon: "Graphic design poster style, bold typography layout space, vibrant colors, professional advertising campaign aesthetic." },
+  { id: "brand", label: "✨ Brand Integrated (Logo)", promptAddon: "Professional aesthetic integrating brand identity. The brand logo or motif is naturally placed in the environment as a decal, sign, or texture." },
+  { id: "abstract", label: "🎨 Abstract / 3D Render", promptAddon: "Abstract 3D render, Cinema4D, Octane render, smooth glossy textures, soft geometric shapes, visually striking." },
+  { id: "flatlay", label: "📐 Flatlay / Top-Down", promptAddon: "Top-down flatlay perspective, neatly organized items, aesthetic grid arrangement, soft diffused lighting." }
+];
 
-interface PipelineStep {
+interface GeneratedResult {
   id: string;
-  icon: React.ElementType;
-  label: string;
-  status: StepStatus;
-  detail?: string;
-  error?: string;
+  url: string;
+  prompt: string;
+  mode: string;
 }
 
-const parseArray = (data: any): any[] => {
-  if (Array.isArray(data)) return data;
-  if (typeof data === "string") {
-    try {
-      return JSON.parse(data);
-    } catch {
-      return [];
-    }
-  }
-  return [];
-};
+export default function ImageStudioPage() {
+  const { clientId } = useClient();
 
-export default function GeneratePage() {
-  const { clientId, loading: clientLoading } = useClient();
-  const [wizardStep, setWizardStep] = useState(1);
+  // --- State: Core ---
+  const [selectedMode, setSelectedMode] = useState("standard");
+  const [selectedStyle, setSelectedStyle] = useState("studio");
+  const [prompt, setPrompt] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [strictBrandAlignment, setStrictBrandAlignment] = useState(true);
+  const [numImages, setNumImages] = useState(1);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedResults, setGeneratedResults] = useState<GeneratedResult[]>([]);
 
-  // Step 1 form state
-  const [postCount, setPostCount] = useState(7);
-  const [platforms, setPlatforms] = useState<Platform[]>([]);
-  const [visiblePlatformValues, setVisiblePlatformValues] = useState<
-    Platform[]
-  >(["instagram", "tiktok", "facebook", "twitter"]);
-  const [isPlatformModalOpen, setIsPlatformModalOpen] = useState(false);
-  const [topics, setTopics] = useState("");
-  const [imageMode, setImageMode] = useState<"auto" | "individual">("auto");
+  // --- State: Brand Context ---
+  const [brandContext, setBrandContext] = useState<any>(null);
 
-  // Step 2 — Visual Context
-  const [referenceFile, setReferenceFile] = useState<File | null>(null);
-  const [referencePreview, setReferencePreview] = useState<string | null>(null);
-  const [enhanceMode, setEnhanceMode] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // --- State: Modals & Refinement ---
+  const [selectedResult, setSelectedResult] = useState<GeneratedResult | null>(null);
+  const [refinementTab, setRefinementTab] = useState<"fresh" | "retouch">("fresh");
+  const [modalPrompt, setModalPrompt] = useState("");
+  const [retouchPrompt, setRetouchPrompt] = useState(""); // ✨ New state for magic retouch instructions
+  const [isRefining, setIsRefining] = useState(false); // ✨ Loading state for modal buttons
 
-  // Step 3 pipeline state
-  const [pipeline, setPipeline] = useState<PipelineStep[]>([
-    {
-      id: "strategy",
-      icon: Brain,
-      label: "Planning content strategy...",
-      status: "idle",
-    },
-    {
-      id: "captions",
-      icon: PenTool,
-      label: "Writing captions...",
-      status: "idle",
-    },
-    {
-      id: "images",
-      icon: Palette,
-      label: "Generating images...",
-      status: "idle",
-    },
-    { id: "done", icon: CheckCircle, label: "Done!", status: "idle" },
-  ]);
+  const activeConfig = IMAGE_MODES.find(m => m.id === selectedMode)!;
 
-  // Step 4 state
-  const [generatedContent, setGeneratedContent] = useState<Content[]>([]);
-  const [sendingAll, setSendingAll] = useState(false);
-  const [regeneratingCaption, setRegeneratingCaption] = useState<string | null>(
-    null
-  );
-  const [regeneratingImage, setRegeneratingImage] = useState<string | null>(
-    null
-  );
-
-  // Image generation modal
-  const [imageModalOpen, setImageModalOpen] = useState(false);
-  const [imageModalTarget, setImageModalTarget] = useState<Content | null>(
-    null
-  );
-  const [modalEnhanceMode, setModalEnhanceMode] = useState(false);
-  const [modalRefFile, setModalRefFile] = useState<File | null>(null);
-  const [modalRefPreview, setModalRefPreview] = useState<string | null>(null);
-  const [modalGenerating, setModalGenerating] = useState(false);
-  const modalRefInputRef = useRef<HTMLInputElement>(null);
-
-  const [clientDescription, setClientDescription] = useState<string | null>(
-    null
-  );
-  const [brandVoice, setBrandVoice] = useState<string | null>(null);
-  const [brandImageStyle, setBrandImageStyle] = useState<string | null>(null);
-  const [clientIndustry, setClientIndustry] = useState<string | null>(null);
-
+  // --- Load Brand Context on Mount ---
   useEffect(() => {
     if (!clientId) return;
-
-    async function loadClientContext() {
-      const [clientRes, brandRes, socialRes] = await Promise.all([
-        supabase
-          .from("clients")
-          .select(
-            "company_name, industry, website_url, onboarding_notes, social_links"
-          )
-          .eq("id", clientId)
-          .single(),
-        supabase
-          .from("brand_profiles")
-          .select("brand_voice, tone_keywords, image_style, dos, donts")
-          .eq("client_id", clientId)
-          .eq("is_active", true)
-          .maybeSingle(),
-        supabase
-          .from("social_accounts")
-          .select("platform")
-          .eq("client_id", clientId)
-          .eq("is_active", true),
+    async function loadContext() {
+      const [clientRes, brandRes] = await Promise.all([
+        supabase.from("clients").select("company_name, industry").eq("id", clientId).single(),
+        supabase.from("brand_profiles").select("image_style, brand_voice, logo_url").eq("client_id", clientId).eq("is_active", true).maybeSingle(),
       ]);
 
-      if (clientRes.data) {
-        const c = clientRes.data as Record<string, unknown>;
-        setClientIndustry((c.industry as string) || null);
-        if (c.onboarding_notes) {
-          try {
-            const notesStr = c.onboarding_notes as string;
-            const parsedNotes = JSON.parse(notesStr);
-            setClientDescription(parsedNotes.description || null);
-          } catch (e) {
-            setClientDescription(c.onboarding_notes as string);
-          }
-        }
-      }
-      if (brandRes.data) {
-        const b = brandRes.data as Record<string, unknown>;
-        setBrandVoice((b.brand_voice as string) || null);
-        // ✨ EXTRACTING BRAND STYLE FOR IMAGE GENERATION
-        setBrandImageStyle((b.image_style as string) || null);
-      }
-      if (socialRes.data) {
-        const activePlatforms = socialRes.data.map(
-          (s) => s.platform as Platform
-        );
-        setPlatforms(activePlatforms);
-        setVisiblePlatformValues((prev) => {
-          const newSet = new Set([...prev, ...activePlatforms]);
-          return Array.from(newSet);
-        });
-      }
+      setBrandContext({
+        name: clientRes.data?.company_name,
+        industry: clientRes.data?.industry,
+        imageStyle: brandRes.data?.image_style,
+        brandVoice: brandRes.data?.brand_voice,
+        logoUrl: brandRes.data?.logo_url,
+      });
     }
-    loadClientContext();
+    loadContext();
   }, [clientId]);
 
-  const togglePlatform = (p: Platform) => {
-    setPlatforms((prev) =>
-      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
-    );
+
+  // --- AI Prompt Helper ---
+  const [isHelpLoading, setIsHelpLoading] = useState(false);
+
+  const handlePromptHelp = async () => {
+    if (isHelpLoading) return;
+    setIsHelpLoading(true);
+
+    try {
+      const activeStyleObj = MARKETING_STYLES.find(s => s.id === selectedStyle);
+
+      const res = await fetch("/api/ai/prompt-helper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt,
+          brandContext: brandContext,
+          useBrand: strictBrandAlignment,
+          mode: selectedMode,
+          style: activeStyleObj
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || "Failed to fetch suggestion");
+
+      if (data.suggestion) {
+        setPrompt(data.suggestion);
+      }
+    } catch (err: any) {
+      alert(`Prompt helper failed: ${err.message}`);
+    } finally {
+      setIsHelpLoading(false);
+    }
   };
 
-  const updateStep = useCallback(
-    (id: string, update: Partial<PipelineStep>) => {
-      setPipeline((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, ...update } : s))
-      );
-    },
-    []
-  );
 
-  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // --- Drag & Drop Logic ---
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const remainingSlots = activeConfig.maxUploads - files.length;
+    const allowedFiles = acceptedFiles.slice(0, remainingSlots);
 
-  function handleFileSelect(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    setReferenceFile(file);
-    const reader = new FileReader();
-    reader.onload = (e) => setReferencePreview(e.target?.result as string);
-    reader.readAsDataURL(file);
-  }
+    allowedFiles.forEach(file => {
+      if (selectedMode === 'product_drop' && file.type !== 'image/png') {
+        alert("For Product Drop, please upload PNG files for best transparency results.");
+      }
+      setFiles(prev => [...prev, file]);
+      const reader = new FileReader();
+      reader.onload = (ev) => setPreviews(prev => [...prev, ev.target?.result as string]);
+      reader.readAsDataURL(file);
+    });
+  }, [files.length, activeConfig.maxUploads, selectedMode]);
 
-  function handleFileDrop(e: React.DragEvent) {
-    e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFileSelect(file);
-  }
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'image/png': [], 'image/jpeg': [], 'image/webp': [] },
+    disabled: files.length >= activeConfig.maxUploads,
+    multiple: activeConfig.maxUploads > 1
+  });
 
-  function clearFile() {
-    setReferenceFile(null);
-    setReferencePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+    setPreviews(prev => prev.filter((_, i) => i !== index));
+  };
 
-  function handleModalFileSelect(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    setModalRefFile(file);
-    const reader = new FileReader();
-    reader.onload = (e) => setModalRefPreview(e.target?.result as string);
-    reader.readAsDataURL(file);
-  }
+  // --- Main Generation Logic ---
+  const handleGenerate = async () => {
+    if (!clientId) return alert("Session lost. Please refresh.");
+    if (activeConfig.requiresUpload && files.length === 0) return alert("Please upload the required images.");
+    if ((selectedMode === "grid" || selectedMode === "organic_blend") && files.length < 2) return alert("This mode requires at least 2 images.");
 
-  function clearModalFile() {
-    setModalRefFile(null);
-    setModalRefPreview(null);
-    if (modalRefInputRef.current) modalRefInputRef.current.value = "";
-  }
-
-  async function startGeneration() {
-    setWizardStep(3);
-    const isIndividual = imageMode === "individual";
-
-    localStorage.setItem("regenerating_img_batch", Date.now().toString());
-
-    const pipelineSteps: PipelineStep[] = [
-      {
-        id: "strategy",
-        icon: Brain,
-        label: "Planning content strategy...",
-        status: "idle",
-      },
-      {
-        id: "captions",
-        icon: PenTool,
-        label: "Writing captions...",
-        status: "idle",
-      },
-      ...(isIndividual
-        ? []
-        : [
-          {
-            id: "images",
-            icon: Palette,
-            label: "Generating images...",
-            status: "idle" as StepStatus,
-          },
-        ]),
-      {
-        id: "done",
-        icon: CheckCircle,
-        label: "Done!",
-        status: "idle" as StepStatus,
-      },
-    ];
-    setPipeline(pipelineSteps);
+    setIsGenerating(true);
 
     try {
-      updateStep("strategy", { status: "running" });
-      await triggerWorkflow("blink-generate-strategy", {
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const ext = file.name.split(".").pop() || "png";
+        const path = `images/${clientId}/studio_ref_${Date.now()}_${i}.${ext}`;
+        await supabase.storage.from("assets").upload(path, file);
+        const url = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+        uploadedUrls.push(url);
+      }
+
+      const activeStyleObj = MARKETING_STYLES.find(s => s.id === selectedStyle);
+      // ✨ FIX: This is the full prompt that actually goes to the AI
+      const finalPrompt = `${prompt}. ${activeStyleObj?.promptAddon || ""}`;
+
+      const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId,
-        post_count: postCount,
-        platforms,
-        topics: topics || undefined,
+        mode: selectedMode,
+        prompt: finalPrompt,
+        reference_image_urls: uploadedUrls,
+        strict_brand_alignment: strictBrandAlignment,
+        numImages: selectedMode === "standard" ? numImages : 1,
+        style: selectedStyle,
+        logo_url: strictBrandAlignment ? brandContext?.logoUrl : undefined,
+        is_sync: true
       });
-      updateStep("strategy", { status: "done" });
 
-      updateStep("captions", { status: "running" });
-      await triggerWorkflow("blink-write-captions", {
-        client_id: clientId,
-        post_count: postCount,
-        platforms,
-      });
-      updateStep("captions", { status: "done" });
+      let newUrls: string[] = [];
+      if (response && Array.isArray(response.imageUrls)) {
+        newUrls = response.imageUrls as string[];
+      } else if (response && response.imageUrls) {
+        newUrls = response.imageUrls as string[];
+      }
 
-      let contentItems: Content[] = [];
-      let fetchAttempts = 0;
+      if (newUrls.length === 0) throw new Error("No images were returned from the generator.");
 
-      while (fetchAttempts < 15) {
-        const { data: newContent } = await supabase
+      const newResults: GeneratedResult[] = [];
+      for (const url of newUrls) {
+        const { data: contentRecord, error } = await supabase
           .from("content")
-          .select("*")
-          .eq("client_id", clientId!)
-          .order("created_at", { ascending: false })
-          .limit(postCount);
-
-        if (newContent && newContent.length > 0) {
-          contentItems = newContent as unknown as Content[];
-          break;
-        }
-
-        fetchAttempts++;
-        await delay(2000);
-      }
-
-      if (contentItems.length === 0) {
-        throw new Error(
-          "Timed out waiting for captions to save to the database."
-        );
-      }
-
-      if (!isIndividual) {
-        const imageLabel = enhanceMode
-          ? "🎨 AI is enhancing your photo..."
-          : "✨ AI is painting from your prompt...";
-
-        for (let i = 0; i < contentItems.length; i++) {
-          updateStep("images", {
-            status: "running",
-            label: imageLabel,
-            detail: `Queueing image ${i + 1} of ${contentItems.length}...`,
-          });
-          const kieModel = enhanceMode
-            ? "google/nano-banana-edit"
-            : "google/nano-banana";
-
-          try {
-            if (referenceFile && enhanceMode) {
-              await triggerWorkflowWithFile(
-                "blink-generate-images",
-                {
-                  client_id: clientId!,
-                  post_id: contentItems[i].id,
-                  topic:
-                    contentItems[i].caption_short ||
-                    contentItems[i].caption?.substring(0, 60) ||
-                    "",
-                  content_type: contentItems[i].content_type,
-                  mode: "enhance",
-                  kie_model: kieModel,
-                  style: brandImageStyle ?? "", // ✨ INJECTING BRAND STYLE
-                },
-                referenceFile
-              );
-            } else {
-              await triggerWorkflow("blink-generate-images", {
-                client_id: clientId,
-                post_id: contentItems[i].id,
-                topic:
-                  contentItems[i].caption_short ||
-                  contentItems[i].caption?.substring(0, 60) ||
-                  "",
-                content_type: contentItems[i].content_type,
-                mode: "generate",
-                kie_model: kieModel,
-                style: brandImageStyle ?? "", // ✨ INJECTING BRAND STYLE
-              });
-            }
-          } catch (imgErr) {
-            console.error(`Image ${i + 1} generation error:`, imgErr);
-          }
-          if (i < contentItems.length - 1) await delay(3500);
-        }
-
-        let pollAttempts = 0;
-        const maxPollAttempts = 60;
-        let finalItems: Content[] = [];
-
-        while (pollAttempts < maxPollAttempts) {
-          const { data: polledContent } = await supabase
-            .from("content")
-            .select("*")
-            .eq("client_id", clientId!)
-            .order("created_at", { ascending: false })
-            .limit(postCount);
-
-          finalItems = (polledContent || []) as unknown as Content[];
-
-          const completedImagesCount = finalItems.filter(
-            (c) => parseArray(c.image_urls).length > 0
-          ).length;
-
-          updateStep("images", {
-            status: "running",
-            detail: `AI has finished ${completedImagesCount} of ${contentItems.length} images...`,
-          });
-
-          if (
-            completedImagesCount === contentItems.length &&
-            finalItems.length > 0
-          ) {
-            break;
-          }
-
-          pollAttempts++;
-          if (pollAttempts < maxPollAttempts) await delay(5000);
-        }
-
-        updateStep("images", {
-          status: "done",
-          detail: undefined,
-          label: "Images generated",
-        });
-
-        setGeneratedContent(finalItems);
-      } else {
-        setGeneratedContent(contentItems);
-      }
-
-      updateStep("done", { status: "done" });
-      await delay(1500);
-      setWizardStep(4);
-    } catch (err: unknown) {
-      const currentRunning = pipeline.find((s) => s.status === "running");
-      if (currentRunning) {
-        updateStep(currentRunning.id, {
-          status: "error",
-          error: err instanceof Error ? err.message : "An error occurred",
-        });
-      }
-    } finally {
-      localStorage.removeItem("regenerating_img_batch");
-    }
-  }
-
-  async function handleRegenerateCaption(item: Content) {
-    setRegeneratingCaption(item.id);
-    localStorage.setItem(
-      `regenerating_img_cap_${item.id}`,
-      Date.now().toString()
-    );
-    try {
-      await triggerWorkflow("blink-write-captions", {
-        client_id: clientId,
-        post_id: item.id,
-        regenerate: true,
-      });
-
-      let attempts = 0;
-      while (attempts < 10) {
-        const { data } = await supabase
-          .from("content")
-          .select("*")
-          .eq("id", item.id)
+          .insert({
+            client_id: clientId,
+            content_type: "post_image",
+            caption: finalPrompt, // Save the FULL prompt so it shows up in the modal
+            status: "draft",
+            image_urls: [url],
+            ai_model: 'nano-banana-studio'
+          })
+          .select()
           .single();
 
-        if (data) {
-          const updated = data as unknown as Content;
-          if (
-            updated.caption !== item.caption ||
-            updated.updated_at !== item.updated_at
-          ) {
-            setGeneratedContent((prev) =>
-              prev.map((c) => (c.id === item.id ? updated : c))
-            );
-            break;
-          }
+        if (error) console.error("Failed to save to grid:", error);
+        if (contentRecord) {
+          // ✨ Ensure we pass the finalPrompt here so the modal opens with it!
+          newResults.push({ id: contentRecord.id, url, prompt: finalPrompt, mode: selectedMode });
         }
-        attempts++;
-        await delay(2000);
       }
-    } catch (err) {
-      console.error("Regenerate caption error:", err);
+
+      setGeneratedResults(prev => [...newResults, ...prev]);
+
+    } catch (error: any) {
+      console.error(error);
+      alert(`Generation failed: ${error.message || "Unknown error"}`);
     } finally {
-      setRegeneratingCaption(null);
-      localStorage.removeItem(`regenerating_img_cap_${item.id}`);
+      setIsGenerating(false);
     }
-  }
+  };
 
-  function openImageModal(item: Content) {
-    setImageModalTarget(item);
-    setModalEnhanceMode(false);
-    setModalRefFile(null);
-    setModalRefPreview(null);
-    setImageModalOpen(true);
-  }
+  // --- Refinement Logic (Modal Buttons) ---
+  const handleRefine = async (type: "fresh" | "retouch") => {
+    if (!selectedResult || !clientId) return;
 
-  async function handleModalGenerateImage() {
-    if (!imageModalTarget) return;
-    setModalGenerating(true);
-    setRegeneratingImage(imageModalTarget.id);
+    // Ensure they typed something if retouching
+    if (type === "retouch" && !retouchPrompt.trim()) {
+      return alert("Please enter instructions on what you want to change.");
+    }
 
-    localStorage.setItem(
-      `regenerating_img_modal_${imageModalTarget.id}`,
-      Date.now().toString()
-    );
-
-    const kieModel = modalEnhanceMode
-      ? "google/nano-banana-edit"
-      : "google/nano-banana";
+    setIsRefining(true);
 
     try {
-      if (modalRefFile && modalEnhanceMode) {
-        await triggerWorkflowWithFile(
-          "blink-generate-images",
-          {
-            client_id: clientId!,
-            post_id: imageModalTarget.id,
-            topic:
-              imageModalTarget.caption_short ||
-              imageModalTarget.caption?.substring(0, 60) ||
-              "",
-            content_type: imageModalTarget.content_type,
-            mode: "enhance",
-            kie_model: kieModel,
-            style: brandImageStyle ?? "", // ✨ INJECTING BRAND STYLE
-          },
-          modalRefFile
-        );
-      } else {
-        await triggerWorkflow("blink-generate-images", {
-          client_id: clientId,
-          post_id: imageModalTarget.id,
-          topic:
-            imageModalTarget.caption_short ||
-            imageModalTarget.caption?.substring(0, 60) ||
-            "",
-          content_type: imageModalTarget.content_type,
-          mode: "generate",
-          kie_model: kieModel,
-          style: brandImageStyle ?? "", // ✨ INJECTING BRAND STYLE
-        });
-      }
+      // 1. Determine n8n payload based on the tab
+      // If "fresh", we do a standard generation with the image as a reference.
+      // If "retouch", we hit your n8n's "edit" mode (qwen/image-edit).
+      const wfMode = type === "fresh" ? "standard" : "edit";
+      const wfPrompt = type === "fresh" ? modalPrompt : retouchPrompt;
 
-      let attempts = 0;
-      while (attempts < 20) {
-        const { data } = await supabase
-          .from("content")
-          .select("*")
-          .eq("id", imageModalTarget.id)
-          .single();
-        if (data) {
-          const updated = data as unknown as Content;
-          const currentImg = parseArray(imageModalTarget.image_urls)[0];
-          const newImg = parseArray(updated.image_urls)[0];
+      // 2. Trigger n8n
+      const response = await triggerWorkflow("blink-generate-images", {
+        client_id: clientId,
+        mode: wfMode,
+        prompt: wfPrompt,
+        reference_image_urls: [selectedResult.url], // Passing the current image!
+        strict_brand_alignment: strictBrandAlignment,
+        numImages: 1,
+        is_sync: true
+      });
 
-          if (newImg && newImg !== currentImg) {
-            setGeneratedContent((prev) =>
-              prev.map((c) => (c.id === imageModalTarget.id ? updated : c))
-            );
-            break;
-          }
-        }
-        attempts++;
-        await delay(3000);
-      }
+      let newUrls: string[] = [];
+      if (response && Array.isArray(response.imageUrls)) newUrls = response.imageUrls as string[];
+      else if (response && response.imageUrls) newUrls = response.imageUrls as string[];
 
-      const { data } = await supabase
+      if (newUrls.length === 0) throw new Error("No images were returned.");
+
+      // 3. Save the new variation to the grid
+      const url = newUrls[0];
+      const { data: contentRecord } = await supabase
         .from("content")
-        .select("*")
-        .eq("id", imageModalTarget.id)
+        .insert({
+          client_id: clientId,
+          content_type: "post_image",
+          caption: wfPrompt,
+          status: "draft",
+          image_urls: [url],
+          ai_model: type === "fresh" ? 'nano-banana-v2' : 'qwen-image-edit'
+        })
+        .select()
         .single();
-      if (data) {
-        setGeneratedContent((prev) =>
-          prev.map((c) =>
-            c.id === imageModalTarget.id ? (data as unknown as Content) : c
-          )
-        );
+
+      if (contentRecord) {
+        const newRes = { id: contentRecord.id, url, prompt: wfPrompt, mode: wfMode };
+        setGeneratedResults(prev => [newRes, ...prev]);
+
+        // Auto-switch the modal to the newly generated image!
+        setSelectedResult(newRes);
+        setModalPrompt(newRes.prompt);
+        setRetouchPrompt("");
       }
 
-      setImageModalOpen(false);
-    } catch (err) {
-      console.error("Image generation error:", err);
+    } catch (error: any) {
+      console.error(error);
+      alert(`Refinement failed: ${error.message || "Unknown error"}`);
     } finally {
-      setModalGenerating(false);
-      setRegeneratingImage(null);
-      localStorage.removeItem(`regenerating_img_modal_${imageModalTarget.id}`);
+      setIsRefining(false);
     }
-  }
+  };
 
-  async function handleSendAllForApproval() {
-    setSendingAll(true);
-    try {
-      for (const item of generatedContent) {
-        await supabase
-          .from("content")
-          .update({ status: "pending_approval" })
-          .eq("id", item.id);
-      }
-      setGeneratedContent((prev) =>
-        prev.map((c) => ({
-          ...c,
-          status: "pending_approval" as Content["status"],
-        }))
-      );
-    } catch (err) {
-      console.error("Send all for approval error:", err);
-    } finally {
-      setSendingAll(false);
-    }
-  }
-
-  const totalSteps = 4;
-  const stepLabels = ["Plan", "Visual Context", "Generate", "Review"];
+  const openModal = (result: GeneratedResult) => {
+    setSelectedResult(result);
+    setModalPrompt(result.prompt); // Pre-fill the Fresh Take box with the full prompt
+    setRetouchPrompt(""); // Clear the instruction box for Magic Retouch
+  };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center gap-2">
-        {[1, 2, 3, 4].map((step) => (
-          <div key={step} className="flex items-center flex-1">
-            <div
-              className={cn(
-                "flex items-center justify-center h-8 w-8 rounded-full text-sm font-bold shrink-0 transition-colors",
-                wizardStep >= step
-                  ? "bg-blink-primary text-white"
-                  : "bg-gray-200 text-gray-500"
-              )}
-            >
-              {wizardStep > step ? <CheckCircle className="h-5 w-5" /> : step}
-            </div>
-            {step < totalSteps && (
-              <div
-                className={cn(
-                  "flex-1 h-1 rounded-full mx-2 transition-colors",
-                  wizardStep > step ? "bg-blink-primary" : "bg-gray-200"
-                )}
-              />
-            )}
-          </div>
-        ))}
+    <div className="max-w-[1200px] mx-auto space-y-6 pb-20 animate-in fade-in relative">
+      <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
+        <div className="relative z-10">
+          <h1 className="text-3xl font-bold font-heading flex items-center gap-3">
+            <Sparkles className="h-8 w-8" /> AI Image Studio
+          </h1>
+          <p className="mt-2 text-purple-100 max-w-xl text-sm leading-relaxed">
+            Generate fresh aesthetic content, composite your products perfectly into new scenes, or build beautiful campaign grids.
+          </p>
+        </div>
       </div>
 
-      <div className="flex justify-between text-xs text-gray-500 font-medium px-1">
-        {stepLabels.map((label, i) => (
-          <span
-            key={label}
-            className={wizardStep >= i + 1 ? "text-blink-primary" : ""}
-          >
-            {label}
-          </span>
-        ))}
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-      {/* STEP 1 */}
-      {wizardStep === 1 && (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 space-y-6">
-          <div className="rounded-lg bg-gradient-to-r from-blink-primary/5 to-blink-secondary/5 border border-blink-primary/10 p-4 text-center">
-            <h2 className="text-xl font-semibold text-blink-dark font-heading">
-              Plan Your Content ✨
-            </h2>
-            <p className="text-sm text-gray-500 mt-1.5 max-w-md mx-auto">
-              Create a batch of AI-powered social media posts in 4 easy steps.
-              Pick your settings, and our AI will handle the rest.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">
-                How many posts?
-              </label>
-              <span className="text-2xl font-bold text-blink-primary">
-                {postCount}
-              </span>
-            </div>
-            <Slider
-              value={[postCount]}
-              onValueChange={(v) => setPostCount(v[0])}
-              min={3}
-              max={30}
-              step={1}
-              className="py-2"
-            />
-            <div className="flex justify-between text-xs text-gray-400">
-              <span>3</span>
-              <span>30</span>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700">
-                Target Platforms
-              </label>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Select where you want to design content for
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {ALL_PLATFORMS.filter((p) =>
-                visiblePlatformValues.includes(p.value)
-              ).map((p) => {
-                const isSelected = platforms.includes(p.value);
+        {/* LEFT COLUMN: Controls */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
+            <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Select Mode</h3>
+            <div className="flex flex-col gap-3">
+              {IMAGE_MODES.map((mode) => {
+                const isSelected = selectedMode === mode.id;
                 return (
-                  <label
-                    key={p.value}
+                  <div
+                    key={mode.id}
+                    onClick={() => { setSelectedMode(mode.id); setFiles([]); setPreviews([]); }}
                     className={cn(
-                      "flex items-center gap-3 p-3 rounded-lg border-2 transition-colors cursor-pointer",
-                      isSelected
-                        ? "border-blink-primary bg-blink-primary/5"
-                        : "border-gray-200 hover:border-gray-300"
+                      "p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3",
+                      isSelected ? "border-purple-500 bg-purple-50 shadow-sm" : "border-gray-200 hover:border-purple-200"
                     )}
                   >
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={() => togglePlatform(p.value)}
-                    />
-                    <span className="text-lg">{p.icon}</span>
-                    <span className="text-sm font-medium text-blink-dark leading-none">
-                      {p.label}
-                    </span>
-                  </label>
-                );
+                    <div className={cn("p-2 rounded-lg shrink-0", isSelected ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-500")}>
+                      <mode.icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className={cn("text-sm font-bold", isSelected ? "text-purple-900" : "text-gray-700")}>{mode.title}</h4>
+                      <p className="text-[10px] text-gray-500 mt-1 leading-tight">{mode.desc}</p>
+                    </div>
+                  </div>
+                )
               })}
-
-              {/* Add Platform Button */}
-              {visiblePlatformValues.length < ALL_PLATFORMS.length && (
-                <button
-                  onClick={() => setIsPlatformModalOpen(true)}
-                  className="flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-gray-200 text-gray-500 hover:border-blink-primary/50 hover:bg-blink-primary/5 hover:text-blink-primary transition-colors text-sm font-medium"
-                >
-                  <Plus className="h-4 w-4" /> Add Platform
-                </button>
-              )}
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">
-              Any specific topics or themes?{" "}
-              <span className="text-gray-400">(optional)</span>
-            </label>
-            {clientDescription && (
-              <div className="rounded-lg bg-blink-primary/5 border border-blink-primary/10 p-3 space-y-1.5">
-                <p className="text-xs font-medium text-blink-primary">
-                  💡 From your brand profile:
-                </p>
-                <p className="text-xs text-gray-600 leading-relaxed italic">
-                  &quot;{clientDescription}&quot;
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setTopics((prev) =>
-                      prev
-                        ? `${prev}\n\nBrand Context: ${clientDescription}`
-                        : clientDescription
-                    )
-                  }
-                  className="text-xs text-blink-primary font-medium hover:underline"
-                >
-                  + Use this as a starting point
-                </button>
-              </div>
-            )}
-            <Textarea
-              value={topics}
-              onChange={(e) => setTopics(e.target.value)}
-              rows={3}
-              placeholder="Describe what you want to post about..."
-              className="resize-none"
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                "New product launch",
-                "Behind the scenes",
-                "Customer testimonials",
-                "Seasonal promotion",
-                "Tips & tricks",
-              ].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => {
-                    setTopics((prev) => {
-                      const trimmed = prev.trim();
-                      if (
-                        trimmed.toLowerCase().includes(suggestion.toLowerCase())
-                      )
-                        return prev;
-                      return trimmed ? `${trimmed}, ${suggestion}` : suggestion;
-                    });
-                  }}
-                  className="px-2.5 py-1 rounded-full text-xs font-medium border border-gray-200 bg-gray-50 text-gray-600 hover:border-blink-primary/40 hover:bg-blink-primary/5 hover:text-blink-primary transition-colors"
-                >
-                  + {suggestion}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "p-2 rounded-lg transition-colors",
-                    imageMode === "auto"
-                      ? "bg-blink-primary/10 text-blink-primary"
-                      : "bg-amber-50 text-amber-600"
-                  )}
-                >
-                  {imageMode === "auto" ? (
-                    <Layers className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-blink-dark">
-                    Image Generation Mode
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {imageMode === "auto"
-                      ? "Generate all images automatically in batch"
-                      : "I'll generate images one by one after captions"}
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-purple-500" /> Strict Brand Alignment
+                </h3>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  {strictBrandAlignment
+                    ? `Applying ${brandContext?.name || 'brand'} style guides.`
+                    : "Ignoring brand guides for creative freedom."}
+                </p>
               </div>
-              <Switch
-                checked={imageMode === "individual"}
-                onCheckedChange={(checked) =>
-                  setImageMode(checked ? "individual" : "auto")
-                }
-              />
+              <Switch checked={strictBrandAlignment} onCheckedChange={setStrictBrandAlignment} />
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setImageMode("auto")}
-                className={cn(
-                  "flex-1 text-left py-2.5 px-3 rounded-lg text-xs font-medium transition-colors",
-                  imageMode === "auto"
-                    ? "bg-blink-primary/10 text-blink-primary border border-blink-primary/20"
-                    : "bg-gray-50 text-gray-500 border border-gray-200"
-                )}
-              >
-                <span className="block">🚀 Auto (batch)</span>
-                <span className="font-normal text-[10px] opacity-70 block mt-0.5">
-                  AI creates all images in one go — fastest option
-                </span>
-              </button>
-              <button
-                onClick={() => setImageMode("individual")}
-                className={cn(
-                  "flex-1 text-left py-2.5 px-3 rounded-lg text-xs font-medium transition-colors",
-                  imageMode === "individual"
-                    ? "bg-amber-50 text-amber-700 border border-amber-200"
-                    : "bg-gray-50 text-gray-500 border border-gray-200"
-                )}
-              >
-                <span className="block">🎯 Individual</span>
-                <span className="font-normal text-[10px] opacity-70 block mt-0.5">
-                  Generate images one at a time with full control
-                </span>
-              </button>
-            </div>
-          </div>
 
-          <Button
-            onClick={() => {
-              if (imageMode === "individual") startGeneration();
-              else setWizardStep(2);
-            }}
-            disabled={platforms.length === 0}
-            className="w-full bg-blink-primary hover:bg-blink-primary/90 text-white gap-2 h-12 text-base"
-          >
-            {imageMode === "individual" ? (
-              <>
-                Generate {postCount} Captions <ArrowRight className="h-5 w-5" />
-              </>
-            ) : (
-              <>
-                Next: Visual Context <ArrowRight className="h-5 w-5" />
-              </>
+            {selectedMode === "standard" && (
+              <div className="pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-gray-800">Batch Size</h3>
+                  <span className="text-sm font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{numImages} Images</span>
+                </div>
+                <Slider value={[numImages]} onValueChange={(v) => setNumImages(v[0])} min={1} max={10} step={1} className="py-1" />
+              </div>
             )}
-          </Button>
+          </div>
         </div>
-      )}
 
-      {/* STEP 2 */}
-      {wizardStep === 2 && (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold text-blink-dark font-heading">
-              Visual Context
-            </h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Upload a reference photo or let AI generate everything from
-              scratch
-            </p>
-          </div>
+        {/* RIGHT COLUMN: Canvas & Generation */}
+        <div className="lg:col-span-8 flex flex-col gap-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex-1 flex flex-col space-y-6 relative">
 
-          <div className="rounded-lg border border-gray-200 p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "p-2 rounded-lg transition-colors",
-                    enhanceMode
-                      ? "bg-amber-50 text-amber-600"
-                      : "bg-blink-primary/10 text-blink-primary"
-                  )}
-                >
-                  {enhanceMode ? (
-                    <Wand2 className="h-4 w-4" />
-                  ) : (
-                    <Palette className="h-4 w-4" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-blink-dark">
-                    {enhanceMode
-                      ? "Enhance Source Photo"
-                      : "Pure AI Generation"}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {enhanceMode
-                      ? "AI will enhance & stylize your uploaded photo"
-                      : "AI generates images entirely from text prompts"}
-                  </p>
-                </div>
-              </div>
-              <Switch checked={enhanceMode} onCheckedChange={setEnhanceMode} />
-            </div>
-          </div>
-
-          {enhanceMode && (
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">
-                Reference Image <span className="text-red-500">*</span>
-              </label>
-              {referencePreview ? (
-                <div className="relative rounded-lg border border-gray-200 overflow-hidden">
-                  <img
-                    src={referencePreview}
-                    alt="Reference"
-                    className="w-full max-h-64 object-contain bg-gray-50"
-                  />
-                  <div className="absolute top-2 right-2">
-                    <button
-                      onClick={clearFile}
-                      className="p-1.5 rounded-full bg-white/90 shadow-md hover:bg-white transition-colors"
-                    >
-                      <X className="h-4 w-4 text-gray-600" />
+              <label className="text-sm font-bold text-gray-800">Visual Aesthetic</label>
+              <select
+                value={selectedStyle}
+                onChange={(e) => setSelectedStyle(e.target.value)}
+                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:ring-2 ring-purple-400 outline-none cursor-pointer hover:bg-gray-100 transition-colors"
+              >
+                {MARKETING_STYLES.map(style => (
+                  <option key={style.id} value={style.id}>{style.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2 relative">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-bold text-gray-800">Director's Prompt</label>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handlePromptHelp}
+                  disabled={isHelpLoading}
+                  className={cn("h-7 text-xs px-2 hover:bg-purple-50 hover:text-purple-600 transition-colors border border-transparent hover:border-purple-200", isHelpLoading && "animate-pulse")}
+                >
+                  {isHelpLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wand2 className="w-3 h-3 mr-1" />}
+                  {isHelpLoading ? "Writing..." : "AI Magic Writer"}
+                </Button>
+              </div>
+              <div className="relative">
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={selectedMode === 'product_drop' ? "Describe scene (e.g., 'on a sunny beach towel')..." : "Describe what you want to see..."}
+                  className={cn("resize-none bg-gray-50 border-gray-200 h-28 focus-visible:ring-purple-400 pr-10 transition-all", isHelpLoading && "opacity-50")}
+                  readOnly={isHelpLoading}
+                />
+                {isHelpLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <Sparkles className="w-8 h-8 text-purple-500 animate-bounce opacity-50" />
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 text-right">The AI Writer will automatically adapt your prompt to fit the <b>{MARKETING_STYLES.find(s => s.id === selectedStyle)?.label}</b> style.</p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold text-gray-800">
+                  Image Assets {activeConfig.requiresUpload && <span className="text-red-500">*</span>}
+                </label>
+                <span className="text-xs text-gray-500 font-medium">{files.length} / {activeConfig.maxUploads} Uploaded</span>
+              </div>
+
+              <div className="flex flex-wrap gap-4">
+                {previews.map((src, idx) => (
+                  <div key={idx} className="relative w-24 h-24 rounded-lg border border-gray-200 overflow-hidden group shadow-sm">
+                    <img src={src} className="w-full h-full object-cover" alt="upload preview" />
+                    {selectedMode === 'product_drop' && (
+                      <div className="absolute inset-0 bg-black/20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px', zIndex: -1 }}></div>
+                    )}
+                    <button onClick={() => removeFile(idx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-600">
+                      <X className="w-3 h-3" />
                     </button>
                   </div>
-                </div>
-              ) : (
-                <div
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={handleFileDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors border-amber-300 bg-amber-50/30 hover:bg-amber-50/60"
-                >
-                  <Upload className="h-8 w-8 mx-auto mb-3 text-amber-400" />
-                  <p className="text-sm font-medium text-blink-dark">
-                    Drag & drop your reference image
-                  </p>
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileSelect(file);
-                }}
-              />
-            </div>
-          )}
+                ))}
 
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={() => setWizardStep(1)}
-              className="gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" /> Back
-            </Button>
-            <Button
-              onClick={startGeneration}
-              disabled={enhanceMode && !referenceFile}
-              className="flex-1 bg-blink-primary hover:bg-blink-primary/90 text-white gap-2 h-12 text-base"
-            >
-              Generate {postCount} Posts <ArrowRight className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* STEP 3 */}
-      {wizardStep === 3 && (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 space-y-6">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-blink-dark font-heading">
-              Generating Your Content
-            </h2>
-            <p className="text-sm text-gray-500 mt-1">
-              {imageMode === "individual"
-                ? "Creating captions — you'll add images later"
-                : "Sit back — this may take a few minutes"}
-            </p>
-          </div>
-          <div className="space-y-1">
-            {pipeline.map((step) => (
-              <div
-                key={step.id}
-                className={cn(
-                  "flex items-center gap-4 p-4 rounded-lg transition-colors",
-                  step.status === "running" && "bg-blink-primary/5",
-                  step.status === "done" && "bg-emerald-50",
-                  step.status === "error" && "bg-red-50"
-                )}
-              >
-                <div
-                  className={cn(
-                    "flex items-center justify-center h-10 w-10 rounded-full shrink-0",
-                    step.status === "idle" && "bg-gray-100 text-gray-400",
-                    step.status === "running" &&
-                    "bg-blink-primary/10 text-blink-primary",
-                    step.status === "done" && "bg-emerald-100 text-emerald-600",
-                    step.status === "error" && "bg-red-100 text-red-600"
-                  )}
-                >
-                  {step.status === "running" ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : step.status === "done" ? (
-                    <CheckCircle className="h-5 w-5" />
-                  ) : step.status === "error" ? (
-                    <AlertCircle className="h-5 w-5" />
-                  ) : (
-                    <step.icon className="h-5 w-5" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
+                {files.length < activeConfig.maxUploads && (
+                  <div
+                    {...getRootProps()}
                     className={cn(
-                      "text-sm font-medium",
-                      step.status === "idle" && "text-gray-400",
-                      step.status === "running" && "text-blink-dark",
-                      step.status === "done" && "text-emerald-700",
-                      step.status === "error" && "text-red-700"
+                      "w-24 h-24 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all text-gray-400",
+                      isDragActive ? "border-purple-500 bg-purple-50 text-purple-500 scale-105" : "border-gray-300 hover:border-purple-400 hover:bg-purple-50 hover:text-purple-500"
                     )}
                   >
-                    {step.label}
-                  </p>
-                  {step.detail && (
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {step.detail}
-                    </p>
-                  )}
-                  {step.error && (
-                    <p className="text-xs text-red-500 mt-0.5">{step.error}</p>
-                  )}
-                </div>
+                    <input {...getInputProps()} />
+                    <UploadCloud className="w-6 h-6 mb-1" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight px-1">
+                      {isDragActive ? "Drop Here" : "Drag & Drop"}
+                    </span>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* STEP 4 */}
-      {wizardStep === 4 && (
-        <div className="space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
-            <div className="text-center space-y-2">
-              <div className="text-4xl">🎉</div>
-              <h2 className="text-xl font-semibold text-blink-dark font-heading">
-                Content Generated!
-              </h2>
-              <p className="text-sm text-gray-500">
-                {generatedContent.length} post
-                {generatedContent.length !== 1 ? "s" : ""} ready for review
-              </p>
+              {selectedMode === 'product_drop' && <p className="text-[10px] text-amber-600 font-bold mt-1 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Pro Tip: Use transparent PNGs for best results.</p>}
+              {selectedStyle === 'brand' && !brandContext?.logoUrl && <p className="text-[10px] text-red-500 font-bold mt-1">⚠️ Warning: No logo found in your Brand Profile. Please upload one in the settings.</p>}
             </div>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-6">
-              <Link href="/dashboard/content">
-                <Button variant="outline" className="gap-2">
-                  <ArrowRight className="h-4 w-4" /> Go to Content Calendar
-                </Button>
-              </Link>
+
+            <div className="mt-auto pt-6 border-t border-gray-100 flex justify-end">
               <Button
-                onClick={handleSendAllForApproval}
-                disabled={sendingAll}
-                className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-2"
+                onClick={handleGenerate}
+                disabled={isGenerating || (activeConfig.requiresUpload && files.length === 0) || isHelpLoading || (selectedStyle === 'brand' && !brandContext?.logoUrl)}
+                className="bg-purple-600 hover:bg-purple-700 text-white h-12 px-8 font-bold shadow-md transition-all relative overflow-hidden"
               >
-                {sendingAll ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                {isGenerating ? (
+                  <div className="flex items-center">
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    <span>Generating...</span>
+                    <div className="absolute bottom-0 left-0 h-1 bg-white/30 animate-progress w-full origin-left"></div>
+                  </div>
                 ) : (
-                  <Send className="h-4 w-4" />
-                )}{" "}
-                Send All for Approval
+                  <><Sparkles className="w-5 h-5 mr-2" /> Generate {selectedMode === 'standard' && numImages > 1 ? `${numImages} Images` : 'Image'}</>
+                )}
               </Button>
             </div>
           </div>
 
-          {generatedContent.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {generatedContent.map((item) => {
-                const urls = parseArray(item.image_urls);
-                const hasImage = urls.length > 0;
-                return (
-                  <div key={item.id} className="relative group">
-                    <ContentCard content={item} />
-                    <div className="mt-2 flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleRegenerateCaption(item);
-                        }}
-                        disabled={regeneratingCaption === item.id}
-                        className="flex-1 text-xs gap-1.5 h-8"
-                      >
-                        {regeneratingCaption === item.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3 w-3" />
-                        )}{" "}
-                        Regen Caption
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          openImageModal(item);
-                        }}
-                        disabled={regeneratingImage === item.id}
-                        className={cn(
-                          "flex-1 text-xs gap-1.5 h-8",
-                          !hasImage && imageMode === "individual"
-                            ? "bg-blink-primary/5 border-blink-primary/30 text-blink-primary hover:bg-blink-primary/10"
-                            : ""
-                        )}
-                      >
-                        {regeneratingImage === item.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-3 w-3" />
-                        )}{" "}
-                        {!hasImage && imageMode === "individual"
-                          ? "Generate Image"
-                          : "Regen Image"}
-                      </Button>
-                    </div>
+          {/* RESULTS AREA */}
+          {(isGenerating || generatedResults.length > 0) && (
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 shadow-inner min-h-[300px] animate-in fade-in-50">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-purple-500" /> Studio Results
+                </h3>
+                {generatedResults.length > 0 && !isGenerating && <span className="text-xs text-gray-500">{generatedResults.length} items saved to Grid</span>}
+              </div>
+
+              {isGenerating && generatedResults.length === 0 ? (
+                <div className="h-64 flex flex-col items-center justify-center text-gray-500 gap-4">
+                  <div className="relative">
+                    <div className="w-16 h-16 rounded-full border-4 border-purple-100 border-t-purple-500 animate-spin"></div>
+                    <Sparkles className="w-6 h-6 text-purple-500 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
                   </div>
-                );
-              })}
+                  <p className="text-sm font-medium animate-pulse">Nano Banana is painting your pixels...</p>
+                </div>
+              ) : (
+                <div className={cn("grid gap-4", (selectedMode === 'grid' || selectedMode === 'organic_blend') ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4")}>
+                  {generatedResults.map((result, idx) => (
+                    <div
+                      key={result.id + idx}
+                      onClick={() => openModal(result)}
+                      className="relative aspect-square rounded-xl overflow-hidden border-2 border-transparent hover:border-purple-400 transition-all shadow-sm group cursor-pointer bg-gray-100"
+                    >
+                      <img src={result.url} alt={`Generated ${idx}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <div className="bg-white/90 backdrop-blur-sm text-purple-900 text-xs font-bold px-3 py-2 rounded-full shadow-lg flex items-center gap-2 transform scale-90 group-hover:scale-100 transition-transform">
+                          <Sparkles className="w-3 h-3" /> Refine & Edit
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {isGenerating && Array.from({ length: numImages }).map((_, i) => (
+                    <div key={`skeleton-${i}`} className="aspect-square rounded-xl bg-gray-200 animate-pulse relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* Platform Selection Modal */}
-      <Dialog open={isPlatformModalOpen} onOpenChange={setIsPlatformModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Platform to Strategy</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-4">
-            {ALL_PLATFORMS.filter(
-              (p) => !visiblePlatformValues.includes(p.value)
-            ).map((p) => (
-              <button
-                key={p.value}
-                onClick={() => {
-                  setVisiblePlatformValues((prev) => [...prev, p.value]);
-                  setPlatforms((prev) => [...prev, p.value]); // Auto-select it
-                  setIsPlatformModalOpen(false);
-                }}
-                className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blink-primary hover:bg-blink-primary/5 transition-colors text-left"
-              >
-                <span className="text-lg">{p.icon}</span>
-                <span className="text-sm font-medium text-blink-dark">
-                  {p.label}
-                </span>
-              </button>
-            ))}
-            {ALL_PLATFORMS.filter(
-              (p) => !visiblePlatformValues.includes(p.value)
-            ).length === 0 && (
-                <div className="col-span-2 text-center text-sm text-gray-500 py-4">
-                  All platforms added!
+      {/* ✨ FULLY FUNCTIONAL REFINEMENT MODAL ✨ */}
+      <Dialog open={!!selectedResult} onOpenChange={(open) => !open && setSelectedResult(null)}>
+        <DialogContent className="max-w-[95vw] md:max-w-[1200px] p-0 overflow-hidden bg-white h-[90vh] md:h-[85vh] max-h-[900px] border-0 shadow-2xl rounded-2xl flex flex-col md:flex-row">
+          {selectedResult && (
+            <>
+              {/* LEFT: Controls Panel */}
+              <div className="w-full md:w-[340px] border-b md:border-b-0 md:border-r border-gray-200 bg-white flex flex-col shrink-0 order-2 md:order-1 h-[55%] md:h-full">
+                <div className="p-6 flex-1 overflow-y-auto flex flex-col">
+                  <DialogHeader className="mb-6">
+                    <DialogTitle className="text-xl font-heading flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-purple-600" /> Refinement Hub
+                    </DialogTitle>
+                    <p className="text-xs text-gray-500 mt-1">Perfect your creation with advanced AI tools.</p>
+                  </DialogHeader>
+
+                  <Tabs value={refinementTab} onValueChange={(v: any) => setRefinementTab(v)} className="w-full flex-1 flex flex-col">
+                    <TabsList className="grid w-full grid-cols-2 mb-6">
+                      <TabsTrigger value="fresh" className="text-xs gap-1.5 data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700"><RefreshCw className="w-3.5 h-3.5" /> Fresh Take</TabsTrigger>
+                      <TabsTrigger value="retouch" className="text-xs gap-1.5 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700"><Eraser className="w-3.5 h-3.5" /> Magic Retouch</TabsTrigger>
+                    </TabsList>
+
+                    <div className="flex-1 flex flex-col">
+                      {refinementTab === "fresh" && (
+                        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
+                          <p className="text-sm text-gray-600 bg-purple-50/50 border border-purple-100 p-3 rounded-lg leading-relaxed">
+                            <strong className="text-purple-700 block mb-1">🔄 Remix the concept.</strong>
+                            Edit your prompt below to generate a new variation using this image as a reference.
+                          </p>
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Refined Prompt</label>
+                            <Textarea
+                              value={modalPrompt}
+                              onChange={(e) => setModalPrompt(e.target.value)}
+                              className="resize-none h-32 text-sm bg-white border-gray-200 focus-visible:ring-purple-500 rounded-xl"
+                            />
+                          </div>
+                          <Button
+                            onClick={() => handleRefine("fresh")}
+                            disabled={isRefining || !modalPrompt.trim()}
+                            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold h-11 rounded-xl shadow-sm"
+                          >
+                            {isRefining ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                            {isRefining ? "Generating..." : "Generate Variation"}
+                          </Button>
+                        </div>
+                      )}
+
+                      {refinementTab === "retouch" && (
+                        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
+                          <p className="text-sm text-gray-600 bg-blue-50/50 border border-blue-100 p-3 rounded-lg leading-relaxed">
+                            <strong className="text-blue-700 block mb-1">🪄 Provide instructions.</strong>
+                            Tell the AI exactly what you want changed in the image (e.g., change colors, remove objects).
+                          </p>
+                          <Textarea
+                            value={retouchPrompt}
+                            onChange={(e) => setRetouchPrompt(e.target.value)}
+                            placeholder="E.g., Change the sofa to red, remove the vase..."
+                            className="resize-none text-sm h-32 bg-gray-50 rounded-xl border-gray-200 focus-visible:ring-blue-500"
+                          />
+                          <Button
+                            onClick={() => handleRefine("retouch")}
+                            disabled={isRefining || !retouchPrompt.trim()}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 rounded-xl shadow-sm"
+                          >
+                            {isRefining ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                            {isRefining ? "Applying Magic..." : "Apply Magic Retouch"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </Tabs>
                 </div>
-              )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Image Generation Modal */}
-      <Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-blink-primary" />
-              {parseArray(imageModalTarget?.image_urls).length > 0
-                ? "Regenerate Image"
-                : "Generate Image"}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="py-4 space-y-5">
-            <div className="rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "p-2 rounded-lg transition-colors",
-                      modalEnhanceMode
-                        ? "bg-amber-50 text-amber-600"
-                        : "bg-blink-primary/10 text-blink-primary"
-                    )}
-                  >
-                    {modalEnhanceMode ? (
-                      <Wand2 className="h-4 w-4" />
-                    ) : (
-                      <Sparkles className="h-4 w-4" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-blink-dark">
-                      {modalEnhanceMode
-                        ? "Enhance Source Photo"
-                        : "Pure AI Generation"}
-                    </p>
-                  </div>
+                {/* Footer Actions */}
+                <div className="p-5 border-t border-gray-100 flex gap-3 bg-gray-50/50 shrink-0">
+                  <Button variant="outline" className="flex-1 h-10 rounded-xl text-gray-700 font-medium bg-white" onClick={() => window.open(selectedResult.url, '_blank')}>
+                    <Download className="w-4 h-4 mr-2" /> Download
+                  </Button>
+                  <Button variant="outline" className="flex-1 h-10 rounded-xl text-gray-700 font-medium bg-white" onClick={() => alert('Share link copied to clipboard! (Coming soon)')}>
+                    <Share2 className="w-4 h-4 mr-2" /> Share
+                  </Button>
                 </div>
-                <Switch
-                  checked={modalEnhanceMode}
-                  onCheckedChange={setModalEnhanceMode}
-                />
               </div>
-            </div>
 
-            {modalEnhanceMode && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  Reference Photo <span className="text-red-500">*</span>
-                </label>
-                {modalRefPreview ? (
-                  <div className="relative rounded-lg border border-gray-200 overflow-hidden">
-                    <img
-                      src={modalRefPreview}
-                      alt="Reference"
-                      className="w-full max-h-48 object-contain bg-gray-50"
-                    />
-                    <button
-                      onClick={clearModalFile}
-                      className="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 shadow-md hover:bg-white transition-colors"
-                    >
-                      <X className="h-4 w-4 text-gray-600" />
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const file = e.dataTransfer.files?.[0];
-                      if (file) handleModalFileSelect(file);
-                    }}
-                    onClick={() => modalRefInputRef.current?.click()}
-                    className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors border-amber-300 bg-amber-50/30 hover:bg-amber-50/60"
-                  >
-                    <Upload className="h-6 w-6 mx-auto mb-2 text-amber-400" />
-                    <p className="text-xs font-medium text-blink-dark">
-                      Drop your reference image here
-                    </p>
-                  </div>
-                )}
-                <input
-                  ref={modalRefInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleModalFileSelect(file);
-                  }}
+              {/* RIGHT: Image View */}
+              <div className="flex-1 bg-[#0a0a0a] relative group overflow-hidden order-1 md:order-2 min-h-[45%] md:min-h-0 md:rounded-r-2xl">
+                <img
+                  src={selectedResult.url}
+                  className="w-full h-full object-cover"
+                  alt="Selected result"
                 />
-              </div>
-            )}
-          </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setImageModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleModalGenerateImage}
-              disabled={modalGenerating || (modalEnhanceMode && !modalRefFile)}
-              className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-2"
-            >
-              {modalGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />{" "}
-                  {modalEnhanceMode ? "Enhance Photo" : "Generate Image"}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
+                {/* Prompt overlay on hover */}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-6 pt-16 text-white opacity-0 group-hover:opacity-100 transition-opacity delay-100 pointer-events-none">
+                  <p className="text-xs font-bold uppercase tracking-wider mb-1 text-purple-400">Original Prompt</p>
+                  <p className="text-sm leading-relaxed line-clamp-3 text-gray-200">{selectedResult.prompt}</p>
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
