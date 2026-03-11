@@ -100,11 +100,13 @@ export default function GetStartedPage() {
   const [contactName, setContactName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [socialMediaUrls, setSocialMediaUrls] = useState(""); // ✨ New State
   const [industry, setIndustry] = useState("");
   const [phone, setPhone] = useState("");
   const [description, setDescription] = useState("");
 
   // --- Step 3: Visual Identity ---
+  const [visualStyleGuide, setVisualStyleGuide] = useState(""); // ✨ New State
   const [primaryColor, setPrimaryColor] = useState("#2563EB");
   const [secondaryColor, setSecondaryColor] = useState("#585954");
   const [accentColor, setAccentColor] = useState("#10B981");
@@ -119,6 +121,7 @@ export default function GetStartedPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   // --- Step 4: Brand Vibe & Assets ---
+  const [brandVoice, setBrandVoice] = useState(""); // ✨ New State
   const [toneKeywords, setToneKeywords] = useState<string[]>([]);
   const [assetFiles, setAssetFiles] = useState<File[]>([]);
   const [assetPreviews, setAssetPreviews] = useState<string[]>([]);
@@ -284,6 +287,7 @@ export default function GetStartedPage() {
         website_url: websiteUrl,
         industry: industry,
         contact_phone: phone,
+        social_links: socialMediaUrls ? socialMediaUrls.split('\n').filter(l => l.trim() !== '') : [],
         onboarding_notes: description ? { description } : null,
       };
 
@@ -318,6 +322,8 @@ export default function GetStartedPage() {
 
       const brandPayload: any = {
         client_id: currentClientId,
+        visual_style_guide: visualStyleGuide,
+        brand_voice: brandVoice,
         primary_color: primaryColor,
         secondary_color: secondaryColor,
         accent_color: accentColor,
@@ -551,7 +557,7 @@ export default function GetStartedPage() {
                   <Input
                     value={industry}
                     onChange={(e) => setIndustry(e.target.value)}
-                    placeholder="e.g. E-commerce"
+                    placeholder="e.g. Retail & E-Commerce"
                     className="h-11"
                   />
                 </div>
@@ -570,6 +576,19 @@ export default function GetStartedPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Social Media URLs <span className="text-gray-400 font-normal">(One per line)</span>
+                </label>
+                <Textarea
+                  value={socialMediaUrls}
+                  onChange={(e) => setSocialMediaUrls(e.target.value)}
+                  placeholder="https://instagram.com/yourbrand&#10;https://twitter.com/yourbrand"
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   What does your business do?{" "}
                   <span className="text-red-500">*</span>
                 </label>
@@ -581,7 +600,7 @@ export default function GetStartedPage() {
                   required
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. We sell high-quality, modern minimalist furniture for homes and offices..."
+                  placeholder="e.g. Discover quality furniture that brings comfort and style to your home..."
                   rows={3}
                   className="resize-none"
                 />
@@ -610,6 +629,23 @@ export default function GetStartedPage() {
                     How should your content look?
                   </p>
                 </div>
+              </div>
+
+              {/* ✨ Visual Style Guide */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Visual Style Guide
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Describe exactly how your images should look (e.g., modern, minimalist, soft neutrals with vibrant pops).
+                </p>
+                <Textarea
+                  value={visualStyleGuide}
+                  onChange={(e) => setVisualStyleGuide(e.target.value)}
+                  placeholder="Embrace a modern and minimalist aesthetic..."
+                  rows={3}
+                  className="resize-none"
+                />
               </div>
 
               {/* 4 Colors */}
@@ -825,6 +861,23 @@ export default function GetStartedPage() {
                     Help the AI understand your personality.
                   </p>
                 </div>
+              </div>
+
+              {/* ✨ Brand Voice */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Brand Voice
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Describe how your brand speaks to its audience.
+                </p>
+                <Textarea
+                  value={brandVoice}
+                  onChange={(e) => setBrandVoice(e.target.value)}
+                  placeholder="Friendly and approachable, fostering a sense of community..."
+                  rows={3}
+                  className="resize-none"
+                />
               </div>
 
               {/* Tone Keywords */}
