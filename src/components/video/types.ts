@@ -9,6 +9,7 @@ export interface BRollScene {
   primaryPreview: string | null;
   secondaryFile: File | null;
   secondaryPreview: string | null;
+  aiModel?: string;
   duration?: string;
   prompt: string;
 }

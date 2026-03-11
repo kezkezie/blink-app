@@ -115,7 +115,6 @@ export function VideoEditorUI() {
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    // ✨ FIXED: Strict Database Level Filtering so Audio is guaranteed to fetch
     if (filterType === "sequence") {
       query = query.eq("content_type", "sequence_clip");
     } else if (filterType === "audio") {
@@ -162,7 +161,6 @@ export function VideoEditorUI() {
             type: mediaType,
             url: url,
             thumb: url,
-            // ✨ THE FIX: Uses the database caption (e.g. "🎬 Scene 1 Video" or "🎙️ Scene 1 Audio")
             name: item.caption || (isAudio ? `Voiceover/Music` : `${item.content_type || "Generated"} Media`),
           });
         });
@@ -457,7 +455,27 @@ export function VideoEditorUI() {
   };
 
   function handleDragStart(e: React.DragEvent, asset: MediaAsset) { e.dataTransfer.setData("application/json", JSON.stringify(asset)); }
-  function deleteAsset(id: string) { setAssets((prev) => prev.filter((a) => a.id !== id)); }
+
+  // ✨ THE FIX: Deletes from UI, then completely removes from Supabase!
+  async function deleteAsset(assetId: string, assetName: string) {
+    if (!confirm(`Are you sure you want to permanently delete "${assetName}"? This cannot be undone.`)) return;
+
+    setAssets((prev) => prev.filter((a) => a.id !== assetId));
+
+    if (assetId.startsWith('db-')) {
+      const dbId = assetId.split('-')[1]; // Extracts the actual Supabase UUID
+
+      const { error } = await supabase
+        .from('content')
+        .delete()
+        .eq('id', dbId);
+
+      if (error) {
+        console.error("Failed to delete from Supabase:", error);
+        alert("Failed to delete asset from the database.");
+      }
+    }
+  }
 
   function handleManualUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -783,7 +801,10 @@ export function VideoEditorUI() {
                         <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-sm text-white p-1 rounded">
                           {asset.type === "video" ? <Video className="w-3 h-3" /> : asset.type === "audio" ? <Music className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                         </div>
-                        <button onClick={() => deleteAsset(asset.id)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-opacity shadow-sm">
+                        <button
+                          onClick={() => deleteAsset(asset.id, asset.name)}
+                          className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-opacity shadow-sm"
+                        >
                           <X className="w-3 h-3" />
                         </button>
                       </div>

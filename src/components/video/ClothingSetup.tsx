@@ -63,7 +63,7 @@ export function ClothingSetup({
                         >
                             <Shirt className="h-8 w-8 text-gray-400 mb-3" />
                             <p className="text-sm font-medium text-blink-dark">Upload {activeModeConfig.primaryLabel}</p>
-                            <p className="text-xs text-gray-400 mt-1">Flat lay or ghost mannequin works best</p>
+                            <p className="text-xs text-gray-400 mt-1">JPG, PNG, or WEBP only</p>
                         </div>
                         <button
                             onClick={() => setLibraryTarget("primary")}
@@ -73,7 +73,8 @@ export function ClothingSetup({
                         </button>
                     </div>
                 )}
-                <input ref={primaryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileSelect(e, "primary")} />
+                {/* ✨ FIXED: Explicitly defined accepted formats to prevent OpenAI .avif crashes ✨ */}
+                <input ref={primaryInputRef} type="file" accept="image/jpeg, image/png, image/webp" className="hidden" onChange={(e) => handleFileSelect(e, "primary")} />
             </div>
 
             {/* Secondary Image (The Model) */}
@@ -112,7 +113,8 @@ export function ClothingSetup({
                         </button>
                     </div>
                 )}
-                <input ref={secondaryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileSelect(e, "secondary")} />
+                {/* ✨ FIXED: Explicitly defined accepted formats ✨ */}
+                <input ref={secondaryInputRef} type="file" accept="image/jpeg, image/png, image/webp" className="hidden" onChange={(e) => handleFileSelect(e, "secondary")} />
             </div>
 
             {/* Director's Prompt */}

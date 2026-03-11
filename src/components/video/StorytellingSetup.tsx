@@ -13,12 +13,14 @@ import type { VideoSetupProps } from "./types";
 
 const yellowLabBtnClass = "bg-[#f1c40f] hover:bg-[#d4ac0d] text-white shadow-md font-bold border-none";
 
+// ✨ ADDED aiModel to the scene state type
 type StoryboardScene = any & {
   videoUrl?: string | null;
   isGeneratingVideo?: boolean;
   audioPrompt?: string;
   sceneAudioUrl?: string | null;
   isGeneratingAudio?: boolean;
+  aiModel?: string;
 };
 
 export interface StorytellingSetupProps extends VideoSetupProps {
@@ -76,6 +78,7 @@ export function StorytellingSetup({
         id: crypto.randomUUID(),
         scene_number: i + 1,
         mode: "showcase",
+        aiModel: "auto", // ✨ Defaulting individual scenes to auto
         primaryFile: null,
         primaryPreview: null,
         secondaryFile: null,
@@ -362,24 +365,20 @@ export function StorytellingSetup({
           ? `A highly realistic, viral TikTok style smartphone photo of an influencer interacting with the product. ${scene.prompt || bRollConcept}`
           : `A highly realistic fashion editorial photo of a model wearing the clothing. ${scene.prompt || bRollConcept}`;
 
-        // 1. Call Nano-Banana to merge the Product and the Face into one perfect image
         const mergedImageData = await callN8n('generator', {
           prompt: mergePrompt,
-          refImage: scene.primaryPreview, // Product
-          styleRefImage: scene.secondaryPreview, // Influencer Face
+          refImage: scene.primaryPreview,
+          styleRefImage: scene.secondaryPreview,
         });
 
         if (mergedImageData.url) {
           finalPrimaryUrl = mergedImageData.url;
-          finalSecondaryUrl = null; // Wipe out the secondary frame so the Video Engine doesn't try to morph them!
-
-          // Update the UI so the user can actually see the awesome merged image!
+          finalSecondaryUrl = null;
           updateScene(scene.id, "primaryPreview", finalPrimaryUrl);
           updateScene(scene.id, "secondaryPreview", null);
         }
       }
 
-      // 2. Stop Next.js from crashing by uploading huge Base64 strings to Supabase first
       if (finalPrimaryUrl.startsWith('data:')) {
         const mimeMatch = finalPrimaryUrl.match(/data:(.*?);/);
         const mime = mimeMatch ? mimeMatch[1] : 'image/png';
@@ -398,7 +397,6 @@ export function StorytellingSetup({
         finalSecondaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
       }
 
-      // 3. Create Placeholder Row (Must be status: "draft")
       const { data: insertData, error: insertError } = await supabase
         .from('content')
         .insert({
@@ -406,18 +404,17 @@ export function StorytellingSetup({
           content_type: "sequence_clip",
           caption: `🎬 Scene ${slotIndex + 1} Video`,
           status: "draft",
-          ai_model: "video_native"
+          ai_model: scene.aiModel || "auto" // ✨ Logging the chosen AI model for reference
         })
         .select('id')
         .single();
 
       if (insertError || !insertData) {
-        console.error("Supabase Insert Error details:", insertError);
         throw new Error(`Database Error: Failed to create placeholder row. ${insertError?.message || ''}`);
       }
       const postId = insertData.id;
 
-      // 4. Trigger n8n with post_id and the safe, lightweight Supabase URLs!
+      // ✨ PASSING THE SCENE-SPECIFIC AI MODEL OVERRIDE TO YOUR BACKEND ✨
       await callN8n('scene_video_generator', {
         post_id: postId,
         client_id: clientId,
@@ -426,11 +423,12 @@ export function StorytellingSetup({
         user_prompt: scene.prompt || bRollConcept,
         duration: scene.duration,
         video_mode: scene.mode,
+        ai_model_override: scene.aiModel || "auto"
       });
 
-      // 5. Radar Polling
+      // Polling loop
       let attempts = 0;
-      const maxAttempts = 180; // 15 minutes max
+      const maxAttempts = 180;
       let foundVideoUrl = null;
 
       while (attempts < maxAttempts) {
@@ -601,13 +599,22 @@ export function StorytellingSetup({
                   scene.videoUrl ? "border-green-300 shadow-md" : (scene.primaryPreview ? "border-purple-300 shadow-sm" : "border-dashed border-gray-300")
                 )}>
                   {/* ── Scene Header ── */}
-                  <div className="bg-gray-50/80 border-b border-gray-100 px-4 py-2.5 flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-3">
+                  <div className="bg-gray-50/80 border-b border-gray-100 px-4 py-2.5 flex flex-wrap gap-2 items-center justify-between shrink-0">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span className="text-[11px] font-black text-gray-500 tracking-wider uppercase bg-white border border-gray-200 px-2 py-1 rounded shadow-sm">
                         SCENE {index + 1}
                       </span>
                       <select value={scene.mode} onChange={(e) => updateScene(scene.id, "mode", e.target.value)} className="text-xs font-bold rounded border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 py-1 px-2 bg-white text-gray-700 cursor-pointer">
                         {SCENE_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                      </select>
+
+                      {/* ✨ NEW PER-SCENE AI ENGINE SELECTOR ✨ */}
+                      <select value={scene.aiModel || "auto"} onChange={(e) => updateScene(scene.id, "aiModel", e.target.value)} className="text-xs font-bold rounded border-purple-200 shadow-sm focus:border-purple-500 focus:ring-purple-500 py-1 px-2 bg-purple-50 text-purple-700 cursor-pointer">
+                        <option value="auto">✨ Auto Engine</option>
+                        <option value="replicate:openai/sora-2">Sora 2</option>
+                        <option value="bytedance/seedance-1.5-pro">Seedance Pro</option>
+                        <option value="replicate:prunaai/p-video">Pruna (Fast)</option>
+                        <option value="kling-3.0/video">Kling 3.0</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-3">
@@ -714,7 +721,6 @@ export function StorytellingSetup({
                           <video src={scene.videoUrl} controls className="w-full h-full object-cover bg-black" playsInline />
                         ) : (
                           <div className="flex flex-col flex-1 h-full">
-                            {/* ✨ DYNAMIC PLACEHOLDERS BASED ON MODE ✨ */}
                             <Textarea
                               value={scene.prompt}
                               onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}

@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -79,7 +80,6 @@ const VIDEO_MODES = [
 
 export default function VideoStudioPage() {
   const router = useRouter();
-  // Get the client ID from the hook
   const { clientId: hookClientId } = useClient();
 
   const [activeTab, setActiveTab] = useState<"studio" | "editor">("studio");
@@ -103,10 +103,11 @@ export default function VideoStudioPage() {
   const [bRollScenes, setBRollScenes] = useState<BRollScene[]>([]);
   const [selectedAiModel, setSelectedAiModel] = useState("auto");
 
+  // ✨ NEW STATE FOR BRAND ALIGNMENT ✨
+  const [strictBrandAlignment, setStrictBrandAlignment] = useState(true);
+
   const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(
-    null
-  );
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   const primaryInputRef = useRef<HTMLInputElement | null>(null);
@@ -167,7 +168,7 @@ export default function VideoStudioPage() {
     const pollInterval = setInterval(async () => {
       const { data, error } = await supabase
         .from("content")
-        .select("image_urls, status, error_message")
+        .select("*")
         .eq("id", generatingPostId)
         .single();
       if (data?.status === "failed") {
@@ -254,6 +255,7 @@ export default function VideoStudioPage() {
             id: crypto.randomUUID(),
             scene_number: idx + 1,
             mode: s.mode || "showcase",
+            aiModel: "auto",
             primaryFile: null,
             primaryPreview: null,
             secondaryFile: null,
@@ -279,6 +281,7 @@ export default function VideoStudioPage() {
       id: crypto.randomUUID(),
       scene_number: bRollScenes.length + 1,
       mode: "showcase",
+      aiModel: "auto",
       primaryFile: null,
       primaryPreview: null,
       secondaryFile: null,
@@ -303,7 +306,6 @@ export default function VideoStudioPage() {
   }
 
   async function handleGenerate() {
-    // ✨ SAFETY LOCK: Ensure we have a valid client ID before starting
     const safeClientId = hookClientId;
     if (!safeClientId) {
       alert("User session not found. Please refresh the page and try again.");
@@ -356,10 +358,8 @@ export default function VideoStudioPage() {
             sUrl = scene.secondaryPreview;
           }
 
-          let targetModel = selectedAiModel;
-          if (targetModel === "auto") {
-            targetModel = scene.mode === "showcase" || scene.mode === "logo_reveal" ? "bytedance/seedance-1.5-pro" : "kling-3.0/video";
-          }
+          // ✨ THE FIX: Check if specific scene has an override, otherwise use master dropdown
+          let targetModel = scene.aiModel && scene.aiModel !== "auto" ? scene.aiModel : selectedAiModel;
 
           const { data: clipRecord, error: dbError } = await supabase
             .from("content")
@@ -386,8 +386,9 @@ export default function VideoStudioPage() {
             is_sequence: false,
             brand_name: businessInfo.name,
             brand_info: businessInfo.desc,
-            ai_model_override: targetModel,
+            ai_model_override: targetModel, // Passes "auto" or the specific engine!
             duration: scene.duration || "5",
+            strict_brand_alignment: strictBrandAlignment,
           });
         }
         setGeneratingPostId(lastRecordId);
@@ -396,20 +397,16 @@ export default function VideoStudioPage() {
       }
 
       // ==========================================================
-      // ROUTE B: SINGLE VIDEO (UGC/CLOTHING/SHOWCASE)
+      // ROUTE B: SINGLE VIDEO
       // ==========================================================
       let primaryUrl = null;
       let secondaryUrl = null;
 
+      // Master selector passes through to our super-smart n8n router
       let targetModel = selectedAiModel;
-      if (targetModel === "auto") {
-        targetModel = selectedMode === "showcase" || selectedMode === "logo_reveal" ? "bytedance/seedance-1.5-pro" : selectedMode === "ugc" || selectedMode === "clothing" ? "kling-3.0/video" : "sora-2-image-to-video";
-      }
 
-      // 1. Upload initial files to get Public URLs
       if (primaryFile) {
         const ext = primaryFile.name.split(".").pop();
-        // ✨ FIX: Use safeClientId to prevent "undefined" in URL
         const path = `videos/${safeClientId}/primary_${Date.now()}.${ext}`;
         await supabase.storage.from("assets").upload(path, primaryFile);
         primaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
@@ -419,7 +416,6 @@ export default function VideoStudioPage() {
 
       if (secondaryFile) {
         const ext = secondaryFile.name.split(".").pop();
-        // ✨ FIX: Use safeClientId to prevent "undefined" in URL
         const path = `videos/${safeClientId}/secondary_${Date.now()}.${ext}`;
         await supabase.storage.from("assets").upload(path, secondaryFile);
         secondaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
@@ -427,7 +423,6 @@ export default function VideoStudioPage() {
         secondaryUrl = secondaryPreview;
       }
 
-      // 2. Auto-Merge (Nano Banana) Interceptor
       if ((selectedMode === "ugc" || selectedMode === "clothing") && secondaryUrl && primaryUrl) {
         const mergePrompt = selectedMode === "ugc"
           ? `A highly realistic, viral TikTok style smartphone photo of an influencer interacting with the product. ${prompt}`
@@ -457,7 +452,6 @@ export default function VideoStudioPage() {
               const mimeMatch = mergedUrl.match(/data:(.*?);/);
               const mime = mimeMatch ? mimeMatch[1] : 'image/png';
               const blob = base64ToBlob(mergedUrl, mime);
-              // ✨ FIX: Use safeClientId to prevent "undefined" in URL
               const path = `videos/${safeClientId}/merged_primary_${Date.now()}.png`;
               await supabase.storage.from("assets").upload(path, blob);
               primaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
@@ -471,7 +465,6 @@ export default function VideoStudioPage() {
         }
       }
 
-      // 3. Create DB Record
       const { data: contentRecord, error: dbError } = await supabase
         .from("content")
         .insert({
@@ -487,7 +480,6 @@ export default function VideoStudioPage() {
       if (dbError) throw new Error(`Database Insert Failed: ${dbError.message}`);
       setGeneratingPostId(contentRecord.id);
 
-      // 4. Trigger Video Engine
       await triggerWorkflow("blink-generate-video-v1", {
         client_id: safeClientId,
         post_id: contentRecord.id,
@@ -499,6 +491,7 @@ export default function VideoStudioPage() {
         brand_name: businessInfo.name,
         brand_info: businessInfo.desc,
         ai_model_override: targetModel,
+        strict_brand_alignment: strictBrandAlignment,
       });
 
       setStep(3);
@@ -674,58 +667,75 @@ export default function VideoStudioPage() {
                 }
               })()}
 
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <div className="flex items-center gap-3">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                    AI Engine
-                  </label>
-                  <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 gap-0.5">
-                    {[
-                      { value: "auto", label: "🌟 Auto" },
-                      { value: "bytedance/seedance-1.5-pro", label: "Seedance 1.5" },
-                      { value: "kling-3.0/video", label: "Kling 3.0" },
-                      { value: "sora-2-image-to-video", label: "Sora 2" },
-                      { value: "grok-imagine/text-to-video", label: "Grok (Uncensored)" },
-                    ].map((engine) => (
-                      <button
-                        key={engine.value}
-                        onClick={() => setSelectedAiModel(engine.value)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
-                          ? "bg-white text-purple-700 shadow-sm ring-1 ring-purple-200"
-                          : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
-                          }`}
-                      >
-                        {engine.label}
-                      </button>
-                    ))}
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                {/* ✨ THE NEW BRAND ALIGNMENT TOGGLE ✨ */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-blink-dark">Strict Brand Alignment</p>
+                    <p className="text-xs text-gray-500 max-w-lg mt-1">
+                      When active, the AI ensures the video strictly aligns with your saved brand profile ({businessInfo.name || "your brand"}). Turn this off if you are generating content for a different product or want total creative freedom based purely on your prompt.
+                    </p>
                   </div>
+                  <Switch
+                    checked={strictBrandAlignment}
+                    onCheckedChange={setStrictBrandAlignment}
+                  />
                 </div>
-                <Button
-                  onClick={handleGenerate}
-                  disabled={
-                    isGenerating ||
-                    (selectedMode === "storytelling" &&
-                      bRollScenes.length === 0) ||
-                    (selectedMode !== "storytelling" &&
-                      !!activeModeConfig.primaryLabel &&
-                      !primaryFile && !primaryPreview)
-                  }
-                  className="bg-purple-600 hover:bg-purple-700 text-white h-12 px-10 text-base shadow-lg"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing
-                      Studio...
-                    </>
-                  ) : (
-                    <>
-                      <Film className="mr-2 h-5 w-5" />{" "}
-                      {selectedMode === "storytelling"
-                        ? "Generate Sequence"
-                        : "Generate AI Video"}
-                    </>
-                  )}
-                </Button>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      Master AI Engine
+                    </label>
+
+                    <div className="flex flex-wrap rounded-lg border border-gray-200 bg-gray-50 p-0.5 gap-0.5">
+                      {[
+                        { value: "auto", label: "🌟 Auto" },
+                        { value: "replicate:prunaai/p-video", label: "⚡ Pruna AI (Fast)" },
+                        { value: "replicate:openai/sora-2", label: "Sora 2 (Replicate)" },
+                        { value: "bytedance/seedance-1.5-pro", label: "Seedance 1.5" },
+                        { value: "grok-imagine/text-to-video", label: "Grok (Uncensored)" },
+                        { value: "kling-3.0/video", label: "Kling 3.0" },
+                      ].map((engine) => (
+                        <button
+                          key={engine.value}
+                          onClick={() => setSelectedAiModel(engine.value)}
+                          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
+                            ? "bg-white text-purple-700 shadow-sm ring-1 ring-purple-200"
+                            : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
+                            }`}
+                        >
+                          {engine.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={
+                      isGenerating ||
+                      (selectedMode === "storytelling" &&
+                        bRollScenes.length === 0) ||
+                      (selectedMode !== "storytelling" &&
+                        !!activeModeConfig.primaryLabel &&
+                        !primaryFile && !primaryPreview)
+                    }
+                    className="bg-purple-600 hover:bg-purple-700 text-white h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing...
+                      </>
+                    ) : (
+                      <>
+                        <Film className="mr-2 h-5 w-5" />{" "}
+                        {selectedMode === "storytelling"
+                          ? "Generate Sequence"
+                          : "Generate AI Video"}
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -772,7 +782,6 @@ export default function VideoStudioPage() {
                     <p className="text-gray-500 mt-3 max-w-md mx-auto leading-relaxed">
                       Our cinematic AI engine is currently animating your scene pixel by pixel.
                     </p>
-                    {/* ✨ UPDATED REALISTIC TIMELINE MESSAGE ✨ */}
                     <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-100 text-sm text-purple-800">
                       ⏱️ High-fidelity video generation typically takes <b>5 to 15 minutes</b> depending on server load. You can leave this tab open and grab a coffee!
                     </div>

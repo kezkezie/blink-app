@@ -143,6 +143,7 @@ export default function GeneratePage() {
     null
   );
   const [brandVoice, setBrandVoice] = useState<string | null>(null);
+  const [brandImageStyle, setBrandImageStyle] = useState<string | null>(null);
   const [clientIndustry, setClientIndustry] = useState<string | null>(null);
 
   useEffect(() => {
@@ -186,6 +187,8 @@ export default function GeneratePage() {
       if (brandRes.data) {
         const b = brandRes.data as Record<string, unknown>;
         setBrandVoice((b.brand_voice as string) || null);
+        // ✨ EXTRACTING BRAND STYLE FOR IMAGE GENERATION
+        setBrandImageStyle((b.image_style as string) || null);
       }
       if (socialRes.data) {
         const activePlatforms = socialRes.data.map(
@@ -274,13 +277,13 @@ export default function GeneratePage() {
       ...(isIndividual
         ? []
         : [
-            {
-              id: "images",
-              icon: Palette,
-              label: "Generating images...",
-              status: "idle" as StepStatus,
-            },
-          ]),
+          {
+            id: "images",
+            icon: Palette,
+            label: "Generating images...",
+            status: "idle" as StepStatus,
+          },
+        ]),
       {
         id: "done",
         icon: CheckCircle,
@@ -339,7 +342,6 @@ export default function GeneratePage() {
           ? "🎨 AI is enhancing your photo..."
           : "✨ AI is painting from your prompt...";
 
-        // ✨ FIXED: Trigger loop now has a safer delay to prevent rate limits
         for (let i = 0; i < contentItems.length; i++) {
           updateStep("images", {
             status: "running",
@@ -364,6 +366,7 @@ export default function GeneratePage() {
                   content_type: contentItems[i].content_type,
                   mode: "enhance",
                   kie_model: kieModel,
+                  style: brandImageStyle ?? "", // ✨ INJECTING BRAND STYLE
                 },
                 referenceFile
               );
@@ -378,18 +381,17 @@ export default function GeneratePage() {
                 content_type: contentItems[i].content_type,
                 mode: "generate",
                 kie_model: kieModel,
+                style: brandImageStyle ?? "", // ✨ INJECTING BRAND STYLE
               });
             }
           } catch (imgErr) {
             console.error(`Image ${i + 1} generation error:`, imgErr);
           }
-          // Wait 3.5 seconds between sending requests to avoid AI rate limits
           if (i < contentItems.length - 1) await delay(3500);
         }
 
-        // ✨ FIXED: Vastly improved polling logic with progress tracking
         let pollAttempts = 0;
-        const maxPollAttempts = 60; // 60 attempts * 5s = 5 full minutes of waiting!
+        const maxPollAttempts = 60;
         let finalItems: Content[] = [];
 
         while (pollAttempts < maxPollAttempts) {
@@ -402,7 +404,6 @@ export default function GeneratePage() {
 
           finalItems = (polledContent || []) as unknown as Content[];
 
-          // Count how many images actually successfully generated
           const completedImagesCount = finalItems.filter(
             (c) => parseArray(c.image_urls).length > 0
           ).length;
@@ -412,7 +413,6 @@ export default function GeneratePage() {
             detail: `AI has finished ${completedImagesCount} of ${contentItems.length} images...`,
           });
 
-          // If all images are done, we break out early
           if (
             completedImagesCount === contentItems.length &&
             finalItems.length > 0
@@ -531,6 +531,7 @@ export default function GeneratePage() {
             content_type: imageModalTarget.content_type,
             mode: "enhance",
             kie_model: kieModel,
+            style: brandImageStyle ?? "", // ✨ INJECTING BRAND STYLE
           },
           modalRefFile
         );
@@ -545,6 +546,7 @@ export default function GeneratePage() {
           content_type: imageModalTarget.content_type,
           mode: "generate",
           kie_model: kieModel,
+          style: brandImageStyle ?? "", // ✨ INJECTING BRAND STYLE
         });
       }
 
@@ -1036,7 +1038,7 @@ export default function GeneratePage() {
                     "flex items-center justify-center h-10 w-10 rounded-full shrink-0",
                     step.status === "idle" && "bg-gray-100 text-gray-400",
                     step.status === "running" &&
-                      "bg-blink-primary/10 text-blink-primary",
+                    "bg-blink-primary/10 text-blink-primary",
                     step.status === "done" && "bg-emerald-100 text-emerald-600",
                     step.status === "error" && "bg-red-100 text-red-600"
                   )}
@@ -1200,10 +1202,10 @@ export default function GeneratePage() {
             {ALL_PLATFORMS.filter(
               (p) => !visiblePlatformValues.includes(p.value)
             ).length === 0 && (
-              <div className="col-span-2 text-center text-sm text-gray-500 py-4">
-                All platforms added!
-              </div>
-            )}
+                <div className="col-span-2 text-center text-sm text-gray-500 py-4">
+                  All platforms added!
+                </div>
+              )}
           </div>
         </DialogContent>
       </Dialog>

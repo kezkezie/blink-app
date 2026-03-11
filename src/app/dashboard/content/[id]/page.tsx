@@ -42,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -208,12 +209,12 @@ export default function ContentDetailPage({
       setContent((prev) =>
         prev
           ? {
-              ...prev,
-              caption,
-              caption_short: captionShort,
-              hashtags,
-              call_to_action: callToAction,
-            }
+            ...prev,
+            caption,
+            caption_short: captionShort,
+            hashtags,
+            call_to_action: callToAction,
+          }
           : null
       );
   }
@@ -281,10 +282,10 @@ export default function ContentDetailPage({
       setContent((prev) =>
         prev
           ? {
-              ...prev,
-              status: "posted" as ContentStatus,
-              scheduled_at: null as any,
-            }
+            ...prev,
+            status: "posted" as ContentStatus,
+            scheduled_at: null as any,
+          }
           : null
       );
       alert("Post approved and sent live! 🚀");
@@ -313,10 +314,10 @@ export default function ContentDetailPage({
       setContent((prev) =>
         prev
           ? {
-              ...prev,
-              status: "approved" as ContentStatus,
-              scheduled_at: scheduledTime as string,
-            }
+            ...prev,
+            status: "approved" as ContentStatus,
+            scheduled_at: scheduledTime as string,
+          }
           : null
       );
       setScheduleDate("");
@@ -539,7 +540,6 @@ export default function ContentDetailPage({
                   )}
                   <div className="relative z-10 h-full w-full group flex items-center justify-center p-4">
                     {isVideo ? (
-                      // ✨ FIXED: Added controls, removed autoPlay
                       <video
                         src={displayImage}
                         controls
@@ -700,111 +700,111 @@ export default function ContentDetailPage({
 
               {(content.status === "pending_approval" ||
                 content.status === "approved") && (
-                <div className="space-y-3 pt-1">
-                  {content.status === "pending_approval" && (
-                    <div className="p-2.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium mb-1 border border-blue-100">
-                      Post looks good? Choose how to proceed:
-                    </div>
-                  )}
-                  {content.status === "approved" &&
-                  (content as any).scheduled_at ? (
-                    <div className="p-4 border border-emerald-200 rounded-xl bg-emerald-50 shadow-inner space-y-3 animate-in fade-in">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-emerald-700 font-bold">
-                          <CheckCircle className="h-5 w-5" />
-                          Ghost Poster Active 👻
+                  <div className="space-y-3 pt-1">
+                    {content.status === "pending_approval" && (
+                      <div className="p-2.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium mb-1 border border-blue-100">
+                        Post looks good? Choose how to proceed:
+                      </div>
+                    )}
+                    {content.status === "approved" &&
+                      (content as any).scheduled_at ? (
+                      <div className="p-4 border border-emerald-200 rounded-xl bg-emerald-50 shadow-inner space-y-3 animate-in fade-in">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-emerald-700 font-bold">
+                            <CheckCircle className="h-5 w-5" />
+                            Ghost Poster Active 👻
+                          </div>
+                        </div>
+                        <p className="text-xs text-emerald-700/80 leading-relaxed">
+                          This post is queued. The AI will automatically publish
+                          it on{" "}
+                          <b>
+                            {new Date(
+                              (content as any).scheduled_at
+                            ).toLocaleString()}
+                          </b>
+                          .
+                        </p>
+                        <div className="flex flex-col gap-2 pt-2">
+                          <Button
+                            onClick={handleApproveAndPublishNow}
+                            disabled={actionLoading}
+                            className="w-full text-xs h-9 gap-1.5 bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                          >
+                            {actionLoading ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Zap className="h-3.5 w-3.5" />
+                            )}{" "}
+                            Publish Now Instead
+                          </Button>
+                          <Button
+                            onClick={handleCancelSchedule}
+                            disabled={actionLoading}
+                            variant="outline"
+                            className="w-full text-xs h-9 gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100 bg-white"
+                          >
+                            <XCircle className="h-3.5 w-3.5" /> Cancel Schedule
+                          </Button>
                         </div>
                       </div>
-                      <p className="text-xs text-emerald-700/80 leading-relaxed">
-                        This post is queued. The AI will automatically publish
-                        it on{" "}
-                        <b>
-                          {new Date(
-                            (content as any).scheduled_at
-                          ).toLocaleString()}
-                        </b>
-                        .
-                      </p>
-                      <div className="flex flex-col gap-2 pt-2">
+                    ) : (
+                      <>
                         <Button
                           onClick={handleApproveAndPublishNow}
                           disabled={actionLoading}
-                          className="w-full text-xs h-9 gap-1.5 bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
-                        >
-                          {actionLoading ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Zap className="h-3.5 w-3.5" />
-                          )}{" "}
-                          Publish Now Instead
-                        </Button>
-                        <Button
-                          onClick={handleCancelSchedule}
-                          disabled={actionLoading}
-                          variant="outline"
-                          className="w-full text-xs h-9 gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100 bg-white"
-                        >
-                          <XCircle className="h-3.5 w-3.5" /> Cancel Schedule
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <Button
-                        onClick={handleApproveAndPublishNow}
-                        disabled={actionLoading}
-                        className="w-full justify-start gap-2 bg-blink-primary hover:bg-blink-primary/90 text-white"
-                      >
-                        {actionLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Zap className="h-4 w-4" />
-                        )}{" "}
-                        {content.status === "pending_approval"
-                          ? "Approve & Publish Now"
-                          : "Publish Now"}
-                      </Button>
-                      <div className="p-3 border border-gray-100 rounded-xl bg-gray-50 shadow-inner inset-0 space-y-2.5">
-                        <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
-                          <CalendarIcon className="h-3.5 w-3.5 text-emerald-600" />{" "}
-                          {content.status === "pending_approval"
-                            ? "Approve & Schedule"
-                            : "Schedule Post"}
-                        </label>
-                        <Input
-                          type="datetime-local"
-                          value={scheduleDate}
-                          onChange={(e) => setScheduleDate(e.target.value)}
-                          className="w-full text-sm bg-white border-gray-200 focus:ring-emerald-500"
-                          min={new Date().toISOString().slice(0, 16)}
-                        />
-                        <Button
-                          onClick={handleApproveAndSchedule}
-                          disabled={actionLoading || !scheduleDate}
-                          className="w-full justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          className="w-full justify-start gap-2 bg-blink-primary hover:bg-blink-primary/90 text-white"
                         >
                           {actionLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <CheckCircle className="h-4 w-4" />
+                            <Zap className="h-4 w-4" />
                           )}{" "}
-                          Schedule for later
+                          {content.status === "pending_approval"
+                            ? "Approve & Publish Now"
+                            : "Publish Now"}
                         </Button>
-                      </div>
-                    </>
-                  )}
-                  {content.status === "pending_approval" && (
-                    <Button
-                      onClick={() => setRejectOpen(true)}
-                      disabled={actionLoading}
-                      variant="outline"
-                      className="w-full justify-start gap-2 border-red-200 text-red-600 hover:bg-red-50 mt-2"
-                    >
-                      <XCircle className="h-4 w-4" /> Reject & Request Edit
-                    </Button>
-                  )}
-                </div>
-              )}
+                        <div className="p-3 border border-gray-100 rounded-xl bg-gray-50 shadow-inner inset-0 space-y-2.5">
+                          <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                            <CalendarIcon className="h-3.5 w-3.5 text-emerald-600" />{" "}
+                            {content.status === "pending_approval"
+                              ? "Approve & Schedule"
+                              : "Schedule Post"}
+                          </label>
+                          <Input
+                            type="datetime-local"
+                            value={scheduleDate}
+                            onChange={(e) => setScheduleDate(e.target.value)}
+                            className="w-full text-sm bg-white border-gray-200 focus:ring-emerald-500"
+                            min={new Date().toISOString().slice(0, 16)}
+                          />
+                          <Button
+                            onClick={handleApproveAndSchedule}
+                            disabled={actionLoading || !scheduleDate}
+                            className="w-full justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          >
+                            {actionLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <CheckCircle className="h-4 w-4" />
+                            )}{" "}
+                            Schedule for later
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                    {content.status === "pending_approval" && (
+                      <Button
+                        onClick={() => setRejectOpen(true)}
+                        disabled={actionLoading}
+                        variant="outline"
+                        className="w-full justify-start gap-2 border-red-200 text-red-600 hover:bg-red-50 mt-2"
+                      >
+                        <XCircle className="h-4 w-4" /> Reject & Request Edit
+                      </Button>
+                    )}
+                  </div>
+                )}
 
               {content.status === "rejected" && (
                 <Button
@@ -820,10 +820,10 @@ export default function ContentDetailPage({
                     setContent((prev) =>
                       prev
                         ? {
-                            ...prev,
-                            status: "draft" as ContentStatus,
-                            rejection_reason: null,
-                          }
+                          ...prev,
+                          status: "draft" as ContentStatus,
+                          rejection_reason: null,
+                        }
                         : null
                     );
                     setActionLoading(false);
@@ -906,8 +906,7 @@ export default function ContentDetailPage({
           <DialogTitle className="sr-only">Media Preview</DialogTitle>
           {previewImageUrl &&
             (previewImageUrl.includes(".mp4") ||
-            previewImageUrl.includes(".mov") ? (
-              // ✨ FIXED: Added controls, removed autoPlay
+              previewImageUrl.includes(".mov") ? (
               <video
                 src={previewImageUrl}
                 controls
@@ -953,8 +952,126 @@ export default function ContentDetailPage({
         </DialogContent>
       </Dialog>
 
+      {/* ✨ RESTORED IMAGE GENERATION MODAL ✨ */}
       <Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
-        {/* Modal Content stays exactly the same */}
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-blink-primary" />
+              {displayImage ? "Regenerate Image" : "Generate Image"}
+            </DialogTitle>
+            <DialogDescription>
+              Adjust settings and provide prompts to guide the AI in painting your post.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-6">
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-gray-700">Generation Mode</label>
+              <Select value={generationMode} onValueChange={(v: GenerationMode) => setGenerationMode(v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="generate">Pure Generation (Text to Image)</SelectItem>
+                  <SelectItem value="style_transfer">Style Transfer (Image to Image)</SelectItem>
+                  {displayImage && <SelectItem value="edit">Edit / Modify Current Image</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {(generationMode === "generate" || generationMode === "style_transfer") && (
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-gray-700">Art Style</label>
+                <Select value={selectedStyle} onValueChange={setSelectedStyle}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select style" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STYLE_OPTIONS.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-gray-700">Custom Prompt Instructions (Optional)</label>
+              <Textarea
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder="e.g., A dramatic product shot with neon lighting..."
+                className="resize-none"
+                rows={3}
+              />
+            </div>
+
+            {(generationMode === "style_transfer" || generationMode === "edit" || generationMode === "layers") && (
+              <div className="space-y-4 p-4 border border-gray-200 rounded-xl bg-gray-50">
+                <h4 className="text-sm font-medium text-gray-800">Reference Images</h4>
+
+                {displayImage && (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="use-current"
+                      checked={useCurrentImageAsRef}
+                      onCheckedChange={(checked) => setUseCurrentImageAsRef(!!checked)}
+                    />
+                    <label htmlFor="use-current" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Use current image as primary reference
+                    </label>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {refPreviews.length > 0 && (
+                    <div className="grid grid-cols-4 gap-2 mb-2">
+                      {refPreviews.map((src, i) => (
+                        <div key={i} className="relative aspect-square rounded-md overflow-hidden border border-gray-200">
+                          <img src={src} className="w-full h-full object-cover" alt={`Ref ${i}`} />
+                          <button onClick={() => removeRefFile(i)} className="absolute top-1 right-1 p-1 bg-white/80 rounded-full shadow-sm hover:bg-white text-red-500">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleRefFilesDrop}
+                    onClick={() => refInputRef.current?.click()}
+                    className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors border-gray-300 hover:border-blink-primary hover:bg-blink-primary/5"
+                  >
+                    <Upload className="h-6 w-6 mx-auto mb-2 text-gray-400" />
+                    <p className="text-xs font-medium text-gray-600">Click or drag & drop reference images</p>
+                  </div>
+                  <input
+                    ref={refInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleRefFilesSelect}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImageModalOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleGenerateImage}
+              disabled={isGenerationDisabled}
+              className="bg-blink-primary hover:bg-blink-primary/90 text-white"
+            >
+              {generatingImage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              {displayImage ? "Regenerate Image" : "Generate Image"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   );
