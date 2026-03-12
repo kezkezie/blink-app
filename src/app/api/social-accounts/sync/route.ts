@@ -9,26 +9,33 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
         }
 
-        // 1. Fetch connected accounts from PostForMe
-        const pfmRes = await fetch(`https://api.postforme.dev/v1/social-accounts?external_id=${clientId}`, {
+        // 1. Fetch ALL connected accounts from PostForMe securely
+        const pfmRes = await fetch(`https://api.postforme.dev/v1/social-accounts`, {
             headers: { Authorization: `Bearer ${apiKey}` }
         });
 
-        if (!pfmRes.ok) throw new Error("Failed to fetch from PostForMe");
+        if (!pfmRes.ok) {
+            const errText = await pfmRes.text();
+            console.error("PFM API Error:", errText);
+            throw new Error("Failed to fetch from PostForMe");
+        }
 
         const pfmAccounts = await pfmRes.json();
+        const allAccounts = Array.isArray(pfmAccounts.data) ? pfmAccounts.data : (Array.isArray(pfmAccounts) ? pfmAccounts : []);
 
-        // 2. Format them for our Supabase database
-        const accountsToSave = (pfmAccounts.data || []).map((acc: any) => ({
+        // 2. Manually filter for the exact clientId (external_id) to be 100% safe
+        const clientAccounts = allAccounts.filter((acc: any) => acc.external_id === clientId);
+
+        // 3. Format them for our Supabase database (handling provider vs platform naming)
+        const accountsToSave = clientAccounts.map((acc: any) => ({
             client_id: clientId,
-            platform: acc.platform,
+            platform: acc.platform || acc.provider, // ✨ Catch both naming conventions!
             account_name: acc.username || acc.name || null,
             postforme_account_id: acc.id,
             is_active: true,
             connected_at: new Date().toISOString()
         }));
 
-        // 3. Return the formatted data to the frontend so it can pass the RLS security check
         return NextResponse.json({ success: true, accounts: accountsToSave });
 
     } catch (error: any) {

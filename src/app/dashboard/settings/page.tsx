@@ -146,6 +146,7 @@ function SettingsContent() {
     setLoading(false);
   }, [clientId]);
 
+  // ✨ Bulletproof Manual Sync Function
   const handleManualSync = useCallback(async () => {
     if (!clientId) return;
     setSyncing(true);
@@ -161,19 +162,39 @@ function SettingsContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to sync accounts");
 
-      // ✨ Client-side insert bypasses RLS securely because the user is authenticated!
+      // ✨ Safe DB Save: Avoids Supabase 'onConflict' constraint crashes
       if (data.accounts && data.accounts.length > 0) {
-        const { error } = await supabase
+        // First, get what we already have in the DB
+        const { data: existing } = await supabase
           .from('social_accounts')
-          .upsert(data.accounts, { onConflict: 'client_id, platform' });
+          .select('id, platform')
+          .eq('client_id', clientId);
 
-        if (error) throw error;
+        // Loop through accounts from PostForMe and save them securely
+        for (const acc of data.accounts) {
+          const exists = existing?.find(e => e.platform === acc.platform);
+          if (exists) {
+            // Update existing account
+            await supabase.from('social_accounts').update(acc).eq('id', exists.id);
+          } else {
+            // Insert new account
+            const { error: insertErr } = await supabase.from('social_accounts').insert([acc]);
+            if (insertErr) {
+              console.error("Insert error:", insertErr);
+              throw new Error(insertErr.message);
+            }
+          }
+        }
+      } else {
+        // If data.accounts is empty, PostForMe didn't send back anything for this client
+        throw new Error("No accounts found in PostForMe for this client ID.");
       }
 
       await loadData();
       setConnectionMessage({ type: "success", text: "Accounts synced successfully!" });
       setTimeout(() => setConnectionMessage(null), 4000);
     } catch (err: any) {
+      console.error("Sync process error:", err);
       setConnectionMessage({ type: "error", text: err.message });
     } finally {
       setSyncing(false);
