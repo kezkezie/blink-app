@@ -18,6 +18,7 @@ import {
   ZoomIn,
   Trash2,
   Zap,
+  Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,9 @@ import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow } from "@/lib/workflows";
 import type { Content, ContentStatus } from "@/types/database";
 
+// ✨ FIX: Restored the missing cn import!
+import { cn } from "@/lib/utils";
+
 const parseArray = (data: any): any[] => {
   if (Array.isArray(data)) return data;
   if (typeof data === "string") {
@@ -59,12 +63,12 @@ const parseArray = (data: any): any[] => {
 type GenerationMode = "generate" | "style_transfer" | "edit" | "layers";
 
 const STYLE_OPTIONS = [
-  { value: "realistic", label: "Hyper-Realistic Photo" },
-  { value: "cinematic", label: "Cinematic Lighting" },
-  { value: "3d_render", label: "3D Product Render" },
-  { value: "studio", label: "Clean Studio Shot" },
-  { value: "illustrative", label: "Modern Illustration" },
-  { value: "2d_flat", label: "2D Flat Design" },
+  { value: "realistic", label: "Hyper-Realistic Photo", promptAddon: "Hyper-realistic photograph, highly detailed, 8k resolution." },
+  { value: "cinematic", label: "Cinematic Lighting", promptAddon: "Cinematic lighting, dramatic shadows, movie still, moody aesthetic." },
+  { value: "3d_render", label: "3D Product Render", promptAddon: "Abstract 3D render, Cinema4D, Octane render, smooth glossy textures." },
+  { value: "studio", label: "Clean Studio Shot", promptAddon: "Professional studio lighting, clean infinite background, high-end commercial product photography." },
+  { value: "illustrative", label: "Modern Illustration", promptAddon: "Modern illustration, vibrant colors, flat vector aesthetic." },
+  { value: "2d_flat", label: "2D Flat Design", promptAddon: "2D flat design, minimalistic, clean lines, corporate vector." },
 ];
 
 export default function ContentDetailPage({
@@ -78,6 +82,8 @@ export default function ContentDetailPage({
 
   const [content, setContent] = useState<Content | null>(null);
   const [brandLogo, setBrandLogo] = useState<string | null>(null);
+  const [brandContext, setBrandContext] = useState<any>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -105,17 +111,16 @@ export default function ContentDetailPage({
   const [selectedStyle, setSelectedStyle] = useState("realistic");
   const refInputRef = useRef<HTMLInputElement>(null);
 
+  const [isHelpLoading, setIsHelpLoading] = useState(false);
+
   useEffect(() => {
     async function fetchData() {
       if (!clientId) return;
       try {
-        const [contentRes, brandRes] = await Promise.all([
+        const [contentRes, clientRes, brandRes] = await Promise.all([
           supabase.from("content").select("*").eq("id", id).maybeSingle(),
-          supabase
-            .from("brand_profiles")
-            .select("logo_url")
-            .eq("client_id", clientId)
-            .maybeSingle(),
+          supabase.from("clients").select("company_name, industry").eq("id", clientId).single(),
+          supabase.from("brand_profiles").select("logo_url, image_style, brand_voice").eq("client_id", clientId).maybeSingle(),
         ]);
 
         if (contentRes.data) {
@@ -126,7 +131,17 @@ export default function ContentDetailPage({
           setHashtags(item.hashtags || "");
           setCallToAction(item.call_to_action || "");
         }
+
         if (brandRes.data?.logo_url) setBrandLogo(brandRes.data.logo_url);
+
+        setBrandContext({
+          name: clientRes.data?.company_name,
+          industry: clientRes.data?.industry,
+          imageStyle: brandRes.data?.image_style,
+          brandVoice: brandRes.data?.brand_voice,
+          logoUrl: brandRes.data?.logo_url,
+        });
+
       } catch (err) {
         console.error("Fetch error:", err);
       } finally {
@@ -135,6 +150,39 @@ export default function ContentDetailPage({
     }
     fetchData();
   }, [id, clientId]);
+
+  const handlePromptHelp = async () => {
+    if (isHelpLoading) return;
+    setIsHelpLoading(true);
+
+    try {
+      const activeStyleObj = STYLE_OPTIONS.find(s => s.value === selectedStyle);
+
+      const res = await fetch("/api/ai/prompt-helper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: customPrompt,
+          brandContext: brandContext,
+          useBrand: true,
+          mode: generationMode,
+          style: (generationMode === 'generate' || generationMode === 'style_transfer') ? activeStyleObj : undefined
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || "Failed to fetch suggestion");
+
+      if (data.suggestion) {
+        setCustomPrompt(data.suggestion);
+      }
+    } catch (err: any) {
+      alert(`Prompt helper failed: ${err.message}`);
+    } finally {
+      setIsHelpLoading(false);
+    }
+  };
 
   async function handleSave() {
     if (!content) return;
@@ -331,11 +379,9 @@ export default function ContentDetailPage({
     setRefPreviews((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // ✨ COMPLETELY REBUILT GENERATION LOGIC ✨
   async function handleGenerateImage() {
     if (!content) return;
 
-    // Close modal immediately and show loading overlay
     setImageModalOpen(false);
     setGeneratingImage(true);
 
@@ -343,13 +389,11 @@ export default function ContentDetailPage({
     const displayImage = parseArray(content.image_urls)[0];
 
     try {
-      // 1. Save the new prompt text to the DB
       await supabase
         .from("content")
         .update({ image_prompt_used: finalTopic })
         .eq("id", content.id);
 
-      // 2. Upload any newly dragged reference images to Supabase Storage
       let uploadedUrls: string[] = [];
       for (const file of refFiles) {
         const ext = file.name.split(".").pop() || "png";
@@ -360,16 +404,12 @@ export default function ContentDetailPage({
         }
       }
 
-      // 3. Auto-inject the current image if needed
-      // If we are editing or styling, we absolutely need the current image as a reference
       if ((useCurrentImageAsRef || generationMode === 'edit') && displayImage) {
-        // Prevent duplicate URLs in the array
         if (!uploadedUrls.includes(displayImage)) {
           uploadedUrls.unshift(displayImage);
         }
       }
 
-      // 4. Trigger the n8n webhook SYNCHRONOUSLY
       const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId!,
         post_id: content.id,
@@ -379,10 +419,9 @@ export default function ContentDetailPage({
         reference_image_urls: uploadedUrls,
         logo_url: brandLogo || null,
         style: (generationMode === "style_transfer" || generationMode === "generate") ? selectedStyle : null,
-        is_sync: true // ✨ Wait for the response!
+        is_sync: true
       });
 
-      // 5. Parse the returned URLs
       let newUrls: string[] = [];
       if (response && Array.isArray(response.imageUrls)) {
         newUrls = response.imageUrls as string[];
@@ -392,7 +431,6 @@ export default function ContentDetailPage({
 
       if (newUrls.length === 0) throw new Error("No images were returned by the AI generator.");
 
-      // 6. Instantly update the database with the final generated image
       const { data: updatedContent, error: updateError } = await supabase
         .from("content")
         .update({
@@ -405,12 +443,10 @@ export default function ContentDetailPage({
 
       if (updateError) throw updateError;
 
-      // 7. Instantly update the UI
       if (updatedContent) {
         setContent(updatedContent as unknown as Content);
       }
 
-      // Reset Modal states
       setRefFiles([]);
       setRefPreviews([]);
       setCustomPrompt("");
@@ -430,7 +466,6 @@ export default function ContentDetailPage({
     setRefPreviews([]);
     setCustomPrompt("");
     setUseCurrentImageAsRef(false);
-    // If they already have an image, default to Edit mode, otherwise default to Generate
     setGenerationMode(parseArray(content?.image_urls)[0] ? "edit" : "generate");
     setImageModalOpen(true);
   }
@@ -463,7 +498,6 @@ export default function ContentDetailPage({
       displayImage.toLowerCase().includes(".mov") ||
       displayImage.toLowerCase().includes(".webm"));
 
-  // Disable if they chose edit/style transfer but provided absolutely no reference material
   const isGenerationDisabled = generatingImage || ((generationMode === "style_transfer" || generationMode === "layers") && refFiles.length === 0 && !useCurrentImageAsRef && !displayImage);
 
   return (
@@ -960,15 +994,36 @@ export default function ContentDetailPage({
               </div>
             )}
 
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-gray-700">Custom Prompt Instructions (Optional)</label>
-              <Textarea
-                value={customPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-                placeholder="e.g., A dramatic product shot with neon lighting..."
-                className="resize-none"
-                rows={3}
-              />
+            {/* ✨ Updated Prompt Instructions Area with AI Magic Writer */}
+            <div className="space-y-3 relative">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-medium text-gray-700">Custom Prompt Instructions (Optional)</label>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handlePromptHelp}
+                  disabled={isHelpLoading}
+                  className={cn("h-7 text-xs px-2 hover:bg-blink-primary/10 hover:text-blink-primary transition-colors border border-transparent hover:border-blink-primary/20", isHelpLoading && "animate-pulse")}
+                >
+                  {isHelpLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wand2 className="w-3 h-3 mr-1" />}
+                  {isHelpLoading ? "Writing..." : "AI Magic Writer"}
+                </Button>
+              </div>
+              <div className="relative">
+                <Textarea
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  placeholder={generationMode === 'edit' ? "e.g., Remove the current logo and replace it with the exact text 'LUP.'..." : "e.g., A dramatic product shot with neon lighting..."}
+                  className={cn("resize-none pr-10 transition-all", isHelpLoading && "opacity-50")}
+                  rows={3}
+                  readOnly={isHelpLoading}
+                />
+                {isHelpLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <Sparkles className="w-8 h-8 text-blink-primary animate-bounce opacity-50" />
+                  </div>
+                )}
+              </div>
             </div>
 
             {(generationMode === "style_transfer" || generationMode === "edit" || generationMode === "layers") && (

@@ -17,6 +17,7 @@ import {
   Share2 as Share2Icon,
   Smartphone,
   User,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
+import { useRouter } from "next/navigation";
 
 const PFM_SUPPORTED_PLATFORMS = [
   "instagram",
@@ -84,9 +86,12 @@ type MainTab = "account" | "ai-rules";
 
 export default function SettingsPage() {
   const { clientId } = useClient();
+  const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [savingAccount, setSavingAccount] = useState(false);
   const [savingAI, setSavingAI] = useState(false);
+  const [syncing, setSyncing] = useState(false); // ✨ Added sync state
 
   const [accountInfo, setAccountInfo] = useState({
     contact_name: "",
@@ -95,14 +100,12 @@ export default function SettingsPage() {
   });
   const [aiConfig, setAiConfig] = useState(defaultAutoReplyConfig);
 
-  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
-    null
-  );
+  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [activeAuthUrl, setActiveAuthUrl] = useState<string | null>(null);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<{
-    type: "success" | "error";
+    type: "success" | "error" | "info";
     text: string;
   } | null>(null);
 
@@ -110,38 +113,78 @@ export default function SettingsPage() {
   const [aiTab, setAiTab] = useState<"dm" | "comments">("dm");
   const [socials, setSocials] = useState<SocialAccount[]>([]);
 
+  // ✨ Auto-Sync Logic: Catches the redirect from PostForMe!
   useEffect(() => {
     if (!clientId) return;
 
-    async function load() {
-      const { data } = await supabase
-        .from("clients")
-        .select("*")
-        .eq("id", clientId)
-        .single();
-      if (data) {
-        setAccountInfo({
-          contact_name: data.contact_name || "",
-          contact_email: data.contact_email || "",
-          contact_phone: data.contact_phone || "",
-        });
-        if (data.auto_reply_config)
-          setAiConfig({
-            ...defaultAutoReplyConfig,
-            ...(data.auto_reply_config as any),
-          });
-      }
-
-      const socialsRes = await supabase
-        .from("social_accounts")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("connected_at", { ascending: true });
-      if (socialsRes.data) setSocials(socialsRes.data as SocialAccount[]);
-      setLoading(false);
+    // Check if we just came back from PostForMe
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("success") === "account_connected") {
+      handleManualSync();
+      // Clean up the URL so it doesn't keep syncing if they refresh the page
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
-    load();
   }, [clientId]);
+
+  const loadData = useCallback(async () => {
+    if (!clientId) return;
+    const { data } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("id", clientId)
+      .single();
+    if (data) {
+      setAccountInfo({
+        contact_name: data.contact_name || "",
+        contact_email: data.contact_email || "",
+        contact_phone: data.contact_phone || "",
+      });
+      if (data.auto_reply_config)
+        setAiConfig({
+          ...defaultAutoReplyConfig,
+          ...(data.auto_reply_config as any),
+        });
+    }
+
+    const socialsRes = await supabase
+      .from("social_accounts")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("connected_at", { ascending: true });
+
+    if (socialsRes.data) setSocials(socialsRes.data as SocialAccount[]);
+    setLoading(false);
+  }, [clientId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // ✨ Manual Sync Function: Calls our new API route
+  const handleManualSync = async () => {
+    if (!clientId) return;
+    setSyncing(true);
+    setConnectionMessage({ type: "info", text: "Syncing connected accounts..." });
+
+    try {
+      const res = await fetch("/api/social-accounts/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to sync accounts");
+
+      await loadData(); // Reload the data to show the new accounts
+      setConnectionMessage({ type: "success", text: "Accounts synced successfully!" });
+      setTimeout(() => setConnectionMessage(null), 4000);
+    } catch (err: any) {
+      setConnectionMessage({ type: "error", text: err.message });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const connectPlatform = useCallback(
     async (platform: string) => {
@@ -176,19 +219,16 @@ export default function SettingsPage() {
     setDisconnecting(accountId);
     setConnectionMessage(null);
     try {
-      await fetch("/api/social-accounts/disconnect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId }),
-      });
+      // Note: Ideally, you also want a /api/social-accounts/disconnect route 
+      // that talks to PostForMe API to officially revoke the token on their end too!
       await supabase
         .from("social_accounts")
-        .update({ is_active: false } as Record<string, unknown>)
+        .delete()
         .eq("id", accountId);
-      setSocials((prev) =>
-        prev.map((s) => (s.id === accountId ? { ...s, is_active: false } : s))
-      );
+
+      setSocials((prev) => prev.filter((s) => s.id !== accountId));
       setConnectionMessage({ type: "success", text: "Account disconnected." });
+      setTimeout(() => setConnectionMessage(null), 3000);
     } catch (err) {
       setConnectionMessage({
         type: "error",
@@ -284,11 +324,15 @@ export default function SettingsPage() {
             "px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-2",
             connectionMessage.type === "success"
               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-              : "bg-red-50 text-red-700 border border-red-200"
+              : connectionMessage.type === "info"
+                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                : "bg-red-50 text-red-700 border border-red-200"
           )}
         >
           {connectionMessage.type === "success" ? (
             <CheckCircle className="h-4 w-4 shrink-0" />
+          ) : connectionMessage.type === "info" ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
           ) : (
             <AlertCircle className="h-4 w-4 shrink-0" />
           )}
@@ -373,14 +417,27 @@ export default function SettingsPage() {
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-4 shadow-sm">
-            <div>
-              <h3 className="text-base font-semibold text-blink-dark">
-                Social Connections
-              </h3>
-              <p className="text-sm text-gray-500 mt-0.5">
-                Link the social media accounts you want Blink to post to.
-              </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-blink-dark">
+                  Social Connections
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Link the social media accounts you want Blink to post to.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleManualSync}
+                disabled={syncing}
+                className="text-xs"
+              >
+                <RefreshCw className={cn("h-3 w-3 mr-1.5", syncing && "animate-spin")} />
+                Sync Accounts
+              </Button>
             </div>
+
             {socials.filter((s) => s.is_active).length === 0 ? (
               <div className="text-center py-8 space-y-3">
                 <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto">
@@ -397,8 +454,10 @@ export default function SettingsPage() {
                 {socials
                   .filter((s) => s.is_active)
                   .map((account) => {
-                    const cfg = platformConfig[account.platform];
-                    if (!cfg) return null;
+                    // Match 'x' from PostForMe to our 'twitter' config visually if needed
+                    const displayPlatform = account.platform === 'x' ? 'twitter' : account.platform;
+                    const cfg = platformConfig[displayPlatform] || { label: account.platform, emoji: "🔗", color: "bg-gray-500" };
+
                     return (
                       <div
                         key={account.id}
@@ -418,7 +477,7 @@ export default function SettingsPage() {
                               {cfg.label}
                             </p>
                             {account.account_name && (
-                              <p className="text-xs text-gray-400">
+                              <p className="text-xs text-gray-500">
                                 @{account.account_name.replace("@", "")}
                               </p>
                             )}
@@ -448,14 +507,18 @@ export default function SettingsPage() {
                   })}
               </div>
             )}
+
             <details className="group border-t border-gray-100 pt-3 mt-3">
               <summary className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-500 hover:text-blink-primary transition-colors py-2 select-none">
                 <Plus className="h-4 w-4" /> Connect more platforms
               </summary>
               <div className="mt-3 space-y-2 pl-0">
                 {Object.entries(platformConfig).map(([key, cfg]) => {
-                  if (socials.some((s) => s.platform === key && s.is_active))
+                  // Make sure we don't show connect button if already connected
+                  const pfmKey = key === 'twitter' ? 'x' : key;
+                  if (socials.some((s) => s.platform === pfmKey && s.is_active))
                     return null;
+
                   return (
                     <div
                       key={key}
@@ -606,7 +669,8 @@ export default function SettingsPage() {
                 <button
                   onClick={() => {
                     setConnectModalOpen(false);
-                    window.location.reload();
+                    // Just triggering the sync instead of a hard reload for better UX
+                    handleManualSync();
                   }}
                   className="text-[10px] text-amber-700 font-bold bg-amber-100 border border-amber-200 hover:bg-amber-200 px-3 py-1.5 rounded-full w-full transition-colors"
                 >
