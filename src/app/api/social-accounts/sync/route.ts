@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 
 export async function POST(req: Request) {
     try {
@@ -10,30 +9,17 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
         }
 
-        // 1. Fetch all connected accounts for this client from PostForMe
-        //    The API supports `external_id` as a query filter on GET /v1/social-accounts
-        //    Also filter to only `connected` status accounts
-        const pfmUrl = `https://api.postforme.dev/v1/social-accounts?external_id=${encodeURIComponent(clientId)}&status=connected`;
-
-        const pfmRes = await fetch(pfmUrl, {
+        // 1. Fetch connected accounts from PostForMe
+        const pfmRes = await fetch(`https://api.postforme.dev/v1/social-accounts?external_id=${clientId}`, {
             headers: { Authorization: `Bearer ${apiKey}` }
         });
 
-        if (!pfmRes.ok) {
-            const errBody = await pfmRes.text();
-            console.error("PostForMe API Error:", pfmRes.status, errBody);
-            throw new Error(`PostForMe API returned ${pfmRes.status}`);
-        }
+        if (!pfmRes.ok) throw new Error("Failed to fetch from PostForMe");
 
         const pfmAccounts = await pfmRes.json();
 
-        // 2. Safely access the `data` array — PostForMe returns { data: [...], meta: {...} }
-        const accountsArray = Array.isArray(pfmAccounts?.data) ? pfmAccounts.data : [];
-
-        console.log(`[Sync] PostForMe returned ${accountsArray.length} account(s) for client ${clientId}`);
-
-        // 3. Format them for our Supabase database
-        const upsertData = accountsArray.map((acc: any) => ({
+        // 2. Format them for our Supabase database
+        const accountsToSave = (pfmAccounts.data || []).map((acc: any) => ({
             client_id: clientId,
             platform: acc.platform,
             account_name: acc.username || acc.name || null,
@@ -42,16 +28,8 @@ export async function POST(req: Request) {
             connected_at: new Date().toISOString()
         }));
 
-        // 4. Save to Supabase (upsert handles updating existing ones)
-        if (upsertData.length > 0) {
-            const { error } = await supabase
-                .from('social_accounts')
-                .upsert(upsertData, { onConflict: 'client_id, platform' });
-
-            if (error) throw error;
-        }
-
-        return NextResponse.json({ success: true, accounts: upsertData });
+        // 3. Return the formatted data to the frontend so it can pass the RLS security check
+        return NextResponse.json({ success: true, accounts: accountsToSave });
 
     } catch (error: any) {
         console.error("Sync Error:", error);
