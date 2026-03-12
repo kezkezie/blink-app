@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   Loader2,
@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
-import { useRouter } from "next/navigation";
 
 const PFM_SUPPORTED_PLATFORMS = [
   "instagram",
@@ -85,7 +84,8 @@ interface SocialAccount {
 
 type MainTab = "account" | "ai-rules";
 
-export default function SettingsPage() {
+// ✨ Separated the main logic so we can wrap it in Suspense for Vercel
+function SettingsContent() {
   const { clientId } = useClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -146,7 +146,6 @@ export default function SettingsPage() {
     setLoading(false);
   }, [clientId]);
 
-  // ✨ Manual Sync: Declared BEFORE any useEffect that calls it (avoids TDZ)
   const handleManualSync = useCallback(async () => {
     if (!clientId) return;
     setSyncing(true);
@@ -161,6 +160,15 @@ export default function SettingsPage() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to sync accounts");
+
+      // ✨ Client-side insert bypasses RLS securely because the user is authenticated!
+      if (data.accounts && data.accounts.length > 0) {
+        const { error } = await supabase
+          .from('social_accounts')
+          .upsert(data.accounts, { onConflict: 'client_id, platform' });
+
+        if (error) throw error;
+      }
 
       await loadData();
       setConnectionMessage({ type: "success", text: "Accounts synced successfully!" });
@@ -177,7 +185,7 @@ export default function SettingsPage() {
     loadData();
   }, [loadData]);
 
-  // ✨ Auto-Sync: Catches the redirect from PostForMe after OAuth
+  // Auto-Sync: Catches the redirect from PostForMe after OAuth
   useEffect(() => {
     if (!clientId || hasAutoSynced) return;
 
@@ -200,7 +208,6 @@ export default function SettingsPage() {
           body: JSON.stringify({ platform, clientId }),
         });
 
-        // ✨ FIX: Read body ONCE — consuming res.json() twice on the same Response throws!
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to generate auth URL");
 
@@ -209,8 +216,7 @@ export default function SettingsPage() {
       } catch (err) {
         setConnectionMessage({
           type: "error",
-          text:
-            err instanceof Error ? err.message : "Failed to connect account",
+          text: err instanceof Error ? err.message : "Failed to connect account",
         });
       } finally {
         setConnectingPlatform(null);
@@ -223,8 +229,6 @@ export default function SettingsPage() {
     setDisconnecting(accountId);
     setConnectionMessage(null);
     try {
-      // Note: Ideally, you also want a /api/social-accounts/disconnect route 
-      // that talks to PostForMe API to officially revoke the token on their end too!
       await supabase
         .from("social_accounts")
         .delete()
@@ -458,7 +462,6 @@ export default function SettingsPage() {
                 {socials
                   .filter((s) => s.is_active)
                   .map((account) => {
-                    // Match 'x' from PostForMe to our 'twitter' config visually if needed
                     const displayPlatform = account.platform === 'x' ? 'twitter' : account.platform;
                     const cfg = platformConfig[displayPlatform] || { label: account.platform, emoji: "🔗", color: "bg-gray-500" };
 
@@ -518,7 +521,6 @@ export default function SettingsPage() {
               </summary>
               <div className="mt-3 space-y-2 pl-0">
                 {Object.entries(platformConfig).map(([key, cfg]) => {
-                  // Make sure we don't show connect button if already connected
                   const pfmKey = key === 'twitter' ? 'x' : key;
                   if (socials.some((s) => s.platform === pfmKey && s.is_active))
                     return null;
@@ -673,7 +675,6 @@ export default function SettingsPage() {
                 <button
                   onClick={() => {
                     setConnectModalOpen(false);
-                    // Just triggering the sync instead of a hard reload for better UX
                     handleManualSync();
                   }}
                   className="text-[10px] text-amber-700 font-bold bg-amber-100 border border-amber-200 hover:bg-amber-200 px-3 py-1.5 rounded-full w-full transition-colors"
@@ -690,5 +691,14 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ✨ Wraps the component in Suspense to make it completely Vercel-safe!
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-blink-primary" /></div>}>
+      <SettingsContent />
+    </Suspense>
   );
 }
