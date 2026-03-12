@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   Loader2,
@@ -87,11 +88,12 @@ type MainTab = "account" | "ai-rules";
 export default function SettingsPage() {
   const { clientId } = useClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [savingAccount, setSavingAccount] = useState(false);
   const [savingAI, setSavingAI] = useState(false);
-  const [syncing, setSyncing] = useState(false); // ✨ Added sync state
+  const [syncing, setSyncing] = useState(false);
 
   const [accountInfo, setAccountInfo] = useState({
     contact_name: "",
@@ -112,19 +114,7 @@ export default function SettingsPage() {
   const [mainTab, setMainTab] = useState<MainTab>("account");
   const [aiTab, setAiTab] = useState<"dm" | "comments">("dm");
   const [socials, setSocials] = useState<SocialAccount[]>([]);
-
-  // ✨ Auto-Sync Logic: Catches the redirect from PostForMe!
-  useEffect(() => {
-    if (!clientId) return;
-
-    // Check if we just came back from PostForMe
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("success") === "account_connected") {
-      handleManualSync();
-      // Clean up the URL so it doesn't keep syncing if they refresh the page
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, [clientId]);
+  const [hasAutoSynced, setHasAutoSynced] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!clientId) return;
@@ -156,12 +146,8 @@ export default function SettingsPage() {
     setLoading(false);
   }, [clientId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // ✨ Manual Sync Function: Calls our new API route
-  const handleManualSync = async () => {
+  // ✨ Manual Sync: Declared BEFORE any useEffect that calls it (avoids TDZ)
+  const handleManualSync = useCallback(async () => {
     if (!clientId) return;
     setSyncing(true);
     setConnectionMessage({ type: "info", text: "Syncing connected accounts..." });
@@ -176,7 +162,7 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to sync accounts");
 
-      await loadData(); // Reload the data to show the new accounts
+      await loadData();
       setConnectionMessage({ type: "success", text: "Accounts synced successfully!" });
       setTimeout(() => setConnectionMessage(null), 4000);
     } catch (err: any) {
@@ -184,7 +170,24 @@ export default function SettingsPage() {
     } finally {
       setSyncing(false);
     }
-  };
+  }, [clientId, loadData]);
+
+  // Load data on mount
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // ✨ Auto-Sync: Catches the redirect from PostForMe after OAuth
+  useEffect(() => {
+    if (!clientId || hasAutoSynced) return;
+
+    if (searchParams.get("success") === "account_connected") {
+      setHasAutoSynced(true);
+      handleManualSync();
+      // Clean up the URL so refreshing doesn't re-trigger
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [clientId, searchParams, hasAutoSynced, handleManualSync]);
 
   const connectPlatform = useCallback(
     async (platform: string) => {
@@ -196,11 +199,12 @@ export default function SettingsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ platform, clientId }),
         });
-        if (!res.ok)
-          throw new Error(
-            (await res.json()).error || "Failed to generate auth URL"
-          );
-        setActiveAuthUrl((await res.json()).url);
+
+        // ✨ FIX: Read body ONCE — consuming res.json() twice on the same Response throws!
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to generate auth URL");
+
+        setActiveAuthUrl(data.url);
         setConnectModalOpen(true);
       } catch (err) {
         setConnectionMessage({
