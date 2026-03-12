@@ -13,7 +13,7 @@ export async function POST(req: Request) {
             );
         }
 
-        // 1. Fetch the generated content (Image & Caption) from Supabase
+        // 1. Fetch the generated content (Image, Caption, and Selected Platforms)
         const { data: content, error: contentError } = await supabase
             .from("content")
             .select("*")
@@ -36,39 +36,44 @@ export async function POST(req: Request) {
             throw new Error("No images found to publish");
         }
 
-        // 2. Fetch the active connected social accounts for this client
+        // 2. Which platforms did the user select?
+        const targetPlatforms = content.target_platforms || [];
+        if (targetPlatforms.length === 0) {
+            throw new Error("No target platforms selected for this post. Go back to Content details and select a platform.");
+        }
+
+        // 3. Fetch ONLY the connected accounts that match the user's selection
         const { data: accounts, error: accountsError } = await supabase
             .from("social_accounts")
             .select("postforme_account_id, platform")
             .eq("client_id", clientId)
-            .eq("is_active", true);
+            .eq("is_active", true)
+            .in("platform", targetPlatforms); // ✨ NEW: Filters the query using the user's choices!
 
         if (accountsError || !accounts || accounts.length === 0) {
-            throw new Error("No active social media accounts connected. Please connect an account in Settings.");
+            throw new Error("Could not find active connections for the selected platforms. Check your Settings.");
         }
 
-        // Extract just the PostForMe IDs to tell the API where to send the post
+        // Extract just the PostForMe IDs
         const postForMeAccountIds = accounts.map(acc => acc.postforme_account_id);
 
-        // 3. Build the PostForMe API Payload
-        // Combining the long caption and hashtags for the final social media text
+        // 4. Build the PostForMe API Payload
         const finalCaption = `${content.caption || ""} \n\n${content.hashtags || ""}`.trim();
 
         const postPayload: any = {
             accounts: postForMeAccountIds,
             content: imageUrls.map(url => ({
-                type: "image", // PostForMe automatically handles resizing and format conversion
+                type: "image",
                 url: url
             })),
             caption: finalCaption,
         };
 
-        // If a schedule date was provided, add it. Otherwise, PostForMe publishes instantly.
         if (scheduledAt) {
             postPayload.schedule_for = scheduledAt; // Must be ISO 8601 string
         }
 
-        // 4. Send the POST request to PostForMe
+        // 5. Send the POST request to PostForMe
         const response = await fetch("https://api.postforme.dev/v1/posts", {
             method: "POST",
             headers: {
@@ -88,8 +93,7 @@ export async function POST(req: Request) {
             );
         }
 
-        // 5. Update the post status in Supabase
-        // Note: We also save the PostForMe tracking ID so we can fetch analytics for this specific post later!
+        // 6. Update the post status and save the Tracking ID
         await supabase
             .from("content")
             .update({

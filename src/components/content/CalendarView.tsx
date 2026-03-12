@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ChevronLeft,
@@ -14,11 +14,22 @@ import {
   X,
   ExternalLink,
   Pencil,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlatformIcon } from "@/components/shared/PlatformIcon";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
+import { useClient } from "@/hooks/useClient";
 import type { Content, ContentStatus, Platform } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +40,14 @@ interface CalendarViewProps {
   onUpdateContent: (updatedItem: Content) => void;
   onBulkUpdate: (updatedItems: Content[]) => void;
 }
+
+const PLATFORM_UI: Record<string, { label: string; emoji: string; color: string }> = {
+  instagram: { label: "Instagram", emoji: "📸", color: "text-pink-600 border-pink-200 bg-pink-50" },
+  tiktok: { label: "TikTok", emoji: "🎵", color: "text-gray-900 border-gray-300 bg-gray-100" },
+  facebook: { label: "Facebook", emoji: "📘", color: "text-blue-600 border-blue-200 bg-blue-50" },
+  x: { label: "X (Twitter)", emoji: "🐦", color: "text-gray-900 border-gray-300 bg-gray-100" },
+  linkedin: { label: "LinkedIn", emoji: "💼", color: "text-blue-700 border-blue-200 bg-blue-50" },
+};
 
 const parseArray = (data: any): any[] => {
   if (Array.isArray(data)) return data;
@@ -57,10 +76,35 @@ export function CalendarView({
   onUpdateContent,
   onBulkUpdate,
 }: CalendarViewProps) {
+  const { clientId } = useClient();
   const [autoScheduling, setAutoScheduling] = useState(false);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+
+  // ✨ NEW: States for the Platform Selection Modal
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+  const [platformModalOpen, setPlatformModalOpen] = useState(false);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [targetPlatforms, setTargetPlatforms] = useState<string[]>([]);
+  const [savingPlatforms, setSavingPlatforms] = useState(false);
+
+  // Fetch user's connected platforms on load so the modal knows what to show
+  useEffect(() => {
+    async function fetchPlatforms() {
+      if (!clientId) return;
+      const { data } = await supabase
+        .from("social_accounts")
+        .select("platform")
+        .eq("client_id", clientId)
+        .eq("is_active", true);
+
+      if (data) {
+        setConnectedPlatforms(Array.from(new Set(data.map((d) => d.platform))));
+      }
+    }
+    fetchPlatforms();
+  }, [clientId]);
 
   // --- Calendar Date Math ---
   const year = currentMonth.getFullYear();
@@ -129,6 +173,8 @@ export function CalendarView({
       ...itemToUpdate,
       scheduled_at: isoDateString,
     } as Content;
+
+    // Call the parent to handle UI update and API push
     onUpdateContent(updatedItem);
 
     try {
@@ -209,6 +255,40 @@ export function CalendarView({
     }
   };
 
+  // ✨ NEW: Modal Handlers
+  const openPlatformModal = (post: Content) => {
+    setEditingPostId(post.id);
+    setTargetPlatforms(parseArray((post as any).target_platforms) || []);
+    setPlatformModalOpen(true);
+  };
+
+  const togglePlatform = (platform: string) => {
+    setTargetPlatforms((prev) =>
+      prev.includes(platform)
+        ? prev.filter((p) => p !== platform)
+        : [...prev, platform]
+    );
+  };
+
+  const handleSavePlatforms = async () => {
+    setSavingPlatforms(true);
+    const postToUpdate = content.find((c) => c.id === editingPostId);
+    if (postToUpdate) {
+      const updatedItem = { ...postToUpdate, target_platforms: targetPlatforms } as any;
+
+      await supabase
+        .from("content")
+        .update({ target_platforms: targetPlatforms } as any)
+        .eq("id", editingPostId);
+
+      // Passing it back to parent will trigger the PostForMe API since it now has platforms!
+      onUpdateContent(updatedItem);
+    }
+    setPlatformModalOpen(false);
+    setSavingPlatforms(false);
+    setEditingPostId(null);
+  };
+
   const isToday = (day: number) => {
     const today = new Date();
     return (
@@ -220,13 +300,13 @@ export function CalendarView({
 
   const selectedDayPosts = selectedDay
     ? scheduledPosts.filter((p) => {
-        const pDate = new Date((p as any).scheduled_at);
-        return (
-          pDate.getDate() === selectedDay &&
-          pDate.getMonth() === month &&
-          pDate.getFullYear() === year
-        );
-      })
+      const pDate = new Date((p as any).scheduled_at);
+      return (
+        pDate.getDate() === selectedDay &&
+        pDate.getMonth() === month &&
+        pDate.getFullYear() === year
+      );
+    })
     : [];
 
   return (
@@ -336,16 +416,29 @@ export function CalendarView({
 
                   <div className="space-y-1.5 flex-1 pointer-events-none">
                     {dayPosts.slice(0, 3).map((post) => {
-                      const platforms = parseArray(post.target_platforms);
+                      const platforms = parseArray((post as any).target_platforms);
+                      const hasNoPlatform = platforms.length === 0;
+
                       return (
                         <div
                           key={post.id}
-                          className="bg-gray-50 border border-gray-100 rounded p-1.5 shadow-sm"
+                          className={cn(
+                            "border rounded p-1.5 shadow-sm transition-all",
+                            hasNoPlatform
+                              ? "bg-red-50/50 border-red-400 ring-1 ring-red-400"
+                              : "bg-gray-50 border-gray-100"
+                          )}
                         >
                           <div className="flex items-center gap-1.5 mb-1">
-                            {platforms.slice(0, 2).map((p: Platform) => (
-                              <PlatformIcon key={p} platform={p} />
-                            ))}
+                            {hasNoPlatform ? (
+                              <span className="text-[9px] font-bold text-red-600 bg-red-100 px-1.5 rounded flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" /> Needs Platform
+                              </span>
+                            ) : (
+                              platforms.slice(0, 2).map((p: Platform) => (
+                                <PlatformIcon key={p} platform={p} />
+                              ))
+                            )}
                           </div>
                           <p className="text-[10px] leading-tight text-gray-600 line-clamp-1">
                             {post.caption_short || post.caption || "No caption"}
@@ -411,7 +504,6 @@ export function CalendarView({
               ) : (
                 unscheduledPosts.map((post) => {
                   const displayImage = parseArray(post.image_urls)[0];
-                  // ✨ FIXED: Check if the media is a video
                   const isVideo =
                     displayImage &&
                     (post.content_type === "video" ||
@@ -439,7 +531,6 @@ export function CalendarView({
                         </div>
                         {displayImage ? (
                           isVideo ? (
-                            // ✨ FIXED: Added #t=0.1 to extract the first frame safely without autoplaying!
                             <video
                               src={`${displayImage}#t=0.1`}
                               className="h-10 w-10 rounded object-cover shrink-0 bg-black"
@@ -515,7 +606,6 @@ export function CalendarView({
               ) : (
                 selectedDayPosts.map((post) => {
                   const displayImage = parseArray(post.image_urls)[0];
-                  // ✨ FIXED: Check if the media is a video
                   const isVideo =
                     displayImage &&
                     (post.content_type === "video" ||
@@ -527,6 +617,9 @@ export function CalendarView({
                   );
                   const isDragging = draggedItemId === post.id;
 
+                  const platforms = parseArray((post as any).target_platforms);
+                  const hasNoPlatform = platforms.length === 0;
+
                   return (
                     <div
                       key={post.id}
@@ -534,8 +627,10 @@ export function CalendarView({
                       onDragStart={(e) => handleDragStart(e, post.id)}
                       onDragEnd={() => setDraggedItemId(null)}
                       className={cn(
-                        "bg-white border border-gray-200 rounded-lg p-3 shadow-sm transition-all relative group",
-                        isDragging ? "opacity-50 scale-95" : "opacity-100"
+                        "border rounded-lg p-3 shadow-sm transition-all relative group",
+                        isDragging ? "opacity-50 scale-95" : "opacity-100",
+                        // ✨ Add red background if missing platform
+                        hasNoPlatform ? "bg-red-50/30 border-red-300" : "bg-white border-gray-200"
                       )}
                     >
                       <div className="flex items-start gap-3 mb-3">
@@ -544,7 +639,6 @@ export function CalendarView({
                         </div>
                         {displayImage ? (
                           isVideo ? (
-                            // ✨ FIXED: Added #t=0.1 to extract the first frame safely without autoplaying!
                             <video
                               src={`${displayImage}#t=0.1`}
                               className="h-10 w-10 rounded object-cover shrink-0 bg-black"
@@ -566,11 +660,19 @@ export function CalendarView({
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
-                            <div className="flex gap-1">
-                              {parseArray(post.target_platforms).map(
-                                (p: Platform) => (
+                            <div className="flex gap-1 items-center">
+                              {/* ✨ If no platform, show the add button! */}
+                              {hasNoPlatform ? (
+                                <button
+                                  onClick={() => openPlatformModal(post)}
+                                  className="text-[10px] bg-red-100 text-red-600 border border-red-200 px-2 py-0.5 rounded-full font-bold hover:bg-red-200 transition-colors animate-pulse"
+                                >
+                                  + Add Platform
+                                </button>
+                              ) : (
+                                platforms.map((p: Platform) => (
                                   <PlatformIcon key={p} platform={p} />
-                                )
+                                ))
                               )}
                             </div>
                             <StatusBadge
@@ -585,7 +687,7 @@ export function CalendarView({
 
                       <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-2">
                         <label
-                          className="flex items-center gap-1.5 bg-gray-100 hover:bg-blink-primary/10 border border-gray-200 hover:border-blink-primary/30 px-2.5 py-1.5 rounded-md transition-colors group/time cursor-pointer"
+                          className="flex items-center gap-1.5 bg-white hover:bg-blink-primary/10 border border-gray-200 hover:border-blink-primary/30 px-2.5 py-1.5 rounded-md transition-colors group/time cursor-pointer shadow-sm"
                           title="Click to edit time"
                         >
                           <Clock className="h-3.5 w-3.5 text-blink-primary shrink-0" />
@@ -595,12 +697,12 @@ export function CalendarView({
                             onClick={(e) => {
                               try {
                                 (e.target as HTMLInputElement).showPicker();
-                              } catch (err) {}
+                              } catch (err) { }
                             }}
                             onChange={(e) =>
                               handleTimeChange(post.id, e.target.value)
                             }
-                            className="text-xs font-bold text-blink-dark bg-transparent border-none outline-none cursor-pointer p-0 m-0 w-[90px] focus:ring-0"
+                            className="text-xs font-bold text-blink-dark bg-transparent border-none outline-none cursor-pointer p-0 m-0 w-[80px] focus:ring-0"
                           />
                           <Pencil className="h-3 w-3 text-gray-400 group-hover/time:text-blink-primary transition-colors opacity-50 group-hover/time:opacity-100 shrink-0" />
                         </label>
@@ -609,7 +711,7 @@ export function CalendarView({
                           <button
                             onClick={(e) => {
                               const simulatedEvent = {
-                                preventDefault: () => {},
+                                preventDefault: () => { },
                                 dataTransfer: { getData: () => post.id },
                               } as unknown as React.DragEvent;
                               handleDropToUnscheduled(simulatedEvent);
@@ -619,7 +721,7 @@ export function CalendarView({
                             Remove
                           </button>
                           <Link href={`/dashboard/content/${post.id}`}>
-                            <button className="text-[10px] font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded transition-colors flex items-center gap-1">
+                            <button className="text-[10px] font-medium bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-2 py-1 rounded shadow-sm transition-colors flex items-center gap-1">
                               Edit <ExternalLink className="h-3 w-3" />
                             </button>
                           </Link>
@@ -633,6 +735,64 @@ export function CalendarView({
           </>
         )}
       </div>
+
+      {/* ✨ NEW: Platform Selection Modal */}
+      <Dialog open={platformModalOpen} onOpenChange={setPlatformModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select Target Platforms</DialogTitle>
+            <DialogDescription>
+              Where do you want to publish this post?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {connectedPlatforms.length === 0 ? (
+              <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-500 border border-gray-200 text-center">
+                No social accounts connected. <br />
+                <a href="/dashboard/settings" className="text-blink-primary font-medium hover:underline mt-1 inline-block">Go to Settings</a>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {connectedPlatforms.map(platform => {
+                  const isSelected = targetPlatforms.includes(platform);
+                  const config = PLATFORM_UI[platform] || { label: platform, emoji: "🔗", color: "bg-gray-100 text-gray-800 border-gray-300" };
+                  return (
+                    <div
+                      key={platform}
+                      onClick={() => togglePlatform(platform)}
+                      className={cn(
+                        "flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all duration-200",
+                        isSelected ? config.color : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                      )}
+                    >
+                      <div className="flex items-center gap-3 font-medium">
+                        <span className="text-xl">{config.emoji}</span>
+                        {config.label}
+                      </div>
+                      <div className={cn("h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors", isSelected ? "border-current bg-current" : "border-gray-300")}>
+                        {isSelected && <CheckCircle className="h-4 w-4 text-white" />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPlatformModalOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleSavePlatforms}
+              disabled={savingPlatforms || targetPlatforms.length === 0}
+              className="bg-blink-primary hover:bg-blink-primary/90 text-white"
+            >
+              {savingPlatforms ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Save & Schedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

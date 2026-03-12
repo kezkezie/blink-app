@@ -38,15 +38,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow } from "@/lib/workflows";
 import type { Content, ContentStatus } from "@/types/database";
 
-// ✨ FIX: Restored the missing cn import!
 import { cn } from "@/lib/utils";
+
+// ✨ Platform styling config to match settings page aesthetics
+const PLATFORM_UI: Record<string, { label: string; emoji: string; color: string }> = {
+  instagram: { label: "Instagram", emoji: "📸", color: "text-pink-600 border-pink-200 bg-pink-50" },
+  tiktok: { label: "TikTok", emoji: "🎵", color: "text-gray-900 border-gray-300 bg-gray-100" },
+  facebook: { label: "Facebook", emoji: "📘", color: "text-blue-600 border-blue-200 bg-blue-50" },
+  x: { label: "X (Twitter)", emoji: "🐦", color: "text-gray-900 border-gray-300 bg-gray-100" },
+  linkedin: { label: "LinkedIn", emoji: "💼", color: "text-blue-700 border-blue-200 bg-blue-50" },
+};
 
 const parseArray = (data: any): any[] => {
   if (Array.isArray(data)) return data;
@@ -84,6 +92,10 @@ export default function ContentDetailPage({
   const [brandLogo, setBrandLogo] = useState<string | null>(null);
   const [brandContext, setBrandContext] = useState<any>(null);
 
+  // ✨ NEW: State for connected platforms and user selection
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+  const [targetPlatforms, setTargetPlatforms] = useState<string[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -117,26 +129,44 @@ export default function ContentDetailPage({
     async function fetchData() {
       if (!clientId) return;
       try {
-        const [contentRes, clientRes, brandRes] = await Promise.all([
+        const [contentRes, clientRes, brandRes, socialRes] = await Promise.all([
           supabase.from("content").select("*").eq("id", id).maybeSingle(),
-          supabase.from("clients").select("company_name, industry").eq("id", clientId).single(),
+          supabase.from("clients").select("company_name, industry, onboarding_notes").eq("id", clientId).single(),
           supabase.from("brand_profiles").select("logo_url, image_style, brand_voice").eq("client_id", clientId).maybeSingle(),
+          // ✨ Fetch connected accounts so they can select them
+          supabase.from("social_accounts").select("platform").eq("client_id", clientId).eq("is_active", true)
         ]);
 
         if (contentRes.data) {
-          const item = contentRes.data as unknown as Content;
+          const item = contentRes.data as any;
           setContent(item);
           setCaption(item.caption || "");
           setCaptionShort(item.caption_short || "");
           setHashtags(item.hashtags || "");
           setCallToAction(item.call_to_action || "");
+
+          // Load previously saved platforms, or default to empty array
+          setTargetPlatforms(item.target_platforms || []);
         }
 
         if (brandRes.data?.logo_url) setBrandLogo(brandRes.data.logo_url);
 
+        if (socialRes.data) {
+          // Extract unique platform names
+          const platforms = Array.from(new Set(socialRes.data.map(s => s.platform)));
+          setConnectedPlatforms(platforms);
+        }
+
+        let desc = "";
+        if (clientRes.data?.onboarding_notes) {
+          try { desc = JSON.parse(clientRes.data.onboarding_notes as string).description || ""; }
+          catch { desc = clientRes.data.onboarding_notes as string || ""; }
+        }
+
         setBrandContext({
           name: clientRes.data?.company_name,
           industry: clientRes.data?.industry,
+          description: desc,
           imageStyle: brandRes.data?.image_style,
           brandVoice: brandRes.data?.brand_voice,
           logoUrl: brandRes.data?.logo_url,
@@ -150,6 +180,12 @@ export default function ContentDetailPage({
     }
     fetchData();
   }, [id, clientId]);
+
+  const togglePlatform = (platform: string) => {
+    setTargetPlatforms(prev =>
+      prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]
+    );
+  };
 
   const handlePromptHelp = async () => {
     if (isHelpLoading) return;
@@ -194,11 +230,12 @@ export default function ContentDetailPage({
         caption_short: captionShort,
         hashtags,
         call_to_action: callToAction,
-      } as Record<string, unknown>)
+        target_platforms: targetPlatforms // ✨ Save their platform choices
+      } as any)
       .eq("id", content.id);
     setSaving(false);
     if (!error)
-      setContent((prev) =>
+      setContent((prev: any) =>
         prev
           ? {
             ...prev,
@@ -206,6 +243,7 @@ export default function ContentDetailPage({
             caption_short: captionShort,
             hashtags,
             call_to_action: callToAction,
+            target_platforms: targetPlatforms
           }
           : null
       );
@@ -250,6 +288,12 @@ export default function ContentDetailPage({
 
   async function handleApproveAndPublishNow() {
     if (!content) return;
+
+    if (targetPlatforms.length === 0) {
+      alert("Please select at least one platform to publish to and click 'Save Changes' first.");
+      return;
+    }
+
     setActionLoading(true);
     try {
       await supabase
@@ -261,16 +305,20 @@ export default function ContentDetailPage({
           scheduled_at: null,
         } as Record<string, unknown>)
         .eq("id", content.id);
-      await fetch("/api/social-posts/schedule", {
+
+      const res = await fetch("/api/social-posts/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contentId: content.id,
           clientId: clientId!,
-          platforms: content.target_platforms || ["instagram"],
           scheduledAt: null,
         }),
       });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
       setContent((prev) =>
         prev
           ? {
@@ -281,8 +329,8 @@ export default function ContentDetailPage({
           : null
       );
       alert("Post approved and sent live! 🚀");
-    } catch (err) {
-      alert("Failed to publish post.");
+    } catch (err: any) {
+      alert(`Failed to publish: ${err.message}`);
     } finally {
       setActionLoading(false);
     }
@@ -290,6 +338,12 @@ export default function ContentDetailPage({
 
   async function handleApproveAndSchedule() {
     if (!content || !scheduleDate) return;
+
+    if (targetPlatforms.length === 0) {
+      alert("Please select at least one platform to publish to and click 'Save Changes' first.");
+      return;
+    }
+
     setActionLoading(true);
     try {
       const scheduledTime = new Date(scheduleDate).toISOString();
@@ -385,8 +439,13 @@ export default function ContentDetailPage({
     setImageModalOpen(false);
     setGeneratingImage(true);
 
-    const finalTopic = customPrompt.trim() || captionShort || caption?.substring(0, 60) || "";
+    let finalTopic = customPrompt.trim() || captionShort || caption?.substring(0, 60) || "Create a professional image";
     const displayImage = parseArray(content.image_urls)[0];
+
+    // Force context if pure generation
+    if ((generationMode === 'generate' || generationMode === 'style_transfer') && brandContext?.description) {
+      finalTopic = `${finalTopic}. BRAND CONTEXT: We are ${brandContext.name}, operating in the ${brandContext.industry} industry. Product info: ${brandContext.description}`;
+    }
 
     try {
       await supabase
@@ -573,72 +632,54 @@ export default function ContentDetailPage({
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-5">
+
+            {/* ✨ NEW: Target Platforms UI */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Caption (Long)
-              </label>
-              <Textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                rows={5}
-                className="resize-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Caption (Short)
-              </label>
-              <Input
-                value={captionShort}
-                onChange={(e) => setCaptionShort(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Hashtags
-              </label>
-              <Input
-                value={hashtags}
-                onChange={(e) => setHashtags(e.target.value)}
-              />
-              {hashtags && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {hashtags
-                    .split(/[\s,]+/)
-                    .filter(Boolean)
-                    .map((tag, i) => (
-                      <span
-                        key={i}
-                        className="text-xs bg-blink-primary/10 text-blink-primary px-2 py-0.5 rounded-full font-medium"
+              <label className="block text-sm font-medium text-gray-700 mb-2">Publish To (Select Platforms)</label>
+              {connectedPlatforms.length === 0 ? (
+                <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-500 border border-gray-200">
+                  No social accounts connected. Go to <a href="/dashboard/settings" className="text-blink-primary hover:underline">Settings</a> to connect accounts.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {connectedPlatforms.map(platform => {
+                    const isSelected = targetPlatforms.includes(platform);
+                    const config = PLATFORM_UI[platform] || { label: platform, emoji: "🔗", color: "bg-gray-100 text-gray-800 border-gray-300" };
+                    return (
+                      <button
+                        key={platform}
+                        onClick={() => togglePlatform(platform)}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all duration-200",
+                          isSelected ? config.color : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                        )}
                       >
-                        {tag.startsWith("#") ? tag : `#${tag}`}
-                      </span>
-                    ))}
+                        <span>{config.emoji}</span>
+                        {config.label}
+                        {isSelected && <CheckCircle className="h-3.5 w-3.5 ml-1" />}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
+
+            <div className="pt-2 border-t border-gray-100">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5 mt-2">Caption (Long)</label>
+              <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={5} className="resize-none" />
+            </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Call to Action
-              </label>
-              <Input
-                value={callToAction}
-                onChange={(e) => setCallToAction(e.target.value)}
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Caption (Short)</label>
+              <Input value={captionShort} onChange={(e) => setCaptionShort(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Hashtags</label>
+              <Input value={hashtags} onChange={(e) => setHashtags(e.target.value)} />
             </div>
             <div className="pt-2">
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-2"
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}{" "}
-                Save Changes
+              <Button onClick={handleSave} disabled={saving} className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Changes
               </Button>
             </div>
           </div>
@@ -950,7 +991,6 @@ export default function ContentDetailPage({
         </DialogContent>
       </Dialog>
 
-      {/* ✨ RESTORED IMAGE GENERATION MODAL ✨ */}
       <Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -994,7 +1034,6 @@ export default function ContentDetailPage({
               </div>
             )}
 
-            {/* ✨ Updated Prompt Instructions Area with AI Magic Writer */}
             <div className="space-y-3 relative">
               <div className="flex justify-between items-center">
                 <label className="text-sm font-medium text-gray-700">Custom Prompt Instructions (Optional)</label>

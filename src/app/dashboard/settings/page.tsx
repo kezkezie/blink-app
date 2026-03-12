@@ -104,6 +104,7 @@ function SettingsContent() {
 
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [activeAuthUrl, setActiveAuthUrl] = useState<string | null>(null);
+  const [activePlatform, setActivePlatform] = useState<string | null>(null); // ✨ Added to track which platform is in the modal
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<{
@@ -233,6 +234,7 @@ function SettingsContent() {
         if (!res.ok) throw new Error(data.error || "Failed to generate auth URL");
 
         setActiveAuthUrl(data.url);
+        setActivePlatform(platform); // ✨ Set the active platform for the modal
         setConnectModalOpen(true);
       } catch (err) {
         setConnectionMessage({
@@ -644,7 +646,10 @@ function SettingsContent() {
         open={connectModalOpen}
         onOpenChange={(open) => {
           setConnectModalOpen(open);
-          if (!open) setActiveAuthUrl(null);
+          if (!open) {
+            setActiveAuthUrl(null);
+            setActivePlatform(null); // ✨ Clear platform state when modal closes
+          }
         }}
       >
         <DialogContent className="sm:max-w-md">
@@ -655,53 +660,70 @@ function SettingsContent() {
             </DialogDescription>
           </DialogHeader>
           {activeAuthUrl ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
-              <div className="flex flex-col items-center justify-center space-y-4 p-5 rounded-xl border border-gray-200 bg-white shadow-sm text-center">
-                <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-                  <ExternalLink className="h-6 w-6" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-blink-dark">
-                    This Device
+            <div className="flex flex-col space-y-4 py-2">
+
+              {/* ✨ NEW: Strict Meta Connection Instructions */}
+              {(activePlatform === 'instagram' || activePlatform === 'facebook') && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left space-y-2 mb-2 shadow-sm animate-in fade-in">
+                  <h4 className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+                    <AlertCircle className="h-4 w-4" /> Required for Meta Login
                   </h4>
-                  <p className="text-xs text-gray-500 mt-1 px-2">
-                    Continue the login process in a new tab
-                  </p>
+                  <ul className="text-xs text-amber-800 list-disc pl-4 space-y-1.5 leading-relaxed">
+                    <li>Your Instagram must be a <b>Professional or Business</b> account.</li>
+                    <li>It must be explicitly linked to a <b>Facebook Page</b>.</li>
+                    <li>During login, you <b>must check the boxes</b> granting access to BOTH your Facebook Page and the connected Instagram account.</li>
+                  </ul>
                 </div>
-                <Button
-                  onClick={() => (window.location.href = activeAuthUrl)}
-                  className="w-full bg-blink-primary hover:bg-blink-primary/90 text-white"
-                >
-                  Log In Here
-                </Button>
-              </div>
-              <div className="flex flex-col items-center justify-center space-y-4 p-5 rounded-xl border border-gray-200 bg-white shadow-sm text-center">
-                <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-100">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=0&data=${encodeURIComponent(
-                      activeAuthUrl
-                    )}`}
-                    alt="QR Code"
-                    className="h-36 w-36 object-contain"
-                  />
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col items-center justify-center space-y-4 p-5 rounded-xl border border-gray-200 bg-white shadow-sm text-center">
+                  <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
+                    <ExternalLink className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-blink-dark">
+                      This Device
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-1 px-2">
+                      Continue the login process in a new tab
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => (window.location.href = activeAuthUrl)}
+                    className="w-full bg-blink-primary hover:bg-blink-primary/90 text-white"
+                  >
+                    Log In Here
+                  </Button>
                 </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-blink-dark flex items-center justify-center gap-1.5">
-                    <Smartphone className="h-4 w-4" /> Use Phone
-                  </h4>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Scan to securely log in on your mobile
-                  </p>
+                <div className="flex flex-col items-center justify-center space-y-4 p-5 rounded-xl border border-gray-200 bg-white shadow-sm text-center">
+                  <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-100">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=0&data=${encodeURIComponent(
+                        activeAuthUrl
+                      )}`}
+                      alt="QR Code"
+                      className="h-36 w-36 object-contain"
+                    />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-blink-dark flex items-center justify-center gap-1.5">
+                      <Smartphone className="h-4 w-4" /> Use Phone
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Scan to securely log in on your mobile
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setConnectModalOpen(false);
+                      handleManualSync();
+                    }}
+                    className="text-[10px] text-amber-700 font-bold bg-amber-100 border border-amber-200 hover:bg-amber-200 px-3 py-1.5 rounded-full w-full transition-colors"
+                  >
+                    I finished logging in ↻
+                  </button>
                 </div>
-                <button
-                  onClick={() => {
-                    setConnectModalOpen(false);
-                    handleManualSync();
-                  }}
-                  className="text-[10px] text-amber-700 font-bold bg-amber-100 border border-amber-200 hover:bg-amber-200 px-3 py-1.5 rounded-full w-full transition-colors"
-                >
-                  I finished logging in ↻
-                </button>
               </div>
             </div>
           ) : (
