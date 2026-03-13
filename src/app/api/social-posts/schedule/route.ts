@@ -13,7 +13,7 @@ export async function POST(req: Request) {
             );
         }
 
-        // ✨ FIX: Use the Admin Service Role Key to safely bypass RLS blocks in the backend!
+        // Use the Admin Service Role Key to safely bypass RLS blocks in the backend
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
         const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
@@ -84,8 +84,8 @@ export async function POST(req: Request) {
             postPayload.schedule_for = scheduledAt; // Must be ISO 8601 string
         }
 
-        // 5. Send the POST request to PostForMe
-        const response = await fetch("https://api.postforme.dev/v1/posts", {
+        // ✨ FIX: Corrected the PostForMe Endpoint URL
+        const response = await fetch("https://api.postforme.dev/v1/social-media-posts", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
