@@ -33,12 +33,16 @@ import { useClient } from "@/hooks/useClient";
 import type { Content, ContentStatus, Platform } from "@/types/database";
 import { cn } from "@/lib/utils";
 
+// ✨ NEW: Added props to support pagination
 interface CalendarViewProps {
   content: Content[];
   currentMonth: Date;
   onMonthChange: (date: Date) => void;
   onUpdateContent: (updatedItem: Content) => void;
   onBulkUpdate: (updatedItems: Content[]) => void;
+  hasMoreUnscheduled?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMoreUnscheduled?: () => void;
 }
 
 const PLATFORM_UI: Record<string, { label: string; emoji: string; color: string }> = {
@@ -75,6 +79,9 @@ export function CalendarView({
   onMonthChange,
   onUpdateContent,
   onBulkUpdate,
+  hasMoreUnscheduled,
+  isLoadingMore,
+  onLoadMoreUnscheduled,
 }: CalendarViewProps) {
   const { clientId } = useClient();
   const [autoScheduling, setAutoScheduling] = useState(false);
@@ -82,14 +89,12 @@ export function CalendarView({
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
-  // ✨ NEW: States for the Platform Selection Modal
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
   const [platformModalOpen, setPlatformModalOpen] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [targetPlatforms, setTargetPlatforms] = useState<string[]>([]);
   const [savingPlatforms, setSavingPlatforms] = useState(false);
 
-  // Fetch user's connected platforms on load so the modal knows what to show
   useEffect(() => {
     async function fetchPlatforms() {
       if (!clientId) return;
@@ -174,7 +179,6 @@ export function CalendarView({
       scheduled_at: isoDateString,
     } as Content;
 
-    // Call the parent to handle UI update and API push
     onUpdateContent(updatedItem);
 
     try {
@@ -255,7 +259,6 @@ export function CalendarView({
     }
   };
 
-  // ✨ NEW: Modal Handlers
   const openPlatformModal = (post: Content) => {
     setEditingPostId(post.id);
     setTargetPlatforms(parseArray((post as any).target_platforms) || []);
@@ -281,7 +284,6 @@ export function CalendarView({
         .update({ target_platforms: targetPlatforms } as any)
         .eq("id", editingPostId);
 
-      // Passing it back to parent will trigger the PostForMe API since it now has platforms!
       onUpdateContent(updatedItem);
     }
     setPlatformModalOpen(false);
@@ -489,9 +491,6 @@ export function CalendarView({
                 )}{" "}
                 Magic Auto-Schedule
               </Button>
-              <p className="text-[10px] text-center text-gray-500 mt-2">
-                Automatically assigns 1 post per day.
-              </p>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50/30">
@@ -502,64 +501,82 @@ export function CalendarView({
                   </p>
                 </div>
               ) : (
-                unscheduledPosts.map((post) => {
-                  const displayImage = parseArray(post.image_urls)[0];
-                  const isVideo =
-                    displayImage &&
-                    (post.content_type === "video" ||
-                      post.content_type === "reel" ||
-                      displayImage.includes(".mp4") ||
-                      displayImage.includes(".mov"));
-                  const isDragging = draggedItemId === post.id;
+                <>
+                  {unscheduledPosts.map((post) => {
+                    const displayImage = parseArray(post.image_urls)[0];
+                    const isVideo =
+                      displayImage &&
+                      (post.content_type === "video" ||
+                        post.content_type === "reel" ||
+                        displayImage.includes(".mp4") ||
+                        displayImage.includes(".mov"));
+                    const isDragging = draggedItemId === post.id;
 
-                  return (
-                    <div
-                      key={post.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, post.id)}
-                      onDragEnd={() => setDraggedItemId(null)}
-                      className={cn(
-                        "bg-white border border-gray-200 rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-blink-primary/50 transition-all",
-                        isDragging
-                          ? "opacity-50 scale-95"
-                          : "opacity-100 scale-100"
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="text-gray-300 pt-1">
-                          <GripVertical className="h-4 w-4" />
-                        </div>
-                        {displayImage ? (
-                          isVideo ? (
-                            <video
-                              src={`${displayImage}#t=0.1`}
-                              className="h-10 w-10 rounded object-cover shrink-0 bg-black"
-                              muted
-                              playsInline
-                              preload="metadata"
-                            />
-                          ) : (
-                            <img
-                              src={displayImage}
-                              alt="thumbnail"
-                              className="h-10 w-10 rounded object-cover shrink-0"
-                            />
-                          )
-                        ) : (
-                          <div className="h-10 w-10 rounded bg-gray-100 flex items-center justify-center shrink-0">
-                            <ImageIcon className="h-4 w-4 text-gray-300" />
-                          </div>
+                    return (
+                      <div
+                        key={post.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, post.id)}
+                        onDragEnd={() => setDraggedItemId(null)}
+                        className={cn(
+                          "bg-white border border-gray-200 rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-blink-primary/50 transition-all",
+                          isDragging
+                            ? "opacity-50 scale-95"
+                            : "opacity-100 scale-100"
                         )}
-                        <div className="flex-1 min-w-0">
-                          <StatusBadge status={post.status as ContentStatus} />
-                          <p className="text-xs text-gray-600 line-clamp-2 font-medium mt-1">
-                            {post.caption_short || post.caption || "No caption"}
-                          </p>
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="text-gray-300 pt-1">
+                            <GripVertical className="h-4 w-4" />
+                          </div>
+                          {displayImage ? (
+                            isVideo ? (
+                              <video
+                                src={`${displayImage}#t=0.1`}
+                                className="h-10 w-10 rounded object-cover shrink-0 bg-black"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                            ) : (
+                              <img
+                                src={displayImage}
+                                alt="thumbnail"
+                                className="h-10 w-10 rounded object-cover shrink-0"
+                              />
+                            )
+                          ) : (
+                            <div className="h-10 w-10 rounded bg-gray-100 flex items-center justify-center shrink-0">
+                              <ImageIcon className="h-4 w-4 text-gray-300" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <StatusBadge status={post.status as ContentStatus} />
+                            <p className="text-xs text-gray-600 line-clamp-2 font-medium mt-1">
+                              {post.caption_short || post.caption || "No caption"}
+                            </p>
+                          </div>
                         </div>
                       </div>
+                    );
+                  })}
+
+                  {/* ✨ NEW: Pagination Load More Button */}
+                  {hasMoreUnscheduled && (
+                    <div className="pt-3 pb-6 flex justify-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onLoadMoreUnscheduled}
+                        disabled={isLoadingMore}
+                        className="w-full max-w-[200px] text-xs font-medium bg-white hover:bg-gray-50 text-gray-600 border-gray-200 shadow-sm"
+                      >
+                        {isLoadingMore ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : null}
+                        {isLoadingMore ? "Loading..." : "Load More Posts"}
+                      </Button>
                     </div>
-                  );
-                })
+                  )}
+                </>
               )}
             </div>
             {draggedItemId &&
@@ -629,7 +646,6 @@ export function CalendarView({
                       className={cn(
                         "border rounded-lg p-3 shadow-sm transition-all relative group",
                         isDragging ? "opacity-50 scale-95" : "opacity-100",
-                        // ✨ Add red background if missing platform
                         hasNoPlatform ? "bg-red-50/30 border-red-300" : "bg-white border-gray-200"
                       )}
                     >
@@ -661,7 +677,6 @@ export function CalendarView({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
                             <div className="flex gap-1 items-center">
-                              {/* ✨ If no platform, show the add button! */}
                               {hasNoPlatform ? (
                                 <button
                                   onClick={() => openPlatformModal(post)}
@@ -736,7 +751,6 @@ export function CalendarView({
         )}
       </div>
 
-      {/* ✨ NEW: Platform Selection Modal */}
       <Dialog open={platformModalOpen} onOpenChange={setPlatformModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

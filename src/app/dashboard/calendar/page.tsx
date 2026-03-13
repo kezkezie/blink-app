@@ -8,6 +8,8 @@ import { CalendarView } from "@/components/content/CalendarView";
 import type { Content } from "@/types/database";
 import { cn } from "@/lib/utils";
 
+const UNSCHEDULED_LIMIT = 20;
+
 export default function CalendarPage() {
   const { clientId } = useClient();
   const [content, setContent] = useState<Content[]>([]);
@@ -16,52 +18,87 @@ export default function CalendarPage() {
   // State for the current month being viewed
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  // Notification state for visual feedback when scheduling
+  // Notification state
   const [message, setMessage] = useState<{
     type: "success" | "error" | "info";
     text: string;
   } | null>(null);
 
+  // ✨ NEW: Pagination States
+  const [unscheduledOffset, setUnscheduledOffset] = useState(UNSCHEDULED_LIMIT);
+  const [hasMoreUnscheduled, setHasMoreUnscheduled] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // ✨ UPDATED: Smart fetching (All Scheduled + Paginated Unscheduled)
   const fetchContent = useCallback(async () => {
     if (!clientId) return;
-    const { data } = await supabase
+
+    // 1. Fetch ALL scheduled posts so the calendar grid never breaks
+    const { data: scheduled } = await supabase
       .from("content")
       .select("*")
       .eq("client_id", clientId)
-      .order("created_at", { ascending: false });
+      .not("scheduled_at", "is", null);
 
-    if (data) setContent(data as unknown as Content[]);
+    // 2. Fetch Unscheduled posts up to the current offset
+    const { data: unscheduled } = await supabase
+      .from("content")
+      .select("*")
+      .eq("client_id", clientId)
+      .is("scheduled_at", null)
+      .order("created_at", { ascending: false })
+      .range(0, unscheduledOffset - 1);
+
+    if (scheduled && unscheduled) {
+      setContent([...scheduled, ...(unscheduled as any[])]);
+      setHasMoreUnscheduled(unscheduled.length === unscheduledOffset);
+    }
     setLoading(false);
-  }, [clientId]);
+  }, [clientId, unscheduledOffset]);
 
   useEffect(() => {
     fetchContent();
   }, [fetchContent]);
 
-  // ✨ Intercepts drag-and-drop and pushes to PostForMe safely
+  // ✨ NEW: Function to load the next page of unscheduled posts
+  const handleLoadMore = async () => {
+    setIsLoadingMore(true);
+    const newOffset = unscheduledOffset + UNSCHEDULED_LIMIT;
+
+    const { data: moreUnscheduled } = await supabase
+      .from("content")
+      .select("*")
+      .eq("client_id", clientId)
+      .is("scheduled_at", null)
+      .order("created_at", { ascending: false })
+      .range(unscheduledOffset, newOffset - 1);
+
+    if (moreUnscheduled && moreUnscheduled.length > 0) {
+      setContent(prev => [...prev, ...(moreUnscheduled as any[])]);
+      setHasMoreUnscheduled(moreUnscheduled.length === UNSCHEDULED_LIMIT);
+      setUnscheduledOffset(newOffset);
+    } else {
+      setHasMoreUnscheduled(false);
+    }
+    setIsLoadingMore(false);
+  };
+
   const handleUpdateContent = async (updatedItem: Content) => {
-    // 1. Always optimistically update the UI instantly so the drop is smooth
     setContent((prev) =>
       prev.map((item) => (item.id === updatedItem.id ? updatedItem : item))
     );
 
-    // 2. Check if they are trying to schedule it
-    // ✨ FIX: Using TypeScript bypass to safely check properties
     if ((updatedItem as any).scheduled_at) {
-
       const targetPlatforms = (updatedItem as any).target_platforms || [];
 
-      // If they haven't selected a platform, don't crash and don't revert. 
-      // Just warn them. The UI will show the red outline automatically.
       if (targetPlatforms.length === 0) {
         setMessage({
           type: "error",
           text: "⚠️ Post placed on calendar. Click 'Add Platform' to enable auto-publishing."
         });
-        return; // Stop here, do not call the API!
+        return;
       }
 
-      // If they DO have a platform selected, proceed with pushing to PostForMe
       setMessage({ type: "info", text: "Syncing schedule with social platforms..." });
 
       try {
@@ -86,12 +123,11 @@ export default function CalendarPage() {
       } catch (err: any) {
         console.error("Scheduling Error:", err);
         setMessage({ type: "error", text: err.message });
-        fetchContent(); // If the actual API fails, we snap it back.
+        fetchContent();
       }
     }
   };
 
-  // ✨ Processes all items created by the "Magic Auto-Schedule" button
   const handleBulkUpdate = async (updatedItems: Content[]) => {
     setMessage({ type: "info", text: "Checking platform selections and auto-scheduling..." });
 
@@ -99,11 +135,8 @@ export default function CalendarPage() {
       let successCount = 0;
       let skippedCount = 0;
 
-      // Loop through and push each newly scheduled post to PostForMe
       for (const item of updatedItems) {
-        // ✨ FIX: Cast to any
         if ((item as any).scheduled_at) {
-
           const targetPlatforms = (item as any).target_platforms || [];
           if (targetPlatforms.length === 0) {
             skippedCount++;
@@ -116,7 +149,6 @@ export default function CalendarPage() {
             body: JSON.stringify({
               contentId: item.id,
               clientId: clientId,
-              // ✨ FIX: Cast to any
               scheduledAt: (item as any).scheduled_at,
             }),
           });
@@ -129,7 +161,7 @@ export default function CalendarPage() {
         }
       }
 
-      await fetchContent(); // Reload to get the fresh accurate state from the DB
+      await fetchContent();
 
       if (skippedCount > 0) {
         setMessage({ type: "error", text: `Scheduled ${successCount} posts. Skipped ${skippedCount} posts because they lacked target platforms.` });
@@ -157,8 +189,6 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-      {/* ✨ Notification Banner */}
       {message && (
         <div
           className={cn(
@@ -194,6 +224,9 @@ export default function CalendarPage() {
           onMonthChange={setCurrentMonth}
           onUpdateContent={handleUpdateContent}
           onBulkUpdate={handleBulkUpdate}
+          hasMoreUnscheduled={hasMoreUnscheduled}
+          isLoadingMore={isLoadingMore}
+          onLoadMoreUnscheduled={handleLoadMore}
         />
       </div>
     </div>
