@@ -1,33 +1,188 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   UploadCloud,
   Image as ImageIcon,
   Video,
   Sparkles,
-  ArrowRight,
   Loader2,
+  Paintbrush,
+  MoveRight,
+  Eraser,
+  Undo2,
+  Play,
+  ScrollText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
+import { cn } from "@/lib/utils";
+
+type ToolMode = "brush" | "eraser" | "arrow";
 
 export default function YourContentPage() {
   const router = useRouter();
   const { clientId } = useClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // File States
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [isVideo, setIsVideo] = useState(false);
   const [mediaContext, setMediaContext] = useState("");
 
+  // UI States
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingText, setLoadingText] = useState("");
+  const [activeTab, setActiveTab] = useState<"caption" | "animate">("caption");
 
-  const handleDrop = (e: React.DragEvent) => {
+  // ✨ MOTION BRUSH STATES
+  const [toolMode, setToolMode] = useState<ToolMode>("brush");
+  const [brushSize, setBrushSize] = useState(30);
+
+  // Canvas Refs
+  const containerRef = useRef<HTMLDivElement>(null);
+  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
+  const uiCanvasRef = useRef<HTMLCanvasElement>(null); // For drawing the red UI arrows
+
+  // Drawing State
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [imageDims, setImageDims] = useState({ w: 0, h: 0 });
+  const [arrowStart, setArrowStart] = useState<{ x: number, y: number } | null>(null);
+  const [arrowVector, setArrowVector] = useState<{ startX: number, startY: number, endX: number, endY: number } | null>(null);
+
+  // Initialize Canvases when image loads
+  useEffect(() => {
+    if (activeTab === 'animate' && preview && !isVideo) {
+      const img = new Image();
+      img.onload = () => {
+        if (containerRef.current) {
+          const container = containerRef.current;
+          const ratio = Math.min(container.clientWidth / img.width, container.clientHeight / img.height);
+          const drawW = img.width * ratio;
+          const drawH = img.height * ratio;
+          setImageDims({ w: drawW, h: drawH });
+        }
+      };
+      img.src = preview;
+    }
+  }, [activeTab, preview, isVideo]);
+
+  // Handle Draw Events
+  const getCoordinates = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect();
+    let clientX, clientY;
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = (e as React.MouseEvent).clientX;
+      clientY = (e as React.MouseEvent).clientY;
+    }
+    return {
+      x: (clientX - rect.left) * (canvas.width / rect.width),
+      y: (clientY - rect.top) * (canvas.height / rect.height)
+    };
+  };
+
+  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
+    if (toolMode === 'arrow') {
+      const coords = getCoordinates(e, uiCanvasRef.current!);
+      setArrowStart(coords);
+      return;
+    }
+
+    setIsDrawing(true);
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCoordinates(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(coords.x, coords.y);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = brushSize;
+    ctx.strokeStyle = toolMode === 'eraser' ? 'rgba(0,0,0,1)' : 'rgba(255, 0, 0, 0.4)'; // Red semi-transparent for UX
+    ctx.globalCompositeOperation = toolMode === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+  };
+
+  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (toolMode === 'arrow' && arrowStart) {
+      const canvas = uiCanvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const coords = getCoordinates(e, canvas);
+
+      // Live draw arrow UX
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawArrow(ctx, arrowStart.x, arrowStart.y, coords.x, coords.y);
+      return;
+    }
+
+    if (!isDrawing) return;
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCoordinates(e, canvas);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+  };
+
+  const handlePointerUp = (e: React.MouseEvent | React.TouchEvent) => {
+    if (toolMode === 'arrow' && arrowStart) {
+      const coords = getCoordinates(e, uiCanvasRef.current!);
+      setArrowVector({ startX: arrowStart.x, startY: arrowStart.y, endX: coords.x, endY: coords.y });
+      setArrowStart(null);
+      return;
+    }
+    setIsDrawing(false);
+  };
+
+  const drawArrow = (ctx: CanvasRenderingContext2D, fromx: number, fromy: number, tox: number, toy: number) => {
+    const headlen = 15; // length of head in pixels
+    const dx = tox - fromx;
+    const dy = toy - fromy;
+    const angle = Math.atan2(dy, dx);
+
+    ctx.beginPath();
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 10;
+
+    ctx.moveTo(fromx, fromy);
+    ctx.lineTo(tox, toy);
+    ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+    ctx.moveTo(tox, toy);
+    ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.stroke();
+
+    // Reset shadow
+    ctx.shadowBlur = 0;
+  };
+
+  const clearCanvas = () => {
+    const mCtx = maskCanvasRef.current?.getContext('2d');
+    const uiCtx = uiCanvasRef.current?.getContext('2d');
+    if (mCtx && maskCanvasRef.current) mCtx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    if (uiCtx && uiCanvasRef.current) uiCtx.clearRect(0, 0, uiCanvasRef.current.width, uiCanvasRef.current.height);
+    setArrowVector(null);
+  };
+
+
+  const handleDropFile = (e: React.DragEvent) => {
     e.preventDefault();
     handleFileSelect(e.dataTransfer.files[0]);
   };
@@ -36,63 +191,39 @@ export default function YourContentPage() {
     if (selectedFile) {
       setFile(selectedFile);
       setPreview(URL.createObjectURL(selectedFile));
+      setIsVideo(selectedFile.type.startsWith("video"));
+      // Reset animation states if file changes
+      clearCanvas();
     }
   };
 
+  // --- REGULAR CAPTION ANALYSIS ---
   const handleAnalyze = async () => {
     if (!file || !clientId) return;
     setIsProcessing(true);
-
-    localStorage.setItem(
-      `blink_analyzing_media_${clientId}`,
-      Date.now().toString()
-    );
-
     try {
       setLoadingText("Uploading media securely...");
       const fileExt = file.name.split(".").pop();
-      const fileName = `${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(7)}.${fileExt}`;
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `uploads/${clientId}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("assets")
-        .upload(filePath, file);
-      if (uploadError) throw new Error("Failed to upload file");
-
-      const { data: urlData } = supabase.storage
-        .from("assets")
-        .getPublicUrl(filePath);
-      const publicUrl = urlData.publicUrl;
+      await supabase.storage.from("assets").upload(filePath, file);
+      const publicUrl = supabase.storage.from("assets").getPublicUrl(filePath).data.publicUrl;
 
       setLoadingText("Fetching Brand DNA...");
-      const { data: brand } = await supabase
-        .from("brand_profiles")
-        .select("brand_voice, dos, donts")
-        .eq("client_id", clientId)
-        .single();
+      const { data: brand } = await supabase.from("brand_profiles").select("brand_voice, dos, donts").eq("client_id", clientId).single();
 
       setLoadingText("AI is writing the perfect caption...");
       const aiRes = await fetch("/api/content/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mediaUrl: publicUrl,
-          mediaType: file.type,
-          brandVoice: brand?.brand_voice,
-          dos: brand?.dos,
-          donts: brand?.donts,
-          context: mediaContext,
-        }),
+        body: JSON.stringify({ mediaUrl: publicUrl, mediaType: file.type, brandVoice: brand?.brand_voice, dos: brand?.dos, donts: brand?.donts, context: mediaContext }),
       });
 
       const aiData = await aiRes.json();
       if (!aiRes.ok) throw new Error(aiData.error || "Failed AI Request");
 
-      setLoadingText("Saving to calendar...");
-
-      // ✨ FIXED: Now we map the AI's exact JSON keys to your specific database columns!
+      setLoadingText("Saving to drafts...");
       const { error: dbError } = await supabase.from("content").insert({
         client_id: clientId,
         content_type: file.type.startsWith("video") ? "video" : "post_image",
@@ -106,26 +237,119 @@ export default function YourContentPage() {
       });
 
       if (dbError) throw dbError;
-
-      localStorage.removeItem(`blink_analyzing_media_${clientId}`);
       router.push("/dashboard/content");
     } catch (error) {
-      console.error(error);
       alert("Something went wrong during analysis.");
       setIsProcessing(false);
-      localStorage.removeItem(`blink_analyzing_media_${clientId}`);
     }
   };
 
+  // --- ✨ MOTION BRUSH ANIMATION TRIGGER ---
+  const handleAnimate = async () => {
+    if (!file || !clientId || !maskCanvasRef.current) return;
+
+    // We need to convert our UX Mask (transparent with red paint) into a strict B&W mask for the AI
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = maskCanvasRef.current.width;
+    tempCanvas.height = maskCanvasRef.current.height;
+    const tCtx = tempCanvas.getContext('2d')!;
+
+    // Fill black
+    tCtx.fillStyle = 'black';
+    tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Draw original mask over it, treating painted areas as white
+    tCtx.globalCompositeOperation = 'source-over';
+    tCtx.drawImage(maskCanvasRef.current, 0, 0);
+
+    // Extract pixels and force them to pure white (where painted)
+    const imgData = tCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] > 0 || data[i + 1] > 0 || data[i + 2] > 0) { // If any color was painted (our red UI)
+        data[i] = 255; data[i + 1] = 255; data[i + 2] = 255; // Force Pure White
+      }
+    }
+    tCtx.putImageData(imgData, 0, 0);
+
+    const maskDataUrl = tempCanvas.toDataURL('image/png');
+
+    // Calculate Vector Direction based on arrow
+    let direction = "auto";
+    if (arrowVector) {
+      const dx = arrowVector.endX - arrowVector.startX;
+      const dy = arrowVector.endY - arrowVector.startY;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        direction = dx > 0 ? "right" : "left";
+      } else {
+        direction = dy > 0 ? "down" : "up";
+      }
+    }
+
+    setIsProcessing(true);
+    setLoadingText("Sending Motion Instructions to AI...");
+
+    try {
+      // 1. Upload original image
+      const origPath = `videos/${clientId}/motion_orig_${Date.now()}.jpg`;
+      await supabase.storage.from("assets").upload(origPath, file);
+      const origUrl = supabase.storage.from("assets").getPublicUrl(origPath).data.publicUrl;
+
+      // 2. Upload B&W Mask
+      const maskBlob = await fetch(maskDataUrl).then(r => r.blob());
+      const maskPath = `videos/${clientId}/motion_mask_${Date.now()}.png`;
+      await supabase.storage.from("assets").upload(maskPath, maskBlob);
+      const maskUrl = supabase.storage.from("assets").getPublicUrl(maskPath).data.publicUrl;
+
+      // 3. Create Draft Post
+      const { data: dbData, error: dbError } = await supabase.from("content").insert({
+        client_id: clientId,
+        content_type: "sequence_clip",
+        caption: `🎬 Animated Motion Video`,
+        status: "draft",
+        image_urls: [origUrl], // Store original as thumbnail while generating
+        ai_model: "kling-3.0/video", // Force Kling for motion brush
+      }).select('id').single();
+
+      if (dbError) throw dbError;
+
+      // 4. Trigger n8n Backend
+      const n8nRes = await fetch("/api/video/nano-banana", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "scene_video_generator",
+          post_id: dbData.id,
+          client_id: clientId,
+          primary_image_url: origUrl,
+          motion_mask_url: maskUrl, // ✨ NEW PARAMETER
+          motion_direction: direction, // ✨ NEW PARAMETER
+          user_prompt: mediaContext || "Cinematic animated motion.",
+          duration: "5",
+          video_mode: "motion_brush",
+          ai_model_override: "kling-3.0/video"
+        })
+      });
+
+      if (!n8nRes.ok) throw new Error("Failed to trigger video generation");
+
+      router.push(`/dashboard/content/${dbData.id}`);
+
+    } catch (err: any) {
+      alert(`Motion generation failed: ${err.message}`);
+      setIsProcessing(false);
+    }
+  };
+
+
   return (
-    <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 pt-10">
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 pt-8 pb-20">
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold text-blink-dark font-heading">
-          Your Content Studio
+          Content Studio
         </h1>
         <p className="text-gray-500">
-          Upload your own photos or videos, and let our AI Vision model write
-          the perfect caption.
+          Upload media to write captions, or use the Motion Brush to bring images to life.
         </p>
       </div>
 
@@ -142,106 +366,184 @@ export default function YourContentPage() {
       {!file ? (
         <div
           onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
+          onDrop={handleDropFile}
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-blink-primary/30 bg-blink-primary/5 rounded-3xl p-16 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blink-primary/10 hover:border-blink-primary/50 transition-all duration-300"
+          className="border-2 border-dashed border-blink-primary/30 bg-white rounded-3xl p-20 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blink-primary/5 hover:border-blink-primary/50 transition-all duration-300 shadow-sm"
         >
           <div className="flex gap-4 mb-6">
-            <div className="h-16 w-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-blue-500 -rotate-6 transform hover:rotate-0 transition-all">
+            <div className="h-16 w-16 bg-blue-50 rounded-2xl shadow-sm flex items-center justify-center text-blue-500 -rotate-6 transform hover:rotate-0 transition-all border border-blue-100">
               <ImageIcon className="h-8 w-8" />
             </div>
-            <div className="h-16 w-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-purple-500 rotate-6 transform hover:rotate-0 transition-all">
+            <div className="h-16 w-16 bg-purple-50 rounded-2xl shadow-sm flex items-center justify-center text-purple-500 rotate-6 transform hover:rotate-0 transition-all border border-purple-100">
               <Video className="h-8 w-8" />
             </div>
           </div>
-          <h3 className="text-lg font-semibold text-blink-dark mb-2">
+          <h3 className="text-lg font-bold text-blink-dark mb-2">
             Drag & drop your masterpiece here
           </h3>
           <p className="text-sm text-gray-500 mb-6 max-w-sm">
-            Supports JPG, PNG, MP4 up to 100MB.
+            Upload images to animate them, or videos to write captions.
           </p>
-          <Button className="bg-blink-dark text-white rounded-full px-8 h-12 shadow-lg pointer-events-none">
+          <Button className="bg-blink-dark text-white rounded-full px-8 h-12 shadow-md pointer-events-none">
             <UploadCloud className="mr-2 h-5 w-5" /> Browse Files
           </Button>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-100 flex flex-col items-center text-center space-y-6">
-          <div className="relative w-full aspect-video bg-gray-100 rounded-2xl overflow-hidden border border-gray-200">
-            {file.type.startsWith("image") ? (
-              <img
-                src={preview!}
-                alt="Upload preview"
-                className="w-full h-full object-contain"
-              />
-            ) : (
-              <video
-                src={preview!}
-                controls
-                className="w-full h-full object-contain bg-black"
-              />
-            )}
-            {isProcessing && (
-              <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-10 space-y-3">
-                <Loader2 className="h-10 w-10 animate-spin text-blink-primary" />
-                <p className="font-semibold text-blink-dark animate-pulse">
-                  {loadingText}
-                </p>
-              </div>
-            )}
-          </div>
+        <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-200">
 
-          <div className="w-full space-y-3 text-left">
-            <div>
-              <h3 className="text-sm font-bold text-blink-dark flex items-center justify-between">
-                File Ready{" "}
-                <span className="font-normal text-gray-400 text-xs truncate max-w-[200px]">
-                  {file.name}
-                </span>
-              </h3>
+          {/* ✨ MODE TABS */}
+          {!isVideo && (
+            <div className="flex p-1 bg-gray-100 rounded-lg mb-6 mx-auto max-w-sm">
+              <button onClick={() => setActiveTab('caption')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2", activeTab === 'caption' ? "bg-white shadow-sm text-blink-dark" : "text-gray-500 hover:text-gray-700")}>
+                <ScrollText className="w-4 h-4" /> AI Caption
+              </button>
+              <button onClick={() => setActiveTab('animate')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2", activeTab === 'animate' ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                <Sparkles className="w-4 h-4" /> Motion Brush
+              </button>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                What is this media about? (Optional)
-              </label>
-              <Input
-                value={mediaContext}
-                onChange={(e) => setMediaContext(e.target.value)}
-                placeholder="e.g., Behind the scenes of our new product launch..."
-                className="text-sm"
-                disabled={isProcessing}
-              />
-              <p className="text-[10px] text-gray-400 mt-1">
-                Giving the AI context helps it write significantly better
-                captions, especially for videos!
-              </p>
-            </div>
-          </div>
+          )}
 
-          <div className="flex gap-4 w-full">
-            <Button
-              variant="outline"
-              disabled={isProcessing}
-              onClick={() => {
-                setFile(null);
-                setPreview(null);
-                setMediaContext("");
-              }}
-              className="flex-1 h-12 rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAnalyze}
-              disabled={isProcessing}
-              className="flex-2 w-full bg-gradient-to-r from-blink-primary to-purple-600 text-white h-12 rounded-xl shadow-md hover:shadow-lg transition-all text-base"
-            >
-              {isProcessing ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          {/* ✨ MEDIA VIEWER / CANVAS */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+
+            {/* Left: The Visuals */}
+            <div className="md:col-span-2 relative w-full aspect-video bg-gray-100 rounded-2xl overflow-hidden border border-gray-200 flex items-center justify-center" ref={containerRef}>
+
+              {/* IF CAPTION MODE OR VIDEO: Just show standard preview */}
+              {activeTab === 'caption' || isVideo ? (
+                isVideo ? (
+                  <video src={preview!} controls className="w-full h-full object-contain bg-black" />
+                ) : (
+                  <img src={preview!} alt="Upload preview" className="w-full h-full object-contain" />
+                )
               ) : (
-                <Sparkles className="mr-2 h-5 w-5" />
+                /* ✨ IF ANIMATE MODE: Show Interactive Canvas Stack */
+                <div
+                  className="relative touch-none"
+                  style={{ width: imageDims.w, height: imageDims.h }}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerLeave={handlePointerUp}
+                >
+                  <img src={preview!} className="absolute inset-0 w-full h-full pointer-events-none select-none" draggable={false} />
+
+                  {/* Hidden Mask Canvas (User paints here) */}
+                  <canvas
+                    ref={maskCanvasRef}
+                    width={imageDims.w}
+                    height={imageDims.h}
+                    className="absolute inset-0 w-full h-full cursor-crosshair"
+                  />
+
+                  {/* UI Canvas (Draws the arrow over everything) */}
+                  <canvas
+                    ref={uiCanvasRef}
+                    width={imageDims.w}
+                    height={imageDims.h}
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                  />
+                </div>
               )}
-              {isProcessing ? "Processing..." : "Analyze & Write Caption"}
-            </Button>
+
+              {/* Loading Overlay */}
+              {isProcessing && (
+                <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 space-y-4">
+                  <div className="relative">
+                    <div className="absolute inset-0 rounded-full blur-xl bg-purple-500/30 animate-pulse"></div>
+                    <Loader2 className="h-12 w-12 animate-spin text-purple-600 relative z-10" />
+                  </div>
+                  <p className="font-bold text-purple-900 tracking-wider uppercase text-sm animate-pulse">{loadingText}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Right: The Controls */}
+            <div className="flex flex-col space-y-6 h-full">
+
+              {activeTab === 'caption' ? (
+                <>
+                  <div>
+                    <h3 className="text-sm font-bold text-blink-dark mb-1">File Uploaded</h3>
+                    <p className="font-medium text-gray-500 text-xs truncate w-full">{file?.name}</p>
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Context (Optional)</label>
+                    <Textarea
+                      value={mediaContext}
+                      onChange={(e) => setMediaContext(e.target.value)}
+                      placeholder="e.g., Behind the scenes of our new product launch..."
+                      className="text-sm resize-none h-32 bg-gray-50 border-gray-200"
+                      disabled={isProcessing}
+                    />
+                    <p className="text-[10px] text-gray-400 mt-2 font-medium">Providing context helps the AI write much better captions.</p>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <Button onClick={handleAnalyze} disabled={isProcessing} className="w-full bg-blink-primary text-white h-12 rounded-xl shadow-md font-bold">
+                      {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ScrollText className="mr-2 h-5 w-5" />} Write Caption
+                    </Button>
+                    <Button variant="ghost" disabled={isProcessing} onClick={() => { setFile(null); setPreview(null); setMediaContext(""); }} className="w-full text-red-500 hover:bg-red-50 font-bold">
+                      Cancel
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                /* ✨ MOTION BRUSH CONTROLS ✨ */
+                <div className="flex flex-col h-full gap-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-purple-900 flex items-center gap-2 mb-1"><Sparkles className="w-4 h-4 text-purple-600" /> Animation Tools</h3>
+                    <p className="text-[10px] text-gray-500 font-medium">1. Paint over what you want to move. <br />2. Draw an arrow for direction.</p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 bg-gray-100 p-1.5 rounded-lg border border-gray-200">
+                    <button onClick={() => setToolMode('brush')} className={cn("flex flex-col items-center justify-center p-2 rounded-md transition-all", toolMode === 'brush' ? "bg-white shadow-sm text-purple-600" : "text-gray-500 hover:text-gray-700")}>
+                      <Paintbrush className="w-5 h-5 mb-1" />
+                      <span className="text-[9px] font-bold uppercase tracking-wider">Paint</span>
+                    </button>
+                    <button onClick={() => setToolMode('arrow')} className={cn("flex flex-col items-center justify-center p-2 rounded-md transition-all", toolMode === 'arrow' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}>
+                      <MoveRight className="w-5 h-5 mb-1" />
+                      <span className="text-[9px] font-bold uppercase tracking-wider">Direction</span>
+                    </button>
+                    <button onClick={() => setToolMode('eraser')} className={cn("flex flex-col items-center justify-center p-2 rounded-md transition-all", toolMode === 'eraser' ? "bg-white shadow-sm text-red-600" : "text-gray-500 hover:text-gray-700")}>
+                      <Eraser className="w-5 h-5 mb-1" />
+                      <span className="text-[9px] font-bold uppercase tracking-wider">Erase</span>
+                    </button>
+                  </div>
+
+                  {(toolMode === 'brush' || toolMode === 'eraser') && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center"><label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Brush Size</label><span className="text-xs font-bold text-gray-700">{brushSize}px</span></div>
+                      <input type="range" min="5" max="100" value={brushSize} onChange={(e) => setBrushSize(parseInt(e.target.value))} className="w-full accent-purple-600 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                    </div>
+                  )}
+
+                  {arrowVector && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-blue-700 uppercase flex items-center gap-1"><MoveRight className="w-3 h-3" /> Direction Set</span>
+                      <button onClick={() => { setArrowVector(null); uiCanvasRef.current?.getContext('2d')?.clearRect(0, 0, uiCanvasRef.current.width, uiCanvasRef.current.height); }} className="text-[10px] text-red-500 hover:underline font-bold">Remove</button>
+                    </div>
+                  )}
+
+                  <div className="flex-1 pt-2">
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Prompt (Optional)</label>
+                    <Textarea
+                      value={mediaContext}
+                      onChange={(e) => setMediaContext(e.target.value)}
+                      placeholder="e.g., The water ripples softly..."
+                      className="text-xs resize-none h-20 bg-gray-50 border-gray-200"
+                      disabled={isProcessing}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2 mt-auto">
+                    <Button onClick={clearCanvas} variant="outline" className="w-full border-gray-200 text-gray-600 h-9 text-xs font-bold"><Undo2 className="w-3.5 h-3.5 mr-2" /> Reset Canvas</Button>
+                    <Button onClick={handleAnimate} disabled={isProcessing} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white h-12 rounded-xl shadow-lg shadow-purple-500/20 font-bold text-sm">
+                      {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Play className="mr-2 h-5 w-5 fill-current" />} Animate Motion
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
