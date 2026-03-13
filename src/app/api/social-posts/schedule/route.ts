@@ -3,7 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
     try {
-        const { contentId, clientId, scheduledAt } = await req.json();
+        const body = await req.json();
+        const { contentId, clientId, scheduledAt } = body;
         const apiKey = process.env.POSTFORME_API_KEY;
 
         if (!contentId || !clientId || !apiKey) {
@@ -31,29 +32,30 @@ export async function POST(req: Request) {
             throw new Error("Content not found in database");
         }
 
-        // Safely parse the image array
+        // 2. Safely parse the image array (Silencing TS Errors)
         let imageUrls: string[] = [];
-        if (typeof content.image_urls === "string") {
-            try { imageUrls = JSON.parse(content.image_urls); } catch (e) { }
-        } else if (Array.isArray(content.image_urls)) {
-            imageUrls = content.image_urls;
+        const rawImages: any = content.image_urls;
+        if (typeof rawImages === "string") {
+            try { imageUrls = JSON.parse(rawImages); } catch (e) { }
+        } else if (Array.isArray(rawImages)) {
+            imageUrls = rawImages;
         }
 
         if (imageUrls.length === 0) {
             throw new Error("No images found to publish");
         }
 
-        // Safely parse the target platforms
-        let targetPlatforms = content.target_platforms || [];
-        if (typeof targetPlatforms === 'string') {
+        // 3. Safely parse the target platforms (Silencing TS Errors)
+        let targetPlatforms: any = content.target_platforms || [];
+        if (typeof targetPlatforms === "string") {
             try { targetPlatforms = JSON.parse(targetPlatforms); } catch (e) { targetPlatforms = [targetPlatforms]; }
         }
 
-        if (targetPlatforms.length === 0) {
+        if (!Array.isArray(targetPlatforms) || targetPlatforms.length === 0) {
             throw new Error("No target platforms selected for this post. Go back to Content details and select a platform.");
         }
 
-        // 3. Fetch ONLY the connected accounts that match the user's selection
+        // 4. Fetch ONLY the connected accounts that match the user's selection
         const { data: accounts, error: accountsError } = await supabaseAdmin
             .from("social_accounts")
             .select("postforme_account_id, platform")
@@ -66,9 +68,9 @@ export async function POST(req: Request) {
         }
 
         // Extract just the PostForMe IDs
-        const postForMeAccountIds = accounts.map(acc => acc.postforme_account_id);
+        const postForMeAccountIds = accounts.map((acc: any) => acc.postforme_account_id);
 
-        // 4. Build the PostForMe API Payload
+        // 5. Build the PostForMe API Payload
         const finalCaption = `${content.caption || ""} \n\n${content.hashtags || ""}`.trim();
 
         const postPayload: any = {
@@ -83,8 +85,8 @@ export async function POST(req: Request) {
             postPayload.scheduled_at = scheduledAt;
         }
 
-        // ✨ FIXED ENDPOINT: Removed the "/v1/" to match PostForMe's official documentation
-        const response = await fetch("https://api.postforme.dev/social-posts", {
+        // ✨ THE TRUE ENDPOINT: Combining the /v1/ base path with the social-posts resource
+        const response = await fetch("https://api.postforme.dev/v1/social-posts", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -93,12 +95,20 @@ export async function POST(req: Request) {
             body: JSON.stringify(postPayload),
         });
 
-        const resultData = await response.json();
+        // Safely parse the response to prevent Next.js from crashing if PostForMe returns HTML
+        const responseText = await response.text();
+        let resultData;
+        try {
+            resultData = JSON.parse(responseText);
+        } catch (e) {
+            console.error("PostForMe returned non-JSON:", responseText);
+            throw new Error(`PostForMe Server Error: ${responseText.substring(0, 40)}...`);
+        }
 
         if (!response.ok) {
             console.error("PostForMe Publishing Error:", resultData);
             return NextResponse.json(
-                { error: resultData.message || "Failed to publish via PostForMe" },
+                { error: resultData.message || resultData.error || "Failed to publish via PostForMe" },
                 { status: response.status }
             );
         }
@@ -109,7 +119,7 @@ export async function POST(req: Request) {
             .update({
                 status: scheduledAt ? "approved" : "posted",
                 postforme_tracking_id: resultData.id || null
-            })
+            } as any)
             .eq("id", contentId);
 
         return NextResponse.json({
