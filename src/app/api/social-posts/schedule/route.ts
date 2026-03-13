@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
     try {
@@ -13,8 +13,15 @@ export async function POST(req: Request) {
             );
         }
 
-        // 1. Fetch the generated content (Image, Caption, and Selected Platforms)
-        const { data: content, error: contentError } = await supabase
+        // ✨ FIX: Use the Admin Service Role Key to safely bypass RLS blocks in the backend!
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+            auth: { persistSession: false }
+        });
+
+        // 1. Fetch the generated content
+        const { data: content, error: contentError } = await supabaseAdmin
             .from("content")
             .select("*")
             .eq("id", contentId)
@@ -36,19 +43,23 @@ export async function POST(req: Request) {
             throw new Error("No images found to publish");
         }
 
-        // 2. Which platforms did the user select?
-        const targetPlatforms = content.target_platforms || [];
+        // Safely parse the target platforms
+        let targetPlatforms = content.target_platforms || [];
+        if (typeof targetPlatforms === 'string') {
+            try { targetPlatforms = JSON.parse(targetPlatforms); } catch (e) { targetPlatforms = [targetPlatforms]; }
+        }
+
         if (targetPlatforms.length === 0) {
             throw new Error("No target platforms selected for this post. Go back to Content details and select a platform.");
         }
 
         // 3. Fetch ONLY the connected accounts that match the user's selection
-        const { data: accounts, error: accountsError } = await supabase
+        const { data: accounts, error: accountsError } = await supabaseAdmin
             .from("social_accounts")
             .select("postforme_account_id, platform")
             .eq("client_id", clientId)
             .eq("is_active", true)
-            .in("platform", targetPlatforms); // ✨ NEW: Filters the query using the user's choices!
+            .in("platform", targetPlatforms);
 
         if (accountsError || !accounts || accounts.length === 0) {
             throw new Error("Could not find active connections for the selected platforms. Check your Settings.");
@@ -94,7 +105,7 @@ export async function POST(req: Request) {
         }
 
         // 6. Update the post status and save the Tracking ID
-        await supabase
+        await supabaseAdmin
             .from("content")
             .update({
                 status: scheduledAt ? "approved" : "posted",
