@@ -172,6 +172,23 @@ export function CalendarView({
     }
 
     const targetDate = new Date(year, month, targetDay, hours, minutes, 0);
+
+    // ✨ NEW TIME GUARDRAIL: Prevent scheduling in the past!
+    // If they drop on TODAY, but 10:00 AM has already passed...
+    if (targetDate.getTime() < Date.now()) {
+      const now = new Date();
+      // Check if the target is actually today (and not a past day entirely)
+      if (
+        targetDate.getDate() === now.getDate() &&
+        targetDate.getMonth() === now.getMonth() &&
+        targetDate.getFullYear() === now.getFullYear()
+      ) {
+        // Push the time to 15 minutes into the future so the API accepts it!
+        targetDate.setHours(now.getHours());
+        targetDate.setMinutes(now.getMinutes() + 15);
+      }
+    }
+
     const isoDateString = targetDate.toISOString();
 
     const updatedItem = {
