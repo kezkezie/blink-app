@@ -68,23 +68,23 @@ export async function POST(req: Request) {
         // Extract just the PostForMe IDs
         const postForMeAccountIds = accounts.map(acc => acc.postforme_account_id);
 
-        // 4. Build the exact PostForMe API Payload (Corrected variable names)
+        // 4. Build the PostForMe API Payload
         const finalCaption = `${content.caption || ""} \n\n${content.hashtags || ""}`.trim();
 
         const postPayload: any = {
-            social_accounts: postForMeAccountIds, // ✨ FIXED
-            media: imageUrls.map(url => ({        // ✨ FIXED
+            social_accounts: postForMeAccountIds,
+            media: imageUrls.map(url => ({
                 url: url
             })),
             caption: finalCaption,
         };
 
         if (scheduledAt) {
-            postPayload.scheduled_at = scheduledAt; // PostForMe uses scheduled_at 
+            postPayload.scheduled_at = scheduledAt;
         }
 
-        // 5. Send the POST request to the CORRECT PostForMe Endpoint
-        const response = await fetch("https://api.postforme.dev/v1/social-posts", { // ✨ FIXED ENDPOINT
+        // ✨ FIXED ENDPOINT: Removed the "/v1/" to match PostForMe's official documentation
+        const response = await fetch("https://api.postforme.dev/social-posts", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
