@@ -13,19 +13,23 @@ import {
     Type,
     Image as ImageIcon,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    ALargeSmall // ✨ NEW: Icon for text content
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
+// ✨ UPDATED: SemanticObject schema to include text properties
 export interface SemanticObject {
     id: string;
     name: string;
     color: string;
     material: string;
     type: string;
+    text_content?: string; // ✨ NEW: The actual words
+    font_style?: string; // ✨ NEW: Font style description (e.g., "Bold Sans Serif")
 }
 
 export interface SemanticSchema {
@@ -53,7 +57,7 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
 
     const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-    // ✨ 1. REAL X-RAY FUNCTION (Calls n8n to analyze the image via GPT-4o Vision)
+    // 🧠 1. X-RAY FUNCTION (Calls updated n8n X-Ray flow)
     const handleExtractJSON = async () => {
         if (!imageUrl) return;
         setIsExtracting(true);
@@ -64,7 +68,7 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     mode: "scene_video_generator",
-                    video_mode: "xray_image", // Hits our new Traffic Cop route
+                    video_mode: "xray_image",
                     primary_image_url: imageUrl
                 })
             });
@@ -73,7 +77,6 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
 
             if (!res.ok) throw new Error(data.error || "Failed to extract JSON schema.");
 
-            // n8n must return the JSON inside a "schema" property
             if (data.schema && data.schema.objects) {
                 setSchema(data.schema);
                 if (data.schema.objects.length > 0) {
@@ -124,13 +127,12 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
         });
     };
 
-    // ✨ 2. REAL APPLY EDITS (Sends modified JSON & replacements to n8n)
+    // 🧠 2. APPLY EDITS (Sends updated text JSON to n8n)
     const handleApplyEdits = async () => {
         if (!schema || !imageUrl) return;
         setIsGenerating(true);
 
         try {
-            // 1. Securely upload any replacement images to Supabase first
             const uploadedReplacementUrls: Record<string, string> = {};
             for (const [objId, file] of Object.entries(replacementImages)) {
                 const path = `edits/replacement_${Date.now()}_${file.name}`;
@@ -138,13 +140,12 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                 uploadedReplacementUrls[objId] = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
             }
 
-            // 2. Send the exact payload to n8n to perform the edit
             const res = await fetch("/api/video/nano-banana", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     mode: "scene_video_generator",
-                    video_mode: "json_image_edit", // Hits the rendering Traffic Cop route
+                    video_mode: "json_image_edit",
                     post_id: contentId,
                     primary_image_url: imageUrl,
                     json_schema: schema,
@@ -199,7 +200,6 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                     ) : (
                         <div className="space-y-4">
 
-                            {/* Scene & Lighting Global Controls */}
                             <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-3">
                                 <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1">
                                     <Wand2 className="w-3 h-3" /> Global Environment
@@ -214,12 +214,12 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                                 </div>
                             </div>
 
-                            {/* Object Layers */}
                             <div className="space-y-2">
                                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider pl-1 mb-2">Detected Objects</h3>
 
                                 {schema.objects.map((obj) => {
                                     const isExpanded = expandedObjectId === obj.id;
+                                    const isTextObject = obj.type === "text"; // ✨ Check if this is text
 
                                     return (
                                         <div key={obj.id} className={cn("border rounded-xl transition-all duration-200 bg-white overflow-hidden", isExpanded ? "border-purple-300 shadow-md" : "border-gray-200 hover:border-purple-200")}>
@@ -231,6 +231,7 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                                                 <div className="flex items-center gap-2.5">
                                                     <div className="w-3 h-3 rounded-full border border-gray-200 shadow-inner" style={{ backgroundColor: obj.color }}></div>
                                                     <span className="text-sm font-bold text-gray-700 text-left">{obj.name}</span>
+                                                    {isTextObject && <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">Text</span>}
                                                 </div>
                                                 {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                                             </button>
@@ -238,34 +239,76 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                                             {isExpanded && (
                                                 <div className="p-4 border-t border-gray-100 bg-gray-50/30 space-y-4 animate-in slide-in-from-top-2">
 
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block flex items-center gap-1"><Palette className="w-3 h-3" /> Hex Color</label>
-                                                            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md p-1 shadow-sm">
-                                                                <input
-                                                                    type="color"
-                                                                    value={obj.color}
-                                                                    onChange={(e) => updateObject(obj.id, "color", e.target.value)}
-                                                                    className="w-6 h-6 rounded cursor-pointer border-0 p-0"
-                                                                />
+                                                    {/* ✨ UPDATED: Logic to show Text Content and Font instead of Material for text types */}
+                                                    {isTextObject ? (
+                                                        <div className="space-y-3">
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block flex items-center gap-1"><ALargeSmall className="w-3 h-3" /> Text Content (Words)</label>
                                                                 <Input
-                                                                    value={obj.color}
-                                                                    onChange={(e) => updateObject(obj.id, "color", e.target.value)}
-                                                                    className="h-6 border-0 text-xs font-mono p-0 focus-visible:ring-0"
+                                                                    value={obj.text_content || ""}
+                                                                    onChange={(e) => updateObject(obj.id, "text_content", e.target.value)}
+                                                                    className="h-9 text-xs bg-white shadow-sm font-bold"
+                                                                    placeholder="Type the text you want AI to render..."
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block flex items-center gap-1"><Wand2 className="w-3 h-3" /> Font Style Description</label>
+                                                                <Input
+                                                                    value={obj.font_style || ""}
+                                                                    onChange={(e) => updateObject(obj.id, "font_style", e.target.value)}
+                                                                    className="h-8 text-xs bg-white shadow-sm"
+                                                                    placeholder="e.g., Bold Serif, Technical Sans Serif..."
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block flex items-center gap-1"><Palette className="w-3 h-3" /> Text Color</label>
+                                                                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md p-1 shadow-sm">
+                                                                    <input
+                                                                        type="color"
+                                                                        value={obj.color}
+                                                                        onChange={(e) => updateObject(obj.id, "color", e.target.value)}
+                                                                        className="w-6 h-6 rounded cursor-pointer border-0 p-0"
+                                                                    />
+                                                                    <Input
+                                                                        value={obj.color}
+                                                                        onChange={(e) => updateObject(obj.id, "color", e.target.value)}
+                                                                        className="h-6 border-0 text-xs font-mono p-0 focus-visible:ring-0"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        /* Standard Object Controls */
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block flex items-center gap-1"><Palette className="w-3 h-3" /> Hex Color</label>
+                                                                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md p-1 shadow-sm">
+                                                                    <input
+                                                                        type="color"
+                                                                        value={obj.color}
+                                                                        onChange={(e) => updateObject(obj.id, "color", e.target.value)}
+                                                                        className="w-6 h-6 rounded cursor-pointer border-0 p-0"
+                                                                    />
+                                                                    <Input
+                                                                        value={obj.color}
+                                                                        onChange={(e) => updateObject(obj.id, "color", e.target.value)}
+                                                                        className="h-6 border-0 text-xs font-mono p-0 focus-visible:ring-0"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block flex items-center gap-1"><Type className="w-3 h-3" /> Material / Texture</label>
+                                                                <Input
+                                                                    value={obj.material}
+                                                                    onChange={(e) => updateObject(obj.id, "material", e.target.value)}
+                                                                    className="h-8 text-xs bg-white shadow-sm"
+                                                                    placeholder="e.g., Velvet, Matte"
                                                                 />
                                                             </div>
                                                         </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block flex items-center gap-1"><Type className="w-3 h-3" /> Material / Texture</label>
-                                                            <Input
-                                                                value={obj.material}
-                                                                onChange={(e) => updateObject(obj.id, "material", e.target.value)}
-                                                                className="h-8 text-xs bg-white shadow-sm"
-                                                                placeholder="e.g., Velvet, Matte"
-                                                            />
-                                                        </div>
-                                                    </div>
+                                                    )}
 
+                                                    {/* Object Replacement Dropzone (V2 Critical) */}
                                                     <div className="pt-2 border-t border-gray-100">
                                                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Replace Object (Optional)</label>
 
