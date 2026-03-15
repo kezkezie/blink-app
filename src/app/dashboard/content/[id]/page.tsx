@@ -19,6 +19,7 @@ import {
   Trash2,
   Zap,
   Wand2,
+  Palette // ✨ Added Palette icon for the new button
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +48,6 @@ import type { Content, ContentStatus } from "@/types/database";
 
 import { cn } from "@/lib/utils";
 
-// ✨ Platform styling config to match settings page aesthetics
 const PLATFORM_UI: Record<string, { label: string; emoji: string; color: string }> = {
   instagram: { label: "Instagram", emoji: "📸", color: "text-pink-600 border-pink-200 bg-pink-50" },
   tiktok: { label: "TikTok", emoji: "🎵", color: "text-gray-900 border-gray-300 bg-gray-100" },
@@ -68,7 +68,8 @@ const parseArray = (data: any): any[] => {
   return [];
 };
 
-type GenerationMode = "generate" | "style_transfer" | "edit" | "layers";
+// ✨ Removed "edit" and "layers" from the GenerationMode type
+type GenerationMode = "generate" | "style_transfer";
 
 const STYLE_OPTIONS = [
   { value: "realistic", label: "Hyper-Realistic Photo", promptAddon: "Hyper-realistic photograph, highly detailed, 8k resolution." },
@@ -92,7 +93,6 @@ export default function ContentDetailPage({
   const [brandLogo, setBrandLogo] = useState<string | null>(null);
   const [brandContext, setBrandContext] = useState<any>(null);
 
-  // ✨ NEW: State for connected platforms and user selection
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
   const [targetPlatforms, setTargetPlatforms] = useState<string[]>([]);
 
@@ -116,7 +116,6 @@ export default function ContentDetailPage({
 
   const [refFiles, setRefFiles] = useState<File[]>([]);
   const [refPreviews, setRefPreviews] = useState<string[]>([]);
-  const [useCurrentImageAsRef, setUseCurrentImageAsRef] = useState(false);
 
   const [generationMode, setGenerationMode] = useState<GenerationMode>("generate");
   const [customPrompt, setCustomPrompt] = useState("");
@@ -133,7 +132,6 @@ export default function ContentDetailPage({
           supabase.from("content").select("*").eq("id", id).maybeSingle(),
           supabase.from("clients").select("company_name, industry, onboarding_notes").eq("id", clientId).single(),
           supabase.from("brand_profiles").select("logo_url, image_style, brand_voice").eq("client_id", clientId).maybeSingle(),
-          // ✨ Fetch connected accounts so they can select them
           supabase.from("social_accounts").select("platform").eq("client_id", clientId).eq("is_active", true)
         ]);
 
@@ -144,15 +142,12 @@ export default function ContentDetailPage({
           setCaptionShort(item.caption_short || "");
           setHashtags(item.hashtags || "");
           setCallToAction(item.call_to_action || "");
-
-          // Load previously saved platforms, or default to empty array
           setTargetPlatforms(item.target_platforms || []);
         }
 
         if (brandRes.data?.logo_url) setBrandLogo(brandRes.data.logo_url);
 
         if (socialRes.data) {
-          // Extract unique platform names
           const platforms = Array.from(new Set(socialRes.data.map(s => s.platform)));
           setConnectedPlatforms(platforms);
         }
@@ -202,17 +197,13 @@ export default function ContentDetailPage({
           brandContext: brandContext,
           useBrand: true,
           mode: generationMode,
-          style: (generationMode === 'generate' || generationMode === 'style_transfer') ? activeStyleObj : undefined
+          style: activeStyleObj
         }),
       });
 
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.error || "Failed to fetch suggestion");
-
-      if (data.suggestion) {
-        setCustomPrompt(data.suggestion);
-      }
+      if (data.suggestion) setCustomPrompt(data.suggestion);
     } catch (err: any) {
       alert(`Prompt helper failed: ${err.message}`);
     } finally {
@@ -230,7 +221,7 @@ export default function ContentDetailPage({
         caption_short: captionShort,
         hashtags,
         call_to_action: callToAction,
-        target_platforms: targetPlatforms // ✨ Save their platform choices
+        target_platforms: targetPlatforms
       } as any)
       .eq("id", content.id);
     setSaving(false);
@@ -397,6 +388,7 @@ export default function ContentDetailPage({
     addRefFiles(Array.from(e.target.files || []));
     if (e.target) e.target.value = "";
   }
+
   function handleRefFilesDrop(e: React.DragEvent) {
     e.preventDefault();
     addRefFiles(
@@ -407,8 +399,8 @@ export default function ContentDetailPage({
   }
 
   function addRefFiles(newFiles: File[]) {
-    const maxFiles = generationMode === "style_transfer" ? 4 : 8;
-    const usedSlots = refFiles.length + (useCurrentImageAsRef ? 1 : 0);
+    const maxFiles = 4;
+    const usedSlots = refFiles.length;
     const remainingSlots = maxFiles - usedSlots;
     if (remainingSlots <= 0)
       return alert(`Maximum ${maxFiles} reference images allowed for this mode.`);
@@ -442,8 +434,7 @@ export default function ContentDetailPage({
     let finalTopic = customPrompt.trim() || captionShort || caption?.substring(0, 60) || "Create a professional image";
     const displayImage = parseArray(content.image_urls)[0];
 
-    // Force context if pure generation
-    if ((generationMode === 'generate' || generationMode === 'style_transfer') && brandContext?.description) {
+    if (brandContext?.description) {
       finalTopic = `${finalTopic}. BRAND CONTEXT: We are ${brandContext.name}, operating in the ${brandContext.industry} industry. Product info: ${brandContext.description}`;
     }
 
@@ -463,12 +454,6 @@ export default function ContentDetailPage({
         }
       }
 
-      if ((useCurrentImageAsRef || generationMode === 'edit') && displayImage) {
-        if (!uploadedUrls.includes(displayImage)) {
-          uploadedUrls.unshift(displayImage);
-        }
-      }
-
       const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId!,
         post_id: content.id,
@@ -477,7 +462,7 @@ export default function ContentDetailPage({
         mode: generationMode,
         reference_image_urls: uploadedUrls,
         logo_url: brandLogo || null,
-        style: (generationMode === "style_transfer" || generationMode === "generate") ? selectedStyle : null,
+        style: selectedStyle,
         is_sync: true
       });
 
@@ -509,7 +494,6 @@ export default function ContentDetailPage({
       setRefFiles([]);
       setRefPreviews([]);
       setCustomPrompt("");
-      setUseCurrentImageAsRef(false);
       setGenerationMode("generate");
 
     } catch (err: any) {
@@ -524,8 +508,7 @@ export default function ContentDetailPage({
     setRefFiles([]);
     setRefPreviews([]);
     setCustomPrompt("");
-    setUseCurrentImageAsRef(false);
-    setGenerationMode(parseArray(content?.image_urls)[0] ? "edit" : "generate");
+    setGenerationMode("generate");
     setImageModalOpen(true);
   }
 
@@ -557,7 +540,8 @@ export default function ContentDetailPage({
       displayImage.toLowerCase().includes(".mov") ||
       displayImage.toLowerCase().includes(".webm"));
 
-  const isGenerationDisabled = generatingImage || ((generationMode === "style_transfer" || generationMode === "layers") && refFiles.length === 0 && !useCurrentImageAsRef && !displayImage);
+  // Disable if in style transfer mode but no reference images provided
+  const isGenerationDisabled = generatingImage || (generationMode === "style_transfer" && refFiles.length === 0);
 
   return (
     <div className="space-y-5">
@@ -634,7 +618,6 @@ export default function ContentDetailPage({
 
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-5">
 
-            {/* ✨ NEW: Target Platforms UI */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Publish To (Select Platforms)</label>
               {connectedPlatforms.length === 0 ? (
@@ -708,19 +691,32 @@ export default function ContentDetailPage({
               {content.status === "draft" && (
                 <>
                   {!isVideo && (
-                    <Button
-                      onClick={openImageGenerationModal}
-                      disabled={generatingImage || actionLoading}
-                      variant="outline"
-                      className="w-full justify-start gap-2"
-                    >
-                      {generatingImage ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-4 w-4 text-blink-secondary" />
-                      )}{" "}
-                      {displayImage ? "Regenerate Image" : "Generate Image"}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={openImageGenerationModal}
+                        disabled={generatingImage || actionLoading}
+                        variant="outline"
+                        className="flex-1 justify-center gap-2"
+                      >
+                        {generatingImage ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4 text-blink-secondary" />
+                        )}{" "}
+                        {displayImage ? "Regenerate Image" : "Generate Image"}
+                      </Button>
+
+                      {/* ✨ NEW: Enter Image Studio Button */}
+                      {displayImage && (
+                        <Button
+                          onClick={() => router.push(`/dashboard/content/${content.id}/edit`)}
+                          disabled={generatingImage || actionLoading}
+                          className="flex-1 justify-center gap-2 bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-200 shadow-sm"
+                        >
+                          <Palette className="h-4 w-4" /> Enter Image Studio
+                        </Button>
+                      )}
+                    </div>
                   )}
                   <Button
                     onClick={handleSendForApproval}
@@ -1011,28 +1007,26 @@ export default function ContentDetailPage({
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* ✨ Cleaned up dropdown list */}
                   <SelectItem value="generate">Pure Generation (Text to Image)</SelectItem>
                   <SelectItem value="style_transfer">Style Transfer (Image to Image)</SelectItem>
-                  {displayImage && <SelectItem value="edit">Edit / Modify Current Image</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
 
-            {(generationMode === "generate" || generationMode === "style_transfer") && (
-              <div className="space-y-3">
-                <label className="text-sm font-medium text-gray-700">Art Style</label>
-                <Select value={selectedStyle} onValueChange={setSelectedStyle}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select style" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STYLE_OPTIONS.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-gray-700">Art Style</label>
+              <Select value={selectedStyle} onValueChange={setSelectedStyle}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select style" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STYLE_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="space-y-3 relative">
               <div className="flex justify-between items-center">
@@ -1052,7 +1046,7 @@ export default function ContentDetailPage({
                 <Textarea
                   value={customPrompt}
                   onChange={(e) => setCustomPrompt(e.target.value)}
-                  placeholder={generationMode === 'edit' ? "e.g., Remove the current logo and replace it with the exact text 'LUP.'..." : "e.g., A dramatic product shot with neon lighting..."}
+                  placeholder={"e.g., A dramatic product shot with neon lighting..."}
                   className={cn("resize-none pr-10 transition-all", isHelpLoading && "opacity-50")}
                   rows={3}
                   readOnly={isHelpLoading}
@@ -1065,22 +1059,10 @@ export default function ContentDetailPage({
               </div>
             </div>
 
-            {(generationMode === "style_transfer" || generationMode === "edit" || generationMode === "layers") && (
+            {/* Reference Images section (Only for style transfer now) */}
+            {generationMode === "style_transfer" && (
               <div className="space-y-4 p-4 border border-gray-200 rounded-xl bg-gray-50">
                 <h4 className="text-sm font-medium text-gray-800">Reference Images</h4>
-
-                {displayImage && (
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="use-current"
-                      checked={useCurrentImageAsRef}
-                      onCheckedChange={(checked) => setUseCurrentImageAsRef(!!checked)}
-                    />
-                    <label htmlFor="use-current" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                      Use current image as primary reference
-                    </label>
-                  </div>
-                )}
 
                 <div className="space-y-2">
                   {refPreviews.length > 0 && (
