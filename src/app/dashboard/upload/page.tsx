@@ -13,7 +13,9 @@ import {
   Eraser,
   Undo2,
   Play,
-  ScrollText
+  ScrollText,
+  Activity,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,31 +25,39 @@ import { useClient } from "@/hooks/useClient";
 import { cn } from "@/lib/utils";
 
 type ToolMode = "brush" | "eraser" | "arrow";
+// ✨ ADDED: Third tab for Motion Transfer
+type ActiveTab = "caption" | "animate" | "motion_transfer";
 
 export default function YourContentPage() {
   const router = useRouter();
   const { clientId } = useClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // File States
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const refVideoInputRef = useRef<HTMLInputElement>(null); // ✨ NEW: Ref for the driving video
+
+  // Main File States
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isVideo, setIsVideo] = useState(false);
   const [mediaContext, setMediaContext] = useState("");
 
+  // ✨ NEW: Reference Video States for Motion Transfer
+  const [referenceVideoFile, setReferenceVideoFile] = useState<File | null>(null);
+  const [referenceVideoPreview, setReferenceVideoPreview] = useState<string | null>(null);
+
   // UI States
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingText, setLoadingText] = useState("");
-  const [activeTab, setActiveTab] = useState<"caption" | "animate">("caption");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("caption");
 
-  // ✨ MOTION BRUSH STATES
+  // MOTION BRUSH STATES
   const [toolMode, setToolMode] = useState<ToolMode>("brush");
   const [brushSize, setBrushSize] = useState(30);
 
   // Canvas Refs
   const containerRef = useRef<HTMLDivElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
-  const uiCanvasRef = useRef<HTMLCanvasElement>(null); // For drawing the red UI arrows
+  const uiCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Drawing State
   const [isDrawing, setIsDrawing] = useState(false);
@@ -55,7 +65,7 @@ export default function YourContentPage() {
   const [arrowStart, setArrowStart] = useState<{ x: number, y: number } | null>(null);
   const [arrowVector, setArrowVector] = useState<{ startX: number, startY: number, endX: number, endY: number } | null>(null);
 
-  // Initialize Canvases when image loads
+  // Initialize Canvases for Motion Brush
   useEffect(() => {
     if (activeTab === 'animate' && preview && !isVideo) {
       const img = new Image();
@@ -72,7 +82,7 @@ export default function YourContentPage() {
     }
   }, [activeTab, preview, isVideo]);
 
-  // Handle Draw Events
+  // Handle Draw Events (Motion Brush)
   const getCoordinates = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();
     let clientX, clientY;
@@ -108,7 +118,7 @@ export default function YourContentPage() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = brushSize;
-    ctx.strokeStyle = toolMode === 'eraser' ? 'rgba(0,0,0,1)' : 'rgba(255, 0, 0, 0.4)'; // Red semi-transparent for UX
+    ctx.strokeStyle = toolMode === 'eraser' ? 'rgba(0,0,0,1)' : 'rgba(255, 0, 0, 0.4)';
     ctx.globalCompositeOperation = toolMode === 'eraser' ? 'destination-out' : 'source-over';
     ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
@@ -122,7 +132,6 @@ export default function YourContentPage() {
       if (!ctx) return;
       const coords = getCoordinates(e, canvas);
 
-      // Live draw arrow UX
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawArrow(ctx, arrowStart.x, arrowStart.y, coords.x, coords.y);
       return;
@@ -150,7 +159,7 @@ export default function YourContentPage() {
   };
 
   const drawArrow = (ctx: CanvasRenderingContext2D, fromx: number, fromy: number, tox: number, toy: number) => {
-    const headlen = 15; // length of head in pixels
+    const headlen = 15;
     const dx = tox - fromx;
     const dy = toy - fromy;
     const angle = Math.atan2(dy, dx);
@@ -169,7 +178,6 @@ export default function YourContentPage() {
     ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
     ctx.stroke();
 
-    // Reset shadow
     ctx.shadowBlur = 0;
   };
 
@@ -182,6 +190,7 @@ export default function YourContentPage() {
   };
 
 
+  // Main File Upload Handlers
   const handleDropFile = (e: React.DragEvent) => {
     e.preventDefault();
     handleFileSelect(e.dataTransfer.files[0]);
@@ -192,8 +201,25 @@ export default function YourContentPage() {
       setFile(selectedFile);
       setPreview(URL.createObjectURL(selectedFile));
       setIsVideo(selectedFile.type.startsWith("video"));
-      // Reset animation states if file changes
       clearCanvas();
+      setReferenceVideoFile(null);
+      setReferenceVideoPreview(null);
+    }
+  };
+
+  // ✨ NEW: Reference Video Upload Handlers (For Motion Transfer)
+  const handleRefVideoDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.files?.length) handleRefVideoSelect(e.dataTransfer.files[0]);
+  };
+
+  const handleRefVideoSelect = (selectedFile: File) => {
+    if (selectedFile && selectedFile.type.startsWith("video")) {
+      setReferenceVideoFile(selectedFile);
+      setReferenceVideoPreview(URL.createObjectURL(selectedFile));
+    } else {
+      alert("Please upload a valid video file for motion reference.");
     }
   };
 
@@ -244,37 +270,32 @@ export default function YourContentPage() {
     }
   };
 
-  // --- ✨ MOTION BRUSH ANIMATION TRIGGER ---
-  const handleAnimate = async () => {
+  // --- MOTION BRUSH ANIMATION TRIGGER ---
+  const handleMotionBrush = async () => {
     if (!file || !clientId || !maskCanvasRef.current) return;
 
-    // We need to convert our UX Mask (transparent with red paint) into a strict B&W mask for the AI
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = maskCanvasRef.current.width;
     tempCanvas.height = maskCanvasRef.current.height;
     const tCtx = tempCanvas.getContext('2d')!;
 
-    // Fill black
     tCtx.fillStyle = 'black';
     tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-    // Draw original mask over it, treating painted areas as white
     tCtx.globalCompositeOperation = 'source-over';
     tCtx.drawImage(maskCanvasRef.current, 0, 0);
 
-    // Extract pixels and force them to pure white (where painted)
     const imgData = tCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
     const data = imgData.data;
     for (let i = 0; i < data.length; i += 4) {
-      if (data[i] > 0 || data[i + 1] > 0 || data[i + 2] > 0) { // If any color was painted (our red UI)
-        data[i] = 255; data[i + 1] = 255; data[i + 2] = 255; // Force Pure White
+      if (data[i] > 0 || data[i + 1] > 0 || data[i + 2] > 0) {
+        data[i] = 255; data[i + 1] = 255; data[i + 2] = 255;
       }
     }
     tCtx.putImageData(imgData, 0, 0);
 
     const maskDataUrl = tempCanvas.toDataURL('image/png');
 
-    // Calculate Vector Direction based on arrow
     let direction = "auto";
     if (arrowVector) {
       const dx = arrowVector.endX - arrowVector.startX;
@@ -290,25 +311,80 @@ export default function YourContentPage() {
     setLoadingText("Sending Motion Instructions to AI...");
 
     try {
-      // 1. Upload original image
       const origPath = `videos/${clientId}/motion_orig_${Date.now()}.jpg`;
       await supabase.storage.from("assets").upload(origPath, file);
       const origUrl = supabase.storage.from("assets").getPublicUrl(origPath).data.publicUrl;
 
-      // 2. Upload B&W Mask
       const maskBlob = await fetch(maskDataUrl).then(r => r.blob());
       const maskPath = `videos/${clientId}/motion_mask_${Date.now()}.png`;
       await supabase.storage.from("assets").upload(maskPath, maskBlob);
       const maskUrl = supabase.storage.from("assets").getPublicUrl(maskPath).data.publicUrl;
 
-      // 3. Create Draft Post
       const { data: dbData, error: dbError } = await supabase.from("content").insert({
         client_id: clientId,
         content_type: "sequence_clip",
         caption: `🎬 Animated Motion Video`,
         status: "draft",
-        image_urls: [origUrl], // Store original as thumbnail while generating
-        ai_model: "kling-3.0/video", // Force Kling for motion brush
+        image_urls: [origUrl],
+        ai_model: "kling-3.0/video",
+      }).select('id').single();
+
+      if (dbError) throw dbError;
+
+      const n8nRes = await fetch("/api/video/nano-banana", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "scene_video_generator",
+          post_id: dbData.id,
+          client_id: clientId,
+          primary_image_url: origUrl,
+          motion_mask_url: maskUrl,
+          motion_direction: direction,
+          user_prompt: mediaContext || "Cinematic animated motion.",
+          duration: "5",
+          video_mode: "motion_brush",
+          ai_model_override: "kling-3.0/video"
+        })
+      });
+
+      if (!n8nRes.ok) throw new Error("Failed to trigger video generation");
+      router.push(`/dashboard/content/${dbData.id}`);
+
+    } catch (err: any) {
+      alert(`Motion generation failed: ${err.message}`);
+      setIsProcessing(false);
+    }
+  };
+
+  // --- ✨ NEW: MOTION TRANSFER ANIMATION TRIGGER ---
+  const handleMotionTransfer = async () => {
+    if (!file || !referenceVideoFile || !clientId) return;
+
+    setIsProcessing(true);
+    setLoadingText("Uploading Base Image & Driving Video...");
+
+    try {
+      // 1. Upload the base image
+      const imgPath = `videos/${clientId}/pose_base_${Date.now()}.${file.name.split(".").pop()}`;
+      await supabase.storage.from("assets").upload(imgPath, file);
+      const imgUrl = supabase.storage.from("assets").getPublicUrl(imgPath).data.publicUrl;
+
+      // 2. Upload the driving video
+      const vidPath = `videos/${clientId}/pose_drive_${Date.now()}.${referenceVideoFile.name.split(".").pop()}`;
+      await supabase.storage.from("assets").upload(vidPath, referenceVideoFile);
+      const vidUrl = supabase.storage.from("assets").getPublicUrl(vidPath).data.publicUrl;
+
+      setLoadingText("Generating Motion Transfer...");
+
+      // 3. Create Draft Post
+      const { data: dbData, error: dbError } = await supabase.from("content").insert({
+        client_id: clientId,
+        content_type: "sequence_clip",
+        caption: `🕺 Motion Transfer Video`,
+        status: "draft",
+        image_urls: [imgUrl],
+        ai_model: "kling-3.0/video",
       }).select('id').single();
 
       if (dbError) throw dbError;
@@ -321,26 +397,33 @@ export default function YourContentPage() {
           mode: "scene_video_generator",
           post_id: dbData.id,
           client_id: clientId,
-          primary_image_url: origUrl,
-          motion_mask_url: maskUrl, // ✨ NEW PARAMETER
-          motion_direction: direction, // ✨ NEW PARAMETER
-          user_prompt: mediaContext || "Cinematic animated motion.",
-          duration: "5",
-          video_mode: "motion_brush",
-          ai_model_override: "kling-3.0/video"
+          primary_image_url: imgUrl,           // The character to animate
+          reference_video_url: vidUrl,         // The video providing the motion
+          user_prompt: mediaContext || "Make the character follow the exact movements of the reference video.",
+          duration: "10",
+          video_mode: "motion_transfer",       // ✨ Specific mode flag for backend routing
+          ai_model_override: "kling-3.0/video" // Kling/Viggle handles this perfectly
         })
       });
 
       if (!n8nRes.ok) throw new Error("Failed to trigger video generation");
-
       router.push(`/dashboard/content/${dbData.id}`);
 
     } catch (err: any) {
-      alert(`Motion generation failed: ${err.message}`);
+      alert(`Motion transfer failed: ${err.message}`);
       setIsProcessing(false);
     }
   };
 
+  const handleCancel = () => {
+    setFile(null);
+    setPreview(null);
+    setIsVideo(false);
+    setMediaContext("");
+    clearCanvas();
+    setReferenceVideoFile(null);
+    setReferenceVideoPreview(null);
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 pt-8 pb-20">
@@ -349,7 +432,7 @@ export default function YourContentPage() {
           Content Studio
         </h1>
         <p className="text-gray-500">
-          Upload media to write captions, or use the Motion Brush to bring images to life.
+          Upload media to write captions, paint motion, or extract poses from videos.
         </p>
       </div>
 
@@ -360,6 +443,16 @@ export default function YourContentPage() {
         accept="image/*, video/mp4, video/quicktime"
         onChange={(e) => {
           if (e.target.files?.length) handleFileSelect(e.target.files[0]);
+        }}
+      />
+
+      <input
+        type="file"
+        className="hidden"
+        ref={refVideoInputRef}
+        accept="video/mp4, video/quicktime"
+        onChange={(e) => {
+          if (e.target.files?.length) handleRefVideoSelect(e.target.files[0]);
         }}
       />
 
@@ -382,7 +475,7 @@ export default function YourContentPage() {
             Drag & drop your masterpiece here
           </h3>
           <p className="text-sm text-gray-500 mb-6 max-w-sm">
-            Upload images to animate them, or videos to write captions.
+            Upload an image to animate it, or a video to write captions.
           </p>
           <Button className="bg-blink-dark text-white rounded-full px-8 h-12 shadow-md pointer-events-none">
             <UploadCloud className="mr-2 h-5 w-5" /> Browse Files
@@ -391,33 +484,29 @@ export default function YourContentPage() {
       ) : (
         <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-200">
 
-          {/* ✨ MODE TABS */}
+          {/* MODE TABS (3 Tabs now) */}
           {!isVideo && (
-            <div className="flex p-1 bg-gray-100 rounded-lg mb-6 mx-auto max-w-sm">
-              <button onClick={() => setActiveTab('caption')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2", activeTab === 'caption' ? "bg-white shadow-sm text-blink-dark" : "text-gray-500 hover:text-gray-700")}>
+            <div className="flex p-1 bg-gray-100 rounded-lg mb-6 mx-auto max-w-2xl overflow-x-auto">
+              <button onClick={() => setActiveTab('caption')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'caption' ? "bg-white shadow-sm text-blink-dark" : "text-gray-500 hover:text-gray-700")}>
                 <ScrollText className="w-4 h-4" /> AI Caption
               </button>
-              <button onClick={() => setActiveTab('animate')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2", activeTab === 'animate' ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+              <button onClick={() => setActiveTab('animate')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'animate' ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}>
                 <Sparkles className="w-4 h-4" /> Motion Brush
+              </button>
+              <button onClick={() => setActiveTab('motion_transfer')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'motion_transfer' ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                <Activity className="w-4 h-4" /> Motion Transfer
               </button>
             </div>
           )}
 
-          {/* ✨ MEDIA VIEWER / CANVAS */}
+          {/* MEDIA VIEWER / CANVAS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
 
             {/* Left: The Visuals */}
             <div className="md:col-span-2 relative w-full aspect-video bg-gray-100 rounded-2xl overflow-hidden border border-gray-200 flex items-center justify-center" ref={containerRef}>
 
-              {/* IF CAPTION MODE OR VIDEO: Just show standard preview */}
-              {activeTab === 'caption' || isVideo ? (
-                isVideo ? (
-                  <video src={preview!} controls className="w-full h-full object-contain bg-black" />
-                ) : (
-                  <img src={preview!} alt="Upload preview" className="w-full h-full object-contain" />
-                )
-              ) : (
-                /* ✨ IF ANIMATE MODE: Show Interactive Canvas Stack */
+              {activeTab === 'animate' && !isVideo ? (
+                /* IF ANIMATE MODE: Show Interactive Canvas Stack */
                 <div
                   className="relative touch-none"
                   style={{ width: imageDims.w, height: imageDims.h }}
@@ -428,25 +517,18 @@ export default function YourContentPage() {
                 >
                   <img src={preview!} className="absolute inset-0 w-full h-full pointer-events-none select-none" draggable={false} />
 
-                  {/* Hidden Mask Canvas (User paints here) */}
-                  <canvas
-                    ref={maskCanvasRef}
-                    width={imageDims.w}
-                    height={imageDims.h}
-                    className="absolute inset-0 w-full h-full cursor-crosshair"
-                  />
-
-                  {/* UI Canvas (Draws the arrow over everything) */}
-                  <canvas
-                    ref={uiCanvasRef}
-                    width={imageDims.w}
-                    height={imageDims.h}
-                    className="absolute inset-0 w-full h-full pointer-events-none"
-                  />
+                  <canvas ref={maskCanvasRef} width={imageDims.w} height={imageDims.h} className="absolute inset-0 w-full h-full cursor-crosshair" />
+                  <canvas ref={uiCanvasRef} width={imageDims.w} height={imageDims.h} className="absolute inset-0 w-full h-full pointer-events-none" />
                 </div>
+              ) : (
+                /* IF CAPTION OR TRANSFER MODE: Standard preview */
+                isVideo ? (
+                  <video src={preview!} controls className="w-full h-full object-contain bg-black" />
+                ) : (
+                  <img src={preview!} alt="Upload preview" className="w-full h-full object-contain" />
+                )
               )}
 
-              {/* Loading Overlay */}
               {isProcessing && (
                 <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 space-y-4">
                   <div className="relative">
@@ -461,7 +543,8 @@ export default function YourContentPage() {
             {/* Right: The Controls */}
             <div className="flex flex-col space-y-6 h-full">
 
-              {activeTab === 'caption' ? (
+              {/* ─── CAPTION MODE CONTROLS ─── */}
+              {activeTab === 'caption' && (
                 <>
                   <div>
                     <h3 className="text-sm font-bold text-blink-dark mb-1">File Uploaded</h3>
@@ -482,13 +565,15 @@ export default function YourContentPage() {
                     <Button onClick={handleAnalyze} disabled={isProcessing} className="w-full bg-blink-primary text-white h-12 rounded-xl shadow-md font-bold">
                       {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ScrollText className="mr-2 h-5 w-5" />} Write Caption
                     </Button>
-                    <Button variant="ghost" disabled={isProcessing} onClick={() => { setFile(null); setPreview(null); setMediaContext(""); }} className="w-full text-red-500 hover:bg-red-50 font-bold">
+                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-500 hover:bg-red-50 font-bold">
                       Cancel
                     </Button>
                   </div>
                 </>
-              ) : (
-                /* ✨ MOTION BRUSH CONTROLS ✨ */
+              )}
+
+              {/* ─── MOTION BRUSH CONTROLS ─── */}
+              {activeTab === 'animate' && (
                 <div className="flex flex-col h-full gap-4">
                   <div>
                     <h3 className="text-sm font-bold text-purple-900 flex items-center gap-2 mb-1"><Sparkles className="w-4 h-4 text-purple-600" /> Animation Tools</h3>
@@ -537,12 +622,68 @@ export default function YourContentPage() {
 
                   <div className="flex flex-col gap-2 mt-auto">
                     <Button onClick={clearCanvas} variant="outline" className="w-full border-gray-200 text-gray-600 h-9 text-xs font-bold"><Undo2 className="w-3.5 h-3.5 mr-2" /> Reset Canvas</Button>
-                    <Button onClick={handleAnimate} disabled={isProcessing} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white h-12 rounded-xl shadow-lg shadow-purple-500/20 font-bold text-sm">
+                    <Button onClick={handleMotionBrush} disabled={isProcessing} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white h-12 rounded-xl shadow-lg shadow-purple-500/20 font-bold text-sm">
                       {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Play className="mr-2 h-5 w-5 fill-current" />} Animate Motion
                     </Button>
+                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-500 hover:bg-red-50 font-bold h-9">Cancel</Button>
                   </div>
                 </div>
               )}
+
+              {/* ─── ✨ NEW: MOTION TRANSFER CONTROLS ─── */}
+              {activeTab === 'motion_transfer' && (
+                <div className="flex flex-col h-full gap-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2 mb-1"><Activity className="w-4 h-4 text-blue-600" /> Reference Motion</h3>
+                    <p className="text-[10px] text-gray-500 font-medium">Upload a video. The AI will make your image mimic the video's movements.</p>
+                  </div>
+
+                  <div className="flex-1 space-y-4">
+                    {referenceVideoPreview ? (
+                      <div className="relative rounded-xl border border-blue-200 bg-blue-50/50 p-2">
+                        <video src={referenceVideoPreview} controls className="w-full h-32 object-cover rounded-lg bg-black" />
+                        <button onClick={() => { setReferenceVideoFile(null); setReferenceVideoPreview(null); }} className="absolute top-4 right-4 p-1.5 bg-white/90 text-red-500 rounded-full shadow-md hover:bg-red-50 transition-colors">
+                          <X className="h-4 w-4" />
+                        </button>
+                        <p className="text-[10px] font-bold text-blue-700 mt-2 text-center truncate px-2">{referenceVideoFile?.name}</p>
+                      </div>
+                    ) : (
+                      <div
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onDrop={handleRefVideoDrop}
+                        onClick={() => refVideoInputRef.current?.click()}
+                        className="h-32 border-2 border-dashed border-blue-300 bg-blue-50/30 hover:bg-blue-50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors"
+                      >
+                        <Video className="h-6 w-6 text-blue-400 mb-2" />
+                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Drop Reference Video</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Prompt (Optional)</label>
+                      <Textarea
+                        value={mediaContext}
+                        onChange={(e) => setMediaContext(e.target.value)}
+                        placeholder="e.g., The character dances energetically..."
+                        className="text-xs resize-none h-20 bg-gray-50 border-gray-200"
+                        disabled={isProcessing}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 mt-auto">
+                    <Button
+                      onClick={handleMotionTransfer}
+                      disabled={isProcessing || !referenceVideoFile}
+                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white h-12 rounded-xl shadow-lg shadow-blue-500/20 font-bold text-sm"
+                    >
+                      {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Activity className="mr-2 h-5 w-5" />} Transfer Motion
+                    </Button>
+                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-500 hover:bg-red-50 font-bold h-9">Cancel</Button>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         </div>

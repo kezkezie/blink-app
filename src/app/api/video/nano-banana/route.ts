@@ -3,8 +3,12 @@ import { NextResponse } from 'next/server';
 const N8N_DIRECTOR_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/ai-director-prompts";
 const N8N_GENERATOR_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/generate-single-frame";
 
-// ✨ FIXED: Updated the path to match your n8n workflow exactly ('blink-generate-video-v1')
+// The standard video generator
 const N8N_VIDEO_GENERATOR_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/blink-generate-video-v1";
+
+// ✨ NEW: Dedicated Webhooks for the Animation Studio tools
+const N8N_MOTION_BRUSH_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/blink-motion-brush-v1";
+const N8N_MOTION_TRANSFER_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/blink-motion-transfer-v1";
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +20,16 @@ export async function POST(req: Request) {
     if (body.mode === 'director') {
       targetUrl = N8N_DIRECTOR_URL;
     } else if (body.mode === 'scene_video_generator') {
-      targetUrl = N8N_VIDEO_GENERATOR_URL; // Routes video requests correctly!
+
+      // ✨ THE NEW TRAFFIC COP FOR VIDEO SUB-MODES ✨
+      if (body.video_mode === 'motion_brush') {
+        targetUrl = N8N_MOTION_BRUSH_URL;
+      } else if (body.video_mode === 'motion_transfer') {
+        targetUrl = N8N_MOTION_TRANSFER_URL;
+      } else {
+        targetUrl = N8N_VIDEO_GENERATOR_URL; // Standard Video Studio route
+      }
+
     }
 
     const n8nRes = await fetch(targetUrl, {
