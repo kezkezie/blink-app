@@ -25,7 +25,6 @@ import { useClient } from "@/hooks/useClient";
 import { cn } from "@/lib/utils";
 
 type ToolMode = "brush" | "eraser" | "arrow";
-// ✨ ADDED: Third tab for Motion Transfer
 type ActiveTab = "caption" | "animate" | "motion_transfer";
 
 export default function YourContentPage() {
@@ -33,7 +32,7 @@ export default function YourContentPage() {
   const { clientId } = useClient();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const refVideoInputRef = useRef<HTMLInputElement>(null); // ✨ NEW: Ref for the driving video
+  const refVideoInputRef = useRef<HTMLInputElement>(null);
 
   // Main File States
   const [file, setFile] = useState<File | null>(null);
@@ -41,7 +40,7 @@ export default function YourContentPage() {
   const [isVideo, setIsVideo] = useState(false);
   const [mediaContext, setMediaContext] = useState("");
 
-  // ✨ NEW: Reference Video States for Motion Transfer
+  // Reference Video States for Motion Transfer (V2)
   const [referenceVideoFile, setReferenceVideoFile] = useState<File | null>(null);
   const [referenceVideoPreview, setReferenceVideoPreview] = useState<string | null>(null);
 
@@ -50,22 +49,22 @@ export default function YourContentPage() {
   const [loadingText, setLoadingText] = useState("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("caption");
 
-  // MOTION BRUSH STATES
+  // MOTION BRUSH STATES (V2)
   const [toolMode, setToolMode] = useState<ToolMode>("brush");
   const [brushSize, setBrushSize] = useState(30);
 
-  // Canvas Refs
+  // Canvas Refs (V2)
   const containerRef = useRef<HTMLDivElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const uiCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Drawing State
+  // Drawing State (V2)
   const [isDrawing, setIsDrawing] = useState(false);
   const [imageDims, setImageDims] = useState({ w: 0, h: 0 });
   const [arrowStart, setArrowStart] = useState<{ x: number, y: number } | null>(null);
   const [arrowVector, setArrowVector] = useState<{ startX: number, startY: number, endX: number, endY: number } | null>(null);
 
-  // Initialize Canvases for Motion Brush
+  // Initialize Canvases for Motion Brush (V2)
   useEffect(() => {
     if (activeTab === 'animate' && preview && !isVideo) {
       const img = new Image();
@@ -82,7 +81,7 @@ export default function YourContentPage() {
     }
   }, [activeTab, preview, isVideo]);
 
-  // Handle Draw Events (Motion Brush)
+  // Handle Draw Events (Motion Brush - V2)
   const getCoordinates = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();
     let clientX, clientY;
@@ -189,7 +188,6 @@ export default function YourContentPage() {
     setArrowVector(null);
   };
 
-
   // Main File Upload Handlers
   const handleDropFile = (e: React.DragEvent) => {
     e.preventDefault();
@@ -207,7 +205,7 @@ export default function YourContentPage() {
     }
   };
 
-  // ✨ NEW: Reference Video Upload Handlers (For Motion Transfer)
+  // Reference Video Upload Handlers (For Motion Transfer - V2)
   const handleRefVideoDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -270,7 +268,7 @@ export default function YourContentPage() {
     }
   };
 
-  // --- MOTION BRUSH ANIMATION TRIGGER ---
+  // --- MOTION BRUSH ANIMATION TRIGGER (V2) ---
   const handleMotionBrush = async () => {
     if (!file || !clientId || !maskCanvasRef.current) return;
 
@@ -357,7 +355,7 @@ export default function YourContentPage() {
     }
   };
 
-  // --- ✨ NEW: MOTION TRANSFER ANIMATION TRIGGER ---
+  // --- MOTION TRANSFER ANIMATION TRIGGER (V2) ---
   const handleMotionTransfer = async () => {
     if (!file || !referenceVideoFile || !clientId) return;
 
@@ -365,19 +363,16 @@ export default function YourContentPage() {
     setLoadingText("Uploading Base Image & Driving Video...");
 
     try {
-      // 1. Upload the base image
       const imgPath = `videos/${clientId}/pose_base_${Date.now()}.${file.name.split(".").pop()}`;
       await supabase.storage.from("assets").upload(imgPath, file);
       const imgUrl = supabase.storage.from("assets").getPublicUrl(imgPath).data.publicUrl;
 
-      // 2. Upload the driving video
       const vidPath = `videos/${clientId}/pose_drive_${Date.now()}.${referenceVideoFile.name.split(".").pop()}`;
       await supabase.storage.from("assets").upload(vidPath, referenceVideoFile);
       const vidUrl = supabase.storage.from("assets").getPublicUrl(vidPath).data.publicUrl;
 
       setLoadingText("Generating Motion Transfer...");
 
-      // 3. Create Draft Post
       const { data: dbData, error: dbError } = await supabase.from("content").insert({
         client_id: clientId,
         content_type: "sequence_clip",
@@ -389,7 +384,6 @@ export default function YourContentPage() {
 
       if (dbError) throw dbError;
 
-      // 4. Trigger n8n Backend
       const n8nRes = await fetch("/api/video/nano-banana", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -397,12 +391,12 @@ export default function YourContentPage() {
           mode: "scene_video_generator",
           post_id: dbData.id,
           client_id: clientId,
-          primary_image_url: imgUrl,           // The character to animate
-          reference_video_url: vidUrl,         // The video providing the motion
+          primary_image_url: imgUrl,
+          reference_video_url: vidUrl,
           user_prompt: mediaContext || "Make the character follow the exact movements of the reference video.",
           duration: "10",
-          video_mode: "motion_transfer",       // ✨ Specific mode flag for backend routing
-          ai_model_override: "kling-3.0/video" // Kling/Viggle handles this perfectly
+          video_mode: "motion_transfer",
+          ai_model_override: "kling-3.0/video"
         })
       });
 
@@ -432,7 +426,7 @@ export default function YourContentPage() {
           Content Studio
         </h1>
         <p className="text-gray-500">
-          Upload media to write captions, paint motion, or extract poses from videos.
+          Upload media to write captions and generate content.
         </p>
       </div>
 
@@ -475,7 +469,7 @@ export default function YourContentPage() {
             Drag & drop your masterpiece here
           </h3>
           <p className="text-sm text-gray-500 mb-6 max-w-sm">
-            Upload an image to animate it, or a video to write captions.
+            Upload images or videos to generate AI content.
           </p>
           <Button className="bg-blink-dark text-white rounded-full px-8 h-12 shadow-md pointer-events-none">
             <UploadCloud className="mr-2 h-5 w-5" /> Browse Files
@@ -484,18 +478,24 @@ export default function YourContentPage() {
       ) : (
         <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-200">
 
-          {/* MODE TABS (3 Tabs now) */}
+          {/* ========================================================================
+            VERSION 2 TABS TEMPORARILY COMMENTED OUT (API Limitation)
+            ======================================================================== 
+          */}
           {!isVideo && (
-            <div className="flex p-1 bg-gray-100 rounded-lg mb-6 mx-auto max-w-2xl overflow-x-auto">
+            <div className="flex p-1 bg-gray-100 rounded-lg mb-6 mx-auto max-w-sm overflow-x-auto">
               <button onClick={() => setActiveTab('caption')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'caption' ? "bg-white shadow-sm text-blink-dark" : "text-gray-500 hover:text-gray-700")}>
                 <ScrollText className="w-4 h-4" /> AI Caption
               </button>
+
+              {/* --- V2 TABS HIDDEN ---
               <button onClick={() => setActiveTab('animate')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'animate' ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}>
                 <Sparkles className="w-4 h-4" /> Motion Brush
               </button>
               <button onClick={() => setActiveTab('motion_transfer')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'motion_transfer' ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}>
                 <Activity className="w-4 h-4" /> Motion Transfer
               </button>
+              ------------------------ */}
             </div>
           )}
 
@@ -505,8 +505,11 @@ export default function YourContentPage() {
             {/* Left: The Visuals */}
             <div className="md:col-span-2 relative w-full aspect-video bg-gray-100 rounded-2xl overflow-hidden border border-gray-200 flex items-center justify-center" ref={containerRef}>
 
-              {activeTab === 'animate' && !isVideo ? (
-                /* IF ANIMATE MODE: Show Interactive Canvas Stack */
+              {/* ========================================================================
+                VERSION 2 INTERACTIVE CANVAS COMMENTED OUT
+                ======================================================================== 
+              */}
+              {/* {activeTab === 'animate' && !isVideo ? (
                 <div
                   className="relative touch-none"
                   style={{ width: imageDims.w, height: imageDims.h }}
@@ -520,14 +523,17 @@ export default function YourContentPage() {
                   <canvas ref={maskCanvasRef} width={imageDims.w} height={imageDims.h} className="absolute inset-0 w-full h-full cursor-crosshair" />
                   <canvas ref={uiCanvasRef} width={imageDims.w} height={imageDims.h} className="absolute inset-0 w-full h-full pointer-events-none" />
                 </div>
+              ) : ( 
+              */}
+
+              {/* Standard preview used for V1 */}
+              {isVideo ? (
+                <video src={preview!} controls className="w-full h-full object-contain bg-black" />
               ) : (
-                /* IF CAPTION OR TRANSFER MODE: Standard preview */
-                isVideo ? (
-                  <video src={preview!} controls className="w-full h-full object-contain bg-black" />
-                ) : (
-                  <img src={preview!} alt="Upload preview" className="w-full h-full object-contain" />
-                )
+                <img src={preview!} alt="Upload preview" className="w-full h-full object-contain" />
               )}
+
+              {/* )} */}
 
               {isProcessing && (
                 <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 space-y-4">
@@ -543,7 +549,7 @@ export default function YourContentPage() {
             {/* Right: The Controls */}
             <div className="flex flex-col space-y-6 h-full">
 
-              {/* ─── CAPTION MODE CONTROLS ─── */}
+              {/* ─── CAPTION MODE CONTROLS (V1 ACTIVE) ─── */}
               {activeTab === 'caption' && (
                 <>
                   <div>
@@ -572,7 +578,13 @@ export default function YourContentPage() {
                 </>
               )}
 
-              {/* ─── MOTION BRUSH CONTROLS ─── */}
+              {/* ========================================================================
+                VERSION 2 CONTROLS TEMPORARILY COMMENTED OUT
+                ======================================================================== 
+              */}
+
+              {/* ─── MOTION BRUSH CONTROLS (V2) ─── */}
+              {/*
               {activeTab === 'animate' && (
                 <div className="flex flex-col h-full gap-4">
                   <div>
@@ -629,8 +641,10 @@ export default function YourContentPage() {
                   </div>
                 </div>
               )}
+              */}
 
-              {/* ─── ✨ NEW: MOTION TRANSFER CONTROLS ─── */}
+              {/* ─── MOTION TRANSFER CONTROLS (V2) ─── */}
+              {/*
               {activeTab === 'motion_transfer' && (
                 <div className="flex flex-col h-full gap-4">
                   <div>
@@ -683,6 +697,7 @@ export default function YourContentPage() {
                   </div>
                 </div>
               )}
+              */}
 
             </div>
           </div>
