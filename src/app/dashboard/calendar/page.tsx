@@ -10,6 +10,9 @@ import { cn } from "@/lib/utils";
 
 const UNSCHEDULED_LIMIT = 20;
 
+// ✨ FIX: Targeting exactly how your Supabase database saves them
+const HIDDEN_CONTENT_TYPES = ["sequence_clip", "generated_audio"];
+
 export default function CalendarPage() {
   const { clientId } = useClient();
   const [content, setContent] = useState<Content[]>([]);
@@ -24,27 +27,29 @@ export default function CalendarPage() {
     text: string;
   } | null>(null);
 
-  // ✨ NEW: Pagination States
+  // Pagination States
   const [unscheduledOffset, setUnscheduledOffset] = useState(UNSCHEDULED_LIMIT);
   const [hasMoreUnscheduled, setHasMoreUnscheduled] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // ✨ UPDATED: Smart fetching (All Scheduled + Paginated Unscheduled)
+  // Smart fetching (All Scheduled + Paginated Unscheduled)
   const fetchContent = useCallback(async () => {
     if (!clientId) return;
 
-    // 1. Fetch ALL scheduled posts so the calendar grid never breaks
+    // 1. Fetch ALL scheduled posts 
     const { data: scheduled } = await supabase
       .from("content")
       .select("*")
       .eq("client_id", clientId)
+      .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
       .not("scheduled_at", "is", null);
 
-    // 2. Fetch Unscheduled posts up to the current offset
+    // 2. Fetch Unscheduled posts up to the current offset 
     const { data: unscheduled } = await supabase
       .from("content")
       .select("*")
       .eq("client_id", clientId)
+      .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
       .is("scheduled_at", null)
       .order("created_at", { ascending: false })
       .range(0, unscheduledOffset - 1);
@@ -60,7 +65,7 @@ export default function CalendarPage() {
     fetchContent();
   }, [fetchContent]);
 
-  // ✨ NEW: Function to load the next page of unscheduled posts
+  // Function to load the next page of unscheduled posts
   const handleLoadMore = async () => {
     setIsLoadingMore(true);
     const newOffset = unscheduledOffset + UNSCHEDULED_LIMIT;
@@ -69,6 +74,7 @@ export default function CalendarPage() {
       .from("content")
       .select("*")
       .eq("client_id", clientId)
+      .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
       .is("scheduled_at", null)
       .order("created_at", { ascending: false })
       .range(unscheduledOffset, newOffset - 1);

@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ImageIcon,
   Loader2,
+  Video, // ✨ NEW: Added Video icon for fallback
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -25,6 +26,9 @@ interface Stats {
   approved: number;
   published: number;
 }
+
+// ✨ NEW: Exact same blacklist from the calendar to keep the dashboard clean
+const HIDDEN_CONTENT_TYPES = ["sequence_clip", "audio", "voiceover", "audio_clip", "generated_audio"];
 
 const statCards = [
   {
@@ -86,11 +90,12 @@ export default function DashboardPage() {
 
     async function fetchData() {
       try {
-        // Fetch all content for the client
+        // Fetch all content, but ✨ FILTER OUT the internal editor clips and audios
         const { data, error } = await supabase
           .from("content")
           .select("*")
           .eq("client_id", clientId)
+          .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
           .order("created_at", { ascending: false });
 
         if (error) {
@@ -208,22 +213,35 @@ export default function DashboardPage() {
               const displayImage = imageUrlsArray[0];
               const platformsArray = parseArray(item.target_platforms);
 
+              // ✨ NEW: Detect if the URL is a video format
+              const isVideo = displayImage && displayImage.match(/\.(mp4|mov|webm)$/i);
+
               return (
                 <li key={item.id}>
                   <Link
                     href={`/dashboard/content/${item.id}`}
                     className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors"
                   >
-                    {/* Thumbnail */}
+                    {/* ✨ UPDATED: Smart Thumbnail Renderer (Image vs Video) */}
                     <div className="h-14 w-14 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
                       {displayImage ? (
-                        <img
-                          src={displayImage}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
+                        isVideo ? (
+                          <video
+                            src={`${displayImage}#t=0.1`} // #t=0.1 loads the first frame as a poster
+                            className="h-full w-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <img
+                            src={displayImage}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        )
                       ) : (
-                        <ImageIcon className="h-5 w-5 text-gray-300" />
+                        item.content_type === 'video' ? <Video className="h-5 w-5 text-gray-300" /> : <ImageIcon className="h-5 w-5 text-gray-300" />
                       )}
                     </div>
 

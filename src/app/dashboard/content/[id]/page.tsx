@@ -19,7 +19,7 @@ import {
   Trash2,
   Zap,
   Wand2,
-  Palette // ✨ Added Palette icon for the new button
+  Palette
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,7 +68,6 @@ const parseArray = (data: any): any[] => {
   return [];
 };
 
-// ✨ Removed "edit" and "layers" from the GenerationMode type
 type GenerationMode = "generate" | "style_transfer";
 
 const STYLE_OPTIONS = [
@@ -142,7 +141,8 @@ export default function ContentDetailPage({
           setCaptionShort(item.caption_short || "");
           setHashtags(item.hashtags || "");
           setCallToAction(item.call_to_action || "");
-          setTargetPlatforms(item.target_platforms || []);
+          // ✨ FIX: Properly parse array on initial load
+          setTargetPlatforms(parseArray(item.target_platforms));
         }
 
         if (brandRes.data?.logo_url) setBrandLogo(brandRes.data.logo_url);
@@ -211,9 +211,9 @@ export default function ContentDetailPage({
     }
   };
 
-  async function handleSave() {
-    if (!content) return;
-    setSaving(true);
+  // Helper to auto-save edits before executing an action
+  async function autoSaveEdits() {
+    if (!content) return false;
     const { error } = await supabase
       .from("content")
       .update({
@@ -224,20 +224,16 @@ export default function ContentDetailPage({
         target_platforms: targetPlatforms
       } as any)
       .eq("id", content.id);
+    return !error;
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const success = await autoSaveEdits();
     setSaving(false);
-    if (!error)
-      setContent((prev: any) =>
-        prev
-          ? {
-            ...prev,
-            caption,
-            caption_short: captionShort,
-            hashtags,
-            call_to_action: callToAction,
-            target_platforms: targetPlatforms
-          }
-          : null
-      );
+    if (success && content) {
+      setContent({ ...content, caption, caption_short: captionShort, hashtags, call_to_action: callToAction, target_platforms: targetPlatforms } as any);
+    }
   }
 
   async function handleDelete() {
@@ -253,14 +249,23 @@ export default function ContentDetailPage({
     }
   }
 
+  // ✨ FIX: Validation and Auto-Save for Send to Approval
   async function handleSendForApproval() {
     if (!content) return;
+
+    if (targetPlatforms.length === 0) {
+      alert("Please select at least one platform to publish to before sending for approval.");
+      return;
+    }
+
     setActionLoading(true);
     try {
+      await autoSaveEdits(); // Auto save!
+
       await triggerWorkflow("blink-send-approval", {
         client_id: clientId!,
         post_id: content.id,
-        caption: content.caption,
+        caption: caption,
         image_url: parseArray(content.image_urls)[0] || null,
       });
       await supabase
@@ -277,16 +282,19 @@ export default function ContentDetailPage({
     }
   }
 
+  // ✨ FIX: Validation and Auto-Save for Publish Now
   async function handleApproveAndPublishNow() {
     if (!content) return;
 
     if (targetPlatforms.length === 0) {
-      alert("Please select at least one platform to publish to and click 'Save Changes' first.");
+      alert("Please select at least one platform to publish to!");
       return;
     }
 
     setActionLoading(true);
     try {
+      await autoSaveEdits(); // Auto save!
+
       await supabase
         .from("content")
         .update({
@@ -327,16 +335,19 @@ export default function ContentDetailPage({
     }
   }
 
+  // ✨ FIX: Validation and Auto-Save for Schedule
   async function handleApproveAndSchedule() {
     if (!content || !scheduleDate) return;
 
     if (targetPlatforms.length === 0) {
-      alert("Please select at least one platform to publish to and click 'Save Changes' first.");
+      alert("Please select at least one platform to publish to before scheduling.");
       return;
     }
 
     setActionLoading(true);
     try {
+      await autoSaveEdits(); // Auto save!
+
       const scheduledTime = new Date(scheduleDate).toISOString();
       const { error } = await supabase
         .from("content")
@@ -706,7 +717,6 @@ export default function ContentDetailPage({
                         {displayImage ? "Regenerate Image" : "Generate Image"}
                       </Button>
 
-                      {/* ✨ NEW: Enter Image Studio Button */}
                       {displayImage && (
                         <Button
                           onClick={() => router.push(`/dashboard/content/${content.id}/edit`)}
@@ -1007,7 +1017,6 @@ export default function ContentDetailPage({
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* ✨ Cleaned up dropdown list */}
                   <SelectItem value="generate">Pure Generation (Text to Image)</SelectItem>
                   <SelectItem value="style_transfer">Style Transfer (Image to Image)</SelectItem>
                 </SelectContent>
@@ -1059,7 +1068,6 @@ export default function ContentDetailPage({
               </div>
             </div>
 
-            {/* Reference Images section (Only for style transfer now) */}
             {generationMode === "style_transfer" && (
               <div className="space-y-4 p-4 border border-gray-200 rounded-xl bg-gray-50">
                 <h4 className="text-sm font-medium text-gray-800">Reference Images</h4>
