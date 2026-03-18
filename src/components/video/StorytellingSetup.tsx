@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users } from "lucide-react";
+import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
 import type { VideoSetupProps } from "./types";
 
-// ✨ ADDED: Dual character audio states
 type StoryboardScene = any & {
   videoUrl?: string | null;
   isGeneratingVideo?: boolean;
@@ -19,14 +18,12 @@ type StoryboardScene = any & {
   aiModel?: string;
   useEndFrame?: boolean;
 
-  // Character 1 (Default)
   audioPrompt?: string;
   sceneAudioUrl?: string | null;
   sceneAudioPublicUrl?: string | null;
   audioName?: string;
   isGeneratingAudio?: boolean;
 
-  // Character 2 (Kling 3.0 Multi-Character)
   isMultiCharacter?: boolean;
   audioPromptB?: string;
   sceneAudioUrlB?: string | null;
@@ -76,6 +73,12 @@ export function StorytellingSetup({
   isSuggesting,
 }: StorytellingSetupProps) {
   const { clientId } = useClient();
+
+  // ✨ NEW STATE: Character Consistency Lock
+  const [characterLockFile, setCharacterLockFile] = useState<File | null>(null);
+  const [characterLockPreview, setCharacterLockPreview] = useState<string | null>(null);
+  const [isUploadingLock, setIsUploadingLock] = useState(false);
+  const [characterLockPublicUrl, setCharacterLockPublicUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const savedScenes = localStorage.getItem('blink_storyboard_scenes');
@@ -185,6 +188,30 @@ export function StorytellingSetup({
     return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
   };
 
+  const handleCharacterLockUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !clientId) return;
+
+    setIsUploadingLock(true);
+    setCharacterLockFile(file);
+    setCharacterLockPreview(URL.createObjectURL(file));
+
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `videos/${clientId}/character_lock_${Date.now()}.${ext}`;
+      await supabase.storage.from("assets").upload(path, file);
+      const publicUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      setCharacterLockPublicUrl(publicUrl);
+    } catch (err) {
+      console.error("Failed to upload Character Lock image", err);
+      alert("Failed to upload Character Lock. Please try again.");
+      setCharacterLockFile(null);
+      setCharacterLockPreview(null);
+    } finally {
+      setIsUploadingLock(false);
+    }
+  };
+
   const base64ToBlob = (base64: string, mimeType: string) => {
     const byteCharacters = atob(base64.split(',')[1]);
     const byteNumbers = new Array(byteCharacters.length);
@@ -254,7 +281,6 @@ export function StorytellingSetup({
     }
   };
 
-  // ✨ UPDATED: Handles custom upload for Slot A or Slot B
   const handleCustomAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>, sceneId: string, slot: 'A' | 'B' = 'A') => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -286,7 +312,6 @@ export function StorytellingSetup({
     }
   };
 
-  // ✨ UPDATED: Handles TTS Generation for Slot A or Slot B
   const handleGenerateSceneAudio = async (index: number, slot: 'A' | 'B' = 'A') => {
     const scene = bRollScenes[index];
     const promptText = slot === 'A' ? scene.audioPrompt : scene.audioPromptB;
@@ -394,7 +419,7 @@ export function StorytellingSetup({
       const genData = await callN8n('generator', {
         prompt: promptToUse,
         refImage: styleRefUrl || previousUrl || null,
-        styleRefImage: styleRefUrl,
+        styleRefImage: characterLockPublicUrl || styleRefUrl,
         previousFrameImage: previousUrl
       });
 
@@ -440,9 +465,9 @@ export function StorytellingSetup({
 
     try {
       let finalPrimaryUrl = scene.primaryPreview;
-      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : null;
+      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : characterLockPublicUrl || null;
 
-      if ((scene.mode === 'ugc' || scene.mode === 'clothing') && finalSecondaryUrl) {
+      if ((scene.mode === 'ugc' || scene.mode === 'clothing') && finalSecondaryUrl && !characterLockPublicUrl) {
         const mergePrompt = scene.mode === 'ugc'
           ? `A highly realistic, viral TikTok style smartphone photo of an influencer interacting with the product. ${scene.prompt || bRollConcept}`
           : `A highly realistic fashion editorial photo of a model wearing the clothing. ${scene.prompt || bRollConcept}`;
@@ -495,7 +520,6 @@ export function StorytellingSetup({
       if (insertError || !insertData) throw new Error(`Database Error: Failed to create placeholder row.`);
       const postId = insertData.id;
 
-      // ✨ BACKEND PAYLOAD: Send both audio URLs if multi-character is enabled
       await callN8n('scene_video_generator', {
         post_id: postId,
         client_id: clientId,
@@ -615,9 +639,29 @@ export function StorytellingSetup({
     }
   };
 
-  const handleFrameReferenceSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setFrameReferenceFile(file); setFrameReferencePreview(URL.createObjectURL(file)); };
-  const handleRefDrop = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer.files?.length > 0) { const file = e.dataTransfer.files[0]; setFrameReferenceFile(file); setFrameReferencePreview(URL.createObjectURL(file)); } };
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; };
+  // ✨ FIX: Restored the missing reference upload handlers!
+  const handleFrameReferenceSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFrameReferenceFile(file);
+    setFrameReferencePreview(URL.createObjectURL(file));
+  };
+
+  const handleRefDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.files?.length > 0) {
+      const file = e.dataTransfer.files[0];
+      setFrameReferenceFile(file);
+      setFrameReferencePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  };
 
   return (
     <div className="flex flex-row gap-6 animate-in fade-in w-full h-[calc(100vh-160px)] min-h-[600px] pb-4">
@@ -812,7 +856,7 @@ export function StorytellingSetup({
                               />
                             )}
 
-                            {/* ✨ DYNAMIC AUDIO GRID: Split into two columns if Dual Character is enabled */}
+                            {/* ✨ DYNAMIC AUDIO GRID */}
                             <div className={cn("flex flex-col flex-1 bg-white", scene.isMultiCharacter ? "grid grid-cols-2 divide-x divide-gray-200" : "")}>
 
                               {/* --- CHARACTER 1 AUDIO BLOCK --- */}
@@ -861,7 +905,7 @@ export function StorytellingSetup({
                                 </div>
                               </div>
 
-                              {/* --- CHARACTER 2 AUDIO BLOCK (Only if Multi-Character toggled ON) --- */}
+                              {/* --- CHARACTER 2 AUDIO BLOCK --- */}
                               {scene.isMultiCharacter && (
                                 <div className="flex flex-col h-full min-w-0 border-l border-gray-200">
                                   <div className="bg-emerald-100 text-[9px] font-bold text-emerald-700 px-2 py-1 flex items-center justify-between border-b border-emerald-200">Character 2 (Right Face)</div>
@@ -944,6 +988,50 @@ export function StorytellingSetup({
         </div>
 
         <div className="shrink-0 bg-white rounded-2xl border border-gray-200 p-5 shadow-lg flex flex-col z-20 relative">
+
+          {/* ✨ NEW: Global Character Lock Upload Zone */}
+          <div className="mb-5 pb-5 border-b border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                <Lock className="h-4 w-4 text-pink-500" /> Character Consistency Lock
+              </label>
+              <span className="text-[10px] font-bold text-pink-600 bg-pink-50 px-2 py-0.5 rounded-full border border-pink-200 uppercase tracking-wider">Nano Banana Pro Only</span>
+            </div>
+
+            <div className="flex gap-4">
+              <div
+                className={cn(
+                  "h-16 w-16 shrink-0 rounded-lg border-2 border-dashed flex items-center justify-center relative overflow-hidden transition-colors cursor-pointer group",
+                  characterLockPreview ? "border-pink-400 bg-pink-50" : "border-gray-300 hover:border-pink-300 hover:bg-pink-50 bg-gray-50"
+                )}
+                onClick={() => !isUploadingLock && document.getElementById('character-lock-upload')?.click()}
+              >
+                {isUploadingLock ? (
+                  <Loader2 className="h-5 w-5 text-pink-500 animate-spin" />
+                ) : characterLockPreview ? (
+                  <>
+                    <img src={characterLockPreview} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <Upload className="h-4 w-4 text-white" />
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setCharacterLockFile(null); setCharacterLockPreview(null); setCharacterLockPublicUrl(null); }}
+                      className="absolute -top-1 -right-1 p-1 bg-red-500 text-white rounded-full shadow-md scale-75"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </>
+                ) : (
+                  <Users className="h-6 w-6 text-gray-300 group-hover:text-pink-400 transition-colors" />
+                )}
+                <input id="character-lock-upload" type="file" accept="image/*" className="hidden" onChange={handleCharacterLockUpload} disabled={isUploadingLock} />
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed flex-1 pt-1">
+                Upload a <b>Character Reference Sheet</b>. The AI will force this exact character into every scene across the storyboard. Ensure "Auto Engine" or "Kling 3.0" is selected.
+              </p>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between px-2 mb-4">
             <div className="flex items-center gap-6"><span className="text-sm font-bold text-purple-700 flex items-center gap-2 border-b-2 border-purple-600 pb-1.5"><Settings2 className="w-4 h-4" /> Master Director</span></div>
             <div className="flex items-center gap-3">

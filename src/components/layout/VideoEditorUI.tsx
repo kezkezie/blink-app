@@ -95,7 +95,9 @@ export function VideoEditorUI() {
   const audioTrackCount = Math.max(1, ...audioClips.map(c => (c.trackRow || 0) + 1));
 
   const videoRefs = useRef<{ [id: string]: HTMLVideoElement | null }>({});
-  const audioRefs = useRef<{ [id: string]: HTMLAudioElement | null }>({});
+  // ✨ FIX: Allow HTMLVideoElement to be used for audio tracks so MP4s play perfectly
+  const audioRefs = useRef<{ [id: string]: HTMLVideoElement | HTMLAudioElement | null }>({});
+
   const canvasRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -348,7 +350,13 @@ export function VideoEditorUI() {
 
         if (audioClips.length === 1) {
           const clip = audioClips[0];
-          const fileName = `audio_0.mp3`;
+
+          // ✨ FIX: Extract real extension so FFmpeg doesn't corrupt MP4 audio containers
+          const extMatch = clip.url.match(/\.([a-zA-Z0-9]+)(?:[\?#]|$)/);
+          const rawExt = extMatch ? extMatch[1].toLowerCase() : 'mp3';
+          const safeExt = ['mp4', 'mp3', 'wav', 'mov', 'webm', 'aac'].includes(rawExt) ? rawExt : 'mp3';
+
+          const fileName = `audio_0.${safeExt}`;
           const duration = clip.trimEnd - clip.trimStart;
           await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
 
@@ -362,7 +370,13 @@ export function VideoEditorUI() {
           let audioMixStr = "";
           for (let i = 0; i < audioClips.length; i++) {
             const clip = audioClips[i];
-            const fileName = `audio_${i}.mp3`;
+
+            // ✨ FIX: Extract real extension
+            const extMatch = clip.url.match(/\.([a-zA-Z0-9]+)(?:[\?#]|$)/);
+            const rawExt = extMatch ? extMatch[1].toLowerCase() : 'mp3';
+            const safeExt = ['mp4', 'mp3', 'wav', 'mov', 'webm', 'aac'].includes(rawExt) ? rawExt : 'mp3';
+
+            const fileName = `audio_${i}.${safeExt}`;
             const duration = clip.trimEnd - clip.trimStart;
             await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
 
@@ -456,14 +470,13 @@ export function VideoEditorUI() {
 
   function handleDragStart(e: React.DragEvent, asset: MediaAsset) { e.dataTransfer.setData("application/json", JSON.stringify(asset)); }
 
-  // ✨ THE FIX: Deletes from UI, then completely removes from Supabase!
   async function deleteAsset(assetId: string, assetName: string) {
     if (!confirm(`Are you sure you want to permanently delete "${assetName}"? This cannot be undone.`)) return;
 
     setAssets((prev) => prev.filter((a) => a.id !== assetId));
 
     if (assetId.startsWith('db-')) {
-      const dbId = assetId.split('-')[1]; // Extracts the actual Supabase UUID
+      const dbId = assetId.split('-')[1];
 
       const { error } = await supabase
         .from('content')
@@ -904,7 +917,17 @@ export function VideoEditorUI() {
 
               <div className="hidden">
                 {videoClips.filter((c) => c.type === "video").map((clip) => (<video key={clip.id} src={clip.url} preload="metadata" onLoadedMetadata={(e) => handleLoadedMetadata(clip.id, e.currentTarget.duration, "video")} />))}
-                {audioClips.map((clip) => (<audio key={`canvas-audio-${clip.id}`} ref={el => { audioRefs.current[clip.id] = el; }} src={clip.url} preload="metadata" onLoadedMetadata={(e) => handleLoadedMetadata(clip.id, e.currentTarget.duration, "audio")} />))}
+
+                {/* ✨ FIX: Render audio tracks through a hidden VIDEO tag so MP4 audio plays perfectly */}
+                {audioClips.map((clip) => (
+                  <video
+                    key={`canvas-audio-${clip.id}`}
+                    ref={el => { audioRefs.current[clip.id] = el; }}
+                    src={clip.url}
+                    preload="metadata"
+                    onLoadedMetadata={(e) => handleLoadedMetadata(clip.id, e.currentTarget.duration, "audio")}
+                  />
+                ))}
               </div>
 
               {textLayers.sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((layer) => {
