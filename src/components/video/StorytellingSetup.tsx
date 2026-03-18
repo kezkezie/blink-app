@@ -1,15 +1,216 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
 import type { VideoSetupProps } from "./types";
+
+// ============================================================================
+// ✨ 1. ACTOR PROFILE TYPES & CASTING ROOM MODAL
+// ============================================================================
+
+export interface ActorProfile {
+  id: string;
+  name: string;
+  stitchedSheetUrl: string;
+}
+
+interface CastingRoomModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSaveActor: (actor: ActorProfile) => void;
+  actors: ActorProfile[];
+}
+
+function CastingRoomModal({ open, onClose, onSaveActor, actors }: CastingRoomModalProps) {
+  const { clientId } = useClient();
+  const [isCreating, setIsCreating] = useState(false);
+  const [isStitching, setIsStitching] = useState(false);
+
+  const [actorName, setActorName] = useState("");
+  const [angles, setAngles] = useState<(File | null)[]>(Array(6).fill(null));
+  const [previews, setPreviews] = useState<(string | null)[]>(Array(6).fill(null));
+
+  const ANGLE_LABELS = ["Front Face", "Left Profile", "Right Profile", "Front Body", "Side Body", "Back Body"];
+
+  const handleAngleUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const newAngles = [...angles];
+    const newPreviews = [...previews];
+    newAngles[index] = file;
+    newPreviews[index] = URL.createObjectURL(file);
+    setAngles(newAngles);
+    setPreviews(newPreviews);
+  };
+
+  const removeAngle = (index: number) => {
+    const newAngles = [...angles];
+    const newPreviews = [...previews];
+    newAngles[index] = null;
+    newPreviews[index] = null;
+    setAngles(newAngles);
+    setPreviews(newPreviews);
+  };
+
+  // 🧠 The Magic Auto-Stitcher
+  const handleSaveAndStitch = async () => {
+    if (!actorName.trim()) return alert("Please name your actor.");
+    if (angles.filter(a => a !== null).length === 0) return alert("Please upload at least one angle.");
+    if (!clientId) return;
+
+    setIsStitching(true);
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1536; // 3 columns of 512
+      canvas.height = 1024; // 2 rows of 512
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas not supported");
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const loadImage = (file: File): Promise<HTMLImageElement> => {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = URL.createObjectURL(file);
+        });
+      };
+
+      for (let i = 0; i < 6; i++) {
+        if (angles[i]) {
+          const img = await loadImage(angles[i]!);
+          const col = i % 3;
+          const row = Math.floor(i / 3);
+
+          // Draw image covering the 512x512 cell
+          const size = 512;
+          const scale = Math.max(size / img.width, size / img.height);
+          const x = (size / 2) - (img.width / 2) * scale;
+          const y = (size / 2) - (img.height / 2) * scale;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(col * size, row * size, size, size);
+          ctx.clip();
+          ctx.drawImage(img, (col * size) + x, (row * size) + y, img.width * scale, img.height * scale);
+          ctx.restore();
+        }
+      }
+
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+      if (!blob) throw new Error("Failed to create stitched image");
+
+      const path = `videos/${clientId}/actor_${Date.now()}.jpg`;
+      await supabase.storage.from("assets").upload(path, blob);
+      const publicUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+
+      const newActor: ActorProfile = {
+        id: crypto.randomUUID(),
+        name: actorName,
+        stitchedSheetUrl: publicUrl
+      };
+
+      onSaveActor(newActor);
+      setIsCreating(false);
+      setActorName("");
+      setAngles(Array(6).fill(null));
+      setPreviews(Array(6).fill(null));
+
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to stitch actor sheet: " + err.message);
+    } finally {
+      setIsStitching(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-pink-600"><Users className="w-5 h-5" /> Digital Casting Room</DialogTitle>
+          <DialogDescription>Save actors to use consistently across all your video scenes.</DialogDescription>
+        </DialogHeader>
+
+        {isCreating ? (
+          <div className="space-y-6 py-4 animate-in fade-in slide-in-from-bottom-4">
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Actor Name</label>
+              <Input value={actorName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActorName(e.target.value)} placeholder="e.g., Emma (Lead)" className="bg-gray-50" />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Upload Angles (The more, the better)</label>
+              <div className="grid grid-cols-3 gap-3">
+                {ANGLE_LABELS.map((label, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold text-center text-gray-400">{label}</span>
+                    <div className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl relative overflow-hidden group hover:border-pink-300 hover:bg-pink-50 transition-colors">
+                      {previews[i] ? (
+                        <>
+                          <img src={previews[i]!} className="w-full h-full object-cover" />
+                          <button onClick={() => removeAngle(i)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"><X className="w-3 h-3" /></button>
+                        </>
+                      ) : (
+                        <label className="w-full h-full flex items-center justify-center cursor-pointer">
+                          <Upload className="w-4 h-4 text-gray-300 group-hover:text-pink-400" />
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleAngleUpload(i, e)} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-4 border-t border-gray-100">
+              <Button variant="outline" className="flex-1" onClick={() => setIsCreating(false)}>Cancel</Button>
+              <Button className="flex-1 bg-pink-600 hover:bg-pink-700 text-white" onClick={handleSaveAndStitch} disabled={isStitching}>
+                {isStitching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                {isStitching ? "Stitching Sheet..." : "Save & Stitch Actor"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 py-4">
+            <Button onClick={() => setIsCreating(true)} className="w-full bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 shadow-sm h-12">
+              <UserPlus className="w-4 h-4 mr-2" /> Add New Actor
+            </Button>
+
+            {actors.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+                {actors.map(actor => (
+                  <div key={actor.id} className="border border-gray-200 rounded-xl p-2 bg-white shadow-sm flex flex-col gap-2">
+                    <div className="aspect-video rounded-lg overflow-hidden bg-gray-100">
+                      <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover" />
+                    </div>
+                    <span className="text-xs font-bold text-center text-gray-700 truncate px-1">{actor.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+// ============================================================================
+// ✨ 2. THE MAIN STORYTELLING SETUP COMPONENT
+// ============================================================================
 
 type StoryboardScene = any & {
   videoUrl?: string | null;
@@ -74,20 +275,23 @@ export function StorytellingSetup({
 }: StorytellingSetupProps) {
   const { clientId } = useClient();
 
-  // ✨ NEW STATE: Character Consistency Lock
-  const [characterLockFile, setCharacterLockFile] = useState<File | null>(null);
-  const [characterLockPreview, setCharacterLockPreview] = useState<string | null>(null);
-  const [isUploadingLock, setIsUploadingLock] = useState(false);
-  const [characterLockPublicUrl, setCharacterLockPublicUrl] = useState<string | null>(null);
+  // ✨ STATE: Digital Casting Room
+  const [actors, setActors] = useState<ActorProfile[]>([]);
+  const [isCastingOpen, setIsCastingOpen] = useState(false);
+  const [enableCharacterLock, setEnableCharacterLock] = useState(false);
+
+  // Global Actor selections
+  const [selectedActorA, setSelectedActorA] = useState<string>("");
+  const [selectedActorB, setSelectedActorB] = useState<string>("");
 
   useEffect(() => {
+    const savedActors = localStorage.getItem('blink_saved_actors');
+    if (savedActors) {
+      try { setActors(JSON.parse(savedActors)); } catch (e) { }
+    }
     const savedScenes = localStorage.getItem('blink_storyboard_scenes');
     if (savedScenes) {
-      try {
-        setBRollScenes(JSON.parse(savedScenes));
-      } catch (e) {
-        console.error("Failed to parse saved scenes", e);
-      }
+      try { setBRollScenes(JSON.parse(savedScenes)); } catch (e) { }
     } else if (bRollScenes.length === 0) {
       const defaultScenes = Array.from({ length: 4 }).map((_, i) => ({
         id: crypto.randomUUID(),
@@ -100,20 +304,17 @@ export function StorytellingSetup({
         secondaryFile: null,
         secondaryPreview: null,
         prompt: "",
-
         audioPrompt: "",
         sceneAudioUrl: null,
         sceneAudioPublicUrl: null,
         audioName: "",
         isGeneratingAudio: false,
-
         isMultiCharacter: false,
         audioPromptB: "",
         sceneAudioUrlB: null,
         sceneAudioPublicUrlB: null,
         audioNameB: "",
         isGeneratingAudioB: false,
-
         videoUrl: null,
         isGeneratingVideo: false
       }));
@@ -122,10 +323,12 @@ export function StorytellingSetup({
   }, []);
 
   useEffect(() => {
-    if (bRollScenes.length > 0) {
-      localStorage.setItem('blink_storyboard_scenes', JSON.stringify(bRollScenes));
-    }
+    if (bRollScenes.length > 0) localStorage.setItem('blink_storyboard_scenes', JSON.stringify(bRollScenes));
   }, [bRollScenes]);
+
+  useEffect(() => {
+    if (actors.length > 0) localStorage.setItem('blink_saved_actors', JSON.stringify(actors));
+  }, [actors]);
 
   const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary' } | null>(null);
   const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary' } | null>(null);
@@ -133,11 +336,7 @@ export function StorytellingSetup({
   const [sendingAudioId, setSendingAudioId] = useState<string | null>(null);
 
   const [regenDialogState, setRegenDialogState] = useState<{ isOpen: boolean; sceneId: string | null; index: number | null; slotType: 'primary' | 'secondary'; promptText: string }>({
-    isOpen: false,
-    sceneId: null,
-    index: null,
-    slotType: 'primary',
-    promptText: ""
+    isOpen: false, sceneId: null, index: null, slotType: 'primary', promptText: ""
   });
 
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
@@ -186,30 +385,6 @@ export function StorytellingSetup({
     const path = `videos/${clientId}/story_ref_${Date.now()}.${ext}`;
     await supabase.storage.from("assets").upload(path, frameReferenceFile);
     return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
-  };
-
-  const handleCharacterLockUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !clientId) return;
-
-    setIsUploadingLock(true);
-    setCharacterLockFile(file);
-    setCharacterLockPreview(URL.createObjectURL(file));
-
-    try {
-      const ext = file.name.split(".").pop();
-      const path = `videos/${clientId}/character_lock_${Date.now()}.${ext}`;
-      await supabase.storage.from("assets").upload(path, file);
-      const publicUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
-      setCharacterLockPublicUrl(publicUrl);
-    } catch (err) {
-      console.error("Failed to upload Character Lock image", err);
-      alert("Failed to upload Character Lock. Please try again.");
-      setCharacterLockFile(null);
-      setCharacterLockPreview(null);
-    } finally {
-      setIsUploadingLock(false);
-    }
   };
 
   const base64ToBlob = (base64: string, mimeType: string) => {
@@ -402,6 +577,7 @@ export function StorytellingSetup({
     }
   };
 
+  // ✨ IMAGE GENERATION: Now injects the Stitched Actor Sheet if Lock is enabled
   const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string) => {
     const scene = bRollScenes[slotIndex];
     const promptToUse = overridePrompt || scene.prompt || bRollConcept;
@@ -416,10 +592,17 @@ export function StorytellingSetup({
         previousUrl = bRollScenes[slotIndex - 1].secondaryPreview || bRollScenes[slotIndex - 1].primaryPreview;
       }
 
+      // ✨ Inject Actor Sheet if Character Lock is enabled
+      let characterSheetUrl = null;
+      if (enableCharacterLock && selectedActorA) {
+        const actor = actors.find(a => a.id === selectedActorA);
+        if (actor) characterSheetUrl = actor.stitchedSheetUrl;
+      }
+
       const genData = await callN8n('generator', {
         prompt: promptToUse,
         refImage: styleRefUrl || previousUrl || null,
-        styleRefImage: characterLockPublicUrl || styleRefUrl,
+        styleRefImage: characterSheetUrl || styleRefUrl,
         previousFrameImage: previousUrl
       });
 
@@ -456,6 +639,7 @@ export function StorytellingSetup({
     setIsGeneratingAllImages(false);
   };
 
+  // ✨ VIDEO GENERATION: Now injects the Stitched Actor Sheet if Lock is enabled
   const handleGenerateSingleVideo = async (slotIndex: number) => {
     const scene = bRollScenes[slotIndex];
     if (!scene.primaryPreview || !clientId) return alert("Please generate or upload a primary image first.");
@@ -465,9 +649,16 @@ export function StorytellingSetup({
 
     try {
       let finalPrimaryUrl = scene.primaryPreview;
-      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : characterLockPublicUrl || null;
 
-      if ((scene.mode === 'ugc' || scene.mode === 'clothing') && finalSecondaryUrl && !characterLockPublicUrl) {
+      // ✨ Grab the locked actor sheets if enabled
+      let characterSheetA = null;
+      if (enableCharacterLock && selectedActorA) {
+        characterSheetA = actors.find(a => a.id === selectedActorA)?.stitchedSheetUrl || null;
+      }
+
+      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : characterSheetA;
+
+      if ((scene.mode === 'ugc' || scene.mode === 'clothing') && finalSecondaryUrl && !characterSheetA) {
         const mergePrompt = scene.mode === 'ugc'
           ? `A highly realistic, viral TikTok style smartphone photo of an influencer interacting with the product. ${scene.prompt || bRollConcept}`
           : `A highly realistic fashion editorial photo of a model wearing the clothing. ${scene.prompt || bRollConcept}`;
@@ -524,7 +715,7 @@ export function StorytellingSetup({
         post_id: postId,
         client_id: clientId,
         primary_image_url: finalPrimaryUrl,
-        secondary_image_url: finalSecondaryUrl,
+        secondary_image_url: finalSecondaryUrl, // Passes the Character Lock Sheet to Nano Banana
         user_prompt: scene.prompt || bRollConcept,
         duration: "8",
         video_mode: scene.mode,
@@ -639,7 +830,6 @@ export function StorytellingSetup({
     }
   };
 
-  // ✨ FIX: Restored the missing reference upload handlers!
   const handleFrameReferenceSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -665,6 +855,14 @@ export function StorytellingSetup({
 
   return (
     <div className="flex flex-row gap-6 animate-in fade-in w-full h-[calc(100vh-160px)] min-h-[600px] pb-4">
+
+      {/* ✨ RENDER CASTING ROOM MODAL */}
+      <CastingRoomModal
+        open={isCastingOpen}
+        onClose={() => setIsCastingOpen(false)}
+        actors={actors}
+        onSaveActor={(newActor) => setActors([...actors, newActor])}
+      />
 
       {/* ── LEFT PANE: STORYBOARD ROWS ── */}
       <div className="flex-1 flex flex-col min-w-0 h-full gap-6 relative">
@@ -989,47 +1187,41 @@ export function StorytellingSetup({
 
         <div className="shrink-0 bg-white rounded-2xl border border-gray-200 p-5 shadow-lg flex flex-col z-20 relative">
 
-          {/* ✨ NEW: Global Character Lock Upload Zone */}
+          {/* ✨ NEW: GLOBAL ACTOR SELECTION & CASTING ROOM */}
           <div className="mb-5 pb-5 border-b border-gray-100">
             <div className="flex items-center justify-between mb-3">
               <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
                 <Lock className="h-4 w-4 text-pink-500" /> Character Consistency Lock
               </label>
-              <span className="text-[10px] font-bold text-pink-600 bg-pink-50 px-2 py-0.5 rounded-full border border-pink-200 uppercase tracking-wider">Nano Banana Pro Only</span>
+              <div className="flex items-center gap-3">
+                <Button onClick={() => setIsCastingOpen(true)} size="sm" variant="outline" className="h-7 text-[10px] font-bold border-pink-200 text-pink-600 hover:bg-pink-50 px-3">
+                  <Users className="w-3.5 h-3.5 mr-1.5" /> Open Casting Room
+                </Button>
+                <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 border border-gray-200 rounded shadow-sm hover:bg-gray-50 transition-colors">
+                  <input type="checkbox" checked={enableCharacterLock} onChange={(e) => setEnableCharacterLock(e.target.checked)} className="rounded text-pink-600 focus:ring-pink-500 cursor-pointer" />
+                  <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Enable Lock</span>
+                </label>
+              </div>
             </div>
 
-            <div className="flex gap-4">
-              <div
-                className={cn(
-                  "h-16 w-16 shrink-0 rounded-lg border-2 border-dashed flex items-center justify-center relative overflow-hidden transition-colors cursor-pointer group",
-                  characterLockPreview ? "border-pink-400 bg-pink-50" : "border-gray-300 hover:border-pink-300 hover:bg-pink-50 bg-gray-50"
-                )}
-                onClick={() => !isUploadingLock && document.getElementById('character-lock-upload')?.click()}
-              >
-                {isUploadingLock ? (
-                  <Loader2 className="h-5 w-5 text-pink-500 animate-spin" />
-                ) : characterLockPreview ? (
-                  <>
-                    <img src={characterLockPreview} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                      <Upload className="h-4 w-4 text-white" />
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setCharacterLockFile(null); setCharacterLockPreview(null); setCharacterLockPublicUrl(null); }}
-                      className="absolute -top-1 -right-1 p-1 bg-red-500 text-white rounded-full shadow-md scale-75"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </>
-                ) : (
-                  <Users className="h-6 w-6 text-gray-300 group-hover:text-pink-400 transition-colors" />
-                )}
-                <input id="character-lock-upload" type="file" accept="image/*" className="hidden" onChange={handleCharacterLockUpload} disabled={isUploadingLock} />
+            {enableCharacterLock && (
+              <div className="flex gap-4 p-4 bg-pink-50/50 border border-pink-100 rounded-xl mt-3 animate-in slide-in-from-top-2">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] font-bold text-pink-800 uppercase tracking-wider">Actor 1 (Primary)</label>
+                  <select value={selectedActorA} onChange={(e) => setSelectedActorA(e.target.value)} className="w-full text-xs font-bold rounded border-pink-200 shadow-sm focus:border-pink-500 focus:ring-pink-500 py-1.5 px-2 bg-white text-gray-700">
+                    <option value="">-- Select an Actor --</option>
+                    {actors.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] font-bold text-pink-800 uppercase tracking-wider">Actor 2 (Multi-Char Only)</label>
+                  <select value={selectedActorB} onChange={(e) => setSelectedActorB(e.target.value)} className="w-full text-xs font-bold rounded border-pink-200 shadow-sm focus:border-pink-500 focus:ring-pink-500 py-1.5 px-2 bg-white text-gray-700">
+                    <option value="">-- Select an Actor --</option>
+                    {actors.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
               </div>
-              <p className="text-xs text-gray-500 leading-relaxed flex-1 pt-1">
-                Upload a <b>Character Reference Sheet</b>. The AI will force this exact character into every scene across the storyboard. Ensure "Auto Engine" or "Kling 3.0" is selected.
-              </p>
-            </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between px-2 mb-4">
