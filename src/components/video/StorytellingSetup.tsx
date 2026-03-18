@@ -403,6 +403,7 @@ export function StorytellingSetup({
   const [actors, setActors] = useState<ActorProfile[]>([]);
   const [isCastingOpen, setIsCastingOpen] = useState(false);
   const [enableCharacterLock, setEnableCharacterLock] = useState(false);
+  const [isCharacterLockModalOpen, setIsCharacterLockModalOpen] = useState(false);
 
   // Global Actor selections
   const [selectedActorA, setSelectedActorA] = useState<string>("");
@@ -1328,51 +1329,44 @@ export function StorytellingSetup({
                   <Users className="w-3.5 h-3.5 mr-1.5" /> Open Casting Room
                 </Button>
                 <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 border border-gray-200 rounded shadow-sm hover:bg-gray-50 transition-colors">
-                  <input type="checkbox" checked={enableCharacterLock} onChange={(e) => setEnableCharacterLock(e.target.checked)} className="rounded text-pink-600 focus:ring-pink-500 cursor-pointer" />
+                  <input type="checkbox" checked={enableCharacterLock} onChange={(e) => {
+                    const checked = e.target.checked;
+                    setEnableCharacterLock(checked);
+                    if (checked && actors.length > 0) setIsCharacterLockModalOpen(true);
+                  }} className="rounded text-pink-600 focus:ring-pink-500 cursor-pointer" />
                   <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Enable Lock</span>
                 </label>
               </div>
             </div>
 
-            {enableCharacterLock && (
-              <div className="flex gap-3 p-3 bg-pink-50/50 border border-pink-100 rounded-xl mt-3 animate-in slide-in-from-top-2">
-                {/* Actor 1 Badge */}
-                <div className="flex-1">
-                  <span className="text-[10px] font-bold text-pink-800 uppercase tracking-wider block mb-1.5">Actor 1 (Primary)</span>
-                  {(() => {
-                    const actorA = actors.find(a => a.id === selectedActorA);
-                    return actorA ? (
-                      <button onClick={() => setIsCastingOpen(true)} className="flex items-center gap-2 w-full bg-white border border-pink-300 rounded-lg px-2.5 py-2 hover:bg-pink-50 transition-colors shadow-sm">
-                        <img src={actorA.stitchedSheetUrl} className="w-8 h-8 rounded-md object-cover border border-pink-200" />
-                        <span className="text-xs font-bold text-gray-700 truncate">{actorA.name}</span>
-                        <span className="ml-auto bg-pink-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">A1</span>
-                      </button>
-                    ) : (
-                      <button onClick={() => setIsCastingOpen(true)} className="flex items-center justify-center w-full bg-white border border-dashed border-pink-200 rounded-lg px-2.5 py-2.5 hover:bg-pink-50 transition-colors text-xs font-bold text-pink-400">
-                        <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Select in Casting Room
-                      </button>
-                    );
-                  })()}
-                </div>
-                {/* Actor 2 Badge */}
-                <div className="flex-1">
-                  <span className="text-[10px] font-bold text-pink-800 uppercase tracking-wider block mb-1.5">Actor 2 (Multi-Char)</span>
-                  {(() => {
-                    const actorB = actors.find(a => a.id === selectedActorB);
-                    return actorB ? (
-                      <button onClick={() => setIsCastingOpen(true)} className="flex items-center gap-2 w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-2 hover:bg-emerald-50 transition-colors shadow-sm">
-                        <img src={actorB.stitchedSheetUrl} className="w-8 h-8 rounded-md object-cover border border-emerald-200" />
-                        <span className="text-xs font-bold text-gray-700 truncate">{actorB.name}</span>
-                        <span className="ml-auto bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">A2</span>
-                      </button>
-                    ) : (
-                      <button onClick={() => setIsCastingOpen(true)} className="flex items-center justify-center w-full bg-white border border-dashed border-emerald-200 rounded-lg px-2.5 py-2.5 hover:bg-emerald-50 transition-colors text-xs font-bold text-emerald-400">
-                        <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Select in Casting Room
-                      </button>
-                    );
-                  })()}
-                </div>
+            {enableCharacterLock && (selectedActorA || selectedActorB) && (
+              <div className="flex flex-wrap gap-2 mt-2 animate-in fade-in">
+                {(() => {
+                  const actorA = actors.find(a => a.id === selectedActorA);
+                  return actorA ? (
+                    <span className="inline-flex items-center gap-1.5 bg-pink-100 text-pink-800 text-xs font-bold px-3 py-1.5 rounded-full border border-pink-200 shadow-sm">
+                      <Lock className="w-3 h-3" /> {actorA.name}
+                    </span>
+                  ) : null;
+                })()}
+                {(() => {
+                  const actorB = actors.find(a => a.id === selectedActorB);
+                  return actorB ? (
+                    <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-full border border-emerald-200 shadow-sm">
+                      <Lock className="w-3 h-3" /> {actorB.name}
+                    </span>
+                  ) : null;
+                })()}
+                <button onClick={() => setIsCharacterLockModalOpen(true)} className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-pink-500 px-2 py-1 rounded-full hover:bg-pink-50 transition-colors">
+                  <Settings2 className="w-3 h-3" /> Change
+                </button>
               </div>
+            )}
+
+            {enableCharacterLock && !selectedActorA && !selectedActorB && (
+              <button onClick={() => setIsCharacterLockModalOpen(true)} className="mt-2 w-full flex items-center justify-center gap-2 bg-pink-50 hover:bg-pink-100 text-pink-600 text-xs font-bold py-2.5 rounded-lg border border-dashed border-pink-200 transition-colors animate-in fade-in">
+                <UserPlus className="w-3.5 h-3.5" /> Select Actors to Lock
+              </button>
             )}
           </div>
 
@@ -1431,12 +1425,76 @@ export function StorytellingSetup({
             {!hasAnyImages && (<div className="col-span-2 h-32 flex flex-col items-center justify-center text-orange-300 border-2 border-dashed border-orange-200 rounded-xl bg-white/50"><ImageIcon className="h-8 w-8 mb-2 opacity-50" /><span className="text-xs font-bold uppercase tracking-wider text-center">Add images to<br />see previews!</span></div>)}
           </div>
         </div>
-        {generatedAudioUrl && (<div className="shrink-0 border-t border-orange-200/50 pt-4 pb-2 animate-in slide-in-from-bottom-2"><label className="text-[10px] font-bold text-orange-700 uppercase tracking-wider mb-2 flex items-center gap-1"><Mic className="h-3 w-3" /> Generated Voiceover</label><div className="bg-white/60 rounded-xl p-2 border border-orange-300 shadow-sm relative group/audio"><audio controls src={generatedAudioUrl} className="w-full h-8" /><button onClick={() => setGeneratedAudioUrl(null)} className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover/audio:opacity-100 transition-opacity shadow-md z-10"><X className="h-3 w-3" /></button></div></div>)}
+
         <div className="shrink-0 border-t border-orange-200/50 pt-4"><label className="text-[10px] font-bold text-orange-700 uppercase tracking-wider mb-2 block flex items-center gap-1"><Upload className="h-3 w-3" /> Drop Style Reference</label><div onDragOver={handleDragOver} onDrop={handleRefDrop} className="h-28 relative w-full rounded-xl border-2 border-dashed border-orange-300 bg-white/60 hover:bg-white transition-colors overflow-hidden group/ref flex flex-col">{frameReferencePreview ? (<><img src={frameReferencePreview} className="w-full h-full object-cover" /><button onClick={() => { setFrameReferenceFile(null); setFrameReferencePreview(null); }} className="absolute top-1 right-1 p-1 bg-white/90 text-red-500 rounded-full shadow-sm opacity-0 group-hover/ref:opacity-100 transition-opacity"><X className="h-4 w-4" /></button><div className="absolute bottom-0 inset-x-0 bg-black/60 text-[10px] text-white text-center py-1 font-bold tracking-widest uppercase">Style Locked</div></>) : (<label htmlFor="sidebar-ref-upload" className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-orange-400 hover:text-orange-500"><ImageIcon className="h-6 w-6 mb-2 opacity-50" /><span className="text-[10px] font-bold text-center leading-tight uppercase">Click or Drop<br />Image Here</span></label>)}<input id="sidebar-ref-upload" type="file" accept="image/*" className="hidden" onChange={handleFrameReferenceSelect} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} /></div></div>
       </div>
 
       <AssetSelectionModal open={libraryTarget !== null} onClose={() => setLibraryTarget(null)} onSelect={handleLibrarySelect} />
       {previewModalImg && (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in" onClick={() => setPreviewModalImg(null)}><div className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center animate-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}><button onClick={() => setPreviewModalImg(null)} className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"><X className="h-6 w-6" /></button><img src={previewModalImg} className="w-full h-full object-contain rounded-lg shadow-2xl" alt="Preview Enlarged" /></div></div>)}
+      {/* ✨ CHARACTER LOCK SELECTION MODAL */}
+      <Dialog open={isCharacterLockModalOpen} onOpenChange={(open) => !open && setIsCharacterLockModalOpen(false)}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-pink-600"><Lock className="w-5 h-5" /> Select Actors to Lock</DialogTitle>
+            <DialogDescription>Click on up to 2 actors to lock their character consistency across all scenes.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {actors.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm font-bold">No actors yet</p>
+                <p className="text-xs mt-1">Use the Casting Room to create actors first.</p>
+                <Button size="sm" variant="outline" className="mt-3 border-pink-200 text-pink-600 hover:bg-pink-50" onClick={() => { setIsCharacterLockModalOpen(false); setIsCastingOpen(true); }}>
+                  <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Open Casting Room
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {actors.map(actor => {
+                  const isA = selectedActorA === actor.id;
+                  const isB = selectedActorB === actor.id;
+                  const isSelected = isA || isB;
+                  return (
+                    <button
+                      key={actor.id}
+                      onClick={() => {
+                        if (isA) { setSelectedActorA(""); return; }
+                        if (isB) { setSelectedActorB(""); return; }
+                        if (!selectedActorA) { setSelectedActorA(actor.id); return; }
+                        if (!selectedActorB) { setSelectedActorB(actor.id); return; }
+                        alert("You can select a maximum of 2 actors. Deselect one first.");
+                      }}
+                      className={cn(
+                        "rounded-xl p-2 flex flex-col gap-2 transition-all text-left",
+                        isA ? "bg-pink-50 border-2 border-pink-500 ring-2 ring-pink-200 shadow-md" :
+                          isB ? "bg-emerald-50 border-2 border-emerald-500 ring-2 ring-emerald-200 shadow-md" :
+                            "bg-white border border-gray-200 hover:border-pink-300 hover:shadow-sm"
+                      )}
+                    >
+                      <div className="aspect-video rounded-lg overflow-hidden bg-gray-100 relative">
+                        <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover" />
+                        {isA && <div className="absolute top-1 left-1 bg-pink-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">Actor 1</div>}
+                        {isB && <div className="absolute top-1 left-1 bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">Actor 2</div>}
+                      </div>
+                      <span className={cn(
+                        "text-xs font-bold text-center truncate px-1",
+                        isSelected ? "text-gray-800" : "text-gray-600"
+                      )}>{actor.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setSelectedActorA(""); setSelectedActorB(""); }}>Clear Selection</Button>
+            <Button onClick={() => setIsCharacterLockModalOpen(false)} className="bg-pink-600 hover:bg-pink-700 text-white font-bold">
+              <CheckCircle className="w-4 h-4 mr-2" /> Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={regenDialogState.isOpen} onOpenChange={(open) => !open && setRegenDialogState(prev => ({ ...prev, isOpen: false }))}><DialogContent className="sm:max-w-[500px]"><DialogHeader><DialogTitle className="flex items-center gap-2 text-purple-700"><Wand2 className="h-5 w-5" /> Regenerate {regenDialogState.slotType === 'primary' ? 'Primary' : 'Secondary'} Image</DialogTitle><DialogDescription>Edit the prompt below to refine the generation for this specific slot in Scene {regenDialogState.index !== null ? regenDialogState.index + 1 : ''}.</DialogDescription></DialogHeader><div className="py-4"><Textarea value={regenDialogState.promptText} onChange={(e) => setRegenDialogState(prev => ({ ...prev, promptText: e.target.value }))} placeholder="Enter a detailed visual prompt..." className="h-32 resize-none bg-gray-50 border-gray-200 focus-visible:ring-purple-300" /></div><DialogFooter><Button variant="outline" onClick={() => setRegenDialogState(prev => ({ ...prev, isOpen: false }))}>Cancel</Button><Button onClick={handleConfirmRegen} className="bg-purple-600 hover:bg-purple-700 text-white font-bold"><Sparkles className="h-4 w-4 mr-2" /> Regenerate Slot</Button></DialogFooter></DialogContent></Dialog>
     </div>
   );
