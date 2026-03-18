@@ -27,16 +27,28 @@ interface CastingRoomModalProps {
   onClose: () => void;
   onSaveActor: (actor: ActorProfile) => void;
   actors: ActorProfile[];
+  selectedActorA: string;
+  setSelectedActorA: (id: string) => void;
+  selectedActorB: string;
+  setSelectedActorB: (id: string) => void;
+  callN8n: (mode: 'director' | 'generator' | 'manual' | 'scene_video_generator', body: any) => Promise<any>;
+  clientId: string | null;
 }
 
-function CastingRoomModal({ open, onClose, onSaveActor, actors }: CastingRoomModalProps) {
-  const { clientId } = useClient();
+function CastingRoomModal({ open, onClose, onSaveActor, actors, selectedActorA, setSelectedActorA, selectedActorB, setSelectedActorB, callN8n, clientId }: CastingRoomModalProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [isStitching, setIsStitching] = useState(false);
 
   const [actorName, setActorName] = useState("");
   const [angles, setAngles] = useState<(File | null)[]>(Array(6).fill(null));
   const [previews, setPreviews] = useState<(string | null)[]>(Array(6).fill(null));
+
+  // AI Generation state
+  const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
+  const CHARACTER_SHEET_INJECTION = "Character reference sheet, identical character, multiple angles, front view, side view, back profile, white background, hyper-realistic, highly detailed.";
 
   const ANGLE_LABELS = ["Front Face", "Left Profile", "Right Profile", "Front Body", "Side Body", "Back Body"];
 
@@ -135,6 +147,38 @@ function CastingRoomModal({ open, onClose, onSaveActor, actors }: CastingRoomMod
     }
   };
 
+  // 🧠 AI Character Sheet Generator
+  const handleAIGenerate = async () => {
+    if (!actorName.trim()) return alert("Please name your actor.");
+    if (!aiPrompt.trim()) return alert("Please describe your character.");
+    if (!clientId) return;
+
+    setIsGeneratingAI(true);
+    try {
+      const augmentedPrompt = `${CHARACTER_SHEET_INJECTION} ${aiPrompt}`;
+      const genData = await callN8n('generator', { prompt: augmentedPrompt });
+
+      if (!genData.url) throw new Error("AI did not return an image URL.");
+
+      const newActor: ActorProfile = {
+        id: crypto.randomUUID(),
+        name: actorName,
+        stitchedSheetUrl: genData.url
+      };
+
+      onSaveActor(newActor);
+      setIsCreating(false);
+      setActorName("");
+      setAiPrompt("");
+      setCreationMode("manual");
+    } catch (err: any) {
+      console.error(err);
+      alert("AI generation failed: " + err.message);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
@@ -150,37 +194,86 @@ function CastingRoomModal({ open, onClose, onSaveActor, actors }: CastingRoomMod
               <Input value={actorName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActorName(e.target.value)} placeholder="e.g., Emma (Lead)" className="bg-gray-50" />
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Upload Angles (The more, the better)</label>
-              <div className="grid grid-cols-3 gap-3">
-                {ANGLE_LABELS.map((label, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <span className="text-[10px] font-semibold text-center text-gray-400">{label}</span>
-                    <div className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl relative overflow-hidden group hover:border-pink-300 hover:bg-pink-50 transition-colors">
-                      {previews[i] ? (
-                        <>
-                          <img src={previews[i]!} className="w-full h-full object-cover" />
-                          <button onClick={() => removeAngle(i)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"><X className="w-3 h-3" /></button>
-                        </>
-                      ) : (
-                        <label className="w-full h-full flex items-center justify-center cursor-pointer">
-                          <Upload className="w-4 h-4 text-gray-300 group-hover:text-pink-400" />
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleAngleUpload(i, e)} />
-                        </label>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {/* Tab Toggle: Manual Upload vs Generate with AI */}
+            <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+              <button
+                onClick={() => setCreationMode("manual")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-bold transition-all",
+                  creationMode === "manual" ? "bg-white text-pink-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                <Upload className="w-3.5 h-3.5" /> Manual Upload (Stitch)
+              </button>
+              <button
+                onClick={() => setCreationMode("ai")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-bold transition-all",
+                  creationMode === "ai" ? "bg-white text-purple-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Generate with AI
+              </button>
             </div>
 
-            <div className="flex gap-2 pt-4 border-t border-gray-100">
-              <Button variant="outline" className="flex-1" onClick={() => setIsCreating(false)}>Cancel</Button>
-              <Button className="flex-1 bg-pink-600 hover:bg-pink-700 text-white" onClick={handleSaveAndStitch} disabled={isStitching}>
-                {isStitching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                {isStitching ? "Stitching Sheet..." : "Save & Stitch Actor"}
-              </Button>
-            </div>
+            {creationMode === "manual" ? (
+              /* Manual Upload View */
+              <>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Upload Angles (The more, the better)</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {ANGLE_LABELS.map((label, i) => (
+                      <div key={i} className="flex flex-col gap-1">
+                        <span className="text-[10px] font-semibold text-center text-gray-400">{label}</span>
+                        <div className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl relative overflow-hidden group hover:border-pink-300 hover:bg-pink-50 transition-colors">
+                          {previews[i] ? (
+                            <>
+                              <img src={previews[i]!} className="w-full h-full object-cover" />
+                              <button onClick={() => removeAngle(i)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"><X className="w-3 h-3" /></button>
+                            </>
+                          ) : (
+                            <label className="w-full h-full flex items-center justify-center cursor-pointer">
+                              <Upload className="w-4 h-4 text-gray-300 group-hover:text-pink-400" />
+                              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleAngleUpload(i, e)} />
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-4 border-t border-gray-100">
+                  <Button variant="outline" className="flex-1" onClick={() => setIsCreating(false)}>Cancel</Button>
+                  <Button className="flex-1 bg-pink-600 hover:bg-pink-700 text-white" onClick={handleSaveAndStitch} disabled={isStitching}>
+                    {isStitching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                    {isStitching ? "Stitching Sheet..." : "Save & Stitch Actor"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              /* Generate with AI View */
+              <>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Character Description</label>
+                  <Textarea
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="e.g., A 30-year-old female astronaut with red hair, wearing a white NASA spacesuit"
+                    className="h-28 resize-none bg-purple-50/30 border-purple-200 focus-visible:ring-purple-400 text-sm"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1.5">We'll automatically generate a multi-angle character reference sheet from this description.</p>
+                </div>
+
+                <div className="flex gap-2 pt-4 border-t border-gray-100">
+                  <Button variant="outline" className="flex-1" onClick={() => setIsCreating(false)}>Cancel</Button>
+                  <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={handleAIGenerate} disabled={isGeneratingAI}>
+                    {isGeneratingAI ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    {isGeneratingAI ? "Generating Sheet..." : "Generate Character Sheet"}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-4 py-4">
@@ -190,14 +283,45 @@ function CastingRoomModal({ open, onClose, onSaveActor, actors }: CastingRoomMod
 
             {actors.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
-                {actors.map(actor => (
-                  <div key={actor.id} className="border border-gray-200 rounded-xl p-2 bg-white shadow-sm flex flex-col gap-2">
-                    <div className="aspect-video rounded-lg overflow-hidden bg-gray-100">
-                      <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover" />
+                {actors.map(actor => {
+                  const isActorA = selectedActorA === actor.id;
+                  const isActorB = selectedActorB === actor.id;
+                  return (
+                    <div key={actor.id} className={cn(
+                      "rounded-xl p-2 bg-white shadow-sm flex flex-col gap-2 transition-all",
+                      isActorA ? "border-2 border-pink-500 ring-2 ring-pink-200" :
+                        isActorB ? "border-2 border-emerald-500 ring-2 ring-emerald-200" :
+                          "border border-gray-200"
+                    )}>
+                      <div className="aspect-video rounded-lg overflow-hidden bg-gray-100 relative">
+                        <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover" />
+                        {isActorA && <div className="absolute top-1 left-1 bg-pink-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">A1</div>}
+                        {isActorB && <div className="absolute top-1 left-1 bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">A2</div>}
+                      </div>
+                      <span className="text-xs font-bold text-center text-gray-700 truncate px-1">{actor.name}</span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setSelectedActorA(isActorA ? "" : actor.id)}
+                          className={cn(
+                            "flex-1 text-[9px] font-bold py-1.5 rounded-md transition-colors",
+                            isActorA ? "bg-pink-500 text-white" : "bg-pink-50 text-pink-600 hover:bg-pink-100 border border-pink-200"
+                          )}
+                        >
+                          {isActorA ? "✓ Actor 1" : "Select as Actor 1"}
+                        </button>
+                        <button
+                          onClick={() => setSelectedActorB(isActorB ? "" : actor.id)}
+                          className={cn(
+                            "flex-1 text-[9px] font-bold py-1.5 rounded-md transition-colors",
+                            isActorB ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
+                          )}
+                        >
+                          {isActorB ? "✓ Actor 2" : "Select as Actor 2"}
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-xs font-bold text-center text-gray-700 truncate px-1">{actor.name}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -862,6 +986,12 @@ export function StorytellingSetup({
         onClose={() => setIsCastingOpen(false)}
         actors={actors}
         onSaveActor={(newActor) => setActors([...actors, newActor])}
+        selectedActorA={selectedActorA}
+        setSelectedActorA={setSelectedActorA}
+        selectedActorB={selectedActorB}
+        setSelectedActorB={setSelectedActorB}
+        callN8n={callN8n}
+        clientId={clientId}
       />
 
       {/* ── LEFT PANE: STORYBOARD ROWS ── */}
@@ -1205,20 +1335,42 @@ export function StorytellingSetup({
             </div>
 
             {enableCharacterLock && (
-              <div className="flex gap-4 p-4 bg-pink-50/50 border border-pink-100 rounded-xl mt-3 animate-in slide-in-from-top-2">
-                <div className="flex-1 space-y-1">
-                  <label className="text-[10px] font-bold text-pink-800 uppercase tracking-wider">Actor 1 (Primary)</label>
-                  <select value={selectedActorA} onChange={(e) => setSelectedActorA(e.target.value)} className="w-full text-xs font-bold rounded border-pink-200 shadow-sm focus:border-pink-500 focus:ring-pink-500 py-1.5 px-2 bg-white text-gray-700">
-                    <option value="">-- Select an Actor --</option>
-                    {actors.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
+              <div className="flex gap-3 p-3 bg-pink-50/50 border border-pink-100 rounded-xl mt-3 animate-in slide-in-from-top-2">
+                {/* Actor 1 Badge */}
+                <div className="flex-1">
+                  <span className="text-[10px] font-bold text-pink-800 uppercase tracking-wider block mb-1.5">Actor 1 (Primary)</span>
+                  {(() => {
+                    const actorA = actors.find(a => a.id === selectedActorA);
+                    return actorA ? (
+                      <button onClick={() => setIsCastingOpen(true)} className="flex items-center gap-2 w-full bg-white border border-pink-300 rounded-lg px-2.5 py-2 hover:bg-pink-50 transition-colors shadow-sm">
+                        <img src={actorA.stitchedSheetUrl} className="w-8 h-8 rounded-md object-cover border border-pink-200" />
+                        <span className="text-xs font-bold text-gray-700 truncate">{actorA.name}</span>
+                        <span className="ml-auto bg-pink-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">A1</span>
+                      </button>
+                    ) : (
+                      <button onClick={() => setIsCastingOpen(true)} className="flex items-center justify-center w-full bg-white border border-dashed border-pink-200 rounded-lg px-2.5 py-2.5 hover:bg-pink-50 transition-colors text-xs font-bold text-pink-400">
+                        <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Select in Casting Room
+                      </button>
+                    );
+                  })()}
                 </div>
-                <div className="flex-1 space-y-1">
-                  <label className="text-[10px] font-bold text-pink-800 uppercase tracking-wider">Actor 2 (Multi-Char Only)</label>
-                  <select value={selectedActorB} onChange={(e) => setSelectedActorB(e.target.value)} className="w-full text-xs font-bold rounded border-pink-200 shadow-sm focus:border-pink-500 focus:ring-pink-500 py-1.5 px-2 bg-white text-gray-700">
-                    <option value="">-- Select an Actor --</option>
-                    {actors.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
+                {/* Actor 2 Badge */}
+                <div className="flex-1">
+                  <span className="text-[10px] font-bold text-pink-800 uppercase tracking-wider block mb-1.5">Actor 2 (Multi-Char)</span>
+                  {(() => {
+                    const actorB = actors.find(a => a.id === selectedActorB);
+                    return actorB ? (
+                      <button onClick={() => setIsCastingOpen(true)} className="flex items-center gap-2 w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-2 hover:bg-emerald-50 transition-colors shadow-sm">
+                        <img src={actorB.stitchedSheetUrl} className="w-8 h-8 rounded-md object-cover border border-emerald-200" />
+                        <span className="text-xs font-bold text-gray-700 truncate">{actorB.name}</span>
+                        <span className="ml-auto bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">A2</span>
+                      </button>
+                    ) : (
+                      <button onClick={() => setIsCastingOpen(true)} className="flex items-center justify-center w-full bg-white border border-dashed border-emerald-200 rounded-lg px-2.5 py-2.5 hover:bg-emerald-50 transition-colors text-xs font-bold text-emerald-400">
+                        <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Select in Casting Room
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             )}
