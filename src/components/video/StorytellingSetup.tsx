@@ -782,13 +782,15 @@ export function StorytellingSetup({
     try {
       let finalPrimaryUrl = scene.primaryPreview;
 
-      // ✨ Grab the locked actor sheets if enabled
+      // ✨ Extract character sheets separately (NOT into End Frame)
       let characterSheetA = null;
-      if (enableCharacterLock && selectedActorA) {
+      let characterSheetB = null;
+      if (enableCharacterLock) {
         characterSheetA = actors.find(a => a.id === selectedActorA)?.stitchedSheetUrl || null;
+        characterSheetB = scene.isMultiCharacter ? actors.find(a => a.id === selectedActorB)?.stitchedSheetUrl || null : null;
       }
 
-      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : characterSheetA;
+      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : null;
 
       if ((scene.mode === 'ugc' || scene.mode === 'clothing') && finalSecondaryUrl && !characterSheetA) {
         const mergePrompt = scene.mode === 'ugc'
@@ -846,14 +848,30 @@ export function StorytellingSetup({
       await callN8n('scene_video_generator', {
         post_id: postId,
         client_id: clientId,
-        primary_image_url: finalPrimaryUrl,
-        secondary_image_url: finalSecondaryUrl, // Passes the Character Lock Sheet to Nano Banana
-        user_prompt: scene.prompt || bRollConcept,
-        duration: "8",
-        video_mode: scene.mode,
         ai_model_override: scene.aiModel || "auto",
-        audio_url_a: scene.sceneAudioPublicUrl || null,
-        audio_url_b: scene.isMultiCharacter ? scene.sceneAudioPublicUrlB : null
+        scene_data: {
+          visual_prompt: scene.prompt || bRollConcept,
+          video_mode: scene.mode,
+          duration: "8",
+          frames: {
+            start_frame: finalPrimaryUrl,
+            end_frame: finalSecondaryUrl
+          },
+          audio: {
+            character_1: {
+              script: scene.audioPrompt || null,
+              audio_url: scene.sceneAudioPublicUrl || null
+            },
+            character_2: scene.isMultiCharacter ? {
+              script: scene.audioPromptB || null,
+              audio_url: scene.sceneAudioPublicUrlB || null
+            } : null
+          },
+          casting: enableCharacterLock ? {
+            actor_1_sheet: characterSheetA,
+            actor_2_sheet: characterSheetB
+          } : null
+        }
       });
 
       let attempts = 0;
