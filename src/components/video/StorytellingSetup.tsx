@@ -717,18 +717,25 @@ export function StorytellingSetup({
         previousUrl = bRollScenes[slotIndex - 1].secondaryPreview || bRollScenes[slotIndex - 1].primaryPreview;
       }
 
-      // ✨ Inject Actor Sheet if Character Lock is enabled
-      let characterSheetUrl = null;
+      // ✨ Inject Actor Sheets if Character Lock is enabled
+      let characterSheetUrlA: string | null = null;
+      let characterSheetUrlB: string | null = null;
       if (enableCharacterLock && selectedActorA) {
-        const actor = actors.find(a => a.id === selectedActorA);
-        if (actor) characterSheetUrl = actor.stitchedSheetUrl;
+        const actorA = actors.find(a => a.id === selectedActorA);
+        if (actorA) characterSheetUrlA = actorA.stitchedSheetUrl;
+      }
+      if (enableCharacterLock && scene.isMultiCharacter && selectedActorB) {
+        const actorB = actors.find(a => a.id === selectedActorB);
+        if (actorB) characterSheetUrlB = actorB.stitchedSheetUrl;
       }
 
       const genData = await callN8n('generator', {
         prompt: promptToUse,
         refImage: styleRefUrl || previousUrl || null,
-        styleRefImage: characterSheetUrl || styleRefUrl,
-        previousFrameImage: previousUrl
+        styleRefImage: styleRefUrl || null,
+        previousFrameImage: previousUrl,
+        characterRefA: characterSheetUrlA,
+        characterRefB: characterSheetUrlB
       });
 
       if (genData.url) {
