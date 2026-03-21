@@ -368,12 +368,8 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                 <img src={imageUrl} className="relative z-10 max-w-full max-h-full object-contain drop-shadow-2xl" />
 
                 {isGenerating && (
-                    <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
-                        <div className="relative">
-                            <div className="absolute inset-0 bg-purple-500 rounded-full blur-xl animate-pulse opacity-50"></div>
-                            <Loader2 className="w-12 h-12 text-white animate-spin relative z-10" />
-                        </div>
-                        <p className="text-white font-bold tracking-widest uppercase text-sm animate-pulse">Applying JSON Control Hack...</p>
+                    <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-sm animate-pulse flex items-center justify-center rounded-xl">
+                        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
                     </div>
                 )}
             </div>
