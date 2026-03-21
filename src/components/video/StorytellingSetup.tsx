@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus } from "lucide-react";
+import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -26,16 +26,15 @@ interface CastingRoomModalProps {
   open: boolean;
   onClose: () => void;
   onSaveActor: (actor: ActorProfile) => void;
+  onDeleteActor: (id: string) => void;
   actors: ActorProfile[];
   selectedActorA: string;
   setSelectedActorA: (id: string) => void;
-  selectedActorB: string;
-  setSelectedActorB: (id: string) => void;
   callN8n: (mode: 'director' | 'generator' | 'manual' | 'scene_video_generator', body: any) => Promise<any>;
   clientId: string | null;
 }
 
-function CastingRoomModal({ open, onClose, onSaveActor, actors, selectedActorA, setSelectedActorA, selectedActorB, setSelectedActorB, callN8n, clientId }: CastingRoomModalProps) {
+function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, selectedActorA, setSelectedActorA, callN8n, clientId }: CastingRoomModalProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [isStitching, setIsStitching] = useState(false);
 
@@ -284,41 +283,33 @@ function CastingRoomModal({ open, onClose, onSaveActor, actors, selectedActorA, 
             {actors.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
                 {actors.map(actor => {
-                  const isActorA = selectedActorA === actor.id;
-                  const isActorB = selectedActorB === actor.id;
+                  const isSelected = selectedActorA === actor.id;
                   return (
                     <div key={actor.id} className={cn(
-                      "rounded-xl p-2 bg-white shadow-sm flex flex-col gap-2 transition-all",
-                      isActorA ? "border-2 border-pink-500 ring-2 ring-pink-200" :
-                        isActorB ? "border-2 border-emerald-500 ring-2 ring-emerald-200" :
-                          "border border-gray-200"
+                      "rounded-xl p-2 bg-white shadow-sm flex flex-col gap-2 transition-all relative",
+                      isSelected ? "border-2 border-pink-500 ring-2 ring-pink-200" : "border border-gray-200"
                     )}>
-                      <div className="aspect-video rounded-lg overflow-hidden bg-gray-100 relative">
+                      <button
+                        onClick={() => confirm("Delete this actor?") && onDeleteActor(actor.id)}
+                        className="absolute top-1.5 right-1.5 z-10 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-md opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
+                        title="Delete Actor"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                      <div className="aspect-video rounded-lg overflow-hidden bg-gray-100 relative group">
                         <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover" />
-                        {isActorA && <div className="absolute top-1 left-1 bg-pink-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">A1</div>}
-                        {isActorB && <div className="absolute top-1 left-1 bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">A2</div>}
+                        {isSelected && <div className="absolute top-1 left-1 bg-pink-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">Locked</div>}
                       </div>
                       <span className="text-xs font-bold text-center text-gray-700 truncate px-1">{actor.name}</span>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setSelectedActorA(isActorA ? "" : actor.id)}
-                          className={cn(
-                            "flex-1 text-[9px] font-bold py-1.5 rounded-md transition-colors",
-                            isActorA ? "bg-pink-500 text-white" : "bg-pink-50 text-pink-600 hover:bg-pink-100 border border-pink-200"
-                          )}
-                        >
-                          {isActorA ? "✓ Actor 1" : "Select as Actor 1"}
-                        </button>
-                        <button
-                          onClick={() => setSelectedActorB(isActorB ? "" : actor.id)}
-                          className={cn(
-                            "flex-1 text-[9px] font-bold py-1.5 rounded-md transition-colors",
-                            isActorB ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
-                          )}
-                        >
-                          {isActorB ? "✓ Actor 2" : "Select as Actor 2"}
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => setSelectedActorA(isSelected ? "" : actor.id)}
+                        className={cn(
+                          "w-full text-[9px] font-bold py-1.5 rounded-md transition-colors",
+                          isSelected ? "bg-pink-500 text-white" : "bg-pink-50 text-pink-600 hover:bg-pink-100 border border-pink-200"
+                        )}
+                      >
+                        {isSelected ? "✓ Locked" : "Select Actor"}
+                      </button>
                     </div>
                   );
                 })}
@@ -348,13 +339,6 @@ type StoryboardScene = any & {
   sceneAudioPublicUrl?: string | null;
   audioName?: string;
   isGeneratingAudio?: boolean;
-
-  isMultiCharacter?: boolean;
-  audioPromptB?: string;
-  sceneAudioUrlB?: string | null;
-  sceneAudioPublicUrlB?: string | null;
-  audioNameB?: string;
-  isGeneratingAudioB?: boolean;
 };
 
 export interface StorytellingSetupProps extends VideoSetupProps {
@@ -405,9 +389,8 @@ export function StorytellingSetup({
   const [enableCharacterLock, setEnableCharacterLock] = useState(false);
   const [isCharacterLockModalOpen, setIsCharacterLockModalOpen] = useState(false);
 
-  // Global Actor selections
+  // Global Actor selection
   const [selectedActorA, setSelectedActorA] = useState<string>("");
-  const [selectedActorB, setSelectedActorB] = useState<string>("");
 
   useEffect(() => {
     const savedActors = localStorage.getItem('blink_saved_actors');
@@ -434,12 +417,6 @@ export function StorytellingSetup({
         sceneAudioPublicUrl: null,
         audioName: "",
         isGeneratingAudio: false,
-        isMultiCharacter: false,
-        audioPromptB: "",
-        sceneAudioUrlB: null,
-        sceneAudioPublicUrlB: null,
-        audioNameB: "",
-        isGeneratingAudioB: false,
         videoUrl: null,
         isGeneratingVideo: false
       }));
@@ -472,7 +449,7 @@ export function StorytellingSetup({
   const [frameReferenceFile, setFrameReferenceFile] = useState<File | null>(null);
   const [frameReferencePreview, setFrameReferencePreview] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState("cinematic");
-  const [audioEngine, setAudioEngine] = useState<"video_native" | "openai_tts">("openai_tts");
+
 
   const totalImageSlots = bRollScenes.reduce((count, scene) => count + 1 + (scene.useEndFrame ? 1 : 0), 0);
   const filledImageSlots = bRollScenes.reduce((count, scene) => count + (scene.primaryPreview ? 1 : 0) + (scene.useEndFrame && scene.secondaryPreview ? 1 : 0), 0);
@@ -530,7 +507,7 @@ export function StorytellingSetup({
         clientId: clientId,
         prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into ${bRollScenes.length} scenes. For each scene, you MUST return an "image_prompt" (visuals) AND an "audio_prompt" (the exact spoken English narration script or sound effects for that specific scene).`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
-        audioEngine: audioEngine,
+
         totalDuration: totalDuration,
         sceneCount: bRollScenes.length
       });
@@ -581,7 +558,7 @@ export function StorytellingSetup({
     }
   };
 
-  const handleCustomAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>, sceneId: string, slot: 'A' | 'B' = 'A') => {
+  const handleCustomAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>, sceneId: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -589,22 +566,15 @@ export function StorytellingSetup({
       const localUrl = URL.createObjectURL(file);
       const defaultName = file.name.replace(/\.[^/.]+$/, "");
 
-      if (slot === 'A') {
-        updateScene(sceneId, "sceneAudioUrl", localUrl);
-        updateScene(sceneId, "audioPrompt", `[Custom Upload] ${file.name}`);
-        updateScene(sceneId, "audioName", defaultName);
-      } else {
-        updateScene(sceneId, "sceneAudioUrlB", localUrl);
-        updateScene(sceneId, "audioPromptB", `[Custom Upload] ${file.name}`);
-        updateScene(sceneId, "audioNameB", defaultName);
-      }
+      updateScene(sceneId, "sceneAudioUrl", localUrl);
+      updateScene(sceneId, "audioPrompt", `[Custom Upload] ${file.name}`);
+      updateScene(sceneId, "audioName", defaultName);
 
       const audioPath = `videos/${clientId}/custom_audio_${Date.now()}_${file.name}`;
       await supabase.storage.from("assets").upload(audioPath, file);
       const publicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
 
-      if (slot === 'A') updateScene(sceneId, "sceneAudioPublicUrl", publicUrl);
-      else updateScene(sceneId, "sceneAudioPublicUrlB", publicUrl);
+      updateScene(sceneId, "sceneAudioPublicUrl", publicUrl);
 
     } catch (err) {
       console.error("Audio upload failed:", err);
@@ -612,14 +582,13 @@ export function StorytellingSetup({
     }
   };
 
-  const handleGenerateSceneAudio = async (index: number, slot: 'A' | 'B' = 'A') => {
+  const handleGenerateSceneAudio = async (index: number) => {
     const scene = bRollScenes[index];
-    const promptText = slot === 'A' ? scene.audioPrompt : scene.audioPromptB;
+    const promptText = scene.audioPrompt;
 
     if (!promptText?.trim() || !clientId) return alert("Please write an audio script first.");
 
-    if (slot === 'A') updateScene(scene.id, "isGeneratingAudio", true);
-    else updateScene(scene.id, "isGeneratingAudioB", true);
+    updateScene(scene.id, "isGeneratingAudio", true);
 
     try {
       const res = await fetch('/api/tts', {
@@ -631,40 +600,27 @@ export function StorytellingSetup({
 
       const blob = await res.blob();
       const localUrl = URL.createObjectURL(blob);
-      const audioPath = `videos/${clientId}/scene_${index + 1}_audio_${slot}_${Date.now()}.mp3`;
+      const audioPath = `videos/${clientId}/scene_${index + 1}_audio_${Date.now()}.mp3`;
 
       await supabase.storage.from("assets").upload(audioPath, blob);
       const publicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
 
-      if (slot === 'A') {
-        updateScene(scene.id, "sceneAudioUrl", localUrl);
-        updateScene(scene.id, "audioName", `Scene ${index + 1} Voice 1`);
-        updateScene(scene.id, "sceneAudioPublicUrl", publicUrl);
-      } else {
-        updateScene(scene.id, "sceneAudioUrlB", localUrl);
-        updateScene(scene.id, "audioNameB", `Scene ${index + 1} Voice 2`);
-        updateScene(scene.id, "sceneAudioPublicUrlB", publicUrl);
-      }
+      updateScene(scene.id, "sceneAudioUrl", localUrl);
+      updateScene(scene.id, "audioName", `Scene ${index + 1} Voice`);
+      updateScene(scene.id, "sceneAudioPublicUrl", publicUrl);
 
     } catch (err: any) {
       console.error("Audio generation failed:", err);
       alert(`Audio generation failed: ${err.message}`);
     } finally {
-      if (slot === 'A') updateScene(scene.id, "isGeneratingAudio", false);
-      else updateScene(scene.id, "isGeneratingAudioB", false);
+      updateScene(scene.id, "isGeneratingAudio", false);
     }
   };
 
-  const handleRemoveSceneAudio = (sceneId: string, slot: 'A' | 'B' = 'A') => {
-    if (slot === 'A') {
-      updateScene(sceneId, "sceneAudioUrl", null);
-      updateScene(sceneId, "sceneAudioPublicUrl", null);
-      updateScene(sceneId, "audioName", "");
-    } else {
-      updateScene(sceneId, "sceneAudioUrlB", null);
-      updateScene(sceneId, "sceneAudioPublicUrlB", null);
-      updateScene(sceneId, "audioNameB", "");
-    }
+  const handleRemoveSceneAudio = (sceneId: string) => {
+    updateScene(sceneId, "sceneAudioUrl", null);
+    updateScene(sceneId, "sceneAudioPublicUrl", null);
+    updateScene(sceneId, "audioName", "");
   };
 
   const handleSendAudioToEditor = async (sceneId: string, audioName: string, localUrl: string, existingPublicUrl?: string | null) => {
@@ -717,16 +673,11 @@ export function StorytellingSetup({
         previousUrl = bRollScenes[slotIndex - 1].secondaryPreview || bRollScenes[slotIndex - 1].primaryPreview;
       }
 
-      // ✨ Inject Actor Sheets if Character Lock is enabled
+      // ✨ Inject Actor Sheet if Character Lock is enabled
       let characterSheetUrlA: string | null = null;
-      let characterSheetUrlB: string | null = null;
       if (enableCharacterLock && selectedActorA) {
         const actorA = actors.find(a => a.id === selectedActorA);
         if (actorA) characterSheetUrlA = actorA.stitchedSheetUrl;
-      }
-      if (enableCharacterLock && scene.isMultiCharacter && selectedActorB) {
-        const actorB = actors.find(a => a.id === selectedActorB);
-        if (actorB) characterSheetUrlB = actorB.stitchedSheetUrl;
       }
 
       const genData = await callN8n('generator', {
@@ -734,14 +685,25 @@ export function StorytellingSetup({
         refImage: styleRefUrl || previousUrl || null,
         styleRefImage: styleRefUrl || null,
         previousFrameImage: previousUrl,
-        characterRefA: characterSheetUrlA,
-        characterRefB: characterSheetUrlB
+        characterRefA: characterSheetUrlA
       });
 
       if (genData.url) {
         updateScene(scene.id, type === 'primary' ? "primaryPreview" : "secondaryPreview", genData.url);
         updateScene(scene.id, type === 'primary' ? "primaryFile" : "secondaryFile", null);
         updateScene(scene.id, "videoUrl", null);
+
+        // ✨ Auto-save generated image to Supabase
+        try {
+          await supabase.from("content").insert({
+            client_id: clientId,
+            content_type: "generated_image",
+            caption: `Storyboard: Scene ${slotIndex + 1} ${type === 'primary' ? 'Start' : 'End'} Frame`,
+            status: "approved",
+            image_urls: [genData.url],
+            ai_model: "nano-banana-2"
+          });
+        } catch (e) { console.error("Auto-save image failed", e); }
       }
     } catch (err: any) {
       console.error(err);
@@ -782,12 +744,10 @@ export function StorytellingSetup({
     try {
       let finalPrimaryUrl = scene.primaryPreview;
 
-      // ✨ Extract character sheets separately (NOT into End Frame)
+      // ✨ Extract character sheet (NOT into End Frame)
       let characterSheetA = null;
-      let characterSheetB = null;
       if (enableCharacterLock) {
         characterSheetA = actors.find(a => a.id === selectedActorA)?.stitchedSheetUrl || null;
-        characterSheetB = scene.isMultiCharacter ? actors.find(a => a.id === selectedActorB)?.stitchedSheetUrl || null : null;
       }
 
       let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : null;
@@ -858,18 +818,11 @@ export function StorytellingSetup({
             end_frame: finalSecondaryUrl
           },
           audio: {
-            character_1: {
-              script: scene.audioPrompt || null,
-              audio_url: scene.sceneAudioPublicUrl || null
-            },
-            character_2: scene.isMultiCharacter ? {
-              script: scene.audioPromptB || null,
-              audio_url: scene.sceneAudioPublicUrlB || null
-            } : null
+            script: scene.audioPrompt || null,
+            audio_url: scene.sceneAudioPublicUrl || null
           },
           casting: enableCharacterLock ? {
-            actor_1_sheet: characterSheetA,
-            actor_2_sheet: characterSheetB
+            actor_1_sheet: characterSheetA
           } : null
         }
       });
@@ -1012,10 +965,9 @@ export function StorytellingSetup({
         onClose={() => setIsCastingOpen(false)}
         actors={actors}
         onSaveActor={(newActor) => setActors([...actors, newActor])}
+        onDeleteActor={(id) => { setActors(actors.filter(a => a.id !== id)); if (selectedActorA === id) setSelectedActorA(""); }}
         selectedActorA={selectedActorA}
         setSelectedActorA={setSelectedActorA}
-        selectedActorB={selectedActorB}
-        setSelectedActorB={setSelectedActorB}
         callN8n={callN8n}
         clientId={clientId}
       />
@@ -1044,7 +996,7 @@ export function StorytellingSetup({
           <div className="flex flex-col space-y-6">
             {bRollScenes.map((scene, index) => {
               const labels = getLabels(scene.mode);
-
+              const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
               return (
                 <div key={scene.id} className={cn(
                   "relative rounded-xl border-2 overflow-hidden flex flex-col transition-all duration-200 group bg-white",
@@ -1070,18 +1022,6 @@ export function StorytellingSetup({
                     </div>
                     <div className="flex items-center gap-3">
 
-                      {/* ✨ KLING 3.0 DUAL CHARACTER TOGGLE ✨ */}
-                      {scene.aiModel === "kling-3.0/video" && (
-                        <label className="flex items-center gap-2 cursor-pointer bg-orange-50 px-2 py-1 border border-orange-200 rounded shadow-sm hover:bg-orange-100 transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={scene.isMultiCharacter || false}
-                            onChange={(e) => updateScene(scene.id, "isMultiCharacter", e.target.checked)}
-                            className="rounded text-orange-600 focus:ring-orange-500 cursor-pointer"
-                          />
-                          <span className="text-[10px] font-bold text-orange-800 uppercase tracking-wider flex items-center gap-1"><Users className="w-3 h-3" /> Dual Character</span>
-                        </label>
-                      )}
 
                       <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 border border-gray-200 rounded shadow-sm hover:bg-gray-50 transition-colors">
                         <input
@@ -1121,7 +1061,7 @@ export function StorytellingSetup({
                                 <button type="button" onClick={() => clearSlot(scene.id, "primary")} className="p-1.5 bg-white/90 hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-full shadow-md opacity-0 group-hover/upload:opacity-100 transition-opacity"><X className="h-3 w-3" /></button>
                               </div></>
                           ) : (
-                            <label htmlFor={`primary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-gray-400"><ImageIcon className="h-6 w-6 mb-1 opacity-30" /><p className="text-[9px] font-medium uppercase tracking-wider">Drop File</p></label>
+                            <label htmlFor={`primary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-gray-400"><ImageIcon className="h-6 w-6 mb-1 opacity-30" /><p className="text-[9px] font-bold uppercase tracking-wider">Drop Start Frame</p><p className="text-[7px] font-medium text-gray-300 mt-0.5">OR leave blank for pure Text-to-Video</p></label>
                           )}
                           <input id={`primary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "primary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
                         </div>
@@ -1205,109 +1145,110 @@ export function StorytellingSetup({
                                 placeholder={
                                   scene.mode === 'ugc'
                                     ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
-                                    : "Visual prompt: Describe the camera movement and aesthetics..."
+                                    : isNativeAudio
+                                      ? "Describe your scene...\n\nExample: Slow panning shot of a neon city. [sound of rain]. A man turns and says \"This is incredible!\""
+                                      : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
                                 }
                               />
                             )}
 
-                            {/* ✨ DYNAMIC AUDIO GRID */}
-                            <div className={cn("flex flex-col flex-1 bg-white", scene.isMultiCharacter ? "grid grid-cols-2 divide-x divide-gray-200" : "")}>
+                            {/* ✨ QUICK INJECT PROMPT HELPERS */}
+                            {!scene.videoUrl && (
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-200 shrink-0">
+                                <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mr-1">Inject:</span>
+                                <select
+                                  value=""
+                                  onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
+                                  className="text-[9px] font-bold text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-full shadow-sm cursor-pointer hover:border-purple-200 hover:text-purple-600 transition-colors appearance-none"
+                                >
+                                  <option value="" disabled hidden>🎥 Add Camera...</option>
+                                  <option value=" Cinematic tracking shot, ">Cinematic Tracking</option>
+                                  <option value=" Slow drone flyover, ">Drone Flyover</option>
+                                  <option value=" Handheld shaky cam, ">Handheld Shaky</option>
+                                  <option value=" Extreme macro close-up, ">Macro Close-up</option>
+                                  <option value=" Smooth dolly-in, ">Smooth Dolly-in</option>
+                                </select>
+                                <select
+                                  value=""
+                                  onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
+                                  className="text-[9px] font-bold text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-full shadow-sm cursor-pointer hover:border-blue-200 hover:text-blue-600 transition-colors appearance-none"
+                                >
+                                  <option value="" disabled hidden>🔊 Add Sound FX...</option>
+                                  <option value=" [ambient street noise] ">Street Noise</option>
+                                  <option value=" [heavy rain and thunder] ">Rain & Thunder</option>
+                                  <option value=" [cinematic bass drop] ">Bass Drop</option>
+                                  <option value=" [muffled cafe chatter] ">Cafe Chatter</option>
+                                  <option value=" [whoosh transition] ">Whoosh Transition</option>
+                                </select>
+                                {isNativeAudio && (
+                                  <button
+                                    onClick={() => updateScene(scene.id, "prompt", (scene.prompt || "") + ' The character says "Type your script here..." ')}
+                                    className="inline-flex items-center text-[9px] font-bold text-gray-500 hover:text-emerald-600 bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-200 px-2 py-1 rounded-full transition-colors shadow-sm"
+                                  >
+                                    <MessageSquare className="w-3 h-3 mr-1" /> Dialogue
+                                  </button>
+                                )}
+                              </div>
+                            )}
 
-                              {/* --- CHARACTER 1 AUDIO BLOCK --- */}
-                              <div className="flex flex-col h-full min-w-0">
-                                {scene.isMultiCharacter && <div className="bg-blue-100 text-[9px] font-bold text-blue-700 px-2 py-1 flex items-center justify-between border-b border-blue-200">Character 1 (Left Face)</div>}
+                            {/* ✨ DYNAMIC AUDIO UI */}
+                            {(() => {
+                              const isNativeAudioModel = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
 
-                                <Textarea
-                                  value={scene.audioPrompt || ""}
-                                  onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
-                                  className="flex-1 w-full text-xs p-3 resize-none bg-blue-50/20 border-b border-blue-100 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[70px]"
-                                  placeholder="Type English narration or upload audio file below..."
-                                />
+                              return (
+                                <div className="flex flex-col flex-1 bg-white">
+                                  <Textarea
+                                    value={scene.audioPrompt || ""}
+                                    onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
+                                    className="flex-1 w-full text-xs p-3 resize-none bg-blue-50/20 border-b border-blue-100 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[70px]"
+                                    placeholder="Type English narration, dialogue, or upload audio below..."
+                                  />
 
-                                <div className="p-2 border-b border-blue-100 bg-blue-50 flex flex-col gap-2 shrink-0">
-                                  {scene.sceneAudioUrl ? (
-                                    <div className="flex flex-col gap-2 w-full">
-                                      <div className="flex items-center gap-2">
-                                        <audio controls src={scene.sceneAudioUrl} className="h-8 flex-1 w-full min-w-0" />
-                                        <button onClick={() => handleRemoveSceneAudio(scene.id, 'A')} className="p-1.5 text-red-500 hover:bg-red-100 hover:text-red-600 rounded-md transition-colors" title="Delete Track">
-                                          <Trash2 className="w-4 h-4" />
-                                        </button>
-                                      </div>
-                                      <div className="flex gap-2 w-full items-center">
-                                        <input type="text" value={scene.audioName || ""} onChange={(e) => updateScene(scene.id, "audioName", e.target.value)} className="flex-1 text-[11px] font-bold text-blue-900 px-2 py-1.5 rounded border border-blue-200 focus:outline-blue-400 bg-white min-w-0" placeholder="Name this clip..." />
-                                        <Button size="sm" onClick={() => handleSendAudioToEditor(scene.id, scene.audioName || `Scene Audio`, scene.sceneAudioUrl!, scene.sceneAudioPublicUrl)} disabled={sendingAudioId === scene.id} className="h-8 px-2 text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm shrink-0">
-                                          {sendingAudioId === scene.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                                        </Button>
+                                  {isNativeAudioModel ? (
+                                    <div className="p-3 bg-blue-50 border-b border-blue-100">
+                                      <div className="flex items-start gap-2 bg-blue-100 text-blue-800 text-[10px] font-bold px-3 py-2.5 rounded-lg border border-blue-200">
+                                        <Mic className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                        <span>Native Audio Engine Selected: Type exact dialogue in quotes within your visual prompt above. Custom audio uploads are not required/supported.</span>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-                                      <span className="text-[9px] font-medium text-blue-500 uppercase tracking-wider truncate hidden xl:inline-block">
-                                        {scene.audioPrompt ? "Ready for TTS" : "Add script"}
-                                      </span>
-                                      <div className="flex gap-1.5 shrink-0 w-full xl:w-auto justify-end">
-                                        <label className="flex items-center justify-center h-8 px-3 bg-white border border-blue-200 text-blue-600 hover:bg-blue-100 rounded-md text-[11px] font-bold cursor-pointer transition-colors shadow-sm flex-1 xl:flex-none">
-                                          <Upload className="w-3 h-3 xl:mr-1.5" /> <span className="hidden xl:inline">Upload</span>
-                                          <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleCustomAudioUpload(e, scene.id, 'A')} />
-                                        </label>
-                                        <Button size="sm" onClick={() => handleGenerateSceneAudio(index, 'A')} disabled={!scene.audioPrompt || scene.isGeneratingAudio || scene.audioPrompt.startsWith("[Custom Upload]")} className={cn("h-8 text-[11px] font-bold px-3 transition-colors flex-1 xl:flex-none", scene.audioPrompt && !scene.audioPrompt.startsWith("[Custom Upload]") ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm" : "bg-blue-200 text-blue-400")}>
-                                          {scene.isGeneratingAudio ? <Loader2 className="w-3.5 h-3.5 xl:mr-1.5 animate-spin" /> : <Mic className="w-3.5 h-3.5 xl:mr-1.5" />} <span className="hidden xl:inline">Generate TTS</span>
-                                        </Button>
-                                      </div>
+                                    <div className="p-2 border-b border-blue-100 bg-blue-50 flex flex-col gap-2 shrink-0">
+                                      {scene.sceneAudioUrl ? (
+                                        <div className="flex flex-col gap-2 w-full">
+                                          <div className="flex items-center gap-2">
+                                            <audio controls src={scene.sceneAudioUrl} className="h-8 flex-1 w-full min-w-0" />
+                                            <button onClick={() => handleRemoveSceneAudio(scene.id)} className="p-1.5 text-red-500 hover:bg-red-100 hover:text-red-600 rounded-md transition-colors" title="Delete Track">
+                                              <Trash2 className="w-4 h-4" />
+                                            </button>
+                                          </div>
+                                          <div className="flex gap-2 w-full items-center">
+                                            <input type="text" value={scene.audioName || ""} onChange={(e) => updateScene(scene.id, "audioName", e.target.value)} className="flex-1 text-[11px] font-bold text-blue-900 px-2 py-1.5 rounded border border-blue-200 focus:outline-blue-400 bg-white min-w-0" placeholder="Name this clip..." />
+                                            <Button size="sm" onClick={() => handleSendAudioToEditor(scene.id, scene.audioName || `Scene Audio`, scene.sceneAudioUrl!, scene.sceneAudioPublicUrl)} disabled={sendingAudioId === scene.id} className="h-8 px-2 text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm shrink-0">
+                                              {sendingAudioId === scene.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                                          <span className="text-[9px] font-medium text-blue-500 uppercase tracking-wider truncate hidden xl:inline-block">
+                                            {scene.audioPrompt ? "Ready for TTS" : "Add script"}
+                                          </span>
+                                          <div className="flex gap-1.5 shrink-0 w-full xl:w-auto justify-end">
+                                            <label className="flex items-center justify-center h-8 px-3 bg-white border border-blue-200 text-blue-600 hover:bg-blue-100 rounded-md text-[11px] font-bold cursor-pointer transition-colors shadow-sm flex-1 xl:flex-none">
+                                              <Upload className="w-3 h-3 xl:mr-1.5" /> <span className="hidden xl:inline">Upload</span>
+                                              <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleCustomAudioUpload(e, scene.id)} />
+                                            </label>
+                                            <Button size="sm" onClick={() => handleGenerateSceneAudio(index)} disabled={!scene.audioPrompt || scene.isGeneratingAudio || scene.audioPrompt.startsWith("[Custom Upload]")} className={cn("h-8 text-[11px] font-bold px-3 transition-colors flex-1 xl:flex-none", scene.audioPrompt && !scene.audioPrompt.startsWith("[Custom Upload]") ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm" : "bg-blue-200 text-blue-400")}>
+                                              {scene.isGeneratingAudio ? <Loader2 className="w-3.5 h-3.5 xl:mr-1.5 animate-spin" /> : <Mic className="w-3.5 h-3.5 xl:mr-1.5" />} <span className="hidden xl:inline">Generate TTS</span>
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
-                              </div>
-
-                              {/* --- CHARACTER 2 AUDIO BLOCK --- */}
-                              {scene.isMultiCharacter && (
-                                <div className="flex flex-col h-full min-w-0 border-l border-gray-200">
-                                  <div className="bg-emerald-100 text-[9px] font-bold text-emerald-700 px-2 py-1 flex items-center justify-between border-b border-emerald-200">Character 2 (Right Face)</div>
-
-                                  <Textarea
-                                    value={scene.audioPromptB || ""}
-                                    onChange={(e) => updateScene(scene.id, "audioPromptB", e.target.value)}
-                                    className="flex-1 w-full text-xs p-3 resize-none bg-emerald-50/20 border-b border-emerald-100 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[70px]"
-                                    placeholder="Type Character 2 dialogue..."
-                                  />
-
-                                  <div className="p-2 border-b border-emerald-100 bg-emerald-50 flex flex-col gap-2 shrink-0">
-                                    {scene.sceneAudioUrlB ? (
-                                      <div className="flex flex-col gap-2 w-full">
-                                        <div className="flex items-center gap-2">
-                                          <audio controls src={scene.sceneAudioUrlB} className="h-8 flex-1 w-full min-w-0" />
-                                          <button onClick={() => handleRemoveSceneAudio(scene.id, 'B')} className="p-1.5 text-red-500 hover:bg-red-100 hover:text-red-600 rounded-md transition-colors" title="Delete Track">
-                                            <Trash2 className="w-4 h-4" />
-                                          </button>
-                                        </div>
-                                        <div className="flex gap-2 w-full items-center">
-                                          <input type="text" value={scene.audioNameB || ""} onChange={(e) => updateScene(scene.id, "audioNameB", e.target.value)} className="flex-1 text-[11px] font-bold text-emerald-900 px-2 py-1.5 rounded border border-emerald-200 focus:outline-emerald-400 bg-white min-w-0" placeholder="Name this clip..." />
-                                          <Button size="sm" onClick={() => handleSendAudioToEditor(scene.id, scene.audioNameB || `Scene Audio`, scene.sceneAudioUrlB!, scene.sceneAudioPublicUrlB)} disabled={sendingAudioId === scene.id} className="h-8 px-2 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shrink-0">
-                                            {sendingAudioId === scene.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-                                        <span className="text-[9px] font-medium text-emerald-500 uppercase tracking-wider truncate hidden xl:inline-block">
-                                          {scene.audioPromptB ? "Ready for TTS" : "Add script"}
-                                        </span>
-                                        <div className="flex gap-1.5 shrink-0 w-full xl:w-auto justify-end">
-                                          <label className="flex items-center justify-center h-8 px-3 bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-100 rounded-md text-[11px] font-bold cursor-pointer transition-colors shadow-sm flex-1 xl:flex-none">
-                                            <Upload className="w-3 h-3 xl:mr-1.5" /> <span className="hidden xl:inline">Upload</span>
-                                            <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleCustomAudioUpload(e, scene.id, 'B')} />
-                                          </label>
-                                          <Button size="sm" onClick={() => handleGenerateSceneAudio(index, 'B')} disabled={!scene.audioPromptB || scene.isGeneratingAudioB || scene.audioPromptB.startsWith("[Custom Upload]")} className={cn("h-8 text-[11px] font-bold px-3 transition-colors flex-1 xl:flex-none", scene.audioPromptB && !scene.audioPromptB.startsWith("[Custom Upload]") ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm" : "bg-emerald-200 text-emerald-400")}>
-                                            {scene.isGeneratingAudioB ? <Loader2 className="w-3.5 h-3.5 xl:mr-1.5 animate-spin" /> : <Mic className="w-3.5 h-3.5 xl:mr-1.5" />} <span className="hidden xl:inline">Generate TTS</span>
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                            </div>
+                              );
+                            })()}
 
                             {/* ONLY SHOW IF NO VIDEO YET: Video Generation Toolbar */}
                             {!scene.videoUrl && (
@@ -1364,7 +1305,7 @@ export function StorytellingSetup({
               </div>
             </div>
 
-            {enableCharacterLock && (selectedActorA || selectedActorB) && (
+            {enableCharacterLock && selectedActorA && (
               <div className="flex flex-wrap gap-2 mt-2 animate-in fade-in">
                 {(() => {
                   const actorA = actors.find(a => a.id === selectedActorA);
@@ -1374,33 +1315,22 @@ export function StorytellingSetup({
                     </span>
                   ) : null;
                 })()}
-                {(() => {
-                  const actorB = actors.find(a => a.id === selectedActorB);
-                  return actorB ? (
-                    <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-full border border-emerald-200 shadow-sm">
-                      <Lock className="w-3 h-3" /> {actorB.name}
-                    </span>
-                  ) : null;
-                })()}
                 <button onClick={() => setIsCharacterLockModalOpen(true)} className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-pink-500 px-2 py-1 rounded-full hover:bg-pink-50 transition-colors">
                   <Settings2 className="w-3 h-3" /> Change
                 </button>
               </div>
             )}
 
-            {enableCharacterLock && !selectedActorA && !selectedActorB && (
+            {enableCharacterLock && !selectedActorA && (
               <button onClick={() => setIsCharacterLockModalOpen(true)} className="mt-2 w-full flex items-center justify-center gap-2 bg-pink-50 hover:bg-pink-100 text-pink-600 text-xs font-bold py-2.5 rounded-lg border border-dashed border-pink-200 transition-colors animate-in fade-in">
-                <UserPlus className="w-3.5 h-3.5" /> Select Actors to Lock
+                <UserPlus className="w-3.5 h-3.5" /> Select Actor to Lock
               </button>
             )}
           </div>
 
           <div className="flex items-center justify-between px-2 mb-4">
             <div className="flex items-center gap-6"><span className="text-sm font-bold text-purple-700 flex items-center gap-2 border-b-2 border-purple-600 pb-1.5"><Settings2 className="w-4 h-4" /> Master Director</span></div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"><Mic className="h-4 w-4 text-blue-500" /><select value={audioEngine} onChange={(e) => setAudioEngine(e.target.value as any)} className="bg-transparent text-xs font-bold text-blue-700 focus:outline-none cursor-pointer"><option value="video_native">Video AI Audio (Seedance)</option><option value="openai_tts">Dedicated TTS (OpenAI Voice)</option></select></div>
-              <div className="flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-100"><Palette className="h-4 w-4 text-purple-500" /><select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-xs font-bold text-purple-700 focus:outline-none cursor-pointer">{VISUAL_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
-            </div>
+            <div className="flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-100"><Palette className="h-4 w-4 text-purple-500" /><select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-xs font-bold text-purple-700 focus:outline-none cursor-pointer">{VISUAL_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
           </div>
 
           <div className="flex gap-4">
@@ -1460,8 +1390,8 @@ export function StorytellingSetup({
       <Dialog open={isCharacterLockModalOpen} onOpenChange={(open) => !open && setIsCharacterLockModalOpen(false)}>
         <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-pink-600"><Lock className="w-5 h-5" /> Select Actors to Lock</DialogTitle>
-            <DialogDescription>Click on up to 2 actors to lock their character consistency across all scenes.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-pink-600"><Lock className="w-5 h-5" /> Select Actor to Lock</DialogTitle>
+            <DialogDescription>Click on an actor to lock their character consistency across all scenes.</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             {actors.length === 0 ? (
@@ -1476,30 +1406,20 @@ export function StorytellingSetup({
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {actors.map(actor => {
-                  const isA = selectedActorA === actor.id;
-                  const isB = selectedActorB === actor.id;
-                  const isSelected = isA || isB;
+                  const isSelected = selectedActorA === actor.id;
                   return (
                     <button
                       key={actor.id}
-                      onClick={() => {
-                        if (isA) { setSelectedActorA(""); return; }
-                        if (isB) { setSelectedActorB(""); return; }
-                        if (!selectedActorA) { setSelectedActorA(actor.id); return; }
-                        if (!selectedActorB) { setSelectedActorB(actor.id); return; }
-                        alert("You can select a maximum of 2 actors. Deselect one first.");
-                      }}
+                      onClick={() => setSelectedActorA(isSelected ? "" : actor.id)}
                       className={cn(
                         "rounded-xl p-2 flex flex-col gap-2 transition-all text-left",
-                        isA ? "bg-pink-50 border-2 border-pink-500 ring-2 ring-pink-200 shadow-md" :
-                          isB ? "bg-emerald-50 border-2 border-emerald-500 ring-2 ring-emerald-200 shadow-md" :
-                            "bg-white border border-gray-200 hover:border-pink-300 hover:shadow-sm"
+                        isSelected ? "bg-pink-50 border-2 border-pink-500 ring-2 ring-pink-200 shadow-md" :
+                          "bg-white border border-gray-200 hover:border-pink-300 hover:shadow-sm"
                       )}
                     >
                       <div className="aspect-video rounded-lg overflow-hidden bg-gray-100 relative">
                         <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover" />
-                        {isA && <div className="absolute top-1 left-1 bg-pink-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">Actor 1</div>}
-                        {isB && <div className="absolute top-1 left-1 bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">Actor 2</div>}
+                        {isSelected && <div className="absolute top-1 left-1 bg-pink-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">Locked</div>}
                       </div>
                       <span className={cn(
                         "text-xs font-bold text-center truncate px-1",
@@ -1512,7 +1432,7 @@ export function StorytellingSetup({
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setSelectedActorA(""); setSelectedActorB(""); }}>Clear Selection</Button>
+            <Button variant="outline" onClick={() => setSelectedActorA("")}>Clear Selection</Button>
             <Button onClick={() => setIsCharacterLockModalOpen(false)} className="bg-pink-600 hover:bg-pink-700 text-white font-bold">
               <CheckCircle className="w-4 h-4 mr-2" /> Done
             </Button>
