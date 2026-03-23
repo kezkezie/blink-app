@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare } from "lucide-react";
+import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Layers } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -449,6 +449,27 @@ export function StorytellingSetup({
   const [frameReferenceFile, setFrameReferenceFile] = useState<File | null>(null);
   const [frameReferencePreview, setFrameReferencePreview] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState("cinematic");
+
+  // ✨ Scene Reordering
+  const moveSceneUp = (index: number) => {
+    if (index <= 0) return;
+    const newScenes = [...bRollScenes];
+    [newScenes[index - 1], newScenes[index]] = [newScenes[index], newScenes[index - 1]];
+    setBRollScenes(newScenes);
+  };
+
+  const moveSceneDown = (index: number) => {
+    if (index >= bRollScenes.length - 1) return;
+    const newScenes = [...bRollScenes];
+    [newScenes[index], newScenes[index + 1]] = [newScenes[index + 1], newScenes[index]];
+    setBRollScenes(newScenes);
+  };
+
+  // ✨ Apply AI Model to All Scenes
+  const applyModelToAll = (targetModel: string) => {
+    const newScenes = bRollScenes.map(s => ({ ...s, aiModel: targetModel }));
+    setBRollScenes(newScenes);
+  };
 
 
   const totalImageSlots = bRollScenes.reduce((count, scene) => count + 1 + (scene.useEndFrame ? 1 : 0), 0);
@@ -1024,6 +1045,13 @@ export function StorytellingSetup({
                         <option value="replicate:prunaai/p-video">Pruna (Fast)</option>
                         <option value="kling-3.0/video">Kling 3.0</option>
                       </select>
+                      <button
+                        onClick={() => applyModelToAll(scene.aiModel || "auto")}
+                        title="Apply this model to all scenes"
+                        className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-100 rounded transition-colors bg-white border border-purple-200 shadow-sm"
+                      >
+                        <Layers className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                     <div className="flex items-center gap-3">
 
@@ -1038,6 +1066,22 @@ export function StorytellingSetup({
                         <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Use End Frame</span>
                       </label>
 
+                      <button
+                        onClick={() => moveSceneUp(index)}
+                        disabled={index === 0}
+                        title="Move scene up"
+                        className={cn("p-1.5 rounded transition-colors bg-white shadow-sm border border-gray-200", index === 0 ? "text-gray-200 cursor-not-allowed" : "text-gray-400 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50")}
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => moveSceneDown(index)}
+                        disabled={index === bRollScenes.length - 1}
+                        title="Move scene down"
+                        className={cn("p-1.5 rounded transition-colors bg-white shadow-sm border border-gray-200", index === bRollScenes.length - 1 ? "text-gray-200 cursor-not-allowed" : "text-gray-400 hover:text-blue-500 hover:border-blue-200 hover:bg-blue-50")}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
                       {bRollScenes.length > 1 && (
                         <button onClick={() => removeScene(scene.id)} className="text-gray-400 hover:text-red-500 p-1.5 rounded transition-colors bg-white shadow-sm border border-gray-200 hover:border-red-200 hover:bg-red-50">
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1155,6 +1199,13 @@ export function StorytellingSetup({
                                       : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
                                 }
                               />
+                            )}
+
+                            {/* ✨ PROMPT CHARACTER COUNTER */}
+                            {!scene.videoUrl && (
+                              <div className={cn("text-right text-[10px] px-3 py-1 border-b border-gray-100", (scene.prompt?.length || 0) > 500 ? "text-red-400 font-bold" : "text-gray-400")}>
+                                {scene.prompt?.length || 0} / 500
+                              </div>
                             )}
 
                             {/* ✨ QUICK INJECT PROMPT HELPERS */}
