@@ -503,11 +503,16 @@ export function StorytellingSetup({
     try {
       const totalDuration = bRollScenes.length * 8;
 
+      const sceneConfigs = bRollScenes.map(scene => ({
+        mode: scene.mode,
+        aiModel: scene.aiModel
+      }));
+
       const directorData = await callN8n('director', {
         clientId: clientId,
         prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into ${bRollScenes.length} scenes. For each scene, you MUST return an "image_prompt" (visuals) AND an "audio_prompt" (the exact spoken English narration script or sound effects for that specific scene).`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
-
+        sceneConfigs: sceneConfigs,
         totalDuration: totalDuration,
         sceneCount: bRollScenes.length
       });
@@ -1141,7 +1146,7 @@ export function StorytellingSetup({
                               <Textarea
                                 value={scene.prompt}
                                 onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}
-                                className="flex-1 w-full text-xs p-3 resize-none bg-white border-b border-gray-200 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[80px]"
+                                className="flex-1 w-full text-xs p-3 resize-none bg-white border-b border-gray-200 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[120px]"
                                 placeholder={
                                   scene.mode === 'ugc'
                                     ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
@@ -1197,12 +1202,14 @@ export function StorytellingSetup({
 
                               return (
                                 <div className="flex flex-col flex-1 bg-white">
-                                  <Textarea
-                                    value={scene.audioPrompt || ""}
-                                    onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
-                                    className="flex-1 w-full text-xs p-3 resize-none bg-blue-50/20 border-b border-blue-100 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[70px]"
-                                    placeholder="Type English narration, dialogue, or upload audio below..."
-                                  />
+                                  {!isNativeAudioModel && (
+                                    <Textarea
+                                      value={scene.audioPrompt || ""}
+                                      onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
+                                      className="flex-1 w-full text-xs p-3 resize-none bg-blue-50/20 border-b border-blue-100 focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[70px]"
+                                      placeholder="Optional Voiceover: Type English narration script or upload an audio file below..."
+                                    />
+                                  )}
 
                                   {isNativeAudioModel ? (
                                     <div className="p-3 bg-blue-50 border-b border-blue-100">
