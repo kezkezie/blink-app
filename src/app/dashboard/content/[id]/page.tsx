@@ -19,7 +19,14 @@ import {
   Trash2,
   Zap,
   Wand2,
-  Palette
+  Palette,
+  LayoutGrid,
+  Smartphone,
+  CirclePlay,
+  MonitorPlay,
+  Music,
+  Youtube,
+  Instagram
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +47,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow } from "@/lib/workflows";
@@ -48,12 +54,36 @@ import type { Content, ContentStatus } from "@/types/database";
 
 import { cn } from "@/lib/utils";
 
-const PLATFORM_UI: Record<string, { label: string; emoji: string; color: string }> = {
-  instagram: { label: "Instagram", emoji: "📸", color: "text-pink-600 border-pink-200 bg-pink-50" },
-  tiktok: { label: "TikTok", emoji: "🎵", color: "text-gray-900 border-gray-300 bg-gray-100" },
-  facebook: { label: "Facebook", emoji: "📘", color: "text-blue-600 border-blue-200 bg-blue-50" },
-  x: { label: "X (Twitter)", emoji: "🐦", color: "text-gray-900 border-gray-300 bg-gray-100" },
-  linkedin: { label: "LinkedIn", emoji: "💼", color: "text-blue-700 border-blue-200 bg-blue-50" },
+// ✨ Omni-Publishing State Types
+interface PlatformSettings {
+  enabled: boolean;
+  format: 'post' | 'story' | 'short' | 'reel' | 'feed' | 'standard';
+}
+
+type PublishSettings = {
+  [key: string]: PlatformSettings;
+};
+
+const parsePublishSettings = (data: any): PublishSettings => {
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      // Legacy support: if it was an array of strings, convert it to the new object format
+      if (Array.isArray(parsed)) {
+        const newSettings: PublishSettings = {};
+        parsed.forEach(platform => {
+          if (platform === 'tiktok') newSettings.tiktok = { enabled: true, format: 'post' };
+          if (platform === 'instagram') newSettings.instagram = { enabled: true, format: 'reel' };
+          if (platform === 'youtube') newSettings.youtube = { enabled: true, format: 'short' };
+        });
+        return newSettings;
+      }
+      return parsed || {};
+    } catch {
+      return {};
+    }
+  }
+  return data || {};
 };
 
 const parseArray = (data: any): any[] => {
@@ -93,7 +123,9 @@ export default function ContentDetailPage({
   const [brandContext, setBrandContext] = useState<any>(null);
 
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
-  const [targetPlatforms, setTargetPlatforms] = useState<string[]>([]);
+
+  // ✨ The new Omni-Publishing State
+  const [publishSettings, setPublishSettings] = useState<PublishSettings>({});
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -141,8 +173,9 @@ export default function ContentDetailPage({
           setCaptionShort(item.caption_short || "");
           setHashtags(item.hashtags || "");
           setCallToAction(item.call_to_action || "");
-          // ✨ FIX: Properly parse array on initial load
-          setTargetPlatforms(parseArray(item.target_platforms));
+
+          // ✨ Load Publish Settings
+          setPublishSettings(parsePublishSettings(item.target_platforms));
         }
 
         if (brandRes.data?.logo_url) setBrandLogo(brandRes.data.logo_url);
@@ -176,11 +209,31 @@ export default function ContentDetailPage({
     fetchData();
   }, [id, clientId]);
 
-  const togglePlatform = (platform: string) => {
-    setTargetPlatforms(prev =>
-      prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]
-    );
+  // ✨ Omni-Publishing Toggles
+  const togglePlatform = (platform: string, defaultFormat: any) => {
+    setPublishSettings(prev => {
+      const isCurrentlyEnabled = prev[platform]?.enabled;
+      return {
+        ...prev,
+        [platform]: {
+          enabled: !isCurrentlyEnabled,
+          format: prev[platform]?.format || defaultFormat
+        }
+      };
+    });
   };
+
+  const setPlatformFormat = (platform: string, format: string) => {
+    setPublishSettings(prev => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        format: format as any
+      }
+    }));
+  };
+
+  const isAnyPlatformSelected = Object.values(publishSettings).some(p => p.enabled);
 
   const handlePromptHelp = async () => {
     if (isHelpLoading) return;
@@ -221,7 +274,7 @@ export default function ContentDetailPage({
         caption_short: captionShort,
         hashtags,
         call_to_action: callToAction,
-        target_platforms: targetPlatforms
+        target_platforms: publishSettings // ✨ Save the complex object
       } as any)
       .eq("id", content.id);
     return !error;
@@ -232,7 +285,7 @@ export default function ContentDetailPage({
     const success = await autoSaveEdits();
     setSaving(false);
     if (success && content) {
-      setContent({ ...content, caption, caption_short: captionShort, hashtags, call_to_action: callToAction, target_platforms: targetPlatforms } as any);
+      setContent({ ...content, caption, caption_short: captionShort, hashtags, call_to_action: callToAction, target_platforms: JSON.stringify(publishSettings) } as any);
     }
   }
 
@@ -249,29 +302,31 @@ export default function ContentDetailPage({
     }
   }
 
-  // ✨ FIX: Validation and Auto-Save for Send to Approval
   async function handleSendForApproval() {
     if (!content) return;
 
-    if (targetPlatforms.length === 0) {
+    if (!isAnyPlatformSelected) {
       alert("Please select at least one platform to publish to before sending for approval.");
       return;
     }
 
     setActionLoading(true);
     try {
-      await autoSaveEdits(); // Auto save!
+      await autoSaveEdits();
 
       await triggerWorkflow("blink-send-approval", {
         client_id: clientId!,
         post_id: content.id,
         caption: caption,
         image_url: parseArray(content.image_urls)[0] || null,
+        publish_settings: publishSettings // Pass to n8n
       });
+
       await supabase
         .from("content")
         .update({ status: "pending_approval" } as Record<string, unknown>)
         .eq("id", content.id);
+
       setContent((prev) =>
         prev ? { ...prev, status: "pending_approval" as ContentStatus } : null
       );
@@ -282,18 +337,17 @@ export default function ContentDetailPage({
     }
   }
 
-  // ✨ FIX: Validation and Auto-Save for Publish Now
   async function handleApproveAndPublishNow() {
     if (!content) return;
 
-    if (targetPlatforms.length === 0) {
+    if (!isAnyPlatformSelected) {
       alert("Please select at least one platform to publish to!");
       return;
     }
 
     setActionLoading(true);
     try {
-      await autoSaveEdits(); // Auto save!
+      await autoSaveEdits();
 
       await supabase
         .from("content")
@@ -312,6 +366,7 @@ export default function ContentDetailPage({
           contentId: content.id,
           clientId: clientId!,
           scheduledAt: null,
+          publishSettings: publishSettings // Pass to backend scheduler
         }),
       });
 
@@ -327,7 +382,7 @@ export default function ContentDetailPage({
           }
           : null
       );
-      alert("Post approved and sent live! 🚀");
+      alert("Post approved and sent live to PostForMe! 🚀");
     } catch (err: any) {
       alert(`Failed to publish: ${err.message}`);
     } finally {
@@ -335,18 +390,17 @@ export default function ContentDetailPage({
     }
   }
 
-  // ✨ FIX: Validation and Auto-Save for Schedule
   async function handleApproveAndSchedule() {
     if (!content || !scheduleDate) return;
 
-    if (targetPlatforms.length === 0) {
+    if (!isAnyPlatformSelected) {
       alert("Please select at least one platform to publish to before scheduling.");
       return;
     }
 
     setActionLoading(true);
     try {
-      await autoSaveEdits(); // Auto save!
+      await autoSaveEdits();
 
       const scheduledTime = new Date(scheduleDate).toISOString();
       const { error } = await supabase
@@ -551,7 +605,6 @@ export default function ContentDetailPage({
       displayImage.toLowerCase().includes(".mov") ||
       displayImage.toLowerCase().includes(".webm"));
 
-  // Disable if in style transfer mode but no reference images provided
   const isGenerationDisabled = generatingImage || (generationMode === "style_transfer" && refFiles.length === 0);
 
   return (
@@ -629,37 +682,130 @@ export default function ContentDetailPage({
 
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-5">
 
+            {/* ✨ OMNI-PUBLISHING SELECTOR */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Publish To (Select Platforms)</label>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-800 flex items-center gap-2">
+                  <Send className="w-4 h-4 text-blink-primary" /> Publish Destinations
+                </label>
+                <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100 font-bold uppercase tracking-wide">
+                  Powered by PostForMe
+                </span>
+              </div>
+
               {connectedPlatforms.length === 0 ? (
                 <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-500 border border-gray-200">
                   No social accounts connected. Go to <a href="/dashboard/settings" className="text-blink-primary hover:underline">Settings</a> to connect accounts.
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-2">
-                  {connectedPlatforms.map(platform => {
-                    const isSelected = targetPlatforms.includes(platform);
-                    const config = PLATFORM_UI[platform] || { label: platform, emoji: "🔗", color: "bg-gray-100 text-gray-800 border-gray-300" };
-                    return (
-                      <button
-                        key={platform}
-                        onClick={() => togglePlatform(platform)}
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all duration-200",
-                          isSelected ? config.color : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                        )}
+                <div className="flex flex-col gap-3">
+
+                  {/* TikTok Controls */}
+                  {connectedPlatforms.includes('tiktok') && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.tiktok?.enabled ? "border-gray-300 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                      <div
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        onClick={() => togglePlatform('tiktok', 'post')}
                       >
-                        <span>{config.emoji}</span>
-                        {config.label}
-                        {isSelected && <CheckCircle className="h-3.5 w-3.5 ml-1" />}
-                      </button>
-                    );
-                  })}
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-black text-white rounded-lg"><Music className="w-4 h-4" /></div>
+                          <div>
+                            <p className={cn("text-sm font-bold", publishSettings.tiktok?.enabled ? "text-gray-900" : "text-gray-500")}>TikTok</p>
+                          </div>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.tiktok?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black pointer-events-none" />
+                      </div>
+
+                      {publishSettings.tiktok?.enabled && (
+                        <div className="bg-gray-50 p-3 border-t border-gray-100 flex gap-4 pl-14 animate-in slide-in-from-top-2">
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.tiktok?.format === 'post'} onChange={() => setPlatformFormat('tiktok', 'post')} className="text-black focus:ring-black" />
+                            <Smartphone className={cn("w-4 h-4", publishSettings.tiktok?.format === 'post' ? "text-black" : "text-gray-400 group-hover:text-gray-600")} />
+                            <span className={cn("text-xs font-semibold", publishSettings.tiktok?.format === 'post' ? "text-gray-900" : "text-gray-500")}>Normal Post</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.tiktok?.format === 'story'} onChange={() => setPlatformFormat('tiktok', 'story')} className="text-black focus:ring-black" />
+                            <CirclePlay className={cn("w-4 h-4", publishSettings.tiktok?.format === 'story' ? "text-black" : "text-gray-400 group-hover:text-gray-600")} />
+                            <span className={cn("text-xs font-semibold", publishSettings.tiktok?.format === 'story' ? "text-gray-900" : "text-gray-500")}>Story</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Instagram Controls */}
+                  {connectedPlatforms.includes('instagram') && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.instagram?.enabled ? "border-pink-200 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                      <div
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        onClick={() => togglePlatform('instagram', isVideo ? 'reel' : 'feed')}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded-lg text-white", publishSettings.instagram?.enabled ? "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600" : "bg-gray-400")}><Instagram className="w-4 h-4" /></div>
+                          <div>
+                            <p className={cn("text-sm font-bold", publishSettings.instagram?.enabled ? "text-gray-900" : "text-gray-500")}>Instagram</p>
+                          </div>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.instagram?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500 pointer-events-none" />
+                      </div>
+
+                      {publishSettings.instagram?.enabled && (
+                        <div className="bg-pink-50/30 p-3 border-t border-pink-100 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed'} onChange={() => setPlatformFormat('instagram', isVideo ? 'reel' : 'feed')} className="text-pink-600 focus:ring-pink-500" />
+                            <Smartphone className={cn("w-4 h-4", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-pink-600" : "text-gray-400 group-hover:text-gray-600")} />
+                            <span className={cn("text-xs font-semibold", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-gray-900" : "text-gray-500")}>Feed / Reel</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.instagram?.format === 'story'} onChange={() => setPlatformFormat('instagram', 'story')} className="text-pink-600 focus:ring-pink-500" />
+                            <CirclePlay className={cn("w-4 h-4", publishSettings.instagram?.format === 'story' ? "text-pink-600" : "text-gray-400 group-hover:text-gray-600")} />
+                            <span className={cn("text-xs font-semibold", publishSettings.instagram?.format === 'story' ? "text-gray-900" : "text-gray-500")}>Story</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* YouTube Controls */}
+                  {connectedPlatforms.includes('youtube') && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.youtube?.enabled ? "border-red-200 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                      <div
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        onClick={() => togglePlatform('youtube', 'standard')}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded-lg text-white", publishSettings.youtube?.enabled ? "bg-red-600" : "bg-gray-400")}><Youtube className="w-4 h-4" /></div>
+                          <div>
+                            <p className={cn("text-sm font-bold", publishSettings.youtube?.enabled ? "text-gray-900" : "text-gray-500")}>YouTube</p>
+                          </div>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.youtube?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500 pointer-events-none" />
+                      </div>
+
+                      {publishSettings.youtube?.enabled && (
+                        <div className="bg-red-50/30 p-3 border-t border-red-100 flex gap-4 pl-14 animate-in slide-in-from-top-2">
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.youtube?.format === 'standard'} onChange={() => setPlatformFormat('youtube', 'standard')} className="text-red-600 focus:ring-red-500" />
+                            <MonitorPlay className={cn("w-4 h-4", publishSettings.youtube?.format === 'standard' ? "text-red-600" : "text-gray-400 group-hover:text-gray-600")} />
+                            <span className={cn("text-xs font-semibold", publishSettings.youtube?.format === 'standard' ? "text-gray-900" : "text-gray-500")}>Standard Video</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.youtube?.format === 'short'} onChange={() => setPlatformFormat('youtube', 'short')} className="text-red-600 focus:ring-red-500" />
+                            <Smartphone className={cn("w-4 h-4", publishSettings.youtube?.format === 'short' ? "text-red-600" : "text-gray-400 group-hover:text-gray-600")} />
+                            <span className={cn("text-xs font-semibold", publishSettings.youtube?.format === 'short' ? "text-gray-900" : "text-gray-500")}>YouTube Short (9:16)</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Add logic for Facebook, X, LinkedIn if they exist in connectedPlatforms similarly */}
+
                 </div>
               )}
             </div>
 
-            <div className="pt-2 border-t border-gray-100">
+            <div className="pt-4 border-t border-gray-100">
               <label className="block text-sm font-medium text-gray-700 mb-1.5 mt-2">Caption (Long)</label>
               <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={5} className="resize-none" />
             </div>

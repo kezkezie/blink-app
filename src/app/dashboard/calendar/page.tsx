@@ -10,33 +10,55 @@ import { cn } from "@/lib/utils";
 
 const UNSCHEDULED_LIMIT = 20;
 
-// ✨ FIX: Targeting exactly how your Supabase database saves them
 const HIDDEN_CONTENT_TYPES = ["sequence_clip", "generated_audio"];
+
+// ✨ UPGRADED: Now seamlessly translates raw arrays from the modal into Omni-Objects
+const parsePublishSettings = (data: any): any => {
+  if (!data) return {};
+
+  let parsed = data;
+  if (typeof data === "string") {
+    try { parsed = JSON.parse(data); } catch { return {}; }
+  }
+
+  // If the modal passed a legacy array (e.g. ['tiktok']), translate it instantly:
+  if (Array.isArray(parsed)) {
+    const newSettings: any = {};
+    parsed.forEach(platform => {
+      if (platform === 'tiktok') newSettings.tiktok = { enabled: true, format: 'post' };
+      if (platform === 'instagram') newSettings.instagram = { enabled: true, format: 'reel' };
+      if (platform === 'youtube') newSettings.youtube = { enabled: true, format: 'short' };
+    });
+    return newSettings;
+  }
+
+  return typeof parsed === 'object' ? parsed : {};
+};
+
+const isAnyPlatformEnabled = (settings: any) => {
+  if (!settings) return false;
+  return Object.values(settings).some((p: any) => p && p.enabled === true);
+};
 
 export default function CalendarPage() {
   const { clientId } = useClient();
   const [content, setContent] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // State for the current month being viewed
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  // Notification state
   const [message, setMessage] = useState<{
     type: "success" | "error" | "info";
     text: string;
   } | null>(null);
 
-  // Pagination States
   const [unscheduledOffset, setUnscheduledOffset] = useState(UNSCHEDULED_LIMIT);
   const [hasMoreUnscheduled, setHasMoreUnscheduled] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // Smart fetching (All Scheduled + Paginated Unscheduled)
   const fetchContent = useCallback(async () => {
     if (!clientId) return;
 
-    // 1. Fetch ALL scheduled posts 
     const { data: scheduled } = await supabase
       .from("content")
       .select("*")
@@ -44,7 +66,6 @@ export default function CalendarPage() {
       .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
       .not("scheduled_at", "is", null);
 
-    // 2. Fetch Unscheduled posts up to the current offset 
     const { data: unscheduled } = await supabase
       .from("content")
       .select("*")
@@ -65,7 +86,6 @@ export default function CalendarPage() {
     fetchContent();
   }, [fetchContent]);
 
-  // Function to load the next page of unscheduled posts
   const handleLoadMore = async () => {
     setIsLoadingMore(true);
     const newOffset = unscheduledOffset + UNSCHEDULED_LIMIT;
@@ -90,14 +110,23 @@ export default function CalendarPage() {
   };
 
   const handleUpdateContent = async (updatedItem: Content) => {
+    // ✨ 1. Intercept and translate whatever the modal sent into the new Object format
+    const publishSettings = parsePublishSettings((updatedItem as any).target_platforms);
+
+    // Replace the raw array with the standardized object locally
+    const standardizedItem = {
+      ...updatedItem,
+      target_platforms: publishSettings
+    };
+
     setContent((prev) =>
-      prev.map((item) => (item.id === updatedItem.id ? updatedItem : item))
+      prev.map((item) => (item.id === standardizedItem.id ? standardizedItem : item))
     );
 
-    if ((updatedItem as any).scheduled_at) {
-      const targetPlatforms = (updatedItem as any).target_platforms || [];
+    if ((standardizedItem as any).scheduled_at) {
 
-      if (targetPlatforms.length === 0) {
+      // Now the check will pass successfully!
+      if (!isAnyPlatformEnabled(publishSettings)) {
         setMessage({
           type: "error",
           text: "⚠️ Post placed on calendar. Click 'Add Platform' to enable auto-publishing."
@@ -108,13 +137,20 @@ export default function CalendarPage() {
       setMessage({ type: "info", text: "Syncing schedule with social platforms..." });
 
       try {
+        // ✨ 2. Force sync the translated Object format back to Supabase
+        // This ensures the database matches the new backend format, even if the modal only saved an array.
+        await supabase
+          .from("content")
+          .update({ target_platforms: publishSettings } as any)
+          .eq("id", standardizedItem.id);
+
         const res = await fetch("/api/social-posts/schedule", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contentId: updatedItem.id,
+            contentId: standardizedItem.id,
             clientId: clientId,
-            scheduledAt: (updatedItem as any).scheduled_at,
+            scheduledAt: (standardizedItem as any).scheduled_at,
           }),
         });
 
@@ -143,11 +179,18 @@ export default function CalendarPage() {
 
       for (const item of updatedItems) {
         if ((item as any).scheduled_at) {
-          const targetPlatforms = (item as any).target_platforms || [];
-          if (targetPlatforms.length === 0) {
+          const publishSettings = parsePublishSettings((item as any).target_platforms);
+
+          if (!isAnyPlatformEnabled(publishSettings)) {
             skippedCount++;
             continue;
           }
+
+          // Force sync bulk items too
+          await supabase
+            .from("content")
+            .update({ target_platforms: publishSettings } as any)
+            .eq("id", item.id);
 
           const res = await fetch("/api/social-posts/schedule", {
             method: "POST",

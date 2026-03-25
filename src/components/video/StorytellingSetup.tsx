@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Layers } from "lucide-react";
+import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Layers, MonitorPlay, LayoutGrid, Send } from "lucide-react";
+// Add this new import right below the standard imports:
+import { PublishModal } from "@/components/publishing/PublishModal";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -46,6 +48,7 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
 
   const CHARACTER_SHEET_INJECTION = "Character reference sheet, identical character, multiple angles, front view, side view, back profile, white background, hyper-realistic, highly detailed.";
 
@@ -1045,13 +1048,13 @@ export function StorytellingSetup({
                         <option value="replicate:prunaai/p-video">Pruna (Fast)</option>
                         <option value="kling-3.0/video">Kling 3.0</option>
                       </select>
-                      <button
+                      {/* <button
                         onClick={() => applyModelToAll(scene.aiModel || "auto")}
                         title="Apply this model to all scenes"
                         className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-100 rounded transition-colors bg-white border border-purple-200 shadow-sm"
                       >
                         <Layers className="h-3.5 w-3.5" />
-                      </button>
+                      </button> */}
                     </div>
                     <div className="flex items-center gap-3">
 

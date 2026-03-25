@@ -16,6 +16,13 @@ import {
   Pencil,
   CheckCircle,
   AlertCircle,
+  Smartphone,
+  CirclePlay,
+  LayoutGrid,
+  MonitorPlay,
+  Music,
+  Instagram,
+  Youtube
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlatformIcon } from "@/components/shared/PlatformIcon";
@@ -33,7 +40,6 @@ import { useClient } from "@/hooks/useClient";
 import type { Content, ContentStatus, Platform } from "@/types/database";
 import { cn } from "@/lib/utils";
 
-// ✨ NEW: Added props to support pagination
 interface CalendarViewProps {
   content: Content[];
   currentMonth: Date;
@@ -45,12 +51,35 @@ interface CalendarViewProps {
   onLoadMoreUnscheduled?: () => void;
 }
 
-const PLATFORM_UI: Record<string, { label: string; emoji: string; color: string }> = {
-  instagram: { label: "Instagram", emoji: "📸", color: "text-pink-600 border-pink-200 bg-pink-50" },
-  tiktok: { label: "TikTok", emoji: "🎵", color: "text-gray-900 border-gray-300 bg-gray-100" },
-  facebook: { label: "Facebook", emoji: "📘", color: "text-blue-600 border-blue-200 bg-blue-50" },
-  x: { label: "X (Twitter)", emoji: "🐦", color: "text-gray-900 border-gray-300 bg-gray-100" },
-  linkedin: { label: "LinkedIn", emoji: "💼", color: "text-blue-700 border-blue-200 bg-blue-50" },
+// ✨ Omni-Publishing State Types
+interface PlatformSettings {
+  enabled: boolean;
+  format: 'post' | 'story' | 'short' | 'reel' | 'feed' | 'standard';
+}
+
+type PublishSettings = {
+  [key: string]: PlatformSettings;
+};
+
+const parsePublishSettings = (data: any): PublishSettings => {
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        const newSettings: PublishSettings = {};
+        parsed.forEach(platform => {
+          if (platform === 'tiktok') newSettings.tiktok = { enabled: true, format: 'post' };
+          if (platform === 'instagram') newSettings.instagram = { enabled: true, format: 'reel' };
+          if (platform === 'youtube') newSettings.youtube = { enabled: true, format: 'short' };
+        });
+        return newSettings;
+      }
+      return parsed || {};
+    } catch {
+      return {};
+    }
+  }
+  return data || {};
 };
 
 const parseArray = (data: any): any[] => {
@@ -92,8 +121,11 @@ export function CalendarView({
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
   const [platformModalOpen, setPlatformModalOpen] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
-  const [targetPlatforms, setTargetPlatforms] = useState<string[]>([]);
+
+  // ✨ The new Omni-Publishing State for the Modal
+  const [publishSettings, setPublishSettings] = useState<PublishSettings>({});
   const [savingPlatforms, setSavingPlatforms] = useState(false);
+  const [editingPostIsVideo, setEditingPostIsVideo] = useState(false);
 
   useEffect(() => {
     async function fetchPlatforms() {
@@ -173,17 +205,13 @@ export function CalendarView({
 
     const targetDate = new Date(year, month, targetDay, hours, minutes, 0);
 
-    // ✨ NEW TIME GUARDRAIL: Prevent scheduling in the past!
-    // If they drop on TODAY, but 10:00 AM has already passed...
     if (targetDate.getTime() < Date.now()) {
       const now = new Date();
-      // Check if the target is actually today (and not a past day entirely)
       if (
         targetDate.getDate() === now.getDate() &&
         targetDate.getMonth() === now.getMonth() &&
         targetDate.getFullYear() === now.getFullYear()
       ) {
-        // Push the time to 15 minutes into the future so the API accepts it!
         targetDate.setHours(now.getHours());
         targetDate.setMinutes(now.getMinutes() + 15);
       }
@@ -276,32 +304,56 @@ export function CalendarView({
     }
   };
 
+  // ✨ Omni-Publishing Toggles for Modal
   const openPlatformModal = (post: Content) => {
     setEditingPostId(post.id);
-    setTargetPlatforms(parseArray((post as any).target_platforms) || []);
+
+    const displayImage = parseArray(post.image_urls)[0];
+    const isVideo = displayImage && (post.content_type === "video" || post.content_type === "reel" || displayImage.includes(".mp4") || displayImage.includes(".mov"));
+    setEditingPostIsVideo(!!isVideo);
+
+    setPublishSettings(parsePublishSettings((post as any).target_platforms));
     setPlatformModalOpen(true);
   };
 
-  const togglePlatform = (platform: string) => {
-    setTargetPlatforms((prev) =>
-      prev.includes(platform)
-        ? prev.filter((p) => p !== platform)
-        : [...prev, platform]
-    );
+  const togglePlatform = (platform: string, defaultFormat: any) => {
+    setPublishSettings(prev => {
+      const isCurrentlyEnabled = prev[platform]?.enabled;
+      return {
+        ...prev,
+        [platform]: {
+          enabled: !isCurrentlyEnabled,
+          format: prev[platform]?.format || defaultFormat
+        }
+      };
+    });
   };
+
+  const setPlatformFormat = (platform: string, format: string) => {
+    setPublishSettings(prev => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        format: format as any
+      }
+    }));
+  };
+
+  const isAnyPlatformSelected = Object.values(publishSettings).some(p => p.enabled);
 
   const handleSavePlatforms = async () => {
     setSavingPlatforms(true);
     const postToUpdate = content.find((c) => c.id === editingPostId);
     if (postToUpdate) {
-      const updatedItem = { ...postToUpdate, target_platforms: targetPlatforms } as any;
+      // Save the complex object directly to Supabase
+      const updatedItem = { ...postToUpdate, target_platforms: JSON.stringify(publishSettings) } as any;
 
       await supabase
         .from("content")
-        .update({ target_platforms: targetPlatforms } as any)
+        .update({ target_platforms: publishSettings } as any)
         .eq("id", editingPostId);
 
-      onUpdateContent(updatedItem);
+      onUpdateContent(updatedItem); // This will trigger the parent CalendarPage to check the schedule
     }
     setPlatformModalOpen(false);
     setSavingPlatforms(false);
@@ -435,8 +487,9 @@ export function CalendarView({
 
                   <div className="space-y-1.5 flex-1 pointer-events-none">
                     {dayPosts.slice(0, 3).map((post) => {
-                      const platforms = parseArray((post as any).target_platforms);
-                      const hasNoPlatform = platforms.length === 0;
+                      const settingsObj = parsePublishSettings((post as any).target_platforms);
+                      const enabledPlatforms = Object.keys(settingsObj).filter(k => settingsObj[k].enabled);
+                      const hasNoPlatform = enabledPlatforms.length === 0;
 
                       return (
                         <div
@@ -454,8 +507,8 @@ export function CalendarView({
                                 <AlertCircle className="w-3 h-3" /> Needs Platform
                               </span>
                             ) : (
-                              platforms.slice(0, 2).map((p: Platform) => (
-                                <PlatformIcon key={p} platform={p} />
+                              enabledPlatforms.slice(0, 2).map((p: string) => (
+                                <PlatformIcon key={p} platform={p as Platform} />
                               ))
                             )}
                           </div>
@@ -578,7 +631,6 @@ export function CalendarView({
                     );
                   })}
 
-                  {/* ✨ NEW: Pagination Load More Button */}
                   {hasMoreUnscheduled && (
                     <div className="pt-3 pb-6 flex justify-center">
                       <Button
@@ -651,8 +703,9 @@ export function CalendarView({
                   );
                   const isDragging = draggedItemId === post.id;
 
-                  const platforms = parseArray((post as any).target_platforms);
-                  const hasNoPlatform = platforms.length === 0;
+                  const settingsObj = parsePublishSettings((post as any).target_platforms);
+                  const enabledPlatforms = Object.keys(settingsObj).filter(k => settingsObj[k].enabled);
+                  const hasNoPlatform = enabledPlatforms.length === 0;
 
                   return (
                     <div
@@ -702,8 +755,8 @@ export function CalendarView({
                                   + Add Platform
                                 </button>
                               ) : (
-                                platforms.map((p: Platform) => (
-                                  <PlatformIcon key={p} platform={p} />
+                                enabledPlatforms.map((p: string) => (
+                                  <PlatformIcon key={p} platform={p as Platform} />
                                 ))
                               )}
                             </div>
@@ -773,7 +826,7 @@ export function CalendarView({
           <DialogHeader>
             <DialogTitle>Select Target Platforms</DialogTitle>
             <DialogDescription>
-              Where do you want to publish this post?
+              Select the platforms and formats to distribute your generated content.
             </DialogDescription>
           </DialogHeader>
 
@@ -785,28 +838,104 @@ export function CalendarView({
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {connectedPlatforms.map(platform => {
-                  const isSelected = targetPlatforms.includes(platform);
-                  const config = PLATFORM_UI[platform] || { label: platform, emoji: "🔗", color: "bg-gray-100 text-gray-800 border-gray-300" };
-                  return (
+                {/* TikTok Controls */}
+                {connectedPlatforms.includes('tiktok') && (
+                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.tiktok?.enabled ? "border-gray-300 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
                     <div
-                      key={platform}
-                      onClick={() => togglePlatform(platform)}
-                      className={cn(
-                        "flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all duration-200",
-                        isSelected ? config.color : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                      )}
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                      onClick={() => togglePlatform('tiktok', 'post')}
                     >
-                      <div className="flex items-center gap-3 font-medium">
-                        <span className="text-xl">{config.emoji}</span>
-                        {config.label}
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-black text-white rounded-lg"><Music className="w-4 h-4" /></div>
+                        <div>
+                          <p className={cn("text-sm font-bold", publishSettings.tiktok?.enabled ? "text-gray-900" : "text-gray-500")}>TikTok</p>
+                        </div>
                       </div>
-                      <div className={cn("h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors", isSelected ? "border-current bg-current" : "border-gray-300")}>
-                        {isSelected && <CheckCircle className="h-4 w-4 text-white" />}
-                      </div>
+                      <input type="checkbox" checked={publishSettings.tiktok?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black pointer-events-none" />
                     </div>
-                  );
-                })}
+
+                    {publishSettings.tiktok?.enabled && (
+                      <div className="bg-gray-50 p-3 border-t border-gray-100 flex gap-4 pl-14 animate-in slide-in-from-top-2">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input type="radio" checked={publishSettings.tiktok?.format === 'post'} onChange={() => setPlatformFormat('tiktok', 'post')} className="text-black focus:ring-black" />
+                          <Smartphone className={cn("w-4 h-4", publishSettings.tiktok?.format === 'post' ? "text-black" : "text-gray-400 group-hover:text-gray-600")} />
+                          <span className={cn("text-xs font-semibold", publishSettings.tiktok?.format === 'post' ? "text-gray-900" : "text-gray-500")}>Normal Post</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input type="radio" checked={publishSettings.tiktok?.format === 'story'} onChange={() => setPlatformFormat('tiktok', 'story')} className="text-black focus:ring-black" />
+                          <CirclePlay className={cn("w-4 h-4", publishSettings.tiktok?.format === 'story' ? "text-black" : "text-gray-400 group-hover:text-gray-600")} />
+                          <span className={cn("text-xs font-semibold", publishSettings.tiktok?.format === 'story' ? "text-gray-900" : "text-gray-500")}>Story</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Instagram Controls */}
+                {connectedPlatforms.includes('instagram') && (
+                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.instagram?.enabled ? "border-pink-200 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                    <div
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                      onClick={() => togglePlatform('instagram', editingPostIsVideo ? 'reel' : 'feed')}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={cn("p-2 rounded-lg text-white", publishSettings.instagram?.enabled ? "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600" : "bg-gray-400")}><Instagram className="w-4 h-4" /></div>
+                        <div>
+                          <p className={cn("text-sm font-bold", publishSettings.instagram?.enabled ? "text-gray-900" : "text-gray-500")}>Instagram</p>
+                        </div>
+                      </div>
+                      <input type="checkbox" checked={publishSettings.instagram?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500 pointer-events-none" />
+                    </div>
+
+                    {publishSettings.instagram?.enabled && (
+                      <div className="bg-pink-50/30 p-3 border-t border-pink-100 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input type="radio" checked={publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed'} onChange={() => setPlatformFormat('instagram', editingPostIsVideo ? 'reel' : 'feed')} className="text-pink-600 focus:ring-pink-500" />
+                          <Smartphone className={cn("w-4 h-4", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-pink-600" : "text-gray-400 group-hover:text-gray-600")} />
+                          <span className={cn("text-xs font-semibold", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-gray-900" : "text-gray-500")}>Feed / Reel</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input type="radio" checked={publishSettings.instagram?.format === 'story'} onChange={() => setPlatformFormat('instagram', 'story')} className="text-pink-600 focus:ring-pink-500" />
+                          <CirclePlay className={cn("w-4 h-4", publishSettings.instagram?.format === 'story' ? "text-pink-600" : "text-gray-400 group-hover:text-gray-600")} />
+                          <span className={cn("text-xs font-semibold", publishSettings.instagram?.format === 'story' ? "text-gray-900" : "text-gray-500")}>Story</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* YouTube Controls */}
+                {connectedPlatforms.includes('youtube') && (
+                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.youtube?.enabled ? "border-red-200 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                    <div
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                      onClick={() => togglePlatform('youtube', 'standard')}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={cn("p-2 rounded-lg text-white", publishSettings.youtube?.enabled ? "bg-red-600" : "bg-gray-400")}><Youtube className="w-4 h-4" /></div>
+                        <div>
+                          <p className={cn("text-sm font-bold", publishSettings.youtube?.enabled ? "text-gray-900" : "text-gray-500")}>YouTube</p>
+                        </div>
+                      </div>
+                      <input type="checkbox" checked={publishSettings.youtube?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500 pointer-events-none" />
+                    </div>
+
+                    {publishSettings.youtube?.enabled && (
+                      <div className="bg-red-50/30 p-3 border-t border-red-100 flex gap-4 pl-14 animate-in slide-in-from-top-2">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input type="radio" checked={publishSettings.youtube?.format === 'standard'} onChange={() => setPlatformFormat('youtube', 'standard')} className="text-red-600 focus:ring-red-500" />
+                          <MonitorPlay className={cn("w-4 h-4", publishSettings.youtube?.format === 'standard' ? "text-red-600" : "text-gray-400 group-hover:text-gray-600")} />
+                          <span className={cn("text-xs font-semibold", publishSettings.youtube?.format === 'standard' ? "text-gray-900" : "text-gray-500")}>Standard Video</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input type="radio" checked={publishSettings.youtube?.format === 'short'} onChange={() => setPlatformFormat('youtube', 'short')} className="text-red-600 focus:ring-red-500" />
+                          <Smartphone className={cn("w-4 h-4", publishSettings.youtube?.format === 'short' ? "text-red-600" : "text-gray-400 group-hover:text-gray-600")} />
+                          <span className={cn("text-xs font-semibold", publishSettings.youtube?.format === 'short' ? "text-gray-900" : "text-gray-500")}>YouTube Short (9:16)</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -815,7 +944,7 @@ export function CalendarView({
             <Button variant="outline" onClick={() => setPlatformModalOpen(false)}>Cancel</Button>
             <Button
               onClick={handleSavePlatforms}
-              disabled={savingPlatforms || targetPlatforms.length === 0}
+              disabled={savingPlatforms || !isAnyPlatformSelected}
               className="bg-blink-primary hover:bg-blink-primary/90 text-white"
             >
               {savingPlatforms ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
