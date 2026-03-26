@@ -534,7 +534,7 @@ export function StorytellingSetup({
 
       const directorData = await callN8n('director', {
         clientId: clientId,
-        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into ${bRollScenes.length} scenes. For each scene, you MUST return an "image_prompt" (visuals) AND an "audio_prompt" (the exact spoken English narration script or sound effects for that specific scene).`,
+        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into ${bRollScenes.length} scenes. For each scene, you MUST write the "image_prompt" in a highly descriptive narrative script format. Example: "Outdoor terrace of a European villa... a young woman sits opposite a man. The camera zooms in, the woman smiles and says, 'These trees will turn yellow...' The man lowers his head and says, 'But they'll be green again.'" Include exact spoken dialogue in quotes!`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         sceneConfigs: sceneConfigs,
         totalDuration: totalDuration,
@@ -571,7 +571,7 @@ export function StorytellingSetup({
     try {
       const sceneMode = SCENE_MODES.find(m => m.id === bRollScenes[index].mode)?.label || "Cinematic Pan";
       const directorData = await callN8n('director', {
-        prompt: `Write a visual image prompt AND the exact English spoken narration script for Scene ${index + 1} based on this concept: "${bRollConcept}". The camera movement/style is "${sceneMode}".`,
+        prompt: `Write a visual image prompt for Scene ${index + 1} based on this concept: "${bRollConcept}". The camera movement is "${sceneMode}". CRITICAL: Write it in a highly descriptive narrative script format. Include setting, character actions, camera movements, and exact spoken dialogue in quotes (e.g., The camera zooms in, the woman says, 'Only about summers with you.').`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         audioEngine: "video_native",
         totalDuration: 8
@@ -1181,6 +1181,7 @@ export function StorytellingSetup({
                             <Loader2 className="h-8 w-8 text-green-600 animate-spin" />
                             <span className="text-xs font-bold text-green-700 uppercase tracking-wider animate-pulse">Rendering Video...</span>
                             <span className="text-[10px] text-green-800 text-center px-4">Polling Supabase for the finished file...</span>
+                            <button onClick={() => updateScene(scene.id, "isGeneratingVideo", false)} className="mt-3 text-[10px] font-bold text-red-600 hover:text-red-800 hover:underline px-3 py-1 bg-red-100/50 rounded-full transition-colors">Taking too long? Force Cancel</button>
                           </div>
                         ) : (
                           <div className="flex flex-col flex-1 h-full">
@@ -1239,14 +1240,12 @@ export function StorytellingSetup({
                                   <option value=" [muffled cafe chatter] ">Cafe Chatter</option>
                                   <option value=" [whoosh transition] ">Whoosh Transition</option>
                                 </select>
-                                {isNativeAudio && (
-                                  <button
-                                    onClick={() => updateScene(scene.id, "prompt", (scene.prompt || "") + ' The character says "Type your script here..." ')}
-                                    className="inline-flex items-center text-[9px] font-bold text-gray-500 hover:text-emerald-600 bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-200 px-2 py-1 rounded-full transition-colors shadow-sm"
-                                  >
-                                    <MessageSquare className="w-3 h-3 mr-1" /> Dialogue
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => updateScene(scene.id, "prompt", (scene.prompt || "") + ' The character says "Type your script here..." ')}
+                                  className="inline-flex items-center text-[9px] font-bold text-gray-500 hover:text-emerald-600 bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-200 px-2 py-1 rounded-full transition-colors shadow-sm"
+                                >
+                                  <MessageSquare className="w-3 h-3 mr-1" /> Dialogue
+                                </button>
                               </div>
                             )}
 

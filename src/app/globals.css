@@ -5,6 +5,47 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@theme {
+  --color-brand-bg: #191D23;
+  --color-brand-surface: #57707A;
+  --color-brand-secondary: #7B919C;
+  --color-brand-accent: #C5BAC4;
+  --color-brand-light: #DEDCDC;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+
+  --radius-4xl: 32px;
+  --radius-5xl: 48px;
+}
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-brand-light font-sans antialiased overflow-x-hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight leading-[1.1];
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-brand-surface/10 border border-brand-light/10 backdrop-blur-sm;
+  }
+
+  .glow-accent {
+    @apply absolute rounded-full blur-[120px] opacity-20 pointer-events-none;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -14,12 +55,27 @@
   --font-heading: 'DM Sans', 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', var(--font-geist-mono);
 
-  /* Blink brand colors */
+  /* Blink brand colors (dashboard) */
   --color-blink-primary: #2563EB;
   --color-blink-secondary: #F59E0B;
   --color-blink-accent: #10B981;
   --color-blink-dark: #1E293B;
   --color-blink-light: #F8FAFC;
+
+  /* ── Marketing / Landing Page tokens (dark theme) ── */
+  --color-brand-bg: #191D23;
+  --color-brand-surface: #57707A;
+  --color-brand-accent: #C5BAC4;
+  --color-brand-text: #DEDCDC;
+  --color-brand-light: #F3F4F6;
+  --color-brand-secondary: #9CA3AF;
+
+  /* ── Extended border radius ── */
+  --radius-4xl: 2rem;
+  --radius-5xl: 2.5rem;
+
+  /* ── Display font alias ── */
+  --font-display: 'DM Sans', sans-serif;
 
   /* Content status colors */
   --color-status-draft: #94A3B8;
@@ -138,11 +194,14 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    @apply border-border outline-ring/50;
   }
 
   body {
     @apply bg-background text-foreground;
-    @apply bg-background text-foreground;
   }
+}
+
+/* ── Glow utility used on marketing sections ── */
+.glow-accent {
+  @apply absolute rounded-full blur-[120px] opacity-30 pointer-events-none;
 }

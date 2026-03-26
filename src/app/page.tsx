@@ -1,329 +1,456 @@
-import Link from 'next/link'
+"use client";
+
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import {
+  Calendar,
   Zap,
-  Brain,
-  PenTool,
-  Image,
-  MessageSquare,
-  Send,
-  BarChart3,
+  Video,
+  Image as ImageIcon,
+  Upload,
+  Palette,
+  CheckCircle2,
   ArrowRight,
-  CheckCircle,
-  Briefcase,
+  Menu,
+  X,
+  Clock,
   Sparkles,
-  Eye,
-} from 'lucide-react'
+  Layout,
+  MousePointer2,
+  Layers,
+  Share2,
+  Loader2
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
-const features = [
-  { icon: Brain, title: 'AI Content Strategy', desc: 'Get a full content calendar planned by AI, tailored to your brand and audience' },
-  { icon: PenTool, title: 'Smart Captions', desc: 'Engaging captions written in your brand voice for every platform' },
-  { icon: Image, title: 'Image Generation', desc: 'Stunning visuals created automatically to match your content' },
-  { icon: MessageSquare, title: 'Telegram Approvals', desc: 'Review and approve posts right from your Telegram app' },
-  { icon: Send, title: 'Auto-Posting', desc: 'Content published automatically at the best times for engagement' },
-  { icon: BarChart3, title: 'Analytics', desc: 'Track performance and optimize your content strategy with data' },
-]
+// --- UI Mockup Components ---
 
-const pricing = [
-  {
-    name: 'Starter',
-    price: '5,000',
-    desc: 'Perfect for getting started',
-    popular: false,
-    features: ['1 platform', '12 posts/month', 'AI captions', 'Image generation', 'Email support'],
-  },
-  {
-    name: 'Growth',
-    price: '12,000',
-    desc: 'Most popular for growing businesses',
-    popular: true,
-    features: ['3 platforms', '30 posts/month', 'AI captions', 'Image generation', 'Auto-replies', 'Telegram approvals', 'Priority support'],
-  },
-  {
-    name: 'Premium',
-    price: '25,000',
-    desc: 'Full management, zero effort',
-    popular: false,
-    features: ['Unlimited platforms', 'Daily posts', 'AI captions', 'Image generation', 'Auto-replies', 'Full management', 'Dedicated manager', 'Analytics dashboard'],
-  },
-]
+const CalendarMockup = ({ className = "" }) => (
+  <div className={`bg-brand-bg/90 rounded-2xl border border-brand-light/10 p-4 shadow-2xl ${className}`}>
+    <div className="flex justify-between items-center mb-4">
+      <div className="h-2 w-16 bg-brand-surface/30 rounded" />
+      <div className="flex gap-1">
+        {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-brand-light/10" />)}
+      </div>
+    </div>
+    <div className="grid grid-cols-7 gap-1.5">
+      {Array.from({ length: 21 }).map((_, i) => (
+        <div key={i} className={`aspect-square rounded-sm ${i === 8 ? 'bg-brand-accent/40' : 'bg-brand-surface/10'}`} />
+      ))}
+    </div>
+  </div>
+);
 
-const steps = [
-  { icon: Briefcase, title: 'Tell Us About Your Business', desc: 'We learn your brand voice, colors, and style to create content that feels authentically you' },
-  { icon: Eye, title: 'Approve AI Content', desc: 'Review and approve posts from your phone — one tap is all it takes' },
-  { icon: Sparkles, title: 'Watch It Grow', desc: 'Content posts automatically, engagement is handled, and your audience grows' },
-]
+const EditorMockup = ({ className = "" }) => (
+  <div className={`bg-brand-surface/20 rounded-2xl border border-brand-light/10 p-3 shadow-2xl backdrop-blur-md ${className}`}>
+    <div className="aspect-video bg-brand-bg/60 rounded-lg mb-3 flex items-center justify-center">
+      <Video className="text-brand-accent/40" size={32} />
+    </div>
+    <div className="space-y-2">
+      <div className="h-1.5 w-full bg-brand-light/10 rounded" />
+      <div className="h-1.5 w-2/3 bg-brand-light/10 rounded" />
+    </div>
+  </div>
+);
 
-export default function LandingPage() {
+// --- Sections ---
+
+const Navbar = () => {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-white">
-      {/* ─── NAV ─── */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-gray-100">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-6 h-16">
-          <Link href="/" className="flex items-center gap-2">
-            <Zap className="h-6 w-6 text-blink-primary" />
-            <span className="text-xl font-bold tracking-tight text-blink-dark font-heading">
-              Blink
-            </span>
-          </Link>
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
-            <a href="#how-it-works" className="hover:text-blink-primary transition-colors">How It Works</a>
-            <a href="#features" className="hover:text-blink-primary transition-colors">Features</a>
-            <a href="#pricing" className="hover:text-blink-primary transition-colors">Pricing</a>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="text-sm font-medium text-gray-600 hover:text-blink-dark transition-colors"
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/get-started"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blink-primary text-white text-sm font-semibold hover:bg-blink-primary/90 transition-colors shadow-md shadow-blink-primary/20"
-            >
-              Get Started
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
+    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 px-6 py-4 ${scrolled ? 'bg-brand-bg/60 backdrop-blur-xl border-b border-brand-light/5' : ''}`}>
+      <div className="max-w-7xl mx-auto flex justify-between items-center">
+        <div className="flex items-center gap-3 group cursor-pointer">
+          <div className="w-10 h-10 bg-brand-light text-brand-bg rounded-xl flex items-center justify-center font-bold text-xl group-hover:rotate-12 transition-transform">B</div>
+          <span className="text-xl font-display font-bold tracking-tighter">Blink</span>
         </div>
-      </nav>
+        <div className="hidden md:flex items-center gap-8 text-sm font-medium text-brand-secondary">
+          <a href="#features" className="hover:text-brand-light transition-colors">Features</a>
+          <a href="#workflow" className="hover:text-brand-light transition-colors">Workflow</a>
+          <a href="/login" className="hover:text-brand-light transition-colors">Sign In</a>
+          <a href="/get-started" className="bg-brand-light text-brand-bg px-6 py-2.5 rounded-full hover:bg-brand-accent transition-colors">Get Started</a>
+        </div>
+      </div>
+    </nav>
+  );
+};
 
-      {/* ─── HERO ─── */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blink-primary/5 via-white to-blink-secondary/5" />
-        <div className="relative max-w-6xl mx-auto px-6 py-24 md:py-32 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blink-primary/10 text-blink-primary text-sm font-medium mb-6">
-            <Zap className="h-4 w-4" />
-            AI-Powered Social Media Management
-          </div>
-          <h1 className="text-4xl md:text-6xl font-bold text-blink-dark font-heading leading-tight max-w-3xl mx-auto">
-            Your Social Media,{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blink-primary to-blink-secondary">
-              On Autopilot
-            </span>{' '}
-            ⚡
-          </h1>
-          <p className="mt-6 text-lg md:text-xl text-gray-500 max-w-2xl mx-auto leading-relaxed">
-            AI-powered content creation, scheduling, and engagement for your business.
-            Stop spending hours on social media — let Blink handle it.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
-            <Link
-              href="/get-started"
-              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-blink-primary text-white font-semibold text-base hover:bg-blink-primary/90 transition-all shadow-lg shadow-blink-primary/25 hover:shadow-xl hover:shadow-blink-primary/30 hover:-translate-y-0.5"
-            >
-              Get Started Free
-              <ArrowRight className="h-5 w-5" />
-            </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold text-base hover:border-blink-primary hover:text-blink-primary transition-colors"
-            >
-              See How It Works
-            </a>
-          </div>
-        </div>
-      </section>
+export default function App() {
+  const [email, setEmail] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const containerRef = useRef(null);
+  const { scrollYProgress } = useScroll({ target: containerRef });
 
-      {/* ─── SOCIAL PROOF ─── */}
-      <section className="border-y border-gray-100 bg-gray-50/50">
-        <div className="max-w-6xl mx-auto px-6 py-10 text-center">
-          <p className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-8">
-            Trusted by businesses in Nairobi
-          </p>
-          <div className="flex items-center justify-center gap-10 md:gap-16 flex-wrap opacity-40">
-            {['Brand A', 'Brand B', 'Brand C', 'Brand D', 'Brand E'].map((brand) => (
-              <div
-                key={brand}
-                className="text-lg font-bold text-gray-400 tracking-wide"
-              >
-                {brand}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+  const y1 = useTransform(scrollYProgress, [0, 1], [0, -100]);
+  const y2 = useTransform(scrollYProgress, [0, 1], [0, 100]);
 
-      {/* ─── HOW IT WORKS ─── */}
-      <section id="how-it-works" className="max-w-6xl mx-auto px-6 py-20 md:py-28">
-        <div className="text-center mb-14">
-          <h2 className="text-3xl md:text-4xl font-bold text-blink-dark font-heading">
-            How It Works
-          </h2>
-          <p className="mt-3 text-gray-500 max-w-lg mx-auto">
-            Three simple steps to autopilot your social media
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {steps.map((step, i) => (
-            <div
-              key={step.title}
-              className="relative rounded-2xl border border-gray-200 bg-white p-8 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all text-center"
-            >
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 h-8 w-8 rounded-full bg-blink-primary text-white text-sm font-bold flex items-center justify-center shadow-md shadow-blink-primary/25">
-                {i + 1}
-              </div>
-              <div className="mx-auto mb-4 h-14 w-14 rounded-xl bg-blink-primary/10 flex items-center justify-center mt-2">
-                <step.icon className="h-7 w-7 text-blink-primary" />
-              </div>
-              <h3 className="text-lg font-semibold text-blink-dark font-heading">{step.title}</h3>
-              <p className="mt-2 text-sm text-gray-500 leading-relaxed">{step.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+  const handleWaitlistSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from('waitlist')
+        .insert({ email: email.trim().toLowerCase() });
+      // Treat duplicate email (unique constraint) as a success
+      if (error && error.code !== '23505') {
+        console.error('Waitlist insert error:', error);
+        alert('Something went wrong. Please try again.');
+        return;
+      }
+      setSubmitted(true);
+    } catch (err) {
+      console.error('Waitlist error:', err);
+      alert('Something went wrong. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-      {/* ─── FEATURES ─── */}
-      <section id="features" className="bg-gray-50">
-        <div className="max-w-6xl mx-auto px-6 py-20 md:py-28">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold text-blink-dark font-heading">
-              Everything You Need
-            </h2>
-            <p className="mt-3 text-gray-500 max-w-lg mx-auto">
-              Powerful features to grow your social media presence effortlessly
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((f) => (
-              <div
-                key={f.title}
-                className="rounded-xl border border-gray-200 bg-white p-6 hover:shadow-md hover:border-blink-primary/20 transition-all"
-              >
-                <div className="h-11 w-11 rounded-lg bg-blink-primary/10 flex items-center justify-center mb-4">
-                  <f.icon className="h-5 w-5 text-blink-primary" />
-                </div>
-                <h3 className="text-base font-semibold text-blink-dark font-heading">{f.title}</h3>
-                <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+  return (
+    <div ref={containerRef} className="relative">
+      <Navbar />
 
-      {/* ─── PRICING ─── */}
-      <section id="pricing" className="max-w-6xl mx-auto px-6 py-20 md:py-28">
-        <div className="text-center mb-14">
-          <h2 className="text-3xl md:text-4xl font-bold text-blink-dark font-heading">
-            Simple, Transparent Pricing
-          </h2>
-          <p className="mt-3 text-gray-500 max-w-lg mx-auto">
-            Choose the plan that fits your business
-          </p>
+      {/* Hero: Lifestyle Background & Floating Elements */}
+      <section className="min-h-screen flex items-center pt-20 relative overflow-hidden">
+        {/* Lifestyle Background with Blur */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src="https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000"
+            alt="Workspace"
+            className="w-full h-full object-cover opacity-20 grayscale-[0.5]"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-brand-bg via-brand-bg/90 to-brand-bg" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {pricing.map((plan) => (
-            <div
-              key={plan.name}
-              className={`relative rounded-2xl border-2 p-8 transition-all ${plan.popular
-                  ? 'border-blink-primary bg-white shadow-xl shadow-blink-primary/10 scale-[1.02]'
-                  : 'border-gray-200 bg-white hover:shadow-md'
-                }`}
-            >
-              {plan.popular && (
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-blink-primary text-white text-xs font-bold shadow-md">
-                  Most Popular
-                </div>
-              )}
-              <h3 className="text-xl font-bold text-blink-dark font-heading">{plan.name}</h3>
-              <p className="text-sm text-gray-500 mt-1">{plan.desc}</p>
-              <div className="mt-6 flex items-baseline gap-1">
-                <span className="text-sm text-gray-500">KES</span>
-                <span className="text-4xl font-bold text-blink-dark">{plan.price}</span>
-                <span className="text-sm text-gray-500">/mo</span>
-              </div>
-              <ul className="mt-6 space-y-3">
-                {plan.features.map((feat) => (
-                  <li key={feat} className="flex items-center gap-2 text-sm text-gray-600">
-                    <CheckCircle className="h-4 w-4 text-blink-primary shrink-0" />
-                    {feat}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href="/get-started"
-                className={`mt-8 block text-center px-6 py-3 rounded-lg font-semibold text-sm transition-colors ${plan.popular
-                    ? 'bg-blink-primary text-white hover:bg-blink-primary/90 shadow-md shadow-blink-primary/20'
-                    : 'border-2 border-gray-200 text-blink-dark hover:border-blink-primary hover:text-blink-primary'
-                  }`}
-              >
-                Get Started
-              </Link>
-            </div>
-          ))}
-        </div>
-      </section>
 
-      {/* ─── FINAL CTA ─── */}
-      <section className="bg-gradient-to-r from-blink-primary to-blink-primary/80">
-        <div className="max-w-4xl mx-auto px-6 py-20 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white font-heading">
-            Ready to automate your social media?
-          </h2>
-          <p className="mt-4 text-lg text-white/80 max-w-xl mx-auto">
-            Join businesses across Nairobi that trust Blink to manage their social media presence
-          </p>
-          <Link
-            href="/get-started"
-            className="inline-flex items-center gap-2 mt-8 px-8 py-3.5 rounded-xl bg-white text-blink-primary font-semibold text-base hover:bg-gray-50 transition-colors shadow-lg"
+        <div className="max-w-7xl mx-auto px-6 w-full grid lg:grid-cols-[1.1fr_1fr] gap-12 items-center relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
           >
-            Get Started Free
-            <ArrowRight className="h-5 w-5" />
-          </Link>
+            <div className="inline-block px-4 py-1.5 rounded-full bg-brand-accent/10 border border-brand-accent/20 text-brand-accent text-xs font-bold mb-8 uppercase tracking-widest">
+              Next-Gen Social OS
+            </div>
+            <h1 className="text-6xl md:text-8xl font-bold mb-8 text-balance leading-[0.95]">
+              Create at the <br />
+              <span className="text-brand-accent italic">speed</span> of light.
+            </h1>
+            <p className="text-xl text-brand-secondary max-w-lg mb-12 leading-relaxed">
+              Blink is the first social media operating system designed for the modern creator. One workspace, zero friction.
+            </p>
+            <div className="flex flex-wrap gap-6">
+              <a href="#waitlist" className="bg-brand-light text-brand-bg px-10 py-5 rounded-2xl font-bold text-lg hover:bg-brand-accent transition-colors flex items-center gap-3 shadow-xl shadow-brand-accent/10">
+                Get Early Access <ArrowRight size={20} />
+              </a>
+              <div className="flex -space-x-3 items-center">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="w-10 h-10 rounded-full border-2 border-brand-bg bg-brand-surface/40 overflow-hidden">
+                    <img src={`https://picsum.photos/seed/user${i}/100/100`} alt="user" referrerPolicy="no-referrer" />
+                  </div>
+                ))}
+                <span className="pl-6 text-sm text-brand-secondary font-medium">Joined by 2k+ creators</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Floating Device & Elements inspired by the image */}
+          <div className="relative h-[700px] flex items-center justify-center">
+            {/* Main Floating Phone Mockup */}
+            <motion.div
+              animate={{ y: [0, -20, 0] }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              className="relative z-20 w-[300px] aspect-[9/19.5] bg-brand-bg rounded-[3rem] border-[8px] border-brand-surface/30 shadow-2xl overflow-hidden"
+            >
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-6 bg-brand-surface/30 rounded-b-2xl z-30" />
+              <div className="p-6 pt-12 h-full bg-brand-light/5 flex flex-col gap-4">
+                <div className="h-4 w-20 bg-brand-accent/20 rounded" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="aspect-square bg-brand-accent/10 rounded-xl" />
+                  <div className="aspect-square bg-brand-surface/20 rounded-xl" />
+                  <div className="aspect-square bg-brand-surface/10 rounded-xl" />
+                  <div className="aspect-square bg-brand-accent/30 rounded-xl" />
+                </div>
+                <div className="flex-1 bg-brand-surface/5 rounded-2xl border border-brand-light/5 p-3">
+                  <div className="h-2 w-full bg-brand-light/10 rounded mb-2" />
+                  <div className="h-2 w-2/3 bg-brand-light/10 rounded" />
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Floating Cards around the phone */}
+            <motion.div
+              animate={{ y: [0, 15, 0], x: [0, 5, 0] }}
+              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+              className="absolute top-20 -left-10 z-30 w-32 h-32 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-3 shadow-xl"
+            >
+              <div className="w-full h-full bg-brand-accent/20 rounded-lg flex items-center justify-center">
+                <ImageIcon className="text-brand-accent" size={24} />
+              </div>
+            </motion.div>
+
+            <motion.div
+              animate={{ y: [0, -15, 0], x: [0, -5, 0] }}
+              transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+              className="absolute top-40 -right-16 z-30 w-40 h-24 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 shadow-xl"
+            >
+              <div className="space-y-2">
+                <div className="h-2 w-1/2 bg-brand-accent/40 rounded" />
+                <div className="flex items-end gap-1 h-8">
+                  {[40, 70, 50, 90, 60].map((h, i) => (
+                    <div key={i} className="flex-1 bg-brand-accent/20 rounded-t-sm" style={{ height: `${h}%` }} />
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              animate={{ y: [0, 20, 0] }}
+              transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
+              className="absolute bottom-40 -left-20 z-30 w-24 h-24 bg-brand-accent rounded-2xl p-4 shadow-2xl flex items-center justify-center"
+            >
+              <Sparkles className="text-brand-bg" size={32} />
+            </motion.div>
+
+            <motion.div
+              animate={{ y: [0, -25, 0] }}
+              transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+              className="absolute bottom-20 -right-10 z-30 w-36 h-36 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 shadow-xl overflow-hidden"
+            >
+              <img src="https://picsum.photos/seed/content/200/200" alt="Content" className="w-full h-full object-cover rounded-lg opacity-60" referrerPolicy="no-referrer" />
+            </motion.div>
+
+            {/* Background Glows */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-accent/10 blur-[150px] rounded-full pointer-events-none" />
+          </div>
         </div>
       </section>
 
-      {/* ─── FOOTER ─── */}
-      <footer className="bg-blink-dark text-white/60">
-        <div className="max-w-6xl mx-auto px-6 py-12">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {/* Brand */}
-            <div className="col-span-2 md:col-span-1">
-              <div className="flex items-center gap-2 mb-4">
-                <Zap className="h-5 w-5 text-blink-secondary" />
-                <span className="text-lg font-bold text-white font-heading">Blink</span>
+      {/* Problem: Full Dark, Centered Contrast */}
+      <section className="py-40 bg-brand-bg relative">
+        <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="space-y-12"
+          >
+            <h2 className="text-4xl md:text-6xl font-bold">Stop tool-hopping. <br />Start <span className="text-brand-accent">building</span>.</h2>
+            <div className="grid md:grid-cols-3 gap-8 text-left">
+              {[
+                { icon: Layers, title: "Fragmented Data", desc: "Your assets are scattered across 10 different cloud drives." },
+                { icon: MousePointer2, title: "Manual Labor", desc: "Hours spent resizing and re-uploading the same video." },
+                { icon: Share2, title: "Silent Feeds", desc: "Inconsistency is killing your reach. Blink fixes that." }
+              ].map((item, i) => (
+                <div key={i} className="p-8 rounded-3xl bg-brand-surface/5 border border-brand-light/5">
+                  <item.icon className="text-brand-accent mb-6" size={28} />
+                  <h4 className="text-lg font-bold mb-3">{item.title}</h4>
+                  <p className="text-brand-secondary text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+        <div className="glow-accent top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-brand-surface/20" />
+      </section>
+
+      {/* Solution: Light Contrast Block, Asymmetrical */}
+      <section className="py-24 px-6">
+        <div className="max-w-7xl mx-auto bg-brand-light rounded-5xl p-12 md:p-24 text-brand-bg grid lg:grid-cols-[1fr_1.2fr] gap-20 items-center overflow-hidden relative">
+          <div className="relative z-10">
+            <h2 className="text-4xl md:text-6xl font-bold mb-8">The first truly <br />human-centric <br />social tool.</h2>
+            <p className="text-xl opacity-70 mb-12 leading-relaxed">
+              We didn't just build another scheduler. We built an engine that understands your brand and amplifies your creativity.
+            </p>
+            <div className="space-y-6">
+              {["AI that learns your voice", "Real-time collaboration", "Native video processing"].map((text, i) => (
+                <div key={i} className="flex items-center gap-4 font-bold text-lg">
+                  <div className="w-6 h-6 rounded-full bg-brand-bg text-brand-light flex items-center justify-center text-xs">✓</div>
+                  {text}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="relative">
+            <div className="bg-brand-bg rounded-3xl p-8 shadow-2xl transform rotate-3 translate-x-12">
+              <div className="flex gap-4 mb-8">
+                <div className="w-12 h-12 rounded-full bg-brand-surface/20" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-3 w-1/3 bg-brand-surface/20 rounded" />
+                  <div className="h-2 w-full bg-brand-surface/10 rounded" />
+                </div>
               </div>
-              <p className="text-sm leading-relaxed">
-                AI-powered social media management for businesses in Africa.
-              </p>
+              <div className="aspect-video bg-brand-surface/5 rounded-2xl border border-brand-light/5 flex items-center justify-center">
+                <Sparkles className="text-brand-accent opacity-40" size={48} />
+              </div>
             </div>
-
-            {/* Product */}
-            <div>
-              <h4 className="text-sm font-semibold text-white mb-3">Product</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
-                <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
-                <li><a href="#how-it-works" className="hover:text-white transition-colors">How It Works</a></li>
-              </ul>
-            </div>
-
-            {/* Company */}
-            <div>
-              <h4 className="text-sm font-semibold text-white mb-3">Company</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors">About</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Blog</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
-              </ul>
-            </div>
-
-            {/* Social */}
-            <div>
-              <h4 className="text-sm font-semibold text-white mb-3">Connect</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors">Instagram</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Twitter</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">LinkedIn</a></li>
-              </ul>
+            <div className="absolute -bottom-10 -left-10 bg-brand-accent p-6 rounded-2xl shadow-xl transform -rotate-6 text-brand-bg font-bold">
+              AI Generated Content
             </div>
           </div>
+        </div>
+      </section>
 
-          <div className="mt-10 pt-6 border-t border-white/10 text-center text-sm">
-            © 2026 Blink. All rights reserved.
+      {/* Features: Bento Grid Layout */}
+      <section id="features" className="py-40">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col md:flex-row justify-between items-end gap-8 mb-20">
+            <h2 className="text-5xl md:text-7xl font-bold">Built for <br />power users.</h2>
+            <p className="text-brand-secondary max-w-xs text-lg">Every feature is designed to eliminate a specific bottleneck in your workflow.</p>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Featured Large Card */}
+            <div className="md:col-span-8 bg-brand-surface/10 rounded-4xl p-12 border border-brand-light/5 relative overflow-hidden group">
+              <div className="relative z-10 max-w-md">
+                <Calendar className="text-brand-accent mb-8" size={40} />
+                <h3 className="text-3xl font-bold mb-4">Intelligent Calendar</h3>
+                <p className="text-brand-secondary leading-relaxed">The only calendar that suggests posting times based on your specific audience behavior, not generic industry averages.</p>
+              </div>
+              <div className="absolute top-12 -right-20 w-[400px] opacity-20 group-hover:opacity-40 transition-opacity">
+                <CalendarMockup />
+              </div>
+            </div>
+
+            {/* Small Card */}
+            <div className="md:col-span-4 bg-brand-accent rounded-4xl p-12 text-brand-bg">
+              <Zap className="mb-8" size={40} />
+              <h3 className="text-2xl font-bold mb-4">Auto-Pilot</h3>
+              <p className="opacity-70 text-sm leading-relaxed">Set your strategy once and let Blink handle the daily grind of posting and tagging.</p>
+            </div>
+
+            {/* Small Card */}
+            <div className="md:col-span-4 bg-brand-surface/20 rounded-4xl p-12 border border-brand-light/5">
+              <Palette className="text-brand-light mb-8" size={40} />
+              <h3 className="text-2xl font-bold mb-4">Brand DNA</h3>
+              <p className="text-brand-secondary text-sm leading-relaxed">Upload your brand guidelines and watch as Blink adapts every AI generation to your style.</p>
+            </div>
+
+            {/* Medium Card */}
+            <div className="md:col-span-8 bg-brand-bg rounded-4xl p-12 border border-brand-light/10 relative overflow-hidden">
+              <div className="flex flex-col md:flex-row gap-12 items-center">
+                <div className="flex-1">
+                  <Video className="text-brand-accent mb-8" size={40} />
+                  <h3 className="text-3xl font-bold mb-4">Native Video Studio</h3>
+                  <p className="text-brand-secondary leading-relaxed">Clip, caption, and color-grade your videos without ever downloading a file.</p>
+                </div>
+                <div className="w-full md:w-1/2">
+                  <EditorMockup />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Workflow: Staggered Layout */}
+      <section id="workflow" className="py-40 bg-brand-surface/5">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="space-y-32">
+            {[
+              { step: "01", title: "Define your Identity", desc: "Connect your accounts and upload your brand assets. Blink learns your voice in minutes.", align: "left" },
+              { step: "02", title: "Generate & Refine", desc: "Use our AI studio to create weeks of content in a single afternoon.", align: "right" },
+              { step: "03", title: "Schedule with Confidence", desc: "Our intelligent calendar ensures your content hits the feed when it matters most.", align: "left" }
+            ].map((item, i) => (
+              <div key={i} className={`flex flex-col md:flex-row gap-12 items-center ${item.align === 'right' ? 'md:flex-row-reverse' : ''}`}>
+                <div className="text-8xl font-bold text-brand-light/5 select-none">{item.step}</div>
+                <div className="flex-1">
+                  <h3 className="text-3xl md:text-4xl font-bold mb-6">{item.title}</h3>
+                  <p className="text-xl text-brand-secondary leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Waitlist: Minimal & Bold */}
+      <section id="waitlist" className="py-40 relative">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="bg-brand-light rounded-5xl p-12 md:p-32 text-brand-bg text-center relative overflow-hidden">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              className="relative z-10"
+            >
+              <h2 className="text-5xl md:text-8xl font-bold mb-12">Join the <br />inner circle.</h2>
+              <p className="text-xl opacity-60 mb-16 max-w-xl mx-auto">We're onboarding creators in small batches to ensure the best experience. Secure your spot today.</p>
+
+              <AnimatePresence mode="wait">
+                {!submitted ? (
+                  <motion.form
+                    key="form"
+                    onSubmit={handleWaitlistSubmit}
+                    className="flex flex-col sm:flex-row gap-4 max-w-2xl mx-auto p-2 bg-brand-bg rounded-3xl"
+                  >
+                    <input
+                      type="email"
+                      required
+                      disabled={isSubmitting}
+                      placeholder="Enter your email"
+                      className="flex-1 bg-transparent px-8 py-5 text-brand-light outline-none text-lg disabled:opacity-50"
+                      value={email}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="bg-brand-light text-brand-bg px-10 py-5 rounded-2xl font-bold text-lg hover:bg-brand-accent transition-colors disabled:opacity-70 flex items-center justify-center gap-2"
+                    >
+                      {isSubmitting ? (
+                        <><Loader2 className="animate-spin" size={20} /> Joining...</>
+                      ) : 'Get Started'}
+                    </button>
+                  </motion.form>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-3xl font-bold text-brand-bg"
+                  >
+                    You're on the list. <br />
+                    <span className="text-brand-surface opacity-50">Welcome to Blink.</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+
+            {/* Background shapes */}
+            <div className="absolute top-0 left-0 w-64 h-64 bg-brand-accent/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+            <div className="absolute bottom-0 right-0 w-96 h-96 bg-brand-surface/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-20 px-6 border-t border-brand-light/5">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-brand-light text-brand-bg rounded-lg flex items-center justify-center font-bold">B</div>
+            <span className="text-lg font-bold">Blink</span>
+          </div>
+          <div className="flex gap-12 text-sm text-brand-secondary font-medium">
+            <a href="#" className="hover:text-brand-light transition-colors">Twitter</a>
+            <a href="#" className="hover:text-brand-text transition-colors">Instagram</a>
+            <a href="#" className="hover:text-brand-text transition-colors">Privacy</a>
+          </div>
+          <p className="text-sm text-brand-secondary">© 2026 Blink AI. Crafted with intent.</p>
         </div>
       </footer>
     </div>
-  )
+  );
 }
