@@ -52,11 +52,11 @@ const platformConfig: Record<
   instagram: {
     label: "Instagram",
     emoji: "📸",
-    color: "bg-gradient-to-br from-purple-500 to-pink-500",
+    color: "bg-gradient-to-br from-pink-500 to-purple-600",
   },
-  tiktok: { label: "TikTok", emoji: "🎵", color: "bg-black" },
+  tiktok: { label: "TikTok", emoji: "🎵", color: "bg-black border border-gray-800" },
   facebook: { label: "Facebook", emoji: "📘", color: "bg-blue-600" },
-  twitter: { label: "Twitter / X", emoji: "🐦", color: "bg-gray-900" },
+  twitter: { label: "Twitter / X", emoji: "🐦", color: "bg-gray-900 border border-gray-800" },
   linkedin: { label: "LinkedIn", emoji: "💼", color: "bg-blue-700" },
   youtube: { label: "YouTube", emoji: "▶️", color: "bg-red-600" },
   pinterest: { label: "Pinterest", emoji: "📌", color: "bg-red-700" },
@@ -318,20 +318,21 @@ function SettingsContent() {
   if (loading)
     return (
       <div className="flex items-center justify-center py-32">
-        <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
+        <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
       </div>
     );
 
   return (
-    <div className="space-y-6 max-w-3xl pb-20">
-      <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 overflow-x-auto">
+    <div className="space-y-6 max-w-3xl pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* ── TAB SWITCHER ── */}
+      <div className="flex items-center gap-1 p-1.5 rounded-xl bg-[#191D23] border border-[#57707A]/30 overflow-x-auto shadow-inner">
         <button
           onClick={() => setMainTab("account")}
           className={cn(
-            "flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors flex-1 justify-center whitespace-nowrap",
+            "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex-1 justify-center whitespace-nowrap",
             mainTab === "account"
-              ? "bg-white text-blink-dark shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
+              : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
           )}
         >
           <User className="h-4 w-4" /> Account Settings
@@ -339,10 +340,10 @@ function SettingsContent() {
         <button
           onClick={() => setMainTab("ai-rules")}
           className={cn(
-            "flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors flex-1 justify-center whitespace-nowrap",
+            "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex-1 justify-center whitespace-nowrap",
             mainTab === "ai-rules"
-              ? "bg-white text-blink-dark shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
+              : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
           )}
         >
           <Bot className="h-4 w-4" /> AI Reply Rules
@@ -352,42 +353,44 @@ function SettingsContent() {
       {connectionMessage && (
         <div
           className={cn(
-            "px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-2",
+            "px-5 py-3.5 rounded-xl text-sm font-bold flex items-center gap-3 transition-all shadow-lg animate-in slide-in-from-top-4",
             connectionMessage.type === "success"
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              ? "bg-[#B3FF00]/10 text-[#B3FF00] border border-[#B3FF00]/20"
               : connectionMessage.type === "info"
-                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                : "bg-red-50 text-red-700 border border-red-200"
+                ? "bg-[#C5BAC4]/10 text-[#C5BAC4] border border-[#C5BAC4]/20"
+                : "bg-red-500/10 text-red-400 border border-red-500/20"
           )}
         >
           {connectionMessage.type === "success" ? (
-            <CheckCircle className="h-4 w-4 shrink-0" />
+            <CheckCircle className="h-5 w-5 shrink-0" />
           ) : connectionMessage.type === "info" ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin" />
           ) : (
-            <AlertCircle className="h-4 w-4 shrink-0" />
+            <AlertCircle className="h-5 w-5 shrink-0" />
           )}
-          <span className="leading-relaxed">{connectionMessage.text}</span>
+          <span className="leading-relaxed tracking-wide">{connectionMessage.text}</span>
           <button
             onClick={() => setConnectionMessage(null)}
-            className="ml-auto p-0.5 hover:bg-black/5 rounded-full"
+            className="ml-auto p-1 hover:bg-black/20 rounded-full transition-colors"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
       {mainTab === "account" && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-5 shadow-sm">
-            <div>
-              <h3 className="text-base font-semibold text-blink-dark">
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* USER PROFILE SECTION */}
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 space-y-6 shadow-lg">
+            <div className="border-b border-[#57707A]/20 pb-4">
+              <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                 User Profile
               </h3>
+              <p className="text-sm text-[#989DAA] mt-1">Manage your personal contact details.</p>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                   Full Name
                 </label>
                 <Input
@@ -399,10 +402,11 @@ function SettingsContent() {
                     })
                   }
                   placeholder="John Doe"
+                  className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                   Email Address
                 </label>
                 <Input
@@ -415,10 +419,11 @@ function SettingsContent() {
                   }
                   placeholder="john@example.com"
                   type="email"
+                  className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                   Phone Number
                 </label>
                 <Input
@@ -430,30 +435,34 @@ function SettingsContent() {
                     })
                   }
                   placeholder="+1 (555) 000-0000"
+                  className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                 />
               </div>
             </div>
-            <Button
-              onClick={handleSaveAccount}
-              disabled={savingAccount}
-              className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-1.5"
-            >
-              {savingAccount ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}{" "}
-              Save Account Settings
-            </Button>
+            <div className="pt-2">
+              <Button
+                onClick={handleSaveAccount}
+                disabled={savingAccount}
+                className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold gap-2 h-11 px-6 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all w-full sm:w-auto"
+              >
+                {savingAccount ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}{" "}
+                Save Account Settings
+              </Button>
+            </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-4 shadow-sm">
-            <div className="flex items-center justify-between">
+          {/* SOCIAL CONNECTIONS SECTION */}
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 space-y-6 shadow-lg">
+            <div className="flex items-center justify-between border-b border-[#57707A]/20 pb-4">
               <div>
-                <h3 className="text-base font-semibold text-blink-dark">
+                <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                   Social Connections
                 </h3>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <p className="text-sm text-[#989DAA] mt-1">
                   Link the social media accounts you want Blink to post to.
                 </p>
               </div>
@@ -462,22 +471,23 @@ function SettingsContent() {
                 size="sm"
                 onClick={handleManualSync}
                 disabled={syncing}
-                className="text-xs"
+                className="text-xs font-bold bg-[#191D23] border-[#57707A]/50 text-[#C5BAC4] hover:bg-[#C5BAC4]/10 hover:text-white transition-colors h-9"
               >
-                <RefreshCw className={cn("h-3 w-3 mr-1.5", syncing && "animate-spin")} />
+                <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", syncing && "animate-spin")} />
                 Sync Accounts
               </Button>
             </div>
 
             {socials.filter((s) => s.is_active).length === 0 ? (
-              <div className="text-center py-8 space-y-3">
-                <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto">
-                  <Share2Icon className="h-6 w-6 text-gray-400" />
+              <div className="text-center py-10 space-y-4">
+                <div className="h-16 w-16 rounded-full bg-[#191D23] border border-[#57707A]/30 flex items-center justify-center mx-auto shadow-inner">
+                  <Share2Icon className="h-6 w-6 text-[#57707A]" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-blink-dark">
+                  <p className="text-sm font-bold text-[#DEDCDC]">
                     No social accounts connected yet
                   </p>
+                  <p className="text-xs text-[#989DAA] mt-1">Connect a platform below to start automating your feed.</p>
                 </div>
               </div>
             ) : (
@@ -486,49 +496,50 @@ function SettingsContent() {
                   .filter((s) => s.is_active)
                   .map((account) => {
                     const displayPlatform = account.platform === 'x' ? 'twitter' : account.platform;
-                    const cfg = platformConfig[displayPlatform] || { label: account.platform, emoji: "🔗", color: "bg-gray-500" };
+                    const cfg = platformConfig[displayPlatform] || { label: account.platform, emoji: "🔗", color: "bg-[#191D23] border border-[#57707A]/40" };
 
                     return (
                       <div
                         key={account.id}
-                        className="flex items-center justify-between py-3 px-4 rounded-lg border border-emerald-100 bg-emerald-50/30"
+                        className="flex items-center justify-between py-3 px-4 rounded-xl border border-[#B3FF00]/30 bg-[#B3FF00]/5 shadow-sm"
                       >
                         <div className="flex items-center gap-3">
                           <div
                             className={cn(
-                              "h-9 w-9 rounded-lg flex items-center justify-center text-white text-base",
+                              "h-10 w-10 rounded-lg flex items-center justify-center text-white text-lg shadow-inner",
                               cfg.color
                             )}
                           >
                             {cfg.emoji}
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-blink-dark">
+                            <p className="text-sm font-bold text-[#DEDCDC]">
                               {cfg.label}
                             </p>
                             {account.account_name && (
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs font-medium text-[#989DAA]">
                                 @{account.account_name.replace("@", "")}
                               </p>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{" "}
+                        <div className="flex items-center gap-3">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-[#B3FF00]/30 bg-[#B3FF00]/10 text-[#B3FF00]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#B3FF00]" />{" "}
                             Connected
                           </span>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 text-xs text-gray-400 hover:text-red-600 hover:bg-red-50"
+                            className="h-8 w-8 p-0 text-[#57707A] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                             disabled={disconnecting === account.id}
                             onClick={() => disconnectPlatform(account.id)}
+                            title="Disconnect Account"
                           >
                             {disconnecting === account.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-4 w-4" />
                             )}
                           </Button>
                         </div>
@@ -538,11 +549,12 @@ function SettingsContent() {
               </div>
             )}
 
-            <details className="group border-t border-gray-100 pt-3 mt-3">
-              <summary className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-500 hover:text-blink-primary transition-colors py-2 select-none">
-                <Plus className="h-4 w-4" /> Connect more platforms
+            {/* Connect More Platforms Dropdown */}
+            <details className="group border-t border-[#57707A]/30 pt-4 mt-6">
+              <summary className="flex items-center gap-2 cursor-pointer text-sm font-bold text-[#C5BAC4] hover:text-white transition-colors py-2 select-none w-fit">
+                <Plus className="h-4 w-4 bg-[#C5BAC4]/10 rounded p-0.5" /> Connect more platforms
               </summary>
-              <div className="mt-3 space-y-2 pl-0">
+              <div className="mt-4 space-y-2.5 pl-0 animate-in slide-in-from-top-2">
                 {Object.entries(platformConfig).map(([key, cfg]) => {
                   const pfmKey = key === 'twitter' ? 'x' : key;
                   if (socials.some((s) => s.platform === pfmKey && s.is_active))
@@ -551,32 +563,32 @@ function SettingsContent() {
                   return (
                     <div
                       key={key}
-                      className="flex items-center justify-between py-3 px-4 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors"
+                      className="flex items-center justify-between py-3 px-4 rounded-xl border border-[#57707A]/40 bg-[#191D23] hover:border-[#C5BAC4]/50 transition-colors group/card"
                     >
                       <div className="flex items-center gap-3">
                         <div
                           className={cn(
-                            "h-9 w-9 rounded-lg flex items-center justify-center text-white text-base",
+                            "h-10 w-10 rounded-lg flex items-center justify-center text-white text-lg shadow-inner",
                             cfg.color
                           )}
                         >
                           {cfg.emoji}
                         </div>
-                        <p className="text-sm font-medium text-blink-dark">
+                        <p className="text-sm font-bold text-[#DEDCDC]">
                           {cfg.label}
                         </p>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-xs gap-1 h-8"
+                        className="text-xs font-bold gap-1.5 h-9 bg-[#2A2F38] border-[#57707A]/50 text-[#C5BAC4] hover:bg-[#C5BAC4] hover:text-[#191D23] transition-colors"
                         onClick={() => connectPlatform(key)}
                         disabled={connectingPlatform === key}
                       >
                         {connectingPlatform === key ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <ExternalLink className="h-3 w-3" />
+                          <ExternalLink className="h-3.5 w-3.5" />
                         )}
                         Connect
                       </Button>
@@ -590,15 +602,15 @@ function SettingsContent() {
       )}
 
       {mainTab === "ai-rules" && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex items-center gap-1 p-1.5 rounded-xl bg-[#191D23] border border-[#57707A]/30">
             <button
               onClick={() => setAiTab("dm")}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors flex-1 justify-center",
+                "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex-1 justify-center whitespace-nowrap",
                 aiTab === "dm"
-                  ? "bg-white text-blink-dark shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
+                  : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
               )}
             >
               <MessageSquare className="h-4 w-4" /> DM Auto-Reply
@@ -606,30 +618,36 @@ function SettingsContent() {
             <button
               onClick={() => setAiTab("comments")}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors flex-1 justify-center",
+                "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex-1 justify-center whitespace-nowrap",
                 aiTab === "comments"
-                  ? "bg-white text-blink-dark shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
+                  : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
               )}
             >
               <MessageCircle className="h-4 w-4" /> Comment Auto-Reply
             </button>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-6 text-center text-gray-500">
-            <Bot className="h-10 w-10 mx-auto text-gray-300 mb-3" />
-            <p>AI Auto-Reply configuration UI goes here.</p>
-            <p className="text-xs mt-2">
-              Make sure to configure your Brand Voice in the Brand Identity tab
-              first!
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-10 text-center shadow-lg flex flex-col items-center justify-center">
+            <div className="h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <Bot className="h-10 w-10 text-[#57707A]" />
+            </div>
+            <h3 className="text-lg font-bold text-[#DEDCDC] font-display mb-2">AI Auto-Reply Configuration</h3>
+            <p className="text-sm text-[#989DAA] max-w-sm">
+              Define the boundaries and custom topics for your AI assistant. UI goes here.
             </p>
+            <div className="mt-6 bg-[#C5BAC4]/5 border border-[#C5BAC4]/20 rounded-xl p-4 max-w-md">
+              <p className="text-xs font-medium text-[#C5BAC4] leading-relaxed">
+                💡 Make sure to configure your Brand Voice in the Brand Identity tab first so your assistant sounds like you!
+              </p>
+            </div>
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-end pt-2 border-t border-[#57707A]/30">
             <Button
               onClick={handleSaveAI}
               disabled={savingAI}
-              className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-1.5"
+              className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold gap-2 h-11 px-8 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all"
             >
               {savingAI ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -642,95 +660,99 @@ function SettingsContent() {
         </div>
       )}
 
+      {/* CONNECTION MODAL */}
       <Dialog
         open={connectModalOpen}
         onOpenChange={(open) => {
           setConnectModalOpen(open);
           if (!open) {
             setActiveAuthUrl(null);
-            setActivePlatform(null); // ✨ Clear platform state when modal closes
+            setActivePlatform(null);
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Connect Account</DialogTitle>
-            <DialogDescription>
-              Choose how you want to securely log in.
+        <DialogContent className="sm:max-w-lg bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-0 border-b border-transparent">
+            <DialogTitle className="text-xl font-display text-[#DEDCDC]">Connect Account</DialogTitle>
+            <DialogDescription className="text-[#989DAA] mt-1.5">
+              Choose how you want to securely log in to {activePlatform ? <span className="capitalize text-white font-bold">{activePlatform}</span> : 'this platform'}.
             </DialogDescription>
           </DialogHeader>
-          {activeAuthUrl ? (
-            <div className="flex flex-col space-y-4 py-2">
 
-              {/* ✨ NEW: Strict Meta Connection Instructions */}
-              {(activePlatform === 'instagram' || activePlatform === 'facebook') && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left space-y-2 mb-2 shadow-sm animate-in fade-in">
-                  <h4 className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
-                    <AlertCircle className="h-4 w-4" /> Required for Meta Login
-                  </h4>
-                  <ul className="text-xs text-amber-800 list-disc pl-4 space-y-1.5 leading-relaxed">
-                    <li>Your Instagram must be a <b>Professional or Business</b> account.</li>
-                    <li>It must be explicitly linked to a <b>Facebook Page</b>.</li>
-                    <li>During login, you <b>must check the boxes</b> granting access to BOTH your Facebook Page and the connected Instagram account.</li>
-                  </ul>
-                </div>
-              )}
+          <div className="p-6 bg-[#191D23]/50">
+            {activeAuthUrl ? (
+              <div className="flex flex-col space-y-5">
+                {/* ✨ NEW: Strict Meta Connection Instructions */}
+                {(activePlatform === 'instagram' || activePlatform === 'facebook') && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-left space-y-2.5 shadow-inner animate-in fade-in">
+                    <h4 className="text-sm font-bold text-amber-400 flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" /> Required for Meta Login
+                    </h4>
+                    <ul className="text-xs text-amber-500/80 list-disc pl-4 space-y-1.5 leading-relaxed font-medium">
+                      <li>Your Instagram must be a <b className="text-amber-400">Professional or Business</b> account.</li>
+                      <li>It must be explicitly linked to a <b className="text-amber-400">Facebook Page</b>.</li>
+                      <li>During login, you <b className="text-amber-400">must check the boxes</b> granting access to BOTH your Facebook Page and the connected Instagram account.</li>
+                    </ul>
+                  </div>
+                )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex flex-col items-center justify-center space-y-4 p-5 rounded-xl border border-gray-200 bg-white shadow-sm text-center">
-                  <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-                    <ExternalLink className="h-6 w-6" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col items-center justify-center space-y-4 p-6 rounded-xl border border-[#57707A]/40 bg-[#2A2F38] shadow-md text-center hover:border-[#C5BAC4]/50 transition-colors group">
+                    <div className="h-14 w-14 bg-[#191D23] border border-[#57707A]/40 text-[#C5BAC4] rounded-full flex items-center justify-center shadow-inner group-hover:bg-[#C5BAC4]/10 transition-colors">
+                      <ExternalLink className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-[#DEDCDC]">
+                        This Device
+                      </h4>
+                      <p className="text-xs text-[#989DAA] mt-1 px-2 leading-relaxed">
+                        Continue the secure login process in a new tab.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => (window.location.href = activeAuthUrl)}
+                      className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold shadow-lg"
+                    >
+                      Log In Here
+                    </Button>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-blink-dark">
-                      This Device
-                    </h4>
-                    <p className="text-xs text-gray-500 mt-1 px-2">
-                      Continue the login process in a new tab
-                    </p>
+
+                  <div className="flex flex-col items-center justify-center space-y-4 p-6 rounded-xl border border-[#57707A]/40 bg-[#2A2F38] shadow-md text-center">
+                    <div className="p-2 bg-white rounded-xl shadow-sm border border-white/20">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=0&data=${encodeURIComponent(
+                          activeAuthUrl
+                        )}`}
+                        alt="QR Code"
+                        className="h-28 w-28 object-contain rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-[#DEDCDC] flex items-center justify-center gap-1.5">
+                        <Smartphone className="h-4 w-4 text-[#57707A]" /> Use Phone
+                      </h4>
+                      <p className="text-xs text-[#989DAA] mt-1 leading-relaxed">
+                        Scan QR code to securely log in on your mobile device.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setConnectModalOpen(false);
+                        handleManualSync();
+                      }}
+                      className="text-[10px] text-[#C5BAC4] font-bold bg-[#191D23] border border-[#57707A]/40 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] px-4 py-2 rounded-full w-full transition-colors uppercase tracking-wider"
+                    >
+                      I finished logging in ↻
+                    </button>
                   </div>
-                  <Button
-                    onClick={() => (window.location.href = activeAuthUrl)}
-                    className="w-full bg-blink-primary hover:bg-blink-primary/90 text-white"
-                  >
-                    Log In Here
-                  </Button>
-                </div>
-                <div className="flex flex-col items-center justify-center space-y-4 p-5 rounded-xl border border-gray-200 bg-white shadow-sm text-center">
-                  <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-100">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=0&data=${encodeURIComponent(
-                        activeAuthUrl
-                      )}`}
-                      alt="QR Code"
-                      className="h-36 w-36 object-contain"
-                    />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-blink-dark flex items-center justify-center gap-1.5">
-                      <Smartphone className="h-4 w-4" /> Use Phone
-                    </h4>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Scan to securely log in on your mobile
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setConnectModalOpen(false);
-                      handleManualSync();
-                    }}
-                    className="text-[10px] text-amber-700 font-bold bg-amber-100 border border-amber-200 hover:bg-amber-200 px-3 py-1.5 rounded-full w-full transition-colors"
-                  >
-                    I finished logging in ↻
-                  </button>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -740,7 +762,7 @@ function SettingsContent() {
 // ✨ Wraps the component in Suspense to make it completely Vercel-safe!
 export default function SettingsPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-blink-primary" /></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center py-32"><Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" /></div>}>
       <SettingsContent />
     </Suspense>
   );

@@ -381,36 +381,39 @@ export default function GetStartedPage() {
 
   if (loading)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
+      <div className="min-h-screen flex items-center justify-center bg-[#191D23]">
+        <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
       </div>
     );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center mb-6">
-          <div className="h-12 w-12 bg-blink-primary rounded-xl flex items-center justify-center shadow-lg">
-            <Sparkles className="h-6 w-6 text-white" />
+    <div className="min-h-screen bg-[#191D23] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Subtle background glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#C5BAC4]/10 blur-[150px] rounded-full pointer-events-none" />
+
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
+        <div className="flex justify-center mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="h-14 w-14 bg-[#2A2F38] border border-[#57707A]/50 rounded-2xl flex items-center justify-center shadow-inner">
+            <Sparkles className="h-7 w-7 text-[#C5BAC4]" />
           </div>
         </div>
-        <h2 className="text-center text-3xl font-extrabold text-blink-dark font-heading">
+        <h2 className="text-center text-3xl font-bold text-[#DEDCDC] font-display animate-in fade-in duration-500 delay-100">
           {step === 1 ? "Create your account" : "Welcome to Blink"}
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
+        <p className="mt-3 text-center text-sm text-[#989DAA] animate-in fade-in duration-500 delay-200">
           {step === 1
             ? "Start automating your social media today."
             : "Let's set up your brand's AI brain."}
         </p>
 
         {step > 1 && (
-          <div className="flex justify-center gap-2 mt-6">
+          <div className="flex justify-center gap-3 mt-8 animate-in fade-in duration-500 delay-300">
             {[2, 3, 4].map((s) => (
               <div
                 key={s}
                 className={cn(
-                  "h-1.5 w-12 rounded-full transition-colors",
-                  step >= s ? "bg-blink-primary" : "bg-gray-200"
+                  "h-1.5 w-12 rounded-full transition-all duration-300",
+                  step >= s ? "bg-[#C5BAC4] shadow-[0_0_10px_rgba(197,186,196,0.5)]" : "bg-[#57707A]/30"
                 )}
               />
             ))}
@@ -418,8 +421,9 @@ export default function GetStartedPage() {
         )}
       </div>
 
-      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl">
-        <div className="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-xl relative z-10 animate-in fade-in zoom-in-95 duration-500 delay-300">
+        <div className="bg-[#2A2F38] py-8 px-6 shadow-2xl sm:rounded-3xl sm:px-12 border border-[#57707A]/30">
+
           {/* STEP 1: Sign Up */}
           {step === 1 && (
             <div>
@@ -427,18 +431,18 @@ export default function GetStartedPage() {
                 type="button"
                 variant="outline"
                 onClick={handleGoogleSignUp}
-                className="w-full h-11 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 mb-6 font-medium shadow-sm"
+                className="w-full h-12 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white hover:border-[#C5BAC4]/50 mb-8 font-bold shadow-sm rounded-xl transition-all"
               >
-                <GoogleIcon className="mr-2 h-5 w-5" />
+                <GoogleIcon className="mr-3 h-5 w-5" />
                 Sign up with Google
               </Button>
 
-              <div className="relative mb-6">
+              <div className="relative mb-8">
                 <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-gray-200" />
+                  <span className="w-full border-t border-[#57707A]/30" />
                 </div>
-                <div className="relative flex justify-center text-xs uppercase font-medium tracking-wide">
-                  <span className="bg-white px-3 text-gray-400">
+                <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest">
+                  <span className="bg-[#2A2F38] px-4 text-[#57707A]">
                     Or continue with email
                   </span>
                 </div>
@@ -446,37 +450,37 @@ export default function GetStartedPage() {
 
               <form onSubmit={handleSignUp} className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Email address
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Mail className="h-5 w-5 text-gray-400" />
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <Mail className="h-4 w-4 text-[#57707A]" />
                     </div>
                     <Input
                       type="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 h-11"
+                      className="pl-11 h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner text-sm"
                       placeholder="you@company.com"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Password
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Lock className="h-5 w-5 text-gray-400" />
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <Lock className="h-4 w-4 text-[#57707A]" />
                     </div>
                     <Input
                       type="password"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 h-11"
+                      className="pl-11 h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner text-sm"
                       placeholder="••••••••"
                       minLength={6}
                     />
@@ -485,7 +489,7 @@ export default function GetStartedPage() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full h-11 bg-blink-primary hover:bg-blink-primary/90 text-white mt-2 shadow-md"
+                  className="w-full h-12 bg-[#C5BAC4] hover:bg-white text-[#191D23] mt-4 shadow-lg shadow-[#C5BAC4]/10 font-bold rounded-xl text-base transition-all"
                 >
                   {loading ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -499,31 +503,31 @@ export default function GetStartedPage() {
 
           {/* STEP 2: Business Info */}
           {step === 2 && (
-            <div className="space-y-5">
-              <div className="flex items-center gap-3 border-b border-gray-100 pb-3 mb-2">
-                <Building2 className="h-5 w-5 text-blink-primary" />
-                <h3 className="text-lg font-medium text-blink-dark">
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="flex items-center gap-3 border-b border-[#57707A]/20 pb-4 mb-4">
+                <Building2 className="h-5 w-5 text-[#C5BAC4]" />
+                <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                   Business Details
                 </h3>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Your Name <span className="text-red-500">*</span>
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
+                    Your Name <span className="text-red-400">*</span>
                   </label>
                   <Input
                     required
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
                     placeholder="e.g. John Doe"
-                    className="h-11"
+                    className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Phone{" "}
-                    <span className="text-gray-400 font-normal">
+                    <span className="text-[#57707A] opacity-70 font-normal">
                       (Optional)
                     </span>
                   </label>
@@ -531,68 +535,68 @@ export default function GetStartedPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+254 700 000 000"
-                    className="h-11"
+                    className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Company Name <span className="text-red-500">*</span>
+                <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
+                  Company Name <span className="text-red-400">*</span>
                 </label>
                 <Input
                   required
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   placeholder="e.g. Lup Space"
-                  className="h-11"
+                  className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Industry
                   </label>
                   <Input
                     value={industry}
                     onChange={(e) => setIndustry(e.target.value)}
                     placeholder="e.g. Retail & E-Commerce"
-                    className="h-11"
+                    className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Website URL
                   </label>
                   <Input
                     value={websiteUrl}
                     onChange={(e) => setWebsiteUrl(e.target.value)}
                     placeholder="https://lupspace.com"
-                    className="h-11"
+                    className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Social Media URLs <span className="text-gray-400 font-normal">(One per line)</span>
+                <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
+                  Social Media URLs <span className="text-[#57707A] opacity-70 font-normal">(One per line)</span>
                 </label>
                 <Textarea
                   value={socialMediaUrls}
                   onChange={(e) => setSocialMediaUrls(e.target.value)}
                   placeholder="https://instagram.com/yourbrand&#10;https://twitter.com/yourbrand"
                   rows={2}
-                  className="resize-none"
+                  className="resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider mb-1.5">
                   What does your business do?{" "}
-                  <span className="text-red-500">*</span>
+                  <span className="text-red-400">*</span>
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-[10px] text-[#989DAA] mb-3">
                   This helps our AI generate highly accurate content for your
                   brand.
                 </p>
@@ -601,15 +605,15 @@ export default function GetStartedPage() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="e.g. Discover quality furniture that brings comfort and style to your home..."
-                  rows={3}
-                  className="resize-none"
+                  rows={4}
+                  className="resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
                 />
               </div>
 
               <Button
                 onClick={() => setStep(3)}
                 disabled={!companyName || !contactName || !description}
-                className="w-full h-11 bg-blink-primary hover:bg-blink-primary/90 text-white mt-4 shadow-md"
+                className="w-full h-12 bg-[#C5BAC4] hover:bg-white text-[#191D23] mt-4 shadow-lg shadow-[#C5BAC4]/10 font-bold rounded-xl transition-all"
               >
                 Next Step <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -618,25 +622,25 @@ export default function GetStartedPage() {
 
           {/* STEP 3: Visual Identity (Colors, Fonts, Logo) */}
           {step === 3 && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 border-b border-gray-100 pb-3 mb-2">
-                <Palette className="h-5 w-5 text-blink-primary" />
+            <div className="space-y-7 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="flex items-center gap-3 border-b border-[#57707A]/20 pb-4 mb-2">
+                <Palette className="h-5 w-5 text-[#C5BAC4]" />
                 <div>
-                  <h3 className="text-lg font-medium text-blink-dark">
+                  <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                     Visual Identity
                   </h3>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-[#989DAA]">
                     How should your content look?
                   </p>
                 </div>
               </div>
 
               {/* ✨ Visual Style Guide */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              <div>
+                <label className="block text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider mb-1.5">
                   Visual Style Guide
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-[10px] text-[#989DAA] mb-3">
                   Describe exactly how your images should look (e.g., modern, minimalist, soft neutrals with vibrant pops).
                 </p>
                 <Textarea
@@ -644,49 +648,33 @@ export default function GetStartedPage() {
                   onChange={(e) => setVisualStyleGuide(e.target.value)}
                   placeholder="Embrace a modern and minimalist aesthetic..."
                   rows={3}
-                  className="resize-none"
+                  className="resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
                 />
               </div>
 
               {/* 4 Colors */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-5">
                 {[
-                  {
-                    label: "Primary Color",
-                    val: primaryColor,
-                    set: setPrimaryColor,
-                  },
-                  {
-                    label: "Secondary Color",
-                    val: secondaryColor,
-                    set: setSecondaryColor,
-                  },
-                  {
-                    label: "Accent Color",
-                    val: accentColor,
-                    set: setAccentColor,
-                  },
-                  {
-                    label: "Additional Color",
-                    val: additionalColor,
-                    set: setAdditionalColor,
-                  },
+                  { label: "Primary Color", val: primaryColor, set: setPrimaryColor },
+                  { label: "Secondary Color", val: secondaryColor, set: setSecondaryColor },
+                  { label: "Accent Color", val: accentColor, set: setAccentColor },
+                  { label: "Additional Color", val: additionalColor, set: setAdditionalColor },
                 ].map((color, i) => (
                   <div key={i}>
-                    <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
+                    <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                       {color.label}
                     </label>
-                    <div className="flex items-center gap-2 p-1 border border-gray-200 rounded-lg hover:border-blink-primary/50 transition-colors bg-gray-50">
+                    <div className="flex items-center gap-2 p-1.5 border border-[#57707A]/40 rounded-xl bg-[#191D23] shadow-inner focus-within:ring-1 focus-within:ring-[#C5BAC4] transition-all">
                       <input
                         type="color"
                         value={color.val}
                         onChange={(e) => color.set(e.target.value)}
-                        className="h-8 w-10 rounded cursor-pointer bg-transparent border-0 p-0 ml-1"
+                        className="h-8 w-10 rounded cursor-pointer bg-transparent border-0 p-0 ml-1 color-picker-custom"
                       />
                       <Input
                         value={color.val}
                         onChange={(e) => color.set(e.target.value)}
-                        className="border-none shadow-none focus-visible:ring-0 px-1 uppercase font-mono text-sm h-8 bg-transparent"
+                        className="border-none shadow-none focus-visible:ring-0 px-2 uppercase font-mono text-sm h-8 bg-transparent text-[#DEDCDC]"
                       />
                     </div>
                   </div>
@@ -694,10 +682,10 @@ export default function GetStartedPage() {
               </div>
 
               {/* Fonts */}
-              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-3 border-t border-[#57707A]/20">
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Type className="h-3.5 w-3.5 text-gray-400" /> Primary Font
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Type className="h-3.5 w-3.5 text-[#C5BAC4]" /> Primary Font
                   </label>
                   {isCustomPrimaryFont ? (
                     <div className="flex gap-2">
@@ -705,7 +693,7 @@ export default function GetStartedPage() {
                         value={primaryFont}
                         onChange={(e) => setPrimaryFont(e.target.value)}
                         placeholder="Type font name..."
-                        className="h-9 text-sm"
+                        className="h-11 text-sm bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                       />
                       <Button
                         variant="outline"
@@ -714,7 +702,7 @@ export default function GetStartedPage() {
                           setIsCustomPrimaryFont(false);
                           setPrimaryFont("");
                         }}
-                        className="h-9 px-2 text-gray-500"
+                        className="h-11 px-3 bg-[#191D23] border-[#57707A]/40 text-[#57707A] hover:text-[#DEDCDC] hover:bg-[#57707A]/20 rounded-xl"
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -727,12 +715,12 @@ export default function GetStartedPage() {
                         else setPrimaryFont(v);
                       }}
                     >
-                      <SelectTrigger className="h-9 text-sm">
+                      <SelectTrigger className="h-11 text-sm bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] rounded-xl shadow-inner">
                         <SelectValue placeholder="Select font" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
                         {POPULAR_FONTS.map((f) => (
-                          <SelectItem key={f} value={f}>
+                          <SelectItem key={f} value={f} className="focus:bg-[#191D23] focus:text-white cursor-pointer">
                             {f}
                           </SelectItem>
                         ))}
@@ -741,9 +729,8 @@ export default function GetStartedPage() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Type className="h-3.5 w-3.5 text-gray-400" /> Secondary
-                    Font
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Type className="h-3.5 w-3.5 text-[#C5BAC4]" /> Secondary Font
                   </label>
                   {isCustomSecondaryFont ? (
                     <div className="flex gap-2">
@@ -751,7 +738,7 @@ export default function GetStartedPage() {
                         value={secondaryFont}
                         onChange={(e) => setSecondaryFont(e.target.value)}
                         placeholder="Type font name..."
-                        className="h-9 text-sm"
+                        className="h-11 text-sm bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                       />
                       <Button
                         variant="outline"
@@ -760,7 +747,7 @@ export default function GetStartedPage() {
                           setIsCustomSecondaryFont(false);
                           setSecondaryFont("");
                         }}
-                        className="h-9 px-2 text-gray-500"
+                        className="h-11 px-3 bg-[#191D23] border-[#57707A]/40 text-[#57707A] hover:text-[#DEDCDC] hover:bg-[#57707A]/20 rounded-xl"
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -773,12 +760,12 @@ export default function GetStartedPage() {
                         else setSecondaryFont(v);
                       }}
                     >
-                      <SelectTrigger className="h-9 text-sm">
+                      <SelectTrigger className="h-11 text-sm bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] rounded-xl shadow-inner">
                         <SelectValue placeholder="Select font" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
                         {POPULAR_FONTS.map((f) => (
-                          <SelectItem key={f} value={f}>
+                          <SelectItem key={f} value={f} className="focus:bg-[#191D23] focus:text-white cursor-pointer">
                             {f}
                           </SelectItem>
                         ))}
@@ -789,23 +776,24 @@ export default function GetStartedPage() {
               </div>
 
               {/* Logo */}
-              <div className="pt-2 border-t border-gray-100">
-                <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">
+              <div className="pt-3 border-t border-[#57707A]/20">
+                <label className="block text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider mb-3 mt-2">
                   Brand Logo
                 </label>
                 {logoPreview ? (
-                  <div className="relative h-28 w-full rounded-lg border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center group">
+                  <div className="relative h-32 w-full rounded-xl border border-[#57707A]/40 bg-[#191D23] shadow-inner overflow-hidden flex items-center justify-center group">
+                    <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none"></div>
                     <img
                       src={logoPreview}
                       alt="Logo"
-                      className="max-h-full max-w-full object-contain p-4"
+                      className="max-h-full max-w-full object-contain p-4 relative z-10"
                     />
                     <button
                       onClick={() => {
                         setLogoFile(null);
                         setLogoPreview(null);
                       }}
-                      className="absolute top-2 right-2 p-1.5 bg-white shadow-md text-red-500 rounded-full hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      className="absolute top-2 right-2 p-1.5 bg-red-500/90 text-white shadow-md rounded-full hover:bg-red-500 hover:scale-110 transition-all opacity-0 group-hover:opacity-100 z-20"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -814,10 +802,10 @@ export default function GetStartedPage() {
                   <label
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleLogoDrop}
-                    className="flex flex-col items-center justify-center h-28 w-full rounded-lg border-2 border-dashed border-gray-300 hover:border-blink-primary hover:bg-blink-primary/5 cursor-pointer transition-all"
+                    className="flex flex-col items-center justify-center h-32 w-full rounded-xl border-2 border-dashed border-[#57707A]/50 hover:border-[#C5BAC4]/50 bg-[#191D23]/50 hover:bg-[#57707A]/20 cursor-pointer transition-all"
                   >
-                    <Upload className="h-6 w-6 text-gray-400 mb-2" />
-                    <span className="text-sm font-medium text-gray-600">
+                    <Upload className="h-6 w-6 text-[#57707A] mb-2" />
+                    <span className="text-[10px] font-bold text-[#989DAA] uppercase tracking-widest">
                       Click or drag to upload logo
                     </span>
                     <input
@@ -830,17 +818,17 @@ export default function GetStartedPage() {
                 )}
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-6 border-t border-[#57707A]/20">
                 <Button
                   variant="outline"
                   onClick={() => setStep(2)}
-                  className="h-11 px-6"
+                  className="h-12 px-8 rounded-xl bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/30 hover:text-white font-bold"
                 >
                   Back
                 </Button>
                 <Button
                   onClick={() => setStep(4)}
-                  className="flex-1 h-11 bg-blink-primary hover:bg-blink-primary/90 text-white shadow-md"
+                  className="flex-1 h-12 bg-[#C5BAC4] hover:bg-white text-[#191D23] shadow-lg shadow-[#C5BAC4]/10 rounded-xl font-bold transition-all"
                 >
                   Next Step <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -850,25 +838,25 @@ export default function GetStartedPage() {
 
           {/* STEP 4: Brand Vibe & Assets */}
           {step === 4 && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 border-b border-gray-100 pb-3 mb-2">
-                <Smile className="h-5 w-5 text-blink-primary" />
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="flex items-center gap-3 border-b border-[#57707A]/20 pb-4 mb-2">
+                <Smile className="h-5 w-5 text-[#C5BAC4]" />
                 <div>
-                  <h3 className="text-lg font-medium text-blink-dark">
+                  <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                     Brand Vibe & Assets
                   </h3>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-[#989DAA]">
                     Help the AI understand your personality.
                   </p>
                 </div>
               </div>
 
               {/* ✨ Brand Voice */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              <div>
+                <label className="block text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider mb-1.5">
                   Brand Voice
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-[10px] text-[#989DAA] mb-3">
                   Describe how your brand speaks to its audience.
                 </p>
                 <Textarea
@@ -876,53 +864,55 @@ export default function GetStartedPage() {
                   onChange={(e) => setBrandVoice(e.target.value)}
                   placeholder="Friendly and approachable, fostering a sense of community..."
                   rows={3}
-                  className="resize-none"
+                  className="resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
                 />
               </div>
 
               {/* Tone Keywords */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider mb-3">
                   Brand Personality (Pick 2-4)
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {PREDEFINED_TONES.map((tone) => (
-                    <button
-                      key={tone}
-                      onClick={() => toggleTone(tone.toLowerCase())}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-xs font-medium transition-all border",
-                        toneKeywords.includes(tone.toLowerCase())
-                          ? "bg-blink-primary/10 border-blink-primary text-blink-primary"
-                          : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
-                      )}
-                    >
-                      {toneKeywords.includes(tone.toLowerCase()) && "✓ "}
-                      {tone}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap gap-2.5">
+                  {PREDEFINED_TONES.map((tone) => {
+                    const isActive = toneKeywords.includes(tone.toLowerCase());
+                    return (
+                      <button
+                        key={tone}
+                        onClick={() => toggleTone(tone.toLowerCase())}
+                        className={cn(
+                          "px-4 py-2 rounded-full text-[11px] font-bold transition-all border",
+                          isActive
+                            ? "bg-[#C5BAC4]/10 border-[#C5BAC4] text-[#C5BAC4] shadow-[0_0_10px_rgba(197,186,196,0.2)]"
+                            : "bg-[#191D23] border-[#57707A]/40 text-[#57707A] hover:border-[#57707A] hover:text-[#DEDCDC]"
+                        )}
+                      >
+                        {isActive && "✓ "}
+                        {tone}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
               {/* Additional Assets */}
-              <div className="pt-2 border-t border-gray-100 mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              <div className="pt-4 border-t border-[#57707A]/20 mt-4">
+                <label className="block text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider mb-1.5">
                   Visual References
                 </label>
-                <p className="text-xs text-gray-500 mb-3">
-                  Upload past posts, product photos, or inspiration to train the
-                  AI.
+                <p className="text-[10px] text-[#989DAA] mb-4">
+                  Upload past posts, product photos, or inspiration to train the AI.
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {assetPreviews.map((preview, i) => (
                     <div
                       key={i}
-                      className="relative aspect-square rounded-lg border border-gray-200 bg-gray-50 overflow-hidden group"
+                      className="relative aspect-square rounded-xl border border-[#57707A]/40 bg-[#191D23] shadow-inner overflow-hidden group"
                     >
                       <img
                         src={preview}
                         alt="asset"
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
                       />
                       <button
                         type="button"
@@ -934,19 +924,19 @@ export default function GetStartedPage() {
                             prev.filter((_, idx) => idx !== i)
                           );
                         }}
-                        className="absolute top-1 right-1 p-1 bg-white/90 text-red-500 rounded-full opacity-0 group-hover:opacity-100 shadow-sm hover:bg-red-50"
+                        className="absolute top-1.5 right-1.5 p-1.5 bg-red-500/90 text-white rounded-full opacity-0 group-hover:opacity-100 shadow-md hover:bg-red-500 hover:scale-110 transition-all z-20"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   ))}
                   <label
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleAssetDrop}
-                    className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-blink-primary hover:bg-blink-primary/5 flex flex-col items-center justify-center cursor-pointer transition-colors"
+                    className="aspect-square rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 flex flex-col items-center justify-center cursor-pointer transition-colors"
                   >
-                    <Plus className="h-6 w-6 text-gray-400 mb-1" />
-                    <span className="text-xs font-medium text-gray-600 text-center px-1">
+                    <Plus className="h-6 w-6 text-[#57707A] mb-2" />
+                    <span className="text-[10px] font-bold text-[#989DAA] uppercase tracking-widest text-center px-2">
                       Click or Drag
                     </span>
                     <input
@@ -960,18 +950,18 @@ export default function GetStartedPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-6 border-t border-gray-100 mt-6">
+              <div className="flex gap-3 pt-8 border-t border-[#57707A]/20 mt-8">
                 <Button
                   variant="outline"
                   onClick={() => setStep(3)}
-                  className="h-11 px-6"
+                  className="h-12 px-8 rounded-xl bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/30 hover:text-white font-bold"
                 >
                   Back
                 </Button>
                 <Button
                   onClick={handleCompleteSetup}
                   disabled={saving}
-                  className="flex-1 h-11 bg-blink-primary hover:bg-blink-primary/90 text-white shadow-md"
+                  className="flex-1 h-12 bg-[#C5BAC4] hover:bg-white text-[#191D23] shadow-lg shadow-[#C5BAC4]/10 rounded-xl font-bold transition-all disabled:opacity-50"
                 >
                   {saving ? (
                     <>

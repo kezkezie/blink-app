@@ -52,35 +52,35 @@ export function TopBar({ pageTitle }: TopBarProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-6 bg-white border-b border-gray-200 shadow-sm">
+      <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-6 bg-[#191D23]/90 backdrop-blur-md border-b border-[#57707A]/30 shadow-sm transition-all">
         {/* Page Title */}
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-blink-dark font-heading">
+          <h1 className="text-xl font-bold text-[#DEDCDC] font-display tracking-wide">
             {pageTitle}
           </h1>
         </div>
 
         {/* Global Generation Indicators (Centered) */}
-        <div className="flex-1 flex justify-center gap-2">
+        <div className="flex-1 flex justify-center gap-3">
           {isGenerating && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full text-blue-700 text-xs font-semibold shadow-sm animate-pulse">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#2A2F38] border border-blue-500/30 rounded-full text-blue-400 text-xs font-bold shadow-md animate-pulse">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
               <span className="hidden sm:inline">Generating Images...</span>
               <Sparkles className="h-3 w-3 text-blue-400 sm:ml-1" />
             </div>
           )}
 
           {isExtracting && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-full text-purple-700 text-xs font-semibold shadow-sm animate-pulse">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-600" />
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#2A2F38] border border-purple-500/30 rounded-full text-purple-400 text-xs font-bold shadow-md animate-pulse">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />
               <span className="hidden sm:inline">Extracting Brand DNA...</span>
               <Wand2 className="h-3 w-3 text-purple-400 sm:ml-1" />
             </div>
           )}
 
           {isAnalyzing && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-700 text-xs font-semibold shadow-sm animate-pulse">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#2A2F38] border border-emerald-500/30 rounded-full text-emerald-400 text-xs font-bold shadow-md animate-pulse">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
               <span className="hidden sm:inline">Analyzing Media...</span>
               <Search className="h-3 w-3 text-emerald-400 sm:ml-1" />
             </div>
@@ -88,47 +88,47 @@ export function TopBar({ pageTitle }: TopBarProps) {
         </div>
 
         {/* Right Actions */}
-        <div className="flex-1 flex items-center justify-end gap-3">
+        <div className="flex-1 flex items-center justify-end gap-4">
           {/* Refine AI Brain Button */}
           <button
             onClick={() => setBrandModalOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200 shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#191D23] bg-[#C5BAC4] hover:bg-white rounded-lg transition-all shadow-md shadow-[#C5BAC4]/10"
           >
             <Brain className="h-4 w-4" />
-            <span className="hidden md:inline">Refine AI Brain</span>
+            <span className="hidden md:inline uppercase tracking-wider">Refine AI Brain</span>
           </button>
 
           {/* Notification Bell */}
           <Button
             variant="ghost"
             size="icon"
-            className="relative text-gray-500 hover:text-blink-dark"
+            className="relative text-[#57707A] hover:text-[#C5BAC4] hover:bg-[#2A2F38] transition-colors"
           >
             <Bell className="h-5 w-5" />
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blink-secondary" />
+            <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-[#B3FF00] border-2 border-[#191D23] shadow-[0_0_8px_rgba(179,255,0,0.8)]" />
           </Button>
 
           {/* User Avatar Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+              <Button variant="ghost" className="relative h-9 w-9 rounded-full p-0 ring-2 ring-transparent hover:ring-[#C5BAC4]/50 transition-all">
                 <Avatar className="h-9 w-9">
-                  <AvatarFallback className="bg-blink-primary text-white text-sm font-semibold">
+                  <AvatarFallback className="bg-[#2A2F38] text-[#C5BAC4] border border-[#57707A]/50 text-sm font-bold font-display">
                     K
                   </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-48 bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-xl">
               <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">Kez</p>
-                <p className="text-xs text-muted-foreground">Admin</p>
+                <p className="text-sm font-bold text-[#DEDCDC]">Kez</p>
+                <p className="text-xs text-[#989DAA] font-medium">Admin</p>
               </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem>Settings</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600">
+              <DropdownMenuSeparator className="bg-[#57707A]/30" />
+              <DropdownMenuItem className="focus:bg-[#191D23] focus:text-[#DEDCDC] cursor-pointer">Profile</DropdownMenuItem>
+              <DropdownMenuItem className="focus:bg-[#191D23] focus:text-[#DEDCDC] cursor-pointer">Settings</DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-[#57707A]/30" />
+              <DropdownMenuItem className="text-red-400 focus:bg-red-500/10 focus:text-red-300 font-bold cursor-pointer">
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>

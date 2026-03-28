@@ -384,36 +384,36 @@ export default function BrandIdentityPage() {
   if (loading)
     return (
       <div className="flex items-center justify-center py-32">
-        <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
+        <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
       </div>
     );
 
   return (
-    <div className="space-y-6 max-w-3xl pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 max-w-4xl pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <Dialog open={showSetupPopup} onOpenChange={setShowSetupPopup}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
           <DialogHeader>
-            <div className="mx-auto h-12 w-12 bg-purple-100 rounded-full flex items-center justify-center mb-4">
-              <Palette className="h-6 w-6 text-purple-600" />
+            <div className="mx-auto h-16 w-16 bg-[#191D23] border border-[#C5BAC4]/30 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <Palette className="h-8 w-8 text-[#C5BAC4]" />
             </div>
-            <DialogTitle className="text-center text-xl">
+            <DialogTitle className="text-center text-xl font-display text-[#DEDCDC]">
               Let's set up your Brand!
             </DialogTitle>
-            <DialogDescription className="text-center pt-2 text-gray-600 leading-relaxed">
+            <DialogDescription className="text-center pt-3 text-[#989DAA] leading-relaxed">
               Your AI currently doesn't know anything about your brand identity.
               Without this, generated posts and images will look generic and
               off-brand.
               <br />
               <br />
               Please fill in your details below, or use the{" "}
-              <b>Auto-Extract Brand DNA</b> button to have the AI magically
+              <b className="text-[#C5BAC4]">Auto-Extract Brand DNA</b> button to have the AI magically
               build it for you using your website and socials!
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="sm:justify-center mt-2">
+          <DialogFooter className="sm:justify-center mt-4 border-t border-[#57707A]/30 pt-4">
             <Button
               onClick={() => setShowSetupPopup(false)}
-              className="bg-blink-primary hover:bg-blink-primary/90 text-white w-full"
+              className="bg-[#C5BAC4] hover:bg-white text-[#191D23] w-full font-bold shadow-lg shadow-[#C5BAC4]/10 transition-colors"
             >
               Let's Build It
             </Button>
@@ -424,34 +424,37 @@ export default function BrandIdentityPage() {
       {connectionMessage && (
         <div
           className={cn(
-            "px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-2",
+            "px-5 py-3.5 rounded-xl text-sm font-bold flex items-center gap-3 transition-all shadow-lg animate-in slide-in-from-top-4",
             connectionMessage.type === "success"
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-              : "bg-red-50 text-red-700 border border-red-200"
+              ? "bg-[#B3FF00]/10 text-[#B3FF00] border border-[#B3FF00]/20"
+              : "bg-red-500/10 text-red-400 border border-red-500/20"
           )}
         >
           {connectionMessage.type === "success" ? (
-            <CheckCircle className="h-4 w-4 shrink-0" />
+            <CheckCircle className="h-5 w-5 shrink-0" />
           ) : (
-            <AlertCircle className="h-4 w-4 shrink-0" />
+            <AlertCircle className="h-5 w-5 shrink-0" />
           )}
-          <span className="leading-relaxed">{connectionMessage.text}</span>
+          <span className="leading-relaxed tracking-wide">{connectionMessage.text}</span>
           <button
             onClick={() => setConnectionMessage(null)}
-            className="ml-auto p-0.5 hover:bg-black/5 rounded-full"
+            className="ml-auto p-1 hover:bg-black/20 rounded-full transition-colors"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
       {/* Global Action Bar */}
-      <div className="bg-gradient-to-r from-purple-50 to-blink-primary/5 border border-purple-200 rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
-        <div>
-          <h3 className="text-base font-bold text-purple-900 flex items-center gap-2">
-            <Wand2 className="h-5 w-5" /> Auto-Extract Brand DNA
+      <div className="bg-[#2A2F38] border border-[#C5BAC4]/30 rounded-2xl p-6 md:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden">
+        {/* Subtle background glow */}
+        <div className="absolute top-1/2 left-0 -translate-y-1/2 w-64 h-64 bg-[#C5BAC4]/10 blur-[80px] rounded-full pointer-events-none" />
+
+        <div className="relative z-10">
+          <h3 className="text-xl font-bold text-[#DEDCDC] flex items-center gap-3 font-display">
+            <Wand2 className="h-6 w-6 text-[#C5BAC4]" /> Auto-Extract Brand DNA
           </h3>
-          <p className="text-sm text-purple-700/80 mt-1 max-w-md">
+          <p className="text-sm text-[#989DAA] mt-2 max-w-md leading-relaxed">
             Let our AI scrape your website and provided social media links to
             auto-fill your entire profile below.
           </p>
@@ -459,73 +462,73 @@ export default function BrandIdentityPage() {
         <Button
           onClick={handleExtractDNA}
           disabled={extractingDNA}
-          className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white shadow-md"
+          className="w-full sm:w-auto bg-[#C5BAC4] hover:bg-white text-[#191D23] shadow-lg shadow-[#C5BAC4]/20 font-bold h-12 px-8 rounded-xl transition-colors relative z-10"
         >
           {extractingDNA ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
           ) : (
-            <Sparkles className="h-4 w-4 mr-2" />
+            <Sparkles className="h-5 w-5 mr-2" />
           )}{" "}
           {extractingDNA ? "Analyzing..." : "Extract DNA"}
         </Button>
       </div>
 
       {/* 🔹 THE NEW TAB NAVIGATION 🔹 */}
-      <div className="flex bg-gray-100/80 p-1.5 rounded-xl shadow-inner overflow-x-auto">
+      <div className="flex bg-[#191D23] border border-[#57707A]/30 p-1.5 rounded-xl shadow-inner overflow-x-auto">
         <button
           onClick={() => setActiveTab("business")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200",
+            "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg text-sm font-bold transition-all duration-200 whitespace-nowrap",
             activeTab === "business"
-              ? "bg-white text-blink-primary shadow-sm ring-1 ring-black/5"
-              : "text-gray-500 hover:text-gray-800 hover:bg-black/5"
+              ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
+              : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
           )}
         >
           <Briefcase className="h-4 w-4" />{" "}
-          <span className="whitespace-nowrap">Business Profile</span>
+          <span>Business Profile</span>
         </button>
         <button
           onClick={() => setActiveTab("visual")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200",
+            "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg text-sm font-bold transition-all duration-200 whitespace-nowrap",
             activeTab === "visual"
-              ? "bg-white text-blink-primary shadow-sm ring-1 ring-black/5"
-              : "text-gray-500 hover:text-gray-800 hover:bg-black/5"
+              ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
+              : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
           )}
         >
           <Palette className="h-4 w-4" />{" "}
-          <span className="whitespace-nowrap">Visual Identity</span>
+          <span>Visual Identity</span>
         </button>
         <button
           onClick={() => setActiveTab("voice")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200",
+            "flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg text-sm font-bold transition-all duration-200 whitespace-nowrap",
             activeTab === "voice"
-              ? "bg-white text-blink-primary shadow-sm ring-1 ring-black/5"
-              : "text-gray-500 hover:text-gray-800 hover:bg-black/5"
+              ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
+              : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
           )}
         >
           <Megaphone className="h-4 w-4" />{" "}
-          <span className="whitespace-nowrap">Voice & Rules</span>
+          <span>Voice & Rules</span>
         </button>
       </div>
 
       {/* 🔹 TAB 1: BUSINESS PROFILE 🔹 */}
       {activeTab === "business" && (
         <div className="space-y-6 animate-in slide-in-from-left-4 fade-in duration-300">
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div>
-              <h3 className="text-base font-semibold text-blink-dark">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 shadow-lg">
+            <div className="border-b border-[#57707A]/20 pb-4 mb-6">
+              <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                 The Basics
               </h3>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-[#989DAA] mt-1">
                 The core context the AI uses to understand who you are.
               </p>
             </div>
-            <div className="space-y-4 mt-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Company Name
                   </label>
                   <Input
@@ -537,10 +540,11 @@ export default function BrandIdentityPage() {
                       })
                     }
                     placeholder="e.g. Lup Space"
+                    className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Industry Context
                   </label>
                   <Input
@@ -552,11 +556,12 @@ export default function BrandIdentityPage() {
                       })
                     }
                     placeholder="e.g. Retail & E-Commerce"
+                    className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                   Tell us about your business
                 </label>
                 <Textarea
@@ -569,24 +574,24 @@ export default function BrandIdentityPage() {
                   }
                   rows={4}
                   placeholder="What do you sell? Who are your customers? What makes you unique?"
-                  className="text-sm resize-none"
+                  className="text-sm resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
                 />
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div>
-              <h3 className="text-base font-semibold text-blink-dark">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 shadow-lg">
+            <div className="border-b border-[#57707A]/20 pb-4 mb-6">
+              <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                 Extraction Links
               </h3>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-[#989DAA] mt-1">
                 Provide links for the AI to study when you click "Extract DNA".
               </p>
             </div>
-            <div className="space-y-4 mt-5">
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                   Website URL
                 </label>
                 <Input
@@ -598,10 +603,11 @@ export default function BrandIdentityPage() {
                     })
                   }
                   placeholder="https://yourbusiness.com"
+                  className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                   Social Media URLs (One per line)
                 </label>
                 <Textarea
@@ -614,7 +620,7 @@ export default function BrandIdentityPage() {
                   }
                   rows={3}
                   placeholder="https://instagram.com/yourbrand&#10;https://twitter.com/yourbrand"
-                  className="text-sm resize-none"
+                  className="text-sm resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
                 />
               </div>
             </div>
@@ -625,13 +631,13 @@ export default function BrandIdentityPage() {
       {/* 🔹 TAB 2: VISUAL IDENTITY 🔹 */}
       {activeTab === "visual" && (
         <div className="space-y-6 animate-in slide-in-from-left-4 fade-in duration-300">
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex justify-between items-end mb-5">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 shadow-lg">
+            <div className="flex justify-between items-end mb-6 border-b border-[#57707A]/20 pb-4">
               <div>
-                <h3 className="text-base font-semibold text-blink-dark">
+                <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                   Visual Style Guide
                 </h3>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <p className="text-sm text-[#989DAA] mt-1">
                   Describe exactly how your images should look.
                 </p>
               </div>
@@ -644,12 +650,12 @@ export default function BrandIdentityPage() {
                     )
                   }
                   disabled={suggestingField === "visual_style_guide"}
-                  className="text-xs text-purple-600 hover:bg-purple-50 font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 transition-colors"
+                  className="text-xs text-[#C5BAC4] hover:text-white hover:bg-[#C5BAC4]/20 font-bold flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#C5BAC4]/30 transition-colors shadow-sm bg-[#C5BAC4]/10"
                 >
                   {suggestingField === "visual_style_guide" ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Sparkles className="h-3 w-3" />
+                    <Sparkles className="h-3.5 w-3.5" />
                   )}{" "}
                   AI Suggest
                 </button>
@@ -665,165 +671,92 @@ export default function BrandIdentityPage() {
               }
               rows={5}
               placeholder="e.g., We use moody, cinematic lighting..."
-              className="text-sm resize-none"
+              className="text-sm resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
             />
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="mb-5">
-              <h3 className="text-base font-semibold text-blink-dark">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 shadow-lg">
+            <div className="border-b border-[#57707A]/20 pb-4 mb-6">
+              <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                 Brand Colors
               </h3>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-[#989DAA] mt-1">
                 The exact HEX codes used in your branding.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-                  Primary
-                </label>
-                <div className="flex items-center gap-2 p-1 border border-gray-200 rounded-lg">
-                  <input
-                    type="color"
-                    value={brandProfile.primary_color}
-                    onChange={(e) =>
-                      setBrandProfile({
-                        ...brandProfile,
-                        primary_color: e.target.value,
-                      })
-                    }
-                    className="h-8 w-10 rounded cursor-pointer bg-transparent border-0 p-0 ml-1"
-                  />
-                  <Input
-                    value={brandProfile.primary_color}
-                    onChange={(e) =>
-                      setBrandProfile({
-                        ...brandProfile,
-                        primary_color: e.target.value,
-                      })
-                    }
-                    className="border-none shadow-none focus-visible:ring-0 px-1 uppercase font-mono text-sm h-8 bg-transparent"
-                  />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                { label: "Primary", key: "primary_color" as const, val: brandProfile.primary_color },
+                { label: "Secondary", key: "secondary_color" as const, val: brandProfile.secondary_color },
+                { label: "Accent", key: "accent_color" as const, val: brandProfile.accent_color },
+                { label: "Additional", key: "additional_colors" as const, val: brandProfile.additional_colors[0] || "#6B7280", isArray: true },
+              ].map((item, idx) => (
+                <div key={idx}>
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
+                    {item.label}
+                  </label>
+                  <div className="flex items-center gap-2 p-1.5 border border-[#57707A]/40 bg-[#191D23] rounded-xl shadow-inner focus-within:ring-1 focus-within:ring-[#C5BAC4]">
+                    <input
+                      type="color"
+                      value={item.val}
+                      onChange={(e) => {
+                        if (item.isArray) {
+                          setBrandProfile({ ...brandProfile, additional_colors: [e.target.value] });
+                        } else {
+                          setBrandProfile({ ...brandProfile, [item.key]: e.target.value });
+                        }
+                      }}
+                      className="h-9 w-10 rounded-lg cursor-pointer bg-transparent border-0 p-0 ml-1 color-picker-custom"
+                    />
+                    <Input
+                      value={item.val}
+                      onChange={(e) => {
+                        if (item.isArray) {
+                          setBrandProfile({ ...brandProfile, additional_colors: [e.target.value] });
+                        } else {
+                          setBrandProfile({ ...brandProfile, [item.key]: e.target.value });
+                        }
+                      }}
+                      className="border-none shadow-none focus-visible:ring-0 px-2 uppercase font-mono text-sm h-9 bg-transparent text-[#DEDCDC]"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-                  Secondary
-                </label>
-                <div className="flex items-center gap-2 p-1 border border-gray-200 rounded-lg">
-                  <input
-                    type="color"
-                    value={brandProfile.secondary_color}
-                    onChange={(e) =>
-                      setBrandProfile({
-                        ...brandProfile,
-                        secondary_color: e.target.value,
-                      })
-                    }
-                    className="h-8 w-10 rounded cursor-pointer bg-transparent border-0 p-0 ml-1"
-                  />
-                  <Input
-                    value={brandProfile.secondary_color}
-                    onChange={(e) =>
-                      setBrandProfile({
-                        ...brandProfile,
-                        secondary_color: e.target.value,
-                      })
-                    }
-                    className="border-none shadow-none focus-visible:ring-0 px-1 uppercase font-mono text-sm h-8 bg-transparent"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-                  Accent
-                </label>
-                <div className="flex items-center gap-2 p-1 border border-gray-200 rounded-lg">
-                  <input
-                    type="color"
-                    value={brandProfile.accent_color}
-                    onChange={(e) =>
-                      setBrandProfile({
-                        ...brandProfile,
-                        accent_color: e.target.value,
-                      })
-                    }
-                    className="h-8 w-10 rounded cursor-pointer bg-transparent border-0 p-0 ml-1"
-                  />
-                  <Input
-                    value={brandProfile.accent_color}
-                    onChange={(e) =>
-                      setBrandProfile({
-                        ...brandProfile,
-                        accent_color: e.target.value,
-                      })
-                    }
-                    className="border-none shadow-none focus-visible:ring-0 px-1 uppercase font-mono text-sm h-8 bg-transparent"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-                  Additional
-                </label>
-                <div className="flex items-center gap-2 p-1 border border-gray-200 rounded-lg">
-                  <input
-                    type="color"
-                    value={brandProfile.additional_colors[0] || "#6B7280"}
-                    onChange={(e) =>
-                      setBrandProfile({
-                        ...brandProfile,
-                        additional_colors: [e.target.value],
-                      })
-                    }
-                    className="h-8 w-10 rounded cursor-pointer bg-transparent border-0 p-0 ml-1"
-                  />
-                  <Input
-                    value={brandProfile.additional_colors[0] || "#6B7280"}
-                    onChange={(e) =>
-                      setBrandProfile({
-                        ...brandProfile,
-                        additional_colors: [e.target.value],
-                      })
-                    }
-                    className="border-none shadow-none focus-visible:ring-0 px-1 uppercase font-mono text-sm h-8 bg-transparent"
-                  />
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="mb-4">
-                <h3 className="text-base font-semibold text-blink-dark">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 shadow-lg flex flex-col">
+              <div className="border-b border-[#57707A]/20 pb-4 mb-6">
+                <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                   Brand Logo
                 </h3>
+                <p className="text-sm text-[#989DAA] mt-1">Upload a high-res PNG.</p>
               </div>
-              <div className="w-full">
+              <div className="w-full flex-1">
                 {brandProfile.logo_url ? (
-                  <div className="relative aspect-video rounded-lg border border-gray-200 bg-gray-50 overflow-hidden group">
+                  <div className="relative aspect-video rounded-xl border border-[#57707A]/40 bg-[#191D23] shadow-inner overflow-hidden group">
+                    <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none"></div>
                     <img
                       src={brandProfile.logo_url}
                       alt="Company Logo"
-                      className="w-full h-full object-contain p-2"
+                      className="w-full h-full object-contain p-4 relative z-10"
                     />
                     <button
                       onClick={removeLogo}
-                      className="absolute top-1.5 right-1.5 p-1.5 bg-white/90 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-50"
+                      className="absolute top-2 right-2 p-1.5 bg-red-500/90 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md hover:bg-red-500 hover:scale-110 z-20"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 ) : (
-                  <label className="aspect-video w-full rounded-lg border-2 border-dashed border-gray-200 hover:border-blink-primary/50 hover:bg-blink-primary/5 flex flex-col items-center justify-center cursor-pointer transition-colors">
+                  <label className="h-full min-h-[160px] w-full rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 flex flex-col items-center justify-center cursor-pointer transition-all">
                     {uploadingLogo ? (
-                      <Loader2 className="h-6 w-6 animate-spin text-blink-primary" />
+                      <Loader2 className="h-8 w-8 animate-spin text-[#C5BAC4]" />
                     ) : (
-                      <Plus className="h-6 w-6 text-gray-400" />
+                      <Plus className="h-8 w-8 text-[#57707A]" />
                     )}
-                    <span className="text-xs font-medium text-gray-500 mt-2">
+                    <span className="text-xs font-bold text-[#989DAA] uppercase tracking-wider mt-3">
                       {uploadingLogo ? "Uploading..." : "Upload Logo"}
                     </span>
                     <input
@@ -837,15 +770,17 @@ export default function BrandIdentityPage() {
                 )}
               </div>
             </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="mb-4">
-                <h3 className="text-base font-semibold text-blink-dark">
+
+            <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 shadow-lg">
+              <div className="border-b border-[#57707A]/20 pb-4 mb-6">
+                <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                   Brand Fonts
                 </h3>
+                <p className="text-sm text-[#989DAA] mt-1">Specify your typography.</p>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                  <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Primary Font
                   </label>
                   <Input
@@ -857,11 +792,11 @@ export default function BrandIdentityPage() {
                       })
                     }
                     placeholder="e.g., Inter, Helvetica"
-                    className="text-sm"
+                    className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                  <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Secondary Font
                   </label>
                   <Input
@@ -873,19 +808,19 @@ export default function BrandIdentityPage() {
                       })
                     }
                     placeholder="e.g., Playfair Display"
-                    className="text-sm"
+                    className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="mb-5">
-              <h3 className="text-base font-semibold text-blink-dark">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 shadow-lg">
+            <div className="border-b border-[#57707A]/20 pb-4 mb-6">
+              <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                 Additional Brand Assets
               </h3>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-[#989DAA] mt-1">
                 Upload specific product photos or reference images for the AI to
                 study.
               </p>
@@ -894,28 +829,29 @@ export default function BrandIdentityPage() {
               {brandProfile.uploaded_assets.map((url, i) => (
                 <div
                   key={i}
-                  className="relative aspect-square rounded-lg border border-gray-200 bg-gray-50 overflow-hidden group"
+                  className="relative aspect-square rounded-xl border border-[#57707A]/40 bg-[#191D23] shadow-inner overflow-hidden group"
                 >
+                  <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none"></div>
                   <img
                     src={url}
                     alt="asset"
-                    className="w-full h-full object-contain p-2"
+                    className="w-full h-full object-contain p-2 relative z-10"
                   />
                   <button
                     onClick={() => removeAsset(url)}
-                    className="absolute top-1.5 right-1.5 p-1.5 bg-white/90 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-50"
+                    className="absolute top-2 right-2 p-1.5 bg-red-500/90 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md hover:bg-red-500 hover:scale-110 z-20"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))}
-              <label className="aspect-square rounded-lg border-2 border-dashed border-gray-200 hover:border-blink-primary/50 hover:bg-blink-primary/5 flex flex-col items-center justify-center cursor-pointer transition-colors">
+              <label className="aspect-square rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 flex flex-col items-center justify-center cursor-pointer transition-all">
                 {uploadingAsset ? (
-                  <Loader2 className="h-6 w-6 animate-spin text-blink-primary" />
+                  <Loader2 className="h-6 w-6 animate-spin text-[#C5BAC4]" />
                 ) : (
-                  <Plus className="h-6 w-6 text-gray-400" />
+                  <Plus className="h-6 w-6 text-[#57707A]" />
                 )}
-                <span className="text-xs font-medium text-gray-500 mt-2">
+                <span className="text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mt-3">
                   {uploadingAsset ? "Uploading..." : "Add Asset"}
                 </span>
                 <input
@@ -934,13 +870,13 @@ export default function BrandIdentityPage() {
       {/* 🔹 TAB 3: VOICE & RULES 🔹 */}
       {activeTab === "voice" && (
         <div className="space-y-6 animate-in slide-in-from-left-4 fade-in duration-300">
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex justify-between items-end mb-5">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 shadow-lg">
+            <div className="flex justify-between items-end mb-6 border-b border-[#57707A]/20 pb-4">
               <div>
-                <h3 className="text-base font-semibold text-blink-dark">
+                <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
                   Brand Voice & Tone
                 </h3>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <p className="text-sm text-[#989DAA] mt-1">
                   How does your brand speak in captions?
                 </p>
               </div>
@@ -953,12 +889,12 @@ export default function BrandIdentityPage() {
                     )
                   }
                   disabled={suggestingField === "brand_voice"}
-                  className="text-xs text-purple-600 hover:bg-purple-50 font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 transition-colors"
+                  className="text-xs text-[#C5BAC4] hover:text-white hover:bg-[#C5BAC4]/20 font-bold flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#C5BAC4]/30 transition-colors shadow-sm bg-[#C5BAC4]/10"
                 >
                   {suggestingField === "brand_voice" ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Sparkles className="h-3 w-3" />
+                    <Sparkles className="h-3.5 w-3.5" />
                   )}{" "}
                   AI Suggest
                 </button>
@@ -974,11 +910,11 @@ export default function BrandIdentityPage() {
               }
               rows={4}
               placeholder="e.g., Witty, slightly sarcastic, but always highly informative..."
-              className="text-sm resize-none mb-5"
+              className="text-sm resize-none mb-6 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
             />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                   Tone Keywords (comma separated)
                 </label>
                 <Input
@@ -990,11 +926,11 @@ export default function BrandIdentityPage() {
                     })
                   }
                   placeholder="playful, bold, friendly"
-                  className="text-sm"
+                  className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
                   Vocabulary Notes
                 </label>
                 <Input
@@ -1006,16 +942,16 @@ export default function BrandIdentityPage() {
                     })
                   }
                   placeholder="Use 'client' not 'customer'"
-                  className="text-sm"
+                  className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-12 shadow-inner"
                 />
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-6 shadow-sm">
-              <div className="flex justify-between items-end mb-4">
-                <h3 className="text-base font-semibold text-emerald-700 flex items-center gap-2">
+            <div className="rounded-2xl border border-emerald-500/20 bg-[#191D23] p-6 md:p-8 shadow-lg">
+              <div className="flex justify-between items-end mb-6 border-b border-emerald-500/10 pb-4">
+                <h3 className="text-lg font-bold text-emerald-400 flex items-center gap-2 font-display">
                   <CheckCircle className="h-5 w-5" /> Do's
                 </h3>
                 {!brandProfile.dos && (
@@ -1027,7 +963,7 @@ export default function BrandIdentityPage() {
                       )
                     }
                     disabled={suggestingField === "dos"}
-                    className="text-xs text-emerald-600 hover:bg-emerald-100 font-medium flex items-center gap-1.5 px-2 py-1 rounded-lg border border-emerald-200"
+                    className="text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 transition-colors"
                   >
                     {suggestingField === "dos" ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -1043,14 +979,15 @@ export default function BrandIdentityPage() {
                 onChange={(e) =>
                   setBrandProfile({ ...brandProfile, dos: e.target.value })
                 }
-                rows={4}
+                rows={5}
                 placeholder="e.g., Always mention our free shipping."
-                className="text-sm resize-none bg-white border-emerald-100 focus-visible:ring-emerald-500"
+                className="text-sm resize-none bg-[#2A2F38] border-emerald-500/20 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-emerald-500/50 rounded-xl shadow-inner custom-scrollbar"
               />
             </div>
-            <div className="rounded-xl border border-red-100 bg-red-50/30 p-6 shadow-sm">
-              <div className="flex justify-between items-end mb-4">
-                <h3 className="text-base font-semibold text-red-600 flex items-center gap-2">
+
+            <div className="rounded-2xl border border-red-500/20 bg-[#191D23] p-6 md:p-8 shadow-lg">
+              <div className="flex justify-between items-end mb-6 border-b border-red-500/10 pb-4">
+                <h3 className="text-lg font-bold text-red-400 flex items-center gap-2 font-display">
                   <X className="h-5 w-5" /> Don'ts
                 </h3>
                 {!brandProfile.donts && (
@@ -1062,7 +999,7 @@ export default function BrandIdentityPage() {
                       )
                     }
                     disabled={suggestingField === "donts"}
-                    className="text-xs text-red-600 hover:bg-red-100 font-medium flex items-center gap-1.5 px-2 py-1 rounded-lg border border-red-200"
+                    className="text-xs text-red-400 hover:text-red-300 hover:bg-red-500/20 font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 transition-colors"
                   >
                     {suggestingField === "donts" ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -1078,9 +1015,9 @@ export default function BrandIdentityPage() {
                 onChange={(e) =>
                   setBrandProfile({ ...brandProfile, donts: e.target.value })
                 }
-                rows={4}
+                rows={5}
                 placeholder="e.g., NEVER mention price directly."
-                className="text-sm resize-none bg-white border-red-100 focus-visible:ring-red-500"
+                className="text-sm resize-none bg-[#2A2F38] border-red-500/20 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-red-500/50 rounded-xl shadow-inner custom-scrollbar"
               />
             </div>
           </div>
@@ -1088,19 +1025,19 @@ export default function BrandIdentityPage() {
       )}
 
       {/* Global Save Button */}
-      <div className="fixed bottom-0 left-0 right-0 md:left-64 bg-white/80 backdrop-blur-md border-t border-gray-200 p-4 flex justify-end z-20">
-        <div className="max-w-7xl mx-auto w-full flex justify-end">
+      <div className="fixed bottom-0 left-0 right-0 md:left-[260px] bg-[#191D23]/80 backdrop-blur-xl border-t border-[#57707A]/30 p-4 md:p-6 flex justify-end z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.2)]">
+        <div className="max-w-4xl mx-auto w-full flex justify-end">
           <Button
             onClick={handleSaveBrand}
             disabled={savingBrand}
-            className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-2 px-10 h-12 text-base w-full sm:w-auto shadow-lg"
+            className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold gap-2 px-10 h-12 text-base w-full sm:w-auto shadow-lg shadow-[#C5BAC4]/10 rounded-xl transition-all disabled:opacity-50"
           >
             {savingBrand ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
               <Save className="h-5 w-5" />
             )}{" "}
-            {savingBrand ? "Saving..." : "Save Brand Identity"}
+            {savingBrand ? "Saving Profile..." : "Save Brand Identity"}
           </Button>
         </div>
       </div>

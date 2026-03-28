@@ -56,14 +56,14 @@ export function Sidebar({ collapsed = false, userEmail }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "hidden md:flex flex-col h-screen bg-blink-dark text-white sticky top-0 transition-all duration-300",
+        "hidden md:flex flex-col h-screen bg-[#191D23] text-[#DEDCDC] sticky top-0 transition-all duration-300 border-r border-white/5",
         collapsed ? "w-[68px]" : "w-[240px]"
       )}
     >
-      <div className="flex items-center gap-2 px-5 py-5 border-b border-white/10">
-        <Zap className="h-6 w-6 text-blink-secondary shrink-0" />
+      <div className="flex items-center gap-2 px-5 py-5 border-b border-white/5">
+        <Zap className="h-6 w-6 text-[#C5BAC4] shrink-0" />
         {!collapsed && (
-          <span className="text-xl font-bold tracking-tight font-heading">
+          <span className="text-xl font-bold tracking-tight text-[#DEDCDC]">
             Blink
           </span>
         )}
@@ -83,8 +83,8 @@ export function Sidebar({ collapsed = false, userEmail }: SidebarProps) {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-blink-primary text-white shadow-md shadow-blink-primary/25"
-                  : "text-white/60 hover:text-white hover:bg-white/8"
+                  ? "bg-[#2A2F38] text-[#DEDCDC] border border-[#57707A]/40"
+                  : "text-[#DEDCDC]/50 hover:text-[#DEDCDC] hover:bg-[#2A2F38]/60"
               )}
             >
               <item.icon className="h-5 w-5 shrink-0" />
@@ -106,13 +106,13 @@ export function Sidebar({ collapsed = false, userEmail }: SidebarProps) {
         })}
       </nav>
 
-      <div className="px-3 py-3 border-t border-white/10 space-y-2">
+      <div className="px-3 py-3 border-t border-white/5 space-y-2">
         {!collapsed && userEmail && (
           <div className="flex items-center gap-2 px-3 py-2">
-            <div className="h-7 w-7 rounded-full bg-blink-primary/20 flex items-center justify-center shrink-0">
-              <User className="h-3.5 w-3.5 text-blink-secondary" />
+            <div className="h-7 w-7 rounded-full bg-[#57707A]/30 border border-[#C5BAC4]/20 flex items-center justify-center shrink-0">
+              <User className="h-3.5 w-3.5 text-[#C5BAC4]" />
             </div>
-            <span className="text-xs text-white/50 truncate">{userEmail}</span>
+            <span className="text-xs text-[#DEDCDC]/40 truncate">{userEmail}</span>
           </div>
         )}
 
@@ -121,7 +121,7 @@ export function Sidebar({ collapsed = false, userEmail }: SidebarProps) {
             <TooltipTrigger asChild>
               <button
                 onClick={handleLogout}
-                className="flex items-center justify-center w-full px-3 py-2.5 rounded-lg text-white/60 hover:text-white hover:bg-white/8 transition-colors"
+                className="flex items-center justify-center w-full px-3 py-2.5 rounded-lg text-[#DEDCDC]/50 hover:text-[#DEDCDC] hover:bg-[#2A2F38]/60 transition-colors"
               >
                 <LogOut className="h-5 w-5" />
               </button>
@@ -133,15 +133,15 @@ export function Sidebar({ collapsed = false, userEmail }: SidebarProps) {
         ) : (
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/8 transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-[#DEDCDC]/50 hover:text-[#DEDCDC] hover:bg-[#2A2F38]/60 transition-colors"
           >
             <LogOut className="h-5 w-5 shrink-0" />
             <span>Sign Out</span>
           </button>
         )}
       </div>
-      <div className="px-5 py-3 border-t border-white/10">
-        {!collapsed && <p className="text-xs text-white/40">© 2026 Blink</p>}
+      <div className="px-5 py-3 border-t border-white/5">
+        {!collapsed && <p className="text-xs text-[#DEDCDC]/20">© 2026 Blink</p>}
       </div>
     </aside>
   );

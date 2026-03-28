@@ -90,31 +90,36 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-blink-light px-4">
-      <div className="w-full max-w-md">
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <Zap className="h-8 w-8 text-blink-secondary" />
-          <span className="text-3xl font-bold text-blink-dark font-heading tracking-tight">
+    <div className="min-h-screen flex items-center justify-center bg-[#191D23] px-4 relative overflow-hidden">
+      {/* Subtle background glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#C5BAC4]/10 blur-[120px] rounded-full pointer-events-none" />
+
+      <div className="w-full max-w-md relative z-10">
+        <div className="flex items-center justify-center gap-3 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="h-12 w-12 bg-[#2A2F38] border border-[#57707A]/50 rounded-xl flex items-center justify-center shadow-inner">
+            <Zap className="h-6 w-6 text-[#C5BAC4]" />
+          </div>
+          <span className="text-4xl font-bold text-[#DEDCDC] font-display tracking-wide">
             Blink
           </span>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-          <div className="space-y-6">
+        <div className="bg-[#2A2F38] rounded-3xl shadow-2xl border border-[#57707A]/30 p-8 sm:p-10 animate-in fade-in zoom-in-95 duration-500 delay-150">
+          <div className="space-y-8">
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-blink-dark font-heading">
-                Login to your account
+              <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">
+                Welcome back
               </h2>
-              <p className="mt-1 text-sm text-gray-500">
-                Use email and password or continue with Google
+              <p className="mt-2 text-sm text-[#989DAA]">
+                Log in to your account to continue creating.
               </p>
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-5">
               <div>
                 <label
                   htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 mb-1.5"
+                  className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2"
                 >
                   Email address
                 </label>
@@ -125,14 +130,14 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@business.com"
                   required
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blink-primary/30 focus:border-blink-primary transition-colors"
+                  className="w-full px-4 py-3.5 rounded-xl bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus:outline-none focus:ring-2 focus:ring-[#C5BAC4]/50 focus:border-transparent transition-all shadow-inner text-sm"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="password"
-                  className="block text-sm font-medium text-gray-700 mb-1.5"
+                  className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2"
                 >
                   Password
                 </label>
@@ -141,49 +146,40 @@ export default function LoginPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Put in your password"
+                  placeholder="Enter your password"
                   required
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blink-primary/30 focus:border-blink-primary transition-colors"
+                  className="w-full px-4 py-3.5 rounded-xl bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus:outline-none focus:ring-2 focus:ring-[#C5BAC4]/50 focus:border-transparent transition-all shadow-inner text-sm"
                 />
               </div>
 
               {error && (
-                <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">
+                <p className="text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-xl animate-in fade-in">
                   {error}
                 </p>
               )}
 
-              <div className="space-y-2">
+              <div className="pt-2">
                 <Button
                   type="submit"
                   disabled={loading || !email || !password}
-                  className="w-full bg-blink-primary hover:bg-blink-primary/90 text-white py-2.5 rounded-lg font-medium transition-colors"
+                  className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] py-6 rounded-xl font-bold transition-all shadow-lg shadow-[#C5BAC4]/10 text-base"
                 >
                   {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
                   ) : (
-                    <ArrowRight className="h-4 w-4 mr-2" />
+                    <ArrowRight className="h-5 w-5 mr-2" />
                   )}
-                  {loading ? "lgging in..." : "login"}
+                  {loading ? "Logging in..." : "Login"}
                 </Button>
-                {/* <Button
-                  type="button"
-                  variant="outline"
-                  disabled={loading || !email || !password}
-                  className="w-full py-2.5 rounded-lg font-medium"
-                  onClick={handleSignup}
-                >
-                  {loading ? "Creating account..." : "Create account"}
-                </Button> */}
               </div>
             </form>
 
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-100"></div>
+                <div className="w-full border-t border-[#57707A]/30"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
+                <span className="px-4 bg-[#2A2F38] text-[10px] font-bold text-[#57707A] uppercase tracking-widest">
                   Or continue with
                 </span>
               </div>
@@ -198,9 +194,9 @@ export default function LoginPage() {
                 type="submit"
                 variant="outline"
                 disabled={googleLoading}
-                className="w-full py-2.5 rounded-lg font-medium flex items-center justify-center gap-2"
+                className="w-full py-6 rounded-xl font-bold flex items-center justify-center gap-3 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white transition-all text-sm"
               >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24">
                   <path
                     fill="currentColor"
                     d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032 c0-3.331,2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.461,2.268,15.365,1,12.545,1 C6.477,1,1.54,5.952,1.54,12s4.938,11,11.005,11c6.495,0,10.933-4.565,10.933-11c0-0.811-0.081-1.584-0.231-2.39H12.545z"
@@ -210,12 +206,12 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="text-center pt-2 border-t border-gray-100">
-              <p className="text-sm text-gray-500 pt-4">
+            <div className="text-center pt-6 mt-6 border-t border-[#57707A]/20">
+              <p className="text-sm text-[#989DAA]">
                 Need a full onboarding flow?{" "}
                 <Link
                   href="/get-started"
-                  className="text-blink-primary font-medium hover:underline"
+                  className="text-[#C5BAC4] font-bold hover:text-white transition-colors"
                 >
                   Get started for free
                 </Link>
@@ -224,7 +220,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p className="mt-6 text-center text-xs text-gray-400">
+        <p className="mt-8 text-center text-xs font-medium text-[#57707A] animate-in fade-in delay-300">
           By signing in you agree to Blink&apos;s Terms of Service
         </p>
       </div>

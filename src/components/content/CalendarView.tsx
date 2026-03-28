@@ -381,12 +381,12 @@ export function CalendarView({
     : [];
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
+    <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start animate-in fade-in duration-500">
       {/* ─── LEFT: MAIN CALENDAR GRID (75%) ─── */}
-      <div className="xl:col-span-3 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col min-h-[700px]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+      <div className="xl:col-span-3 rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] shadow-lg overflow-hidden flex flex-col min-h-[700px]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#57707A]/30 bg-[#191D23]/40">
           <div className="flex items-center gap-4">
-            <h2 className="text-lg font-semibold text-blink-dark font-heading w-40">
+            <h2 className="text-lg font-bold text-[#DEDCDC] font-display w-40">
               {monthName} {year}
             </h2>
             <div className="flex gap-1">
@@ -394,7 +394,7 @@ export function CalendarView({
                 variant="outline"
                 size="sm"
                 onClick={prevMonth}
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/30 hover:text-white"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -402,7 +402,7 @@ export function CalendarView({
                 variant="outline"
                 size="sm"
                 onClick={nextMonth}
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/30 hover:text-white"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -415,24 +415,25 @@ export function CalendarView({
               onMonthChange(new Date());
               setSelectedDay(new Date().getDate());
             }}
+            className="bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/30 hover:text-white font-bold text-xs"
           >
             Today
           </Button>
         </div>
 
-        <div className="flex-1 bg-gray-50/50 p-4">
-          <div className="grid grid-cols-7 gap-px rounded-lg overflow-hidden border border-gray-200 bg-gray-200 h-full">
+        <div className="flex-1 bg-[#191D23]/40 p-4">
+          <div className="grid grid-cols-7 gap-[1px] rounded-xl overflow-hidden border border-[#57707A]/30 bg-[#57707A]/30 h-full">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
               <div
                 key={day}
-                className="bg-white py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                className="bg-[#2A2F38] py-2 text-center text-xs font-bold text-[#989DAA] uppercase tracking-wider"
               >
                 {day}
               </div>
             ))}
 
             {blanks.map((b) => (
-              <div key={`blank-${b}`} className="bg-gray-50 min-h-[120px]" />
+              <div key={`blank-${b}`} className="bg-[#191D23]/20 min-h-[120px]" />
             ))}
 
             {days.map((day) => {
@@ -455,31 +456,31 @@ export function CalendarView({
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDropToDate(e, day)}
                   className={cn(
-                    "bg-white min-h-[120px] p-2 flex flex-col transition-all cursor-pointer border-2",
+                    "bg-[#2A2F38] min-h-[120px] p-2 flex flex-col transition-all cursor-pointer border-2 relative",
                     isToday(day)
-                      ? "bg-blink-primary/5 border-transparent"
-                      : "hover:bg-gray-50 border-transparent",
+                      ? "bg-[#C5BAC4]/5 border-transparent"
+                      : "hover:bg-[#57707A]/20 border-transparent",
                     isSelected
-                      ? "border-blink-primary ring-2 ring-blink-primary/20"
+                      ? "border-[#C5BAC4] ring-2 ring-[#C5BAC4]/20 z-10"
                       : "",
                     isDragOver
-                      ? "border-dashed border-blink-primary bg-blink-primary/10 shadow-inner z-10"
+                      ? "border-dashed border-[#C5BAC4] bg-[#C5BAC4]/10 shadow-inner z-20"
                       : ""
                   )}
                 >
                   <div className="flex items-center justify-between mb-2 pointer-events-none">
                     <span
                       className={cn(
-                        "text-xs font-medium h-6 w-6 flex items-center justify-center rounded-full",
+                        "text-xs font-bold h-6 w-6 flex items-center justify-center rounded-full",
                         isToday(day)
-                          ? "bg-blink-primary text-white"
-                          : "text-gray-500"
+                          ? "bg-[#C5BAC4] text-[#191D23]"
+                          : "text-[#989DAA]"
                       )}
                     >
                       {day}
                     </span>
                     {dayPosts.length > 0 && (
-                      <span className="text-[10px] text-gray-400 font-medium">
+                      <span className="text-[10px] text-[#57707A] font-bold uppercase tracking-widest">
                         {dayPosts.length} posts
                       </span>
                     )}
@@ -497,13 +498,13 @@ export function CalendarView({
                           className={cn(
                             "border rounded p-1.5 shadow-sm transition-all",
                             hasNoPlatform
-                              ? "bg-red-50/50 border-red-400 ring-1 ring-red-400"
-                              : "bg-gray-50 border-gray-100"
+                              ? "bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20"
+                              : "bg-[#191D23] border-[#57707A]/40"
                           )}
                         >
                           <div className="flex items-center gap-1.5 mb-1">
                             {hasNoPlatform ? (
-                              <span className="text-[9px] font-bold text-red-600 bg-red-100 px-1.5 rounded flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-red-400 bg-red-500/10 px-1.5 rounded flex items-center gap-1">
                                 <AlertCircle className="w-3 h-3" /> Needs Platform
                               </span>
                             ) : (
@@ -512,14 +513,14 @@ export function CalendarView({
                               ))
                             )}
                           </div>
-                          <p className="text-[10px] leading-tight text-gray-600 line-clamp-1">
+                          <p className="text-[10px] font-medium leading-tight text-[#989DAA] line-clamp-1">
                             {post.caption_short || post.caption || "No caption"}
                           </p>
                         </div>
                       );
                     })}
                     {dayPosts.length > 3 && (
-                      <div className="text-[10px] text-center text-blink-primary font-medium pt-1">
+                      <div className="text-[10px] text-center text-[#C5BAC4] font-bold pt-1">
                         + {dayPosts.length - 3} more
                       </div>
                     )}
@@ -533,26 +534,26 @@ export function CalendarView({
 
       {/* ─── RIGHT: DUAL-MODE SIDEBAR (25%) ─── */}
       <div
-        className="rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col h-[700px] overflow-hidden relative"
+        className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] shadow-lg flex flex-col h-[700px] overflow-hidden relative"
         onDragOver={(e) => handleDragOver(e)}
         onDrop={handleDropToUnscheduled}
       >
         {/* MODE A: DEFAULT (UNSCHEDULED) */}
         {!selectedDay ? (
           <>
-            <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-blink-dark font-heading">
+            <div className="p-4 border-b border-[#57707A]/30 bg-[#191D23]/40">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#DEDCDC] font-display">
                   Unscheduled
                 </h3>
-                <span className="bg-gray-200 text-gray-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                <span className="bg-[#57707A]/50 text-[#DEDCDC] text-xs font-bold px-2.5 py-0.5 rounded-full">
                   {unscheduledPosts.length}
                 </span>
               </div>
               <Button
                 onClick={handleAutoSchedule}
                 disabled={autoScheduling || unscheduledPosts.length === 0}
-                className="w-full bg-blink-primary hover:bg-blink-primary/90 text-white gap-2 shadow-sm"
+                className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold gap-2 shadow-sm transition-colors"
               >
                 {autoScheduling ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -563,10 +564,10 @@ export function CalendarView({
               </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50/30">
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#191D23]/20 custom-scrollbar">
               {unscheduledPosts.length === 0 ? (
                 <div className="text-center py-10">
-                  <p className="text-sm text-gray-400 font-medium">
+                  <p className="text-sm text-[#989DAA] font-bold">
                     All posts scheduled! 🎉
                   </p>
                 </div>
@@ -589,21 +590,21 @@ export function CalendarView({
                         onDragStart={(e) => handleDragStart(e, post.id)}
                         onDragEnd={() => setDraggedItemId(null)}
                         className={cn(
-                          "bg-white border border-gray-200 rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-blink-primary/50 transition-all",
+                          "bg-[#2A2F38] border border-[#57707A]/40 rounded-xl p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-[#C5BAC4]/50 transition-all",
                           isDragging
                             ? "opacity-50 scale-95"
                             : "opacity-100 scale-100"
                         )}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="text-gray-300 pt-1">
+                          <div className="text-[#57707A] hover:text-[#C5BAC4] pt-1 transition-colors">
                             <GripVertical className="h-4 w-4" />
                           </div>
                           {displayImage ? (
                             isVideo ? (
                               <video
                                 src={`${displayImage}#t=0.1`}
-                                className="h-10 w-10 rounded object-cover shrink-0 bg-black"
+                                className="h-12 w-12 rounded-lg object-cover shrink-0 bg-black"
                                 muted
                                 playsInline
                                 preload="metadata"
@@ -612,17 +613,17 @@ export function CalendarView({
                               <img
                                 src={displayImage}
                                 alt="thumbnail"
-                                className="h-10 w-10 rounded object-cover shrink-0"
+                                className="h-12 w-12 rounded-lg object-cover shrink-0"
                               />
                             )
                           ) : (
-                            <div className="h-10 w-10 rounded bg-gray-100 flex items-center justify-center shrink-0">
-                              <ImageIcon className="h-4 w-4 text-gray-300" />
+                            <div className="h-12 w-12 rounded-lg bg-[#191D23] border border-[#57707A]/30 flex items-center justify-center shrink-0">
+                              <ImageIcon className="h-5 w-5 text-[#57707A]" />
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
                             <StatusBadge status={post.status as ContentStatus} />
-                            <p className="text-xs text-gray-600 line-clamp-2 font-medium mt-1">
+                            <p className="text-xs text-[#DEDCDC] line-clamp-2 font-medium mt-1.5">
                               {post.caption_short || post.caption || "No caption"}
                             </p>
                           </div>
@@ -638,7 +639,7 @@ export function CalendarView({
                         size="sm"
                         onClick={onLoadMoreUnscheduled}
                         disabled={isLoadingMore}
-                        className="w-full max-w-[200px] text-xs font-medium bg-white hover:bg-gray-50 text-gray-600 border-gray-200 shadow-sm"
+                        className="w-full max-w-[200px] text-xs font-bold bg-[#2A2F38] hover:bg-[#57707A]/20 text-[#DEDCDC] border-[#57707A]/40 shadow-sm"
                       >
                         {isLoadingMore ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : null}
                         {isLoadingMore ? "Loading..." : "Load More Posts"}
@@ -650,8 +651,8 @@ export function CalendarView({
             </div>
             {draggedItemId &&
               scheduledPosts.find((p) => p.id === draggedItemId) && (
-                <div className="absolute inset-0 bg-blink-primary/10 border-2 border-dashed border-blink-primary backdrop-blur-[1px] flex items-center justify-center z-10 pointer-events-none transition-all">
-                  <div className="bg-white px-4 py-2 rounded-full shadow-lg text-sm font-semibold text-blink-primary flex items-center gap-2">
+                <div className="absolute inset-0 bg-[#C5BAC4]/10 border-2 border-dashed border-[#C5BAC4] backdrop-blur-[2px] flex items-center justify-center z-10 pointer-events-none transition-all">
+                  <div className="bg-[#191D23] px-5 py-2.5 rounded-full shadow-xl text-sm font-bold text-[#C5BAC4] flex items-center gap-2 border border-[#C5BAC4]/30">
                     <X className="h-4 w-4" /> Drop to Unschedule
                   </div>
                 </div>
@@ -660,33 +661,32 @@ export function CalendarView({
         ) : (
           /* MODE B: DATE TRIGGERED */
           <>
-            <div className="p-4 border-b border-gray-100 bg-blink-primary/5">
+            <div className="p-4 border-b border-[#57707A]/30 bg-[#C5BAC4]/5">
               <button
                 onClick={() => setSelectedDay(null)}
-                className="flex items-center gap-1 text-xs text-blink-primary font-medium hover:underline mb-2"
+                className="flex items-center gap-1.5 text-xs text-[#C5BAC4] font-bold hover:text-white mb-3 transition-colors"
               >
-                <ArrowLeft className="h-3 w-3" /> Back to Unscheduled
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to Unscheduled
               </button>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-blink-dark font-heading">
+                <h3 className="font-bold text-[#DEDCDC] font-display">
                   {monthName} {selectedDay}, {year}
                 </h3>
-                <span className="bg-blink-primary text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                <span className="bg-[#C5BAC4] text-[#191D23] text-xs font-bold px-2 py-0.5 rounded-full">
                   {selectedDayPosts.length} posts
                 </span>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50/30">
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#191D23]/20 custom-scrollbar">
               {selectedDayPosts.length === 0 ? (
                 <div className="text-center py-10 flex flex-col items-center gap-2">
-                  <Clock className="h-8 w-8 text-gray-300" />
-                  <p className="text-sm text-gray-400 font-medium">
+                  <Clock className="h-8 w-8 text-[#57707A]" />
+                  <p className="text-sm text-[#989DAA] font-bold">
                     No posts scheduled.
                   </p>
-                  <p className="text-xs text-gray-400">
-                    Drag posts here from the calendar to schedule them for this
-                    day.
+                  <p className="text-xs text-[#57707A]">
+                    Drag posts here from the calendar to schedule them for this day.
                   </p>
                 </div>
               ) : (
@@ -714,20 +714,20 @@ export function CalendarView({
                       onDragStart={(e) => handleDragStart(e, post.id)}
                       onDragEnd={() => setDraggedItemId(null)}
                       className={cn(
-                        "border rounded-lg p-3 shadow-sm transition-all relative group",
+                        "border rounded-xl p-3 shadow-sm transition-all relative group",
                         isDragging ? "opacity-50 scale-95" : "opacity-100",
-                        hasNoPlatform ? "bg-red-50/30 border-red-300" : "bg-white border-gray-200"
+                        hasNoPlatform ? "bg-red-500/5 border-red-500/30" : "bg-[#2A2F38] border-[#57707A]/40"
                       )}
                     >
                       <div className="flex items-start gap-3 mb-3">
-                        <div className="cursor-grab active:cursor-grabbing text-gray-300 group-hover:text-blink-primary pt-1">
+                        <div className="cursor-grab active:cursor-grabbing text-[#57707A] group-hover:text-[#C5BAC4] transition-colors pt-1">
                           <GripVertical className="h-4 w-4" />
                         </div>
                         {displayImage ? (
                           isVideo ? (
                             <video
                               src={`${displayImage}#t=0.1`}
-                              className="h-10 w-10 rounded object-cover shrink-0 bg-black"
+                              className="h-10 w-10 rounded-lg object-cover shrink-0 bg-black"
                               muted
                               playsInline
                               preload="metadata"
@@ -736,21 +736,21 @@ export function CalendarView({
                             <img
                               src={displayImage}
                               alt="thumbnail"
-                              className="h-10 w-10 rounded object-cover shrink-0"
+                              className="h-10 w-10 rounded-lg object-cover shrink-0"
                             />
                           )
                         ) : (
-                          <div className="h-10 w-10 rounded bg-gray-100 flex items-center justify-center shrink-0">
-                            <ImageIcon className="h-4 w-4 text-gray-300" />
+                          <div className="h-10 w-10 rounded-lg bg-[#191D23] border border-[#57707A]/30 flex items-center justify-center shrink-0">
+                            <ImageIcon className="h-4 w-4 text-[#57707A]" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center justify-between mb-1.5">
                             <div className="flex gap-1 items-center">
                               {hasNoPlatform ? (
                                 <button
                                   onClick={() => openPlatformModal(post)}
-                                  className="text-[10px] bg-red-100 text-red-600 border border-red-200 px-2 py-0.5 rounded-full font-bold hover:bg-red-200 transition-colors animate-pulse"
+                                  className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full font-bold hover:bg-red-500/20 transition-colors animate-pulse"
                                 >
                                   + Add Platform
                                 </button>
@@ -764,18 +764,18 @@ export function CalendarView({
                               status={post.status as ContentStatus}
                             />
                           </div>
-                          <p className="text-xs text-gray-600 line-clamp-2">
+                          <p className="text-xs text-[#DEDCDC] line-clamp-2">
                             {post.caption_short || post.caption || "No caption"}
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-2">
+                      <div className="flex items-center justify-between border-t border-[#57707A]/20 pt-3 mt-2">
                         <label
-                          className="flex items-center gap-1.5 bg-white hover:bg-blink-primary/10 border border-gray-200 hover:border-blink-primary/30 px-2.5 py-1.5 rounded-md transition-colors group/time cursor-pointer shadow-sm"
+                          className="flex items-center gap-1.5 bg-[#191D23] hover:bg-[#57707A]/20 border border-[#57707A]/40 px-2.5 py-1.5 rounded-md transition-colors group/time cursor-pointer shadow-inner"
                           title="Click to edit time"
                         >
-                          <Clock className="h-3.5 w-3.5 text-blink-primary shrink-0" />
+                          <Clock className="h-3.5 w-3.5 text-[#C5BAC4] shrink-0" />
                           <input
                             type="time"
                             value={timeVal}
@@ -787,9 +787,9 @@ export function CalendarView({
                             onChange={(e) =>
                               handleTimeChange(post.id, e.target.value)
                             }
-                            className="text-xs font-bold text-blink-dark bg-transparent border-none outline-none cursor-pointer p-0 m-0 w-[80px] focus:ring-0"
+                            className="text-xs font-bold text-[#DEDCDC] bg-transparent border-none outline-none cursor-pointer p-0 m-0 w-[80px] focus:ring-0 color-scheme-dark"
                           />
-                          <Pencil className="h-3 w-3 text-gray-400 group-hover/time:text-blink-primary transition-colors opacity-50 group-hover/time:opacity-100 shrink-0" />
+                          <Pencil className="h-3 w-3 text-[#57707A] group-hover/time:text-[#C5BAC4] transition-colors opacity-50 group-hover/time:opacity-100 shrink-0" />
                         </label>
 
                         <div className="flex gap-2">
@@ -801,12 +801,12 @@ export function CalendarView({
                               } as unknown as React.DragEvent;
                               handleDropToUnscheduled(simulatedEvent);
                             }}
-                            className="text-[10px] font-medium text-red-500 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                            className="text-[10px] font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 px-2 py-1 rounded transition-colors"
                           >
                             Remove
                           </button>
                           <Link href={`/dashboard/content/${post.id}`}>
-                            <button className="text-[10px] font-medium bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-2 py-1 rounded shadow-sm transition-colors flex items-center gap-1">
+                            <button className="text-[10px] font-bold bg-[#191D23] hover:bg-[#57707A]/30 border border-[#57707A]/40 text-[#DEDCDC] px-2.5 py-1 rounded shadow-sm transition-colors flex items-center gap-1.5">
                               Edit <ExternalLink className="h-3 w-3" />
                             </button>
                           </Link>
@@ -822,49 +822,49 @@ export function CalendarView({
       </div>
 
       <Dialog open={platformModalOpen} onOpenChange={setPlatformModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#2A2F38] text-[#DEDCDC] border-[#57707A]/50">
           <DialogHeader>
-            <DialogTitle>Select Target Platforms</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-[#DEDCDC]">Select Target Platforms</DialogTitle>
+            <DialogDescription className="text-[#989DAA]">
               Select the platforms and formats to distribute your generated content.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4">
             {connectedPlatforms.length === 0 ? (
-              <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-500 border border-gray-200 text-center">
+              <div className="p-4 bg-[#191D23]/50 rounded-xl text-sm text-[#989DAA] border border-[#57707A]/30 text-center">
                 No social accounts connected. <br />
-                <a href="/dashboard/settings" className="text-blink-primary font-medium hover:underline mt-1 inline-block">Go to Settings</a>
+                <a href="/dashboard/settings" className="text-[#C5BAC4] font-bold hover:text-white mt-2 inline-block">Go to Settings</a>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
                 {/* TikTok Controls */}
                 {connectedPlatforms.includes('tiktok') && (
-                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.tiktok?.enabled ? "border-gray-300 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.tiktok?.enabled ? "border-[#C5BAC4]/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                     <div
-                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
                       onClick={() => togglePlatform('tiktok', 'post')}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-black text-white rounded-lg"><Music className="w-4 h-4" /></div>
+                        <div className="p-2 bg-black border border-gray-800 text-white rounded-lg shadow-inner"><Music className="w-4 h-4" /></div>
                         <div>
-                          <p className={cn("text-sm font-bold", publishSettings.tiktok?.enabled ? "text-gray-900" : "text-gray-500")}>TikTok</p>
+                          <p className={cn("text-sm font-bold", publishSettings.tiktok?.enabled ? "text-white" : "text-[#989DAA]")}>TikTok</p>
                         </div>
                       </div>
-                      <input type="checkbox" checked={publishSettings.tiktok?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black pointer-events-none" />
+                      <input type="checkbox" checked={publishSettings.tiktok?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] text-[#C5BAC4] focus:ring-[#C5BAC4] pointer-events-none" />
                     </div>
 
                     {publishSettings.tiktok?.enabled && (
-                      <div className="bg-gray-50 p-3 border-t border-gray-100 flex gap-4 pl-14 animate-in slide-in-from-top-2">
+                      <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex gap-4 pl-14 animate-in slide-in-from-top-2">
                         <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.tiktok?.format === 'post'} onChange={() => setPlatformFormat('tiktok', 'post')} className="text-black focus:ring-black" />
-                          <Smartphone className={cn("w-4 h-4", publishSettings.tiktok?.format === 'post' ? "text-black" : "text-gray-400 group-hover:text-gray-600")} />
-                          <span className={cn("text-xs font-semibold", publishSettings.tiktok?.format === 'post' ? "text-gray-900" : "text-gray-500")}>Normal Post</span>
+                          <input type="radio" checked={publishSettings.tiktok?.format === 'post'} onChange={() => setPlatformFormat('tiktok', 'post')} className="text-[#C5BAC4] bg-[#191D23] border-[#57707A]/50 focus:ring-[#C5BAC4]" />
+                          <Smartphone className={cn("w-4 h-4", publishSettings.tiktok?.format === 'post' ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                          <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === 'post' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Normal Post</span>
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.tiktok?.format === 'story'} onChange={() => setPlatformFormat('tiktok', 'story')} className="text-black focus:ring-black" />
-                          <CirclePlay className={cn("w-4 h-4", publishSettings.tiktok?.format === 'story' ? "text-black" : "text-gray-400 group-hover:text-gray-600")} />
-                          <span className={cn("text-xs font-semibold", publishSettings.tiktok?.format === 'story' ? "text-gray-900" : "text-gray-500")}>Story</span>
+                          <input type="radio" checked={publishSettings.tiktok?.format === 'story'} onChange={() => setPlatformFormat('tiktok', 'story')} className="text-[#C5BAC4] bg-[#191D23] border-[#57707A]/50 focus:ring-[#C5BAC4]" />
+                          <CirclePlay className={cn("w-4 h-4", publishSettings.tiktok?.format === 'story' ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                          <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === 'story' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Story</span>
                         </label>
                       </div>
                     )}
@@ -873,31 +873,31 @@ export function CalendarView({
 
                 {/* Instagram Controls */}
                 {connectedPlatforms.includes('instagram') && (
-                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.instagram?.enabled ? "border-pink-200 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.instagram?.enabled ? "border-pink-500/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                     <div
-                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
                       onClick={() => togglePlatform('instagram', editingPostIsVideo ? 'reel' : 'feed')}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={cn("p-2 rounded-lg text-white", publishSettings.instagram?.enabled ? "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600" : "bg-gray-400")}><Instagram className="w-4 h-4" /></div>
+                        <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.instagram?.enabled ? "bg-gradient-to-tr from-yellow-500 via-pink-600 to-purple-600" : "bg-[#57707A]")}><Instagram className="w-4 h-4" /></div>
                         <div>
-                          <p className={cn("text-sm font-bold", publishSettings.instagram?.enabled ? "text-gray-900" : "text-gray-500")}>Instagram</p>
+                          <p className={cn("text-sm font-bold", publishSettings.instagram?.enabled ? "text-white" : "text-[#989DAA]")}>Instagram</p>
                         </div>
                       </div>
-                      <input type="checkbox" checked={publishSettings.instagram?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500 pointer-events-none" />
+                      <input type="checkbox" checked={publishSettings.instagram?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] text-pink-500 focus:ring-pink-500 pointer-events-none" />
                     </div>
 
                     {publishSettings.instagram?.enabled && (
-                      <div className="bg-pink-50/30 p-3 border-t border-pink-100 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
+                      <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
                         <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed'} onChange={() => setPlatformFormat('instagram', editingPostIsVideo ? 'reel' : 'feed')} className="text-pink-600 focus:ring-pink-500" />
-                          <Smartphone className={cn("w-4 h-4", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-pink-600" : "text-gray-400 group-hover:text-gray-600")} />
-                          <span className={cn("text-xs font-semibold", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-gray-900" : "text-gray-500")}>Feed / Reel</span>
+                          <input type="radio" checked={publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed'} onChange={() => setPlatformFormat('instagram', editingPostIsVideo ? 'reel' : 'feed')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
+                          <Smartphone className={cn("w-4 h-4", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                          <span className={cn("text-xs font-bold", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Feed / Reel</span>
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.instagram?.format === 'story'} onChange={() => setPlatformFormat('instagram', 'story')} className="text-pink-600 focus:ring-pink-500" />
-                          <CirclePlay className={cn("w-4 h-4", publishSettings.instagram?.format === 'story' ? "text-pink-600" : "text-gray-400 group-hover:text-gray-600")} />
-                          <span className={cn("text-xs font-semibold", publishSettings.instagram?.format === 'story' ? "text-gray-900" : "text-gray-500")}>Story</span>
+                          <input type="radio" checked={publishSettings.instagram?.format === 'story'} onChange={() => setPlatformFormat('instagram', 'story')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
+                          <CirclePlay className={cn("w-4 h-4", publishSettings.instagram?.format === 'story' ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                          <span className={cn("text-xs font-bold", publishSettings.instagram?.format === 'story' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Story</span>
                         </label>
                       </div>
                     )}
@@ -906,31 +906,31 @@ export function CalendarView({
 
                 {/* YouTube Controls */}
                 {connectedPlatforms.includes('youtube') && (
-                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.youtube?.enabled ? "border-red-200 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                  <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.youtube?.enabled ? "border-red-500/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                     <div
-                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
                       onClick={() => togglePlatform('youtube', 'standard')}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={cn("p-2 rounded-lg text-white", publishSettings.youtube?.enabled ? "bg-red-600" : "bg-gray-400")}><Youtube className="w-4 h-4" /></div>
+                        <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.youtube?.enabled ? "bg-red-600" : "bg-[#57707A]")}><Youtube className="w-4 h-4" /></div>
                         <div>
-                          <p className={cn("text-sm font-bold", publishSettings.youtube?.enabled ? "text-gray-900" : "text-gray-500")}>YouTube</p>
+                          <p className={cn("text-sm font-bold", publishSettings.youtube?.enabled ? "text-white" : "text-[#989DAA]")}>YouTube</p>
                         </div>
                       </div>
-                      <input type="checkbox" checked={publishSettings.youtube?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500 pointer-events-none" />
+                      <input type="checkbox" checked={publishSettings.youtube?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] text-red-600 focus:ring-red-500 pointer-events-none" />
                     </div>
 
                     {publishSettings.youtube?.enabled && (
-                      <div className="bg-red-50/30 p-3 border-t border-red-100 flex gap-4 pl-14 animate-in slide-in-from-top-2">
+                      <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex gap-4 pl-14 animate-in slide-in-from-top-2">
                         <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.youtube?.format === 'standard'} onChange={() => setPlatformFormat('youtube', 'standard')} className="text-red-600 focus:ring-red-500" />
-                          <MonitorPlay className={cn("w-4 h-4", publishSettings.youtube?.format === 'standard' ? "text-red-600" : "text-gray-400 group-hover:text-gray-600")} />
-                          <span className={cn("text-xs font-semibold", publishSettings.youtube?.format === 'standard' ? "text-gray-900" : "text-gray-500")}>Standard Video</span>
+                          <input type="radio" checked={publishSettings.youtube?.format === 'standard'} onChange={() => setPlatformFormat('youtube', 'standard')} className="text-red-500 bg-[#191D23] border-[#57707A]/50 focus:ring-red-500" />
+                          <MonitorPlay className={cn("w-4 h-4", publishSettings.youtube?.format === 'standard' ? "text-red-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                          <span className={cn("text-xs font-bold", publishSettings.youtube?.format === 'standard' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Standard Video</span>
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.youtube?.format === 'short'} onChange={() => setPlatformFormat('youtube', 'short')} className="text-red-600 focus:ring-red-500" />
-                          <Smartphone className={cn("w-4 h-4", publishSettings.youtube?.format === 'short' ? "text-red-600" : "text-gray-400 group-hover:text-gray-600")} />
-                          <span className={cn("text-xs font-semibold", publishSettings.youtube?.format === 'short' ? "text-gray-900" : "text-gray-500")}>YouTube Short (9:16)</span>
+                          <input type="radio" checked={publishSettings.youtube?.format === 'short'} onChange={() => setPlatformFormat('youtube', 'short')} className="text-red-500 bg-[#191D23] border-[#57707A]/50 focus:ring-red-500" />
+                          <Smartphone className={cn("w-4 h-4", publishSettings.youtube?.format === 'short' ? "text-red-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                          <span className={cn("text-xs font-bold", publishSettings.youtube?.format === 'short' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>YouTube Short (9:16)</span>
                         </label>
                       </div>
                     )}
@@ -940,12 +940,12 @@ export function CalendarView({
             )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPlatformModalOpen(false)}>Cancel</Button>
+          <DialogFooter className="border-t border-[#57707A]/30 pt-4 mt-2">
+            <Button variant="outline" onClick={() => setPlatformModalOpen(false)} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20">Cancel</Button>
             <Button
               onClick={handleSavePlatforms}
               disabled={savingPlatforms || !isAnyPlatformSelected}
-              className="bg-blink-primary hover:bg-blink-primary/90 text-white"
+              className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold"
             >
               {savingPlatforms ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
               Save & Schedule

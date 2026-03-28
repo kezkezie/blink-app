@@ -303,13 +303,18 @@ export default function ImageStudioPage() {
   };
 
   return (
-    <div className="max-w-[1200px] mx-auto space-y-6 pb-20 animate-in fade-in relative">
-      <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
+    <div className="max-w-[1200px] mx-auto space-y-6 pb-20 animate-in fade-in duration-500 relative">
+      {/* ── HERO BANNER: Dark bento panel + subtle dusty rose glow ── */}
+      <div className="relative bg-[#2A2F38] rounded-2xl p-8 border border-[#57707A]/40 shadow-xl overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-[#C5BAC4]/10 blur-[120px] rounded-full pointer-events-none -translate-x-1/2 -translate-y-1/2" />
         <div className="relative z-10">
-          <h1 className="text-3xl font-bold font-heading flex items-center gap-3">
-            <Sparkles className="h-8 w-8" /> AI Image Studio
-          </h1>
-          <p className="mt-2 text-purple-100 max-w-xl text-sm leading-relaxed">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-[#C5BAC4]/10 border border-[#C5BAC4]/20 flex items-center justify-center">
+              <Sparkles className="h-5 w-5 text-[#C5BAC4]" />
+            </div>
+            <h1 className="text-2xl font-bold text-[#DEDCDC] font-display">AI Image Studio</h1>
+          </div>
+          <p className="text-sm text-[#DEDCDC]/50 max-w-xl leading-relaxed">
             Generate fresh aesthetic content, composite your products perfectly into new scenes, or build beautiful campaign grids.
           </p>
         </div>
@@ -319,8 +324,8 @@ export default function ImageStudioPage() {
 
         {/* LEFT COLUMN: Controls */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
-            <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Select Mode</h3>
+          <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-5 shadow-lg space-y-4">
+            <h3 className="text-xs font-bold text-[#DEDCDC]/60 uppercase tracking-widest">Select Mode</h3>
             <div className="flex flex-col gap-3">
               {IMAGE_MODES.map((mode) => {
                 const isSelected = selectedMode === mode.id;
@@ -329,16 +334,16 @@ export default function ImageStudioPage() {
                     key={mode.id}
                     onClick={() => { setSelectedMode(mode.id); setFiles([]); setPreviews([]); }}
                     className={cn(
-                      "p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3",
-                      isSelected ? "border-purple-500 bg-purple-50 shadow-sm" : "border-gray-200 hover:border-purple-200"
+                      "p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
+                      isSelected ? "border-[#C5BAC4]/50 bg-[#C5BAC4]/10 shadow-sm" : "border-[#57707A]/30 bg-[#191D23]/40 hover:border-[#57707A]/80 hover:bg-[#57707A]/20"
                     )}
                   >
-                    <div className={cn("p-2 rounded-lg shrink-0", isSelected ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-500")}>
+                    <div className={cn("p-2 rounded-lg shrink-0 border", isSelected ? "bg-[#C5BAC4] text-[#191D23] border-[#C5BAC4]" : "bg-[#191D23] text-[#57707A] border-[#57707A]/40")}>
                       <mode.icon className="h-5 w-5" />
                     </div>
                     <div>
-                      <h4 className={cn("text-sm font-bold", isSelected ? "text-purple-900" : "text-gray-700")}>{mode.title}</h4>
-                      <p className="text-[10px] text-gray-500 mt-1 leading-tight">{mode.desc}</p>
+                      <h4 className={cn("text-sm font-bold", isSelected ? "text-[#DEDCDC]" : "text-[#989DAA]")}>{mode.title}</h4>
+                      <p className={cn("text-[10px] mt-1 leading-tight", isSelected ? "text-[#DEDCDC]/60" : "text-[#57707A]")}>{mode.desc}</p>
                     </div>
                   </div>
                 )
@@ -346,13 +351,13 @@ export default function ImageStudioPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
+          <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-5 shadow-lg space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                  <Palette className="w-4 h-4 text-purple-500" /> Strict Brand Alignment
+                <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-[#C5BAC4]" /> Strict Brand Alignment
                 </h3>
-                <p className="text-[10px] text-gray-500 mt-0.5">
+                <p className="text-[10px] text-[#989DAA] mt-0.5">
                   {strictBrandAlignment
                     ? `Applying ${brandContext?.name || 'brand'} style guides.`
                     : "Ignoring brand guides for creative freedom."}
@@ -362,10 +367,10 @@ export default function ImageStudioPage() {
             </div>
 
             {selectedMode === "standard" && (
-              <div className="pt-4 border-t border-gray-100">
+              <div className="pt-4 border-t border-[#57707A]/30 mt-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-gray-800">Batch Size</h3>
-                  <span className="text-sm font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{numImages} Images</span>
+                  <h3 className="text-sm font-bold text-[#DEDCDC]">Batch Size</h3>
+                  <span className="text-xs font-bold text-[#191D23] bg-[#C5BAC4] px-2 py-0.5 rounded shadow-sm">{numImages} Images</span>
                 </div>
                 <Slider value={[numImages]} onValueChange={(v) => setNumImages(v[0])} min={1} max={10} step={1} className="py-1" />
               </div>
@@ -375,14 +380,16 @@ export default function ImageStudioPage() {
 
         {/* RIGHT COLUMN: Canvas & Generation */}
         <div className="lg:col-span-8 flex flex-col gap-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex-1 flex flex-col space-y-6 relative">
+          <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-6 shadow-lg flex-1 flex flex-col space-y-6 relative overflow-hidden">
+            {/* Subtle corner glow */}
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#B3FF00]/5 blur-[60px] rounded-full pointer-events-none" />
 
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-gray-800">Visual Aesthetic</label>
+            <div className="space-y-2 relative z-10">
+              <label className="text-sm font-bold text-[#DEDCDC]">Visual Aesthetic</label>
               <select
                 value={selectedStyle}
                 onChange={(e) => setSelectedStyle(e.target.value)}
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:ring-2 ring-purple-400 outline-none cursor-pointer hover:bg-gray-100 transition-colors"
+                className="w-full p-3 bg-[#191D23] border border-[#57707A]/40 rounded-xl text-sm font-medium text-[#DEDCDC] focus:ring-2 ring-[#C5BAC4] outline-none cursor-pointer hover:bg-[#57707A]/20 transition-colors appearance-none"
               >
                 {MARKETING_STYLES.map(style => (
                   <option key={style.id} value={style.id}>{style.label}</option>
@@ -390,17 +397,17 @@ export default function ImageStudioPage() {
               </select>
             </div>
 
-            <div className="space-y-2 relative">
+            <div className="space-y-2 relative z-10">
               <div className="flex justify-between items-center">
-                <label className="text-sm font-bold text-gray-800">Director's Prompt</label>
+                <label className="text-sm font-bold text-[#DEDCDC]">Director's Prompt</label>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={handlePromptHelp}
                   disabled={isHelpLoading}
-                  className={cn("h-7 text-xs px-2 hover:bg-purple-50 hover:text-purple-600 transition-colors border border-transparent hover:border-purple-200", isHelpLoading && "animate-pulse")}
+                  className={cn("h-7 text-xs px-3 bg-transparent border-[#57707A]/50 text-[#C5BAC4] hover:bg-[#C5BAC4]/10 hover:text-[#DEDCDC] hover:border-[#C5BAC4] transition-colors rounded-lg", isHelpLoading && "animate-pulse")}
                 >
-                  {isHelpLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wand2 className="w-3 h-3 mr-1" />}
+                  {isHelpLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Wand2 className="w-3 h-3 mr-1.5" />}
                   {isHelpLoading ? "Writing..." : "AI Magic Writer"}
                 </Button>
               </div>
@@ -409,34 +416,34 @@ export default function ImageStudioPage() {
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder={selectedMode === 'product_drop' ? "Describe scene (e.g., 'on a sunny beach towel')..." : "Describe what you want to see..."}
-                  className={cn("resize-none bg-gray-50 border-gray-200 h-28 focus-visible:ring-purple-400 pr-10 transition-all", isHelpLoading && "opacity-50")}
+                  className={cn("resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] h-28 focus-visible:ring-[#C5BAC4] pr-10 transition-all rounded-xl", isHelpLoading && "opacity-50")}
                   readOnly={isHelpLoading}
                 />
                 {isHelpLoading && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <Sparkles className="w-8 h-8 text-purple-500 animate-bounce opacity-50" />
+                    <Sparkles className="w-8 h-8 text-[#C5BAC4] animate-bounce opacity-50" />
                   </div>
                 )}
               </div>
-              <p className="text-[11px] text-gray-400 text-right">The AI Writer will automatically adapt your prompt to fit the <b>{MARKETING_STYLES.find(s => s.id === selectedStyle)?.label}</b> style.</p>
+              <p className="text-[11px] text-[#989DAA] text-right">The AI Writer will automatically adapt your prompt to fit the <b className="text-[#DEDCDC]">{MARKETING_STYLES.find(s => s.id === selectedStyle)?.label}</b> style.</p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3 relative z-10">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-bold text-gray-800">
-                  Image Assets {activeConfig.requiresUpload && <span className="text-red-500">*</span>}
+                <label className="text-sm font-bold text-[#DEDCDC]">
+                  Image Assets {activeConfig.requiresUpload && <span className="text-red-400">*</span>}
                 </label>
-                <span className="text-xs text-gray-500 font-medium">{files.length} / {activeConfig.maxUploads} Uploaded</span>
+                <span className="text-xs text-[#989DAA] font-bold px-2 py-0.5 bg-[#191D23] rounded-md border border-[#57707A]/30">{files.length} / {activeConfig.maxUploads} Uploaded</span>
               </div>
 
               <div className="flex flex-wrap gap-4">
                 {previews.map((src, idx) => (
-                  <div key={idx} className="relative w-24 h-24 rounded-lg border border-gray-200 overflow-hidden group shadow-sm">
-                    <img src={src} className="w-full h-full object-cover" alt="upload preview" />
+                  <div key={idx} className="relative w-24 h-24 rounded-xl border border-[#57707A]/40 overflow-hidden group shadow-sm bg-[#191D23]">
+                    <img src={src} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="upload preview" />
                     {selectedMode === 'product_drop' && (
-                      <div className="absolute inset-0 bg-black/20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px', zIndex: -1 }}></div>
+                      <div className="absolute inset-0 bg-black/40 pointer-events-none" style={{ backgroundImage: 'linear-gradient(45deg, #333 25%, transparent 25%), linear-gradient(-45deg, #333 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #333 75%), linear-gradient(-45deg, transparent 75%, #333 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px', zIndex: -1 }}></div>
                     )}
-                    <button onClick={() => removeFile(idx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-600">
+                    <button onClick={() => removeFile(idx)} className="absolute top-1.5 right-1.5 bg-red-500/90 backdrop-blur-sm text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md hover:bg-red-500 hover:scale-110">
                       <X className="w-3 h-3" />
                     </button>
                   </div>
@@ -446,33 +453,33 @@ export default function ImageStudioPage() {
                   <div
                     {...getRootProps()}
                     className={cn(
-                      "w-24 h-24 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all text-gray-400",
-                      isDragActive ? "border-purple-500 bg-purple-50 text-purple-500 scale-105" : "border-gray-300 hover:border-purple-400 hover:bg-purple-50 hover:text-purple-500"
+                      "w-24 h-24 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all",
+                      isDragActive ? "border-[#C5BAC4] bg-[#C5BAC4]/10 text-[#C5BAC4] scale-105" : "border-[#57707A]/50 bg-[#191D23]/50 text-[#57707A] hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 hover:text-[#989DAA]"
                     )}
                   >
                     <input {...getInputProps()} />
-                    <UploadCloud className="w-6 h-6 mb-1" />
+                    <UploadCloud className="w-6 h-6 mb-1.5" />
                     <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight px-1">
                       {isDragActive ? "Drop Here" : "Drag & Drop"}
                     </span>
                   </div>
                 )}
               </div>
-              {selectedMode === 'product_drop' && <p className="text-[10px] text-amber-600 font-bold mt-1 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Pro Tip: Use transparent PNGs for best results.</p>}
-              {selectedStyle === 'brand' && !brandContext?.logoUrl && <p className="text-[10px] text-red-500 font-bold mt-1">⚠️ Warning: No logo found in your Brand Profile. Please upload one in the settings.</p>}
+              {selectedMode === 'product_drop' && <p className="text-[10px] text-[#B3FF00] font-bold mt-2 flex items-center gap-1.5 bg-[#B3FF00]/10 border border-[#B3FF00]/20 px-2 py-1.5 rounded-md w-fit"><CheckCircle className="w-3.5 h-3.5" /> Pro Tip: Use transparent PNGs for best results.</p>}
+              {selectedStyle === 'brand' && !brandContext?.logoUrl && <p className="text-[10px] text-red-400 font-bold mt-2 bg-red-500/10 border border-red-500/20 px-2 py-1.5 rounded-md w-fit">⚠️ Warning: No logo found in your Brand Profile. Please upload one in the settings.</p>}
             </div>
 
-            <div className="mt-auto pt-6 border-t border-gray-100 flex justify-end">
+            <div className="mt-auto pt-6 border-t border-[#57707A]/30 flex justify-end relative z-10">
               <Button
                 onClick={handleGenerate}
                 disabled={isGenerating || (activeConfig.requiresUpload && files.length === 0) || isHelpLoading || (selectedStyle === 'brand' && !brandContext?.logoUrl)}
-                className="bg-purple-600 hover:bg-purple-700 text-white h-12 px-8 font-bold shadow-md transition-all relative overflow-hidden"
+                className="bg-[#C5BAC4] hover:bg-white text-[#191D23] h-12 px-8 font-bold shadow-lg shadow-[#C5BAC4]/20 transition-all relative overflow-hidden rounded-xl disabled:opacity-50"
               >
                 {isGenerating ? (
                   <div className="flex items-center">
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     <span>Generating...</span>
-                    <div className="absolute bottom-0 left-0 h-1 bg-white/30 animate-progress w-full origin-left"></div>
+                    <div className="absolute bottom-0 left-0 h-1 bg-black/20 animate-progress w-full origin-left"></div>
                   </div>
                 ) : (
                   <><Sparkles className="w-5 h-5 mr-2" /> Generate {selectedMode === 'standard' && numImages > 1 ? `${numImages} Images` : 'Image'}</>
@@ -483,41 +490,41 @@ export default function ImageStudioPage() {
 
           {/* RESULTS AREA */}
           {(isGenerating || generatedResults.length > 0) && (
-            <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 shadow-inner min-h-[300px] animate-in fade-in-50">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-purple-500" /> Studio Results
+            <div className="bg-[#191D23]/60 rounded-xl border border-[#57707A]/30 p-6 shadow-inner min-h-[300px] animate-in fade-in-50">
+              <div className="flex items-center justify-between mb-5 border-b border-[#57707A]/20 pb-3">
+                <h3 className="text-sm font-bold text-[#DEDCDC] uppercase tracking-wider flex items-center gap-2 font-display">
+                  <ImageIcon className="w-4 h-4 text-[#C5BAC4]" /> Studio Results
                 </h3>
-                {generatedResults.length > 0 && !isGenerating && <span className="text-xs text-gray-500">{generatedResults.length} items saved to Grid</span>}
+                {generatedResults.length > 0 && !isGenerating && <span className="text-xs text-[#989DAA] font-bold bg-[#2A2F38] px-2 py-1 rounded-md border border-[#57707A]/30">{generatedResults.length} items saved to Grid</span>}
               </div>
 
               {isGenerating && generatedResults.length === 0 ? (
-                <div className="h-64 flex flex-col items-center justify-center text-gray-500 gap-4">
+                <div className="h-64 flex flex-col items-center justify-center text-[#57707A] gap-4">
                   <div className="relative">
-                    <div className="w-16 h-16 rounded-full border-4 border-purple-100 border-t-purple-500 animate-spin"></div>
-                    <Sparkles className="w-6 h-6 text-purple-500 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                    <div className="w-16 h-16 rounded-full border-4 border-[#2A2F38] border-t-[#C5BAC4] animate-spin shadow-[0_0_15px_rgba(197,186,196,0.3)]"></div>
+                    <Sparkles className="w-6 h-6 text-[#C5BAC4] absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
                   </div>
-                  <p className="text-sm font-medium animate-pulse">Nano Banana is painting your pixels...</p>
+                  <p className="text-sm font-bold animate-pulse text-[#989DAA]">Nano Banana is painting your pixels...</p>
                 </div>
               ) : (
-                <div className={cn("grid gap-4", (selectedMode === 'grid' || selectedMode === 'organic_blend') ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4")}>
+                <div className={cn("grid gap-5", (selectedMode === 'grid' || selectedMode === 'organic_blend') ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4")}>
                   {generatedResults.map((result, idx) => (
                     <div
                       key={result.id + idx}
                       onClick={() => openModal(result)}
-                      className="relative aspect-square rounded-xl overflow-hidden border-2 border-transparent hover:border-purple-400 transition-all shadow-sm group cursor-pointer bg-gray-100"
+                      className="relative aspect-square rounded-xl overflow-hidden border-2 border-[#57707A]/30 hover:border-[#C5BAC4] transition-all shadow-md group cursor-pointer bg-[#191D23]"
                     >
-                      <img src={result.url} alt={`Generated ${idx}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                        <div className="bg-white/90 backdrop-blur-sm text-purple-900 text-xs font-bold px-3 py-2 rounded-full shadow-lg flex items-center gap-2 transform scale-90 group-hover:scale-100 transition-transform">
-                          <Sparkles className="w-3 h-3" /> Refine & Edit
+                      <img src={result.url} alt={`Generated ${idx}`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-90 group-hover:opacity-100" loading="lazy" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent transition-all flex flex-col items-center justify-end pb-4 opacity-0 group-hover:opacity-100">
+                        <div className="bg-[#191D23]/80 backdrop-blur-md border border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#C5BAC4] hover:text-[#191D23] hover:border-[#C5BAC4] text-xs font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                          <Sparkles className="w-3.5 h-3.5" /> Refine & Edit
                         </div>
                       </div>
                     </div>
                   ))}
                   {isGenerating && Array.from({ length: numImages }).map((_, i) => (
-                    <div key={`skeleton-${i}`} className="aspect-square rounded-xl bg-gray-200 animate-pulse relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
+                    <div key={`skeleton-${i}`} className="aspect-square rounded-xl bg-[#2A2F38] border border-[#57707A]/20 animate-pulse relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#57707A]/10 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
                     </div>
                   ))}
                 </div>
@@ -529,71 +536,78 @@ export default function ImageStudioPage() {
 
       {/* ✨ FULLY FUNCTIONAL REFINEMENT MODAL ✨ */}
       <Dialog open={!!selectedResult} onOpenChange={(open) => !open && setSelectedResult(null)}>
-        <DialogContent className="max-w-[95vw] md:max-w-[1200px] p-0 overflow-hidden bg-white h-[90vh] md:h-[85vh] max-h-[900px] border-0 shadow-2xl rounded-2xl flex flex-col md:flex-row">
+        <DialogContent className="max-w-[95vw] md:max-w-[1200px] p-0 overflow-hidden bg-[#191D23] h-[90vh] md:h-[85vh] max-h-[900px] border border-[#57707A]/40 shadow-2xl shadow-black/50 rounded-2xl flex flex-col md:flex-row">
           {selectedResult && (
             <>
               {/* LEFT: Controls Panel */}
-              <div className="w-full md:w-[340px] border-b md:border-b-0 md:border-r border-gray-200 bg-white flex flex-col shrink-0 order-2 md:order-1 h-[55%] md:h-full">
-                <div className="p-6 flex-1 overflow-y-auto flex flex-col">
-                  <DialogHeader className="mb-6">
-                    <DialogTitle className="text-xl font-heading flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-purple-600" /> Refinement Hub
+              <div className="w-full md:w-[380px] border-b md:border-b-0 md:border-r border-[#57707A]/30 bg-[#2A2F38] flex flex-col shrink-0 order-2 md:order-1 h-[55%] md:h-full z-10 shadow-[5px_0_15px_rgba(0,0,0,0.2)] relative">
+                <div className="p-6 flex-1 overflow-y-auto flex flex-col custom-scrollbar">
+                  <DialogHeader className="mb-8 border-b border-[#57707A]/20 pb-4">
+                    <DialogTitle className="text-xl font-heading flex items-center gap-2 text-[#DEDCDC]">
+                      <Sparkles className="w-5 h-5 text-[#C5BAC4]" /> Refinement Hub
                     </DialogTitle>
-                    <p className="text-xs text-gray-500 mt-1">Perfect your creation with advanced AI tools.</p>
+                    <p className="text-xs text-[#989DAA] mt-1.5 font-medium">Perfect your creation with advanced AI tools.</p>
                   </DialogHeader>
 
                   <Tabs value={refinementTab} onValueChange={(v: any) => setRefinementTab(v)} className="w-full flex-1 flex flex-col">
-                    <TabsList className="grid w-full grid-cols-2 mb-6">
-                      <TabsTrigger value="fresh" className="text-xs gap-1.5 data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700"><RefreshCw className="w-3.5 h-3.5" /> Fresh Take</TabsTrigger>
-                      <TabsTrigger value="retouch" className="text-xs gap-1.5 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700"><Eraser className="w-3.5 h-3.5" /> Magic Retouch</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-2 mb-8 bg-[#191D23] border border-[#57707A]/30 rounded-xl p-1 h-auto">
+                      <TabsTrigger value="fresh" className="text-xs font-bold py-2.5 gap-1.5 rounded-lg data-[state=active]:bg-[#57707A]/80 data-[state=active]:text-[#DEDCDC] text-[#989DAA] data-[state=active]:shadow-sm transition-all"><RefreshCw className="w-3.5 h-3.5" /> Fresh Take</TabsTrigger>
+                      <TabsTrigger value="retouch" className="text-xs font-bold py-2.5 gap-1.5 rounded-lg data-[state=active]:bg-[#57707A]/80 data-[state=active]:text-[#DEDCDC] text-[#989DAA] data-[state=active]:shadow-sm transition-all"><Eraser className="w-3.5 h-3.5" /> Magic Retouch</TabsTrigger>
                     </TabsList>
 
                     <div className="flex-1 flex flex-col">
                       {refinementTab === "fresh" && (
-                        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
-                          <p className="text-sm text-gray-600 bg-purple-50/50 border border-purple-100 p-3 rounded-lg leading-relaxed">
-                            <strong className="text-purple-700 block mb-1">🔄 Remix the concept.</strong>
-                            Edit your prompt below to generate a new variation using this image as a reference.
-                          </p>
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                          <div className="bg-[#191D23]/60 border border-[#C5BAC4]/20 p-4 rounded-xl">
+                            <strong className="text-[#C5BAC4] block mb-1 text-sm font-bold flex items-center gap-1.5"><RefreshCw className="w-4 h-4" /> Remix Concept</strong>
+                            <p className="text-xs text-[#989DAA] leading-relaxed">Edit your prompt below to generate a new variation using this image as a reference point.</p>
+                          </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Refined Prompt</label>
+                            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-widest">Refined Prompt</label>
                             <Textarea
                               value={modalPrompt}
                               onChange={(e) => setModalPrompt(e.target.value)}
-                              className="resize-none h-32 text-sm bg-white border-gray-200 focus-visible:ring-purple-500 rounded-xl"
+                              className="resize-none h-36 text-sm bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
                             />
                           </div>
-                          <Button
-                            onClick={() => handleRefine("fresh")}
-                            disabled={isRefining || !modalPrompt.trim()}
-                            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold h-11 rounded-xl shadow-sm"
-                          >
-                            {isRefining ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                            {isRefining ? "Generating..." : "Generate Variation"}
-                          </Button>
+                          <div className="pt-2">
+                            <Button
+                              onClick={() => handleRefine("fresh")}
+                              disabled={isRefining || !modalPrompt.trim()}
+                              className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all"
+                            >
+                              {isRefining ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                              {isRefining ? "Generating Variation..." : "Generate Variation"}
+                            </Button>
+                          </div>
                         </div>
                       )}
 
                       {refinementTab === "retouch" && (
-                        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
-                          <p className="text-sm text-gray-600 bg-blue-50/50 border border-blue-100 p-3 rounded-lg leading-relaxed">
-                            <strong className="text-blue-700 block mb-1">🪄 Provide instructions.</strong>
-                            Tell the AI exactly what you want changed in the image (e.g., change colors, remove objects).
-                          </p>
-                          <Textarea
-                            value={retouchPrompt}
-                            onChange={(e) => setRetouchPrompt(e.target.value)}
-                            placeholder="E.g., Change the sofa to red, remove the vase..."
-                            className="resize-none text-sm h-32 bg-gray-50 rounded-xl border-gray-200 focus-visible:ring-blue-500"
-                          />
-                          <Button
-                            onClick={() => handleRefine("retouch")}
-                            disabled={isRefining || !retouchPrompt.trim()}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 rounded-xl shadow-sm"
-                          >
-                            {isRefining ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                            {isRefining ? "Applying Magic..." : "Apply Magic Retouch"}
-                          </Button>
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                          <div className="bg-[#191D23]/60 border border-[#B3FF00]/20 p-4 rounded-xl">
+                            <strong className="text-[#B3FF00] block mb-1 text-sm font-bold flex items-center gap-1.5"><Wand2 className="w-4 h-4" /> Provide Instructions</strong>
+                            <p className="text-xs text-[#989DAA] leading-relaxed">Tell the AI exactly what you want changed in the image (e.g., "change the sofa to red" or "remove the vase").</p>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-widest">Instructions</label>
+                            <Textarea
+                              value={retouchPrompt}
+                              onChange={(e) => setRetouchPrompt(e.target.value)}
+                              placeholder="E.g., Change the background to a sunset..."
+                              className="resize-none text-sm h-36 bg-[#191D23] rounded-xl border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#B3FF00] shadow-inner custom-scrollbar"
+                            />
+                          </div>
+                          <div className="pt-2">
+                            <Button
+                              onClick={() => handleRefine("retouch")}
+                              disabled={isRefining || !retouchPrompt.trim()}
+                              className="w-full bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] font-bold h-12 rounded-xl shadow-lg shadow-[#B3FF00]/10 transition-all border-none"
+                            >
+                              {isRefining ? <Loader2 className="w-4 h-4 mr-2 animate-spin text-[#191D23]" /> : <Wand2 className="w-4 h-4 mr-2 text-[#191D23]" />}
+                              {isRefining ? "Applying Magic..." : "Apply Magic Retouch"}
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -601,29 +615,37 @@ export default function ImageStudioPage() {
                 </div>
 
                 {/* Footer Actions */}
-                <div className="p-5 border-t border-gray-100 flex gap-3 bg-gray-50/50 shrink-0">
-                  <Button variant="outline" className="flex-1 h-10 rounded-xl text-gray-700 font-medium bg-white" onClick={() => window.open(selectedResult.url, '_blank')}>
-                    <Download className="w-4 h-4 mr-2" /> Download
+                <div className="p-5 border-t border-[#57707A]/30 flex gap-3 bg-[#191D23]/40 shrink-0">
+                  <Button variant="outline" className="flex-1 h-11 rounded-xl text-[#DEDCDC] font-bold bg-[#2A2F38] border-[#57707A]/50 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] transition-colors" onClick={() => window.open(selectedResult.url, '_blank')}>
+                    <Download className="w-4 h-4 mr-2 text-[#C5BAC4]" /> Save
                   </Button>
-                  <Button variant="outline" className="flex-1 h-10 rounded-xl text-gray-700 font-medium bg-white" onClick={() => alert('Share link copied to clipboard! (Coming soon)')}>
-                    <Share2 className="w-4 h-4 mr-2" /> Share
+                  <Button variant="outline" className="flex-1 h-11 rounded-xl text-[#DEDCDC] font-bold bg-[#2A2F38] border-[#57707A]/50 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] transition-colors" onClick={() => alert('Share link copied to clipboard! (Coming soon)')}>
+                    <Share2 className="w-4 h-4 mr-2 text-[#C5BAC4]" /> Share
                   </Button>
                 </div>
               </div>
 
               {/* RIGHT: Image View */}
-              <div className="flex-1 bg-[#0a0a0a] relative group overflow-hidden order-1 md:order-2 min-h-[45%] md:min-h-0 md:rounded-r-2xl">
+              <div className="flex-1 bg-[#0A0A0A] relative group overflow-hidden order-1 md:order-2 min-h-[45%] md:min-h-0 md:rounded-r-2xl flex items-center justify-center">
+                <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none"></div>
                 <img
                   src={selectedResult.url}
-                  className="w-full h-full object-cover"
+                  className="max-w-full max-h-full object-contain relative z-10 drop-shadow-2xl"
                   alt="Selected result"
                 />
 
                 {/* Prompt overlay on hover */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-6 pt-16 text-white opacity-0 group-hover:opacity-100 transition-opacity delay-100 pointer-events-none">
-                  <p className="text-xs font-bold uppercase tracking-wider mb-1 text-purple-400">Original Prompt</p>
-                  <p className="text-sm leading-relaxed line-clamp-3 text-gray-200">{selectedResult.prompt}</p>
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-8 pt-24 text-white opacity-0 group-hover:opacity-100 transition-opacity delay-100 pointer-events-none z-20">
+                  <div className="max-w-3xl mx-auto">
+                    <p className="text-[10px] font-bold uppercase tracking-widest mb-2 text-[#C5BAC4] flex items-center gap-2"><Sparkles className="w-3 h-3" /> Original Prompt</p>
+                    <p className="text-sm leading-relaxed line-clamp-4 text-[#DEDCDC] font-medium bg-black/40 p-4 rounded-xl border border-white/10 backdrop-blur-sm">{selectedResult.prompt}</p>
+                  </div>
                 </div>
+
+                {/* Close button for mobile */}
+                <button onClick={() => setSelectedResult(null)} className="md:hidden absolute top-4 right-4 z-30 p-2 bg-black/50 backdrop-blur-md text-white rounded-full border border-white/20">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             </>
           )}

@@ -702,44 +702,44 @@ export function VideoEditorUI() {
   if (zoom < 0.2) rulerStep = 60;
 
   return (
-    <div className="flex flex-col h-[850px] bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden shadow-sm select-none relative">
+    <div className="flex flex-col h-[850px] bg-[#191D23] border border-[#57707A]/30 rounded-2xl overflow-hidden shadow-lg select-none relative">
 
       {isRendering && (
-        <div className="absolute inset-0 z-50 bg-gray-900/95 backdrop-blur-md flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
+        <div className="absolute inset-0 z-50 bg-[#191D23]/95 backdrop-blur-md flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
           {!renderComplete ? (
             <>
-              <Loader2 className="w-12 h-12 animate-spin text-purple-400 mb-6" />
-              <h2 className="text-2xl font-bold tracking-widest uppercase mb-2">Rendering Sequence</h2>
-              <p className="text-gray-400 text-sm mb-6 text-center max-w-sm">{renderStatusText}</p>
+              <Loader2 className="w-12 h-12 animate-spin text-[#C5BAC4] mb-6" />
+              <h2 className="text-2xl font-bold tracking-widest uppercase mb-2 text-[#DEDCDC]">Rendering Sequence</h2>
+              <p className="text-[#989DAA] text-sm mb-6 text-center max-w-sm">{renderStatusText}</p>
 
-              <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
+              <div className="w-64 h-2 bg-[#2A2F38] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-purple-500 transition-all duration-300 ease-out"
+                  className="h-full bg-[#C5BAC4] transition-all duration-300 ease-out"
                   style={{ width: `${renderProgress}%` }}
                 />
               </div>
-              <p className="text-xs text-purple-300 mt-2 font-bold">{renderProgress}%</p>
+              <p className="text-xs text-[#C5BAC4] mt-2 font-bold">{renderProgress}%</p>
             </>
           ) : (
             <div className="flex flex-col items-center animate-in zoom-in duration-300">
-              <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(34,197,94,0.4)]">
-                <Check className="w-10 h-10 text-white" />
+              <div className="w-20 h-20 bg-[#B3FF00]/10 border border-[#B3FF00]/30 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(179,255,0,0.2)]">
+                <Check className="w-10 h-10 text-[#B3FF00]" />
               </div>
-              <h2 className="text-3xl font-bold tracking-widest uppercase mb-3">Render Complete!</h2>
-              <p className="text-gray-300 text-base mb-8 text-center max-w-md leading-relaxed">
+              <h2 className="text-3xl font-bold tracking-widest uppercase mb-3 text-[#DEDCDC]">Render Complete!</h2>
+              <p className="text-[#989DAA] text-base mb-8 text-center max-w-md leading-relaxed">
                 Your video has been successfully downloaded to your computer and securely backed up to your Content Grid.
               </p>
               <div className="flex gap-4">
                 <Button
                   onClick={() => { setIsRendering(false); setRenderComplete(false); }}
                   variant="outline"
-                  className="border-gray-600 text-gray-300 hover:text-white hover:bg-gray-800 font-bold h-12 px-6"
+                  className="border-[#57707A]/50 bg-transparent text-[#DEDCDC]/70 hover:text-white hover:bg-[#2A2F38] font-bold h-12 px-6"
                 >
                   Back to Editor
                 </Button>
                 <Button
                   onClick={() => router.push('/dashboard/content')}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold h-12 px-6 shadow-lg"
+                  className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 px-6 shadow-lg"
                 >
                   View in Content Grid
                 </Button>
@@ -751,72 +751,72 @@ export function VideoEditorUI() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT PANEL: Media/Text */}
-        <div className="w-72 bg-white border-r border-gray-200 flex flex-col z-10">
-          <div className="flex border-b border-gray-100">
-            <button onClick={() => setActiveTab("assets")} className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider", activeTab === "assets" ? "text-purple-600 border-b-2 border-purple-600 bg-purple-50/50" : "text-gray-500 hover:bg-gray-50")}>Media</button>
-            <button onClick={() => setActiveTab("text")} className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider", activeTab === "text" ? "text-purple-600 border-b-2 border-purple-600 bg-purple-50/50" : "text-gray-500 hover:bg-gray-50")}>Text</button>
+        <div className="w-72 bg-[#2A2F38] border-r border-[#57707A]/30 flex flex-col z-10">
+          <div className="flex border-b border-[#57707A]/30">
+            <button onClick={() => setActiveTab("assets")} className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors", activeTab === "assets" ? "text-[#C5BAC4] border-b-2 border-[#C5BAC4] bg-[#191D23]/30" : "text-[#DEDCDC]/40 hover:bg-[#191D23]/20")}>{"Media"}</button>
+            <button onClick={() => setActiveTab("text")} className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors", activeTab === "text" ? "text-[#C5BAC4] border-b-2 border-[#C5BAC4] bg-[#191D23]/30" : "text-[#DEDCDC]/40 hover:bg-[#191D23]/20")}>{"Text"}</button>
           </div>
 
           <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
             {activeTab === "assets" && (
               <div className="space-y-4">
 
-                <div className="bg-gray-100 p-1 rounded-lg flex items-center justify-between">
+                <div className="bg-[#191D23] border border-[#57707A]/20 p-1 rounded-xl flex items-center justify-between">
                   <button
                     onClick={() => handleFilterSwitch('library')}
-                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all", assetFilter === 'library' ? "bg-white shadow-sm text-gray-800" : "text-gray-500 hover:text-gray-700")}
+                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all", assetFilter === 'library' ? "bg-[#2A2F38] shadow-sm text-[#DEDCDC]" : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#2A2F38]/50")}
                   >
                     General
                   </button>
                   <button
                     onClick={() => handleFilterSwitch('sequence')}
-                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all flex items-center justify-center gap-1", assetFilter === 'sequence' ? "bg-white shadow-sm text-purple-700" : "text-gray-500 hover:text-gray-700")}
+                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1", assetFilter === 'sequence' ? "bg-[#2A2F38] shadow-sm text-[#C5BAC4]" : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#2A2F38]/50")}
                   >
                     <Layers className="w-3 h-3" /> Scenes
                   </button>
                   <button
                     onClick={() => handleFilterSwitch('audio')}
-                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all flex items-center justify-center gap-1", assetFilter === 'audio' ? "bg-white shadow-sm text-green-600" : "text-gray-500 hover:text-gray-700")}
+                    className={cn("flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1", assetFilter === 'audio' ? "bg-[#2A2F38] shadow-sm text-[#B3FF00]" : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#2A2F38]/50")}
                   >
                     <Mic className="w-3 h-3" /> Audio
                   </button>
                 </div>
 
                 <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" onChange={handleManualUpload} />
-                <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full border-dashed border-2 border-purple-200 text-purple-600 hover:bg-purple-50 h-10">
+                <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full border-dashed border-2 border-[#57707A]/50 bg-transparent text-[#C5BAC4] hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/10 h-10 font-bold transition-colors">
                   <UploadCloud className="w-4 h-4 mr-2" /> Upload File
                 </Button>
 
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <p className="text-xs font-bold text-gray-400 uppercase">
+                    <p className="text-xs font-bold text-[#57707A] uppercase tracking-wider">
                       {assetFilter === 'library' && 'Your Library'}
                       {assetFilter === 'sequence' && 'Story Sequences'}
                       {assetFilter === 'audio' && 'AI Voiceovers'}
                     </p>
-                    {isLoadingDB && <Loader2 className="w-3 h-3 text-purple-400 animate-spin" />}
+                    {isLoadingDB && <Loader2 className="w-3 h-3 text-[#C5BAC4] animate-spin" />}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pb-2">
                     {assets.map((asset) => (
-                      <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className="group relative aspect-square bg-black rounded-lg overflow-hidden cursor-grab active:cursor-grabbing hover:ring-2 ring-purple-500 transition-all border border-gray-200">
+                      <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className="group relative aspect-square bg-[#0F1115] rounded-xl overflow-hidden cursor-grab active:cursor-grabbing hover:ring-2 ring-[#C5BAC4] transition-all border border-[#57707A]/40 shadow-sm">
                         {asset.type === "video" ? (
-                          <video src={asset.url} className="w-full h-full object-cover opacity-80" preload="metadata" muted playsInline />
+                          <video src={asset.url} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" preload="metadata" muted playsInline />
                         ) : asset.type === "audio" ? (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 border-2 border-green-500/30 text-green-400 group-hover:bg-gray-800 transition-colors">
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-[#191D23] border border-[#B3FF00]/20 text-[#B3FF00] group-hover:bg-[#B3FF00]/10 transition-colors">
                             <Mic className="w-8 h-8 mb-2 opacity-80" />
                             <span className="text-[10px] font-bold text-center w-full truncate px-2">{asset.name || "Voiceover"}</span>
                           </div>
                         ) : (
-                          <img src={asset.thumb} alt="Asset" className="w-full h-full object-cover" />
+                          <img src={asset.thumb} alt="Asset" className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
                         )}
 
-                        <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-sm text-white p-1 rounded">
+                        <div className="absolute top-1.5 left-1.5 bg-[#191D23]/80 border border-[#57707A]/50 backdrop-blur-sm text-[#DEDCDC] p-1.5 rounded-md shadow-sm">
                           {asset.type === "video" ? <Video className="w-3 h-3" /> : asset.type === "audio" ? <Music className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                         </div>
                         <button
                           onClick={() => deleteAsset(asset.id, asset.name)}
-                          className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-opacity shadow-sm"
+                          className="absolute top-1.5 right-1.5 bg-red-500/90 border border-red-400 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all shadow-md scale-90 group-hover:scale-100"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -825,7 +825,7 @@ export function VideoEditorUI() {
                   </div>
 
                   {assets.length === 0 && !isLoadingDB && (
-                    <div className="text-center p-4 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 text-xs">
+                    <div className="text-center p-5 border-2 border-dashed border-[#57707A]/30 rounded-xl text-[#989DAA] text-xs font-medium">
                       {assetFilter === 'library' && 'No standard media found.'}
                       {assetFilter === 'sequence' && 'No sequences found. Generate a Storytelling B-Roll first!'}
                       {assetFilter === 'audio' && 'No voiceovers found. Use Dedicated TTS to generate one!'}
@@ -836,7 +836,7 @@ export function VideoEditorUI() {
                     <Button
                       onClick={() => setAssetPageLimit(prev => prev + 8)}
                       variant="ghost"
-                      className="w-full text-xs font-bold text-gray-500 hover:text-purple-600 border border-gray-200 bg-gray-50 hover:bg-purple-50 transition-colors mt-2"
+                      className="w-full text-xs font-bold text-[#DEDCDC]/50 hover:text-[#C5BAC4] border border-[#57707A]/30 bg-[#191D23]/50 hover:bg-[#191D23] transition-colors mt-2 h-9 rounded-lg"
                     >
                       {isLoadingDB ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronDown className="w-3 h-3 mr-1" />} Load More
                     </Button>
@@ -846,7 +846,7 @@ export function VideoEditorUI() {
             )}
             {activeTab === "text" && (
               <div className="space-y-3">
-                <Button onClick={addTextLayer} className="w-full bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 justify-start font-bold text-lg h-14">
+                <Button onClick={addTextLayer} className="w-full bg-[#C5BAC4]/10 text-[#C5BAC4] hover:bg-[#C5BAC4]/20 border border-[#C5BAC4]/30 justify-start font-bold text-sm h-12 rounded-xl transition-colors">
                   <Plus className="w-4 h-4 mr-2" /> Add Text Layer
                 </Button>
               </div>
@@ -855,23 +855,23 @@ export function VideoEditorUI() {
         </div>
 
         {/* CENTER PANEL: Preview Canvas */}
-        <div className="flex-1 bg-gray-100 flex flex-col relative" onClick={() => setSelectedElement(null)}>
-          <div className="h-12 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0">
-            <span className="text-sm font-semibold text-gray-600">Preview Canvas</span>
+        <div className="flex-1 bg-[#191D23] flex flex-col relative" onClick={() => setSelectedElement(null)}>
+          <div className="h-14 bg-[#2A2F38] border-b border-[#57707A]/30 flex items-center justify-between px-5 shrink-0 z-10 shadow-sm">
+            <span className="text-sm font-bold text-[#DEDCDC] tracking-wider uppercase font-display">Preview Canvas</span>
 
             <Button
               size="sm"
               onClick={handleRender}
               disabled={isRendering || videoClips.length === 0}
-              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-md transition-all duration-200"
+              className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold shadow-md shadow-[#C5BAC4]/20 transition-all duration-200 h-9 rounded-lg px-4"
             >
               <Film className="w-4 h-4 mr-2" />
               Render & Finish
             </Button>
           </div>
 
-          <div className="flex-1 overflow-hidden p-6 flex items-center justify-center bg-dot-pattern">
-            <div ref={canvasRef} className="relative w-full max-w-3xl aspect-video bg-black rounded-lg shadow-2xl overflow-hidden ring-1 ring-white/10">
+          <div className="flex-1 overflow-hidden p-6 flex items-center justify-center bg-[url('/checkers.png')] relative before:absolute before:inset-0 before:bg-[#191D23]/90">
+            <div ref={canvasRef} className="relative w-full max-w-3xl aspect-video bg-[#000000] rounded-lg shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden ring-1 ring-[#57707A]/50 z-10">
 
               {videoClips.sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
                 const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart);
@@ -900,18 +900,18 @@ export function VideoEditorUI() {
               })}
 
               {isScrubbingUI && (
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-50 flex items-center justify-center pointer-events-none animate-in fade-in duration-150">
-                  <div className="bg-black/60 px-4 py-2 rounded-full flex items-center gap-2 text-white/90 shadow-xl border border-white/10">
-                    <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                <div className="absolute inset-0 bg-[#191D23]/60 backdrop-blur-[2px] z-50 flex items-center justify-center pointer-events-none animate-in fade-in duration-150">
+                  <div className="bg-[#2A2F38]/90 px-5 py-2.5 rounded-full flex items-center gap-2.5 text-[#DEDCDC] shadow-xl border border-[#57707A]/50">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#C5BAC4]" />
                     <span className="text-xs font-bold tracking-widest uppercase">Seeking...</span>
                   </div>
                 </div>
               )}
 
               {!videoClips.some(clip => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart)) && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 z-0">
-                  <Video className="w-12 h-12 mb-2 opacity-30" />
-                  <p>Drag a video or image to the timeline</p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-[#57707A] z-0 bg-[#000000]">
+                  <Video className="w-12 h-12 mb-3 opacity-50" />
+                  <p className="text-xs font-bold tracking-widest uppercase">Drag media to timeline</p>
                 </div>
               )}
 
@@ -940,8 +940,8 @@ export function VideoEditorUI() {
                     onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedElement({ id: layer.id, type: "text" }); dragTextRef.current = { id: layer.id, startX: e.clientX, startY: e.clientY, initX: layer.x, initY: layer.y }; }}
                     style={{ top: `${layer.y}%`, left: `${layer.x}%`, color: layer.color, fontSize: `${layer.fontSize}px`, opacity: (layer.opacity ?? 100) / 100, zIndex: 100 + (layer.trackRow || 0) }}
                     className={cn(
-                      "absolute transform -translate-x-1/2 -translate-y-1/2 font-bold whitespace-nowrap drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] cursor-grab active:cursor-grabbing px-2 py-1 rounded transition-opacity duration-150",
-                      selectedElement?.id === layer.id ? "ring-2 ring-purple-500 ring-dashed bg-purple-500/20" : ""
+                      "absolute transform -translate-x-1/2 -translate-y-1/2 font-bold whitespace-nowrap drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] cursor-grab active:cursor-grabbing px-2 py-1 rounded transition-opacity duration-150",
+                      selectedElement?.id === layer.id ? "ring-2 ring-[#C5BAC4] ring-dashed bg-[#C5BAC4]/20 backdrop-blur-sm" : ""
                     )}
                   >
                     {layer.text}
@@ -951,30 +951,30 @@ export function VideoEditorUI() {
             </div>
           </div>
 
-          <div className="h-14 bg-white border-t border-gray-200 flex items-center justify-center gap-4 shrink-0">
-            <span className="text-xs font-mono w-16 text-right text-gray-500">{globalTime.toFixed(1)}s</span>
-            <button onClick={() => setGlobalTime(0)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-full"><SkipBack className="w-4 h-4" /></button>
-            <button onClick={togglePlay} className="p-3 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-full transition-colors">
+          <div className="h-14 bg-[#2A2F38] border-t border-[#57707A]/30 flex items-center justify-center gap-6 shrink-0 z-10">
+            <span className="text-xs font-mono font-bold w-16 text-right text-[#DEDCDC]/50">{globalTime.toFixed(1)}s</span>
+            <button onClick={() => setGlobalTime(0)} className="p-2.5 text-[#DEDCDC]/50 hover:bg-[#191D23] hover:text-[#DEDCDC] rounded-full transition-colors"><SkipBack className="w-4 h-4" /></button>
+            <button onClick={togglePlay} className="p-3.5 bg-[#C5BAC4] text-[#191D23] hover:bg-white rounded-full transition-colors shadow-lg shadow-[#C5BAC4]/10">
               {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
             </button>
-            <span className="text-xs font-mono w-16 text-gray-500">{maxVisibleTime}s MAX</span>
+            <span className="text-xs font-mono font-bold w-16 text-[#DEDCDC]/50">{maxVisibleTime}s MAX</span>
           </div>
         </div>
 
         {/* RIGHT PANEL: INSPECTOR */}
-        <div className="w-64 bg-white border-l border-gray-200 flex flex-col z-10 overflow-y-auto">
-          <div className="p-4 border-b border-gray-100 flex items-center gap-2 bg-gray-50/50">
-            <SlidersHorizontal className="w-4 h-4 text-gray-500" />
-            <span className="font-bold text-sm text-gray-700">Properties</span>
+        <div className="w-72 bg-[#2A2F38] border-l border-[#57707A]/30 flex flex-col z-10 overflow-y-auto custom-scrollbar shadow-[-5px_0_15px_rgba(0,0,0,0.1)]">
+          <div className="p-4 border-b border-[#57707A]/30 flex items-center gap-2 bg-[#191D23]/40">
+            <SlidersHorizontal className="w-4 h-4 text-[#C5BAC4]" />
+            <span className="font-bold text-sm text-[#DEDCDC] font-display">Properties</span>
           </div>
 
           {selectedElement ? (
-            <div className="p-4 space-y-6 animate-in fade-in">
-              <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
-                {selectedElement.type === 'video' && <Video className="w-4 h-4 text-blue-500" />}
-                {selectedElement.type === 'audio' && <Music className="w-4 h-4 text-green-500" />}
-                {selectedElement.type === 'text' && <Type className="w-4 h-4 text-purple-500" />}
-                <span className="text-sm font-bold text-gray-700 capitalize">{selectedElement.type} Settings</span>
+            <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-2">
+              <div className="flex items-center gap-2 pb-3 border-b border-[#57707A]/20">
+                {selectedElement.type === 'video' && <Video className="w-4 h-4 text-[#C5BAC4]" />}
+                {selectedElement.type === 'audio' && <Music className="w-4 h-4 text-[#B3FF00]" />}
+                {selectedElement.type === 'text' && <Type className="w-4 h-4 text-[#DEDCDC]" />}
+                <span className="text-sm font-bold text-[#DEDCDC] capitalize tracking-wide">{selectedElement.type} Settings</span>
               </div>
 
               {selectedElement.type === "text" && (() => {
@@ -983,27 +983,27 @@ export function VideoEditorUI() {
                 return (
                   <div className="space-y-5">
                     <div>
-                      <label className="text-[11px] font-bold text-gray-500 uppercase mb-1.5 block">Text Content</label>
-                      <textarea value={layer.text} onChange={e => updateTextLayer(layer.id, { text: e.target.value })} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm resize-none focus:ring-2 ring-purple-400 outline-none" rows={3} />
+                      <label className="text-[10px] font-bold text-[#57707A] uppercase mb-2 block tracking-wider">Text Content</label>
+                      <textarea value={layer.text} onChange={e => updateTextLayer(layer.id, { text: e.target.value })} className="w-full p-3 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] rounded-xl text-sm resize-none focus:ring-1 focus:ring-[#C5BAC4] outline-none shadow-inner custom-scrollbar" rows={3} />
                     </div>
                     <div>
-                      <label className="flex items-center justify-between text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                        Font Size <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">{layer.fontSize}px</span>
+                      <label className="flex items-center justify-between text-[10px] font-bold text-[#57707A] uppercase mb-2 tracking-wider">
+                        Font Size <span className="bg-[#191D23] text-[#DEDCDC] px-2 py-0.5 rounded border border-[#57707A]/30">{layer.fontSize}px</span>
                       </label>
-                      <input type="range" value={layer.fontSize} onChange={e => updateTextLayer(layer.id, { fontSize: parseInt(e.target.value) })} className="w-full accent-purple-600" min="12" max="120" />
+                      <input type="range" value={layer.fontSize} onChange={e => updateTextLayer(layer.id, { fontSize: parseInt(e.target.value) })} className="w-full accent-[#C5BAC4] h-1.5 bg-[#57707A]/30 rounded-lg appearance-none cursor-pointer" min="12" max="120" />
                     </div>
                     <div>
-                      <label className="flex items-center justify-between text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                        Opacity <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">{layer.opacity ?? 100}%</span>
+                      <label className="flex items-center justify-between text-[10px] font-bold text-[#57707A] uppercase mb-2 tracking-wider">
+                        Opacity <span className="bg-[#191D23] text-[#DEDCDC] px-2 py-0.5 rounded border border-[#57707A]/30">{layer.opacity ?? 100}%</span>
                       </label>
-                      <input type="range" value={layer.opacity ?? 100} onChange={e => updateTextLayer(layer.id, { opacity: parseInt(e.target.value) })} className="w-full accent-purple-600" min="0" max="100" />
+                      <input type="range" value={layer.opacity ?? 100} onChange={e => updateTextLayer(layer.id, { opacity: parseInt(e.target.value) })} className="w-full accent-[#C5BAC4] h-1.5 bg-[#57707A]/30 rounded-lg appearance-none cursor-pointer" min="0" max="100" />
                     </div>
                     <div>
-                      <label className="text-[11px] font-bold text-gray-500 uppercase mb-1.5 block">Track Placement</label>
+                      <label className="text-[10px] font-bold text-[#57707A] uppercase mb-2 block tracking-wider">Track Placement</label>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="flex-1" onClick={() => updateTextLayer(layer.id, { trackRow: Math.max(0, (layer.trackRow || 0) - 1) })}><ArrowUp className="w-4 h-4 mr-1" /> Up</Button>
-                        <span className="w-10 flex items-center justify-center bg-purple-50 text-purple-700 font-bold rounded border border-purple-200 text-xs">T{(layer.trackRow || 0) + 1}</span>
-                        <Button size="sm" variant="outline" className="flex-1" onClick={() => updateTextLayer(layer.id, { trackRow: (layer.trackRow || 0) + 1 })}><ArrowDown className="w-4 h-4 mr-1" /> Down</Button>
+                        <Button size="sm" variant="outline" className="flex-1 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white" onClick={() => updateTextLayer(layer.id, { trackRow: Math.max(0, (layer.trackRow || 0) - 1) })}><ArrowUp className="w-4 h-4 mr-1" /> Up</Button>
+                        <span className="w-12 flex items-center justify-center bg-[#191D23] text-[#DEDCDC] font-bold rounded-lg border border-[#57707A]/40 text-xs">T{(layer.trackRow || 0) + 1}</span>
+                        <Button size="sm" variant="outline" className="flex-1 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white" onClick={() => updateTextLayer(layer.id, { trackRow: (layer.trackRow || 0) + 1 })}><ArrowDown className="w-4 h-4 mr-1" /> Down</Button>
                       </div>
                     </div>
                   </div>
@@ -1016,23 +1016,23 @@ export function VideoEditorUI() {
                 return (
                   <div className="space-y-5">
                     <div>
-                      <label className="flex items-center justify-between text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                        Opacity <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">{clip.opacity ?? 100}%</span>
+                      <label className="flex items-center justify-between text-[10px] font-bold text-[#57707A] uppercase mb-2 tracking-wider">
+                        Opacity <span className="bg-[#191D23] text-[#DEDCDC] px-2 py-0.5 rounded border border-[#57707A]/30">{clip.opacity ?? 100}%</span>
                       </label>
-                      <input type="range" value={clip.opacity ?? 100} onChange={e => updateVideoClip(clip.id, { opacity: parseInt(e.target.value) })} className="w-full accent-blue-600" min="0" max="100" />
+                      <input type="range" value={clip.opacity ?? 100} onChange={e => updateVideoClip(clip.id, { opacity: parseInt(e.target.value) })} className="w-full accent-[#C5BAC4] h-1.5 bg-[#57707A]/30 rounded-lg appearance-none cursor-pointer" min="0" max="100" />
                     </div>
                     <div>
-                      <label className="flex items-center justify-between text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                        Volume <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">{clip.volume ?? 100}%</span>
+                      <label className="flex items-center justify-between text-[10px] font-bold text-[#57707A] uppercase mb-2 tracking-wider">
+                        Volume <span className="bg-[#191D23] text-[#DEDCDC] px-2 py-0.5 rounded border border-[#57707A]/30">{clip.volume ?? 100}%</span>
                       </label>
-                      <input type="range" value={clip.volume ?? 100} onChange={e => updateVideoClip(clip.id, { volume: parseInt(e.target.value) })} className="w-full accent-green-600" min="0" max="100" />
+                      <input type="range" value={clip.volume ?? 100} onChange={e => updateVideoClip(clip.id, { volume: parseInt(e.target.value) })} className="w-full accent-[#C5BAC4] h-1.5 bg-[#57707A]/30 rounded-lg appearance-none cursor-pointer" min="0" max="100" />
                     </div>
                     <div>
-                      <label className="text-[11px] font-bold text-gray-500 uppercase mb-1.5 block">Track Layer (Z-Index)</label>
+                      <label className="text-[10px] font-bold text-[#57707A] uppercase mb-2 block tracking-wider">Track Layer (Z-Index)</label>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="flex-1" onClick={() => updateVideoClip(clip.id, { trackRow: Math.max(0, (clip.trackRow || 0) - 1) })}><ArrowUp className="w-4 h-4 mr-1" /> Top</Button>
-                        <span className="w-10 flex items-center justify-center bg-blue-50 text-blue-700 font-bold rounded border border-blue-200 text-xs">V{(clip.trackRow || 0) + 1}</span>
-                        <Button size="sm" variant="outline" className="flex-1" onClick={() => updateVideoClip(clip.id, { trackRow: (clip.trackRow || 0) + 1 })}><ArrowDown className="w-4 h-4 mr-1" /> Bottom</Button>
+                        <Button size="sm" variant="outline" className="flex-1 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white" onClick={() => updateVideoClip(clip.id, { trackRow: Math.max(0, (clip.trackRow || 0) - 1) })}><ArrowUp className="w-4 h-4 mr-1" /> Top</Button>
+                        <span className="w-12 flex items-center justify-center bg-[#191D23] text-[#C5BAC4] font-bold rounded-lg border border-[#57707A]/40 text-xs">V{(clip.trackRow || 0) + 1}</span>
+                        <Button size="sm" variant="outline" className="flex-1 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white" onClick={() => updateVideoClip(clip.id, { trackRow: (clip.trackRow || 0) + 1 })}><ArrowDown className="w-4 h-4 mr-1" /> Bottom</Button>
                       </div>
                     </div>
                   </div>
@@ -1045,17 +1045,17 @@ export function VideoEditorUI() {
                 return (
                   <div className="space-y-5">
                     <div>
-                      <label className="flex items-center justify-between text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                        Volume <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">{clip.volume ?? 100}%</span>
+                      <label className="flex items-center justify-between text-[10px] font-bold text-[#57707A] uppercase mb-2 tracking-wider">
+                        Volume <span className="bg-[#191D23] text-[#DEDCDC] px-2 py-0.5 rounded border border-[#57707A]/30">{clip.volume ?? 100}%</span>
                       </label>
-                      <input type="range" value={clip.volume ?? 100} onChange={e => updateAudioClip(clip.id, { volume: parseInt(e.target.value) })} className="w-full accent-green-600" min="0" max="100" />
+                      <input type="range" value={clip.volume ?? 100} onChange={e => updateAudioClip(clip.id, { volume: parseInt(e.target.value) })} className="w-full accent-[#B3FF00] h-1.5 bg-[#57707A]/30 rounded-lg appearance-none cursor-pointer" min="0" max="100" />
                     </div>
                     <div>
-                      <label className="text-[11px] font-bold text-gray-500 uppercase mb-1.5 block">Track Group</label>
+                      <label className="text-[10px] font-bold text-[#57707A] uppercase mb-2 block tracking-wider">Track Group</label>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="flex-1" onClick={() => updateAudioClip(clip.id, { trackRow: Math.max(0, (clip.trackRow || 0) - 1) })}><ArrowUp className="w-4 h-4 mr-1" /> Up</Button>
-                        <span className="w-10 flex items-center justify-center bg-green-50 text-green-700 font-bold rounded border border-green-200 text-xs">A{(clip.trackRow || 0) + 1}</span>
-                        <Button size="sm" variant="outline" className="flex-1" onClick={() => updateAudioClip(clip.id, { trackRow: (clip.trackRow || 0) + 1 })}><ArrowDown className="w-4 h-4 mr-1" /> Down</Button>
+                        <Button size="sm" variant="outline" className="flex-1 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white" onClick={() => updateAudioClip(clip.id, { trackRow: Math.max(0, (clip.trackRow || 0) - 1) })}><ArrowUp className="w-4 h-4 mr-1" /> Up</Button>
+                        <span className="w-12 flex items-center justify-center bg-[#191D23] text-[#B3FF00] font-bold rounded-lg border border-[#57707A]/40 text-xs">A{(clip.trackRow || 0) + 1}</span>
+                        <Button size="sm" variant="outline" className="flex-1 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white" onClick={() => updateAudioClip(clip.id, { trackRow: (clip.trackRow || 0) + 1 })}><ArrowDown className="w-4 h-4 mr-1" /> Down</Button>
                       </div>
                     </div>
                   </div>
@@ -1063,99 +1063,103 @@ export function VideoEditorUI() {
               })()}
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 opacity-60">
-              <SlidersHorizontal className="w-10 h-10 text-gray-300 mb-3" />
-              <p className="text-sm font-medium text-gray-500">Select a clip or text layer on the timeline to adjust properties.</p>
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 opacity-80">
+              <div className="w-16 h-16 bg-[#191D23] border border-[#57707A]/30 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                <SlidersHorizontal className="w-8 h-8 text-[#57707A]" />
+              </div>
+              <p className="text-sm font-bold text-[#DEDCDC]/60 max-w-[180px]">Select a clip or text layer to adjust properties.</p>
             </div>
           )}
         </div>
       </div>
 
       {/* ─── BOTTOM WORKSPACE (Timeline Engine) ─── */}
-      <div className="h-80 bg-white border-t border-gray-300 flex flex-col z-0">
-        <div className="h-10 bg-gray-50 border-b border-gray-200 flex items-center justify-between px-4 z-20 shrink-0">
-          <div className="flex items-center gap-2 text-gray-600">
-            <span className="text-xs font-semibold uppercase text-gray-400 mr-4">Timeline Tracks</span>
-            <button onClick={deleteSelected} disabled={!selectedElement} className="p-1.5 hover:bg-gray-200 rounded text-red-500 disabled:opacity-30 transition-colors"><Trash2 className="w-4 h-4" /></button>
+      <div className="h-80 bg-[#2A2F38] border-t border-[#57707A]/40 flex flex-col z-0 shadow-[0_-5px_20px_rgba(0,0,0,0.2)]">
+        <div className="h-12 bg-[#191D23] border-b border-[#57707A]/30 flex items-center justify-between px-5 z-20 shrink-0">
+          <div className="flex items-center gap-4 text-[#DEDCDC]/50">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#989DAA] font-display">Timeline Tracks</span>
+            <div className="h-4 w-px bg-[#57707A]/40"></div>
+            <button onClick={deleteSelected} disabled={!selectedElement} className="p-1.5 hover:bg-[#57707A]/30 rounded-lg text-red-400 disabled:opacity-30 disabled:hover:bg-transparent transition-colors" title="Delete Selected Clip"><Trash2 className="w-4 h-4" /></button>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
 
             <button
               onClick={() => setIsMagnetEnabled(!isMagnetEnabled)}
-              className={cn("p-1.5 rounded transition-colors flex items-center gap-1", isMagnetEnabled ? "bg-purple-100 text-purple-600" : "text-gray-400 hover:bg-gray-100")}
+              className={cn("p-1.5 rounded-lg transition-colors flex items-center gap-1", isMagnetEnabled ? "bg-[#C5BAC4]/20 text-[#C5BAC4] border border-[#C5BAC4]/30 shadow-sm" : "text-[#57707A] hover:bg-[#57707A]/20 hover:text-[#DEDCDC] border border-transparent")}
               title={isMagnetEnabled ? "Snapping Enabled" : "Snapping Disabled"}
             >
               <Magnet className="w-4 h-4" />
             </button>
-            <div className="w-px h-4 bg-gray-300 mx-1"></div>
+            <div className="w-px h-5 bg-[#57707A]/40 mx-1"></div>
 
-            <ZoomOut className="w-4 h-4 text-gray-400" />
-            <input type="range" min="0.1" max="20" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-32 accent-purple-500 h-1" />
-            <ZoomIn className="w-4 h-4 text-gray-400" />
+            <ZoomOut className="w-4 h-4 text-[#57707A]" />
+            <input type="range" min="0.1" max="20" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-32 accent-[#C5BAC4] h-1.5 bg-[#57707A]/30 rounded-lg appearance-none cursor-pointer" />
+            <ZoomIn className="w-4 h-4 text-[#57707A]" />
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-hidden relative bg-gray-50/50">
+        <div className="flex-1 flex overflow-hidden relative bg-[#191D23]/50">
 
-          <div className="w-32 flex-shrink-0 bg-white border-r border-gray-200 z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] relative">
-            <div className="h-6 border-b border-gray-200 bg-gray-50"></div>
+          <div className="w-32 flex-shrink-0 bg-[#2A2F38] border-r border-[#57707A]/30 z-30 shadow-[2px_0_10px_rgba(0,0,0,0.2)] relative">
+            <div className="h-6 border-b border-[#57707A]/20 bg-[#191D23]/80"></div>
             {Array.from({ length: videoTrackCount }).map((_, i) => (
-              <div key={`vlabel-${i}`} className="h-14 border-b border-gray-100 flex items-center px-3 gap-2 text-gray-600 bg-blue-50/30">
-                <Video className="w-4 h-4" /> <span className="text-xs font-semibold">V{i + 1}</span>
+              <div key={`vlabel-${i}`} className="h-14 border-b border-[#57707A]/20 flex items-center px-4 gap-2 text-[#C5BAC4] bg-[#C5BAC4]/5">
+                <Video className="w-4 h-4 opacity-70" /> <span className="text-xs font-bold font-mono">V{i + 1}</span>
               </div>
             ))}
             {Array.from({ length: textTrackCount }).map((_, i) => (
-              <div key={`tlabel-${i}`} className="h-12 border-b border-gray-100 flex items-center px-3 gap-2 text-gray-600 bg-purple-50/30">
-                <Type className="w-4 h-4" /> <span className="text-xs font-semibold">T{i + 1}</span>
+              <div key={`tlabel-${i}`} className="h-12 border-b border-[#57707A]/20 flex items-center px-4 gap-2 text-[#DEDCDC] bg-white/5">
+                <Type className="w-4 h-4 opacity-70" /> <span className="text-xs font-bold font-mono">T{i + 1}</span>
               </div>
             ))}
             {Array.from({ length: audioTrackCount }).map((_, i) => (
-              <div key={`alabel-${i}`} className="h-14 border-b border-gray-100 flex items-center px-3 gap-2 text-gray-600 bg-green-50/30">
-                <Music className="w-4 h-4" /> <span className="text-xs font-semibold">A{i + 1}</span>
+              <div key={`alabel-${i}`} className="h-14 border-b border-[#57707A]/20 flex items-center px-4 gap-2 text-[#B3FF00] bg-[#B3FF00]/5">
+                <Music className="w-4 h-4 opacity-70" /> <span className="text-xs font-bold font-mono">A{i + 1}</span>
               </div>
             ))}
           </div>
 
           <div
             ref={timelineRef}
-            className="flex-1 overflow-x-auto relative custom-scrollbar"
+            className="flex-1 overflow-x-auto relative custom-scrollbar bg-[url('/grid.png')] bg-repeat"
+            style={{ backgroundSize: '20px 20px', backgroundImage: 'radial-gradient(#57707a30 1px, transparent 0)' }}
             onMouseDown={handleTimelineMouseDown}
             onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
           >
             <div style={{ width: `${maxVisibleTime * PIXELS_PER_SECOND}px`, minWidth: "100%", height: "100%", position: "relative" }}>
 
-              <div className="h-6 border-b border-gray-200 bg-white sticky top-0 z-10 overflow-hidden pointer-events-none">
+              <div className="h-6 border-b border-[#57707A]/30 bg-[#191D23]/90 backdrop-blur-sm sticky top-0 z-10 overflow-hidden pointer-events-none shadow-sm">
                 {Array.from({ length: Math.ceil(maxVisibleTime / rulerStep) }).map((_, i) => (
-                  <div key={i} className="absolute text-[9px] text-gray-400 border-l border-gray-300 pl-1" style={{ left: `${i * rulerStep * PIXELS_PER_SECOND}px`, bottom: 0, height: "12px" }}>{i * rulerStep}s</div>
+                  <div key={i} className="absolute text-[9px] font-mono font-bold text-[#57707A] border-l border-[#57707A]/40 pl-1.5" style={{ left: `${i * rulerStep * PIXELS_PER_SECOND}px`, bottom: 0, height: "14px" }}>{i * rulerStep}s</div>
                 ))}
               </div>
 
               {Array.from({ length: videoTrackCount }).map((_, i) => (
                 <div
                   key={`vrow-${i}`}
-                  className={cn("h-14 border-b border-gray-200/50 relative py-1.5 transition-all", hoveredTrackInfo?.type === "video" && hoveredTrackInfo?.row === i ? "bg-blue-100 ring-2 ring-inset ring-blue-400" : "")}
+                  className={cn("h-14 border-b border-[#57707A]/20 relative py-1.5 transition-all", hoveredTrackInfo?.type === "video" && hoveredTrackInfo?.row === i ? "bg-[#C5BAC4]/10 ring-1 ring-inset ring-[#C5BAC4]/50" : "")}
                   onDragOver={(e) => { e.preventDefault(); setHoveredTrackInfo({ type: "video", row: i }); }}
                   onDragLeave={() => setHoveredTrackInfo(null)}
                   onDrop={(e) => handleDropOnTrack(e, "video", i)}
                 >
                   {videoClips.filter(c => (c.trackRow || 0) === i).map((clip) => (
-                    <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "video")} style={{ left: `${clip.timelineStart * PIXELS_PER_SECOND}px`, width: `${(clip.trimEnd - clip.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-11 bg-blue-200 border border-blue-400 rounded flex items-center overflow-hidden cursor-grab active:cursor-grabbing", selectedElement?.id === clip.id ? "ring-2 ring-blue-600 z-10 shadow-md" : "")}>
-                      <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "start")} className="w-2 h-full bg-blue-500 cursor-ew-resize shrink-0 hover:bg-blue-600" />
-                      <span className="text-xs font-semibold text-blue-800 px-2 truncate flex-1 pointer-events-none">{clip.name}</span>
-                      <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "end")} className="w-2 h-full bg-blue-500 cursor-ew-resize shrink-0 hover:bg-blue-600" />
+                    <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "video")} style={{ left: `${clip.timelineStart * PIXELS_PER_SECOND}px`, width: `${(clip.trimEnd - clip.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-11 bg-[#C5BAC4]/20 border border-[#C5BAC4] rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === clip.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
+                      <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "start")} className="w-2.5 h-full bg-[#C5BAC4] cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
+                      <span className="text-[10px] font-bold text-[#DEDCDC] px-2 truncate flex-1 pointer-events-none">{clip.name}</span>
+                      <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "end")} className="w-2.5 h-full bg-[#C5BAC4] cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
                     </div>
                   ))}
                 </div>
               ))}
 
               {Array.from({ length: textTrackCount }).map((_, i) => (
-                <div key={`trow-${i}`} className="h-12 border-b border-gray-200/50 relative py-1.5">
+                <div key={`trow-${i}`} className="h-12 border-b border-[#57707A]/20 relative py-1.5">
                   {textLayers.filter(l => (l.trackRow || 0) === i).map((layer) => (
-                    <div key={layer.id} onMouseDown={(e) => onClipMouseDown(e, layer.id, "text")} style={{ left: `${layer.timelineStart * PIXELS_PER_SECOND}px`, width: `${(layer.trimEnd - layer.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-9 bg-purple-200 border border-purple-400 rounded flex items-center overflow-hidden cursor-grab active:cursor-grabbing", selectedElement?.id === layer.id ? "ring-2 ring-purple-600 z-10 shadow-md" : "")}>
-                      <div onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "start")} className="w-2 h-full bg-purple-500 cursor-ew-resize shrink-0 hover:bg-purple-600" />
-                      <Type className="w-3 h-3 text-purple-700 mx-2 shrink-0 pointer-events-none" />
-                      <span className="text-xs font-semibold text-purple-900 truncate flex-1 pointer-events-none">{layer.text}</span>
-                      <div onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "end")} className="w-2 h-full bg-purple-500 cursor-ew-resize shrink-0 hover:bg-purple-600" />
+                    <div key={layer.id} onMouseDown={(e) => onClipMouseDown(e, layer.id, "text")} style={{ left: `${layer.timelineStart * PIXELS_PER_SECOND}px`, width: `${(layer.trimEnd - layer.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-9 bg-[#DEDCDC]/10 border border-[#DEDCDC]/50 rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === layer.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
+                      <div onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "start")} className="w-2.5 h-full bg-[#DEDCDC]/60 cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
+                      <Type className="w-3 h-3 text-white mx-2 shrink-0 pointer-events-none" />
+                      <span className="text-[10px] font-bold text-white truncate flex-1 pointer-events-none">{layer.text}</span>
+                      <div onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "end")} className="w-2.5 h-full bg-[#DEDCDC]/60 cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
                     </div>
                   ))}
                 </div>
@@ -1164,17 +1168,17 @@ export function VideoEditorUI() {
               {Array.from({ length: audioTrackCount }).map((_, i) => (
                 <div
                   key={`arow-${i}`}
-                  className={cn("h-14 border-b border-gray-200/50 relative py-1.5 transition-all", hoveredTrackInfo?.type === "audio" && hoveredTrackInfo?.row === i ? "bg-green-100 ring-2 ring-inset ring-green-400" : "")}
+                  className={cn("h-14 border-b border-[#57707A]/20 relative py-1.5 transition-all", hoveredTrackInfo?.type === "audio" && hoveredTrackInfo?.row === i ? "bg-[#B3FF00]/10 ring-1 ring-inset ring-[#B3FF00]/50" : "")}
                   onDragOver={(e) => { e.preventDefault(); setHoveredTrackInfo({ type: "audio", row: i }); }}
                   onDragLeave={() => setHoveredTrackInfo(null)}
                   onDrop={(e) => handleDropOnTrack(e, "audio", i)}
                 >
                   {audioClips.filter(c => (c.trackRow || 0) === i).map((clip) => (
-                    <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "audio")} style={{ left: `${clip.timelineStart * PIXELS_PER_SECOND}px`, width: `${(clip.trimEnd - clip.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-11 bg-green-200 border border-green-400 rounded flex items-center overflow-hidden cursor-grab active:cursor-grabbing", selectedElement?.id === clip.id ? "ring-2 ring-green-600 z-10 shadow-md" : "")}>
-                      <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "audio", "start")} className="w-2 h-full bg-green-500 cursor-ew-resize shrink-0 hover:bg-green-600" />
-                      <Music className="w-3 h-3 text-green-700 mx-2 shrink-0 pointer-events-none" />
-                      <span className="text-xs font-semibold text-green-800 truncate flex-1 pointer-events-none">{clip.name}</span>
-                      <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "audio", "end")} className="w-2 h-full bg-green-500 cursor-ew-resize shrink-0 hover:bg-green-600" />
+                    <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "audio")} style={{ left: `${clip.timelineStart * PIXELS_PER_SECOND}px`, width: `${(clip.trimEnd - clip.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-11 bg-[#B3FF00]/20 border border-[#B3FF00] rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === clip.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
+                      <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "audio", "start")} className="w-2.5 h-full bg-[#B3FF00] cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
+                      <Music className="w-3 h-3 text-[#B3FF00] mx-2 shrink-0 pointer-events-none" />
+                      <span className="text-[10px] font-bold text-[#DEDCDC] truncate flex-1 pointer-events-none">{clip.name}</span>
+                      <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "audio", "end")} className="w-2.5 h-full bg-[#B3FF00] cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
                     </div>
                   ))}
                 </div>
@@ -1184,10 +1188,12 @@ export function VideoEditorUI() {
 
           <div className="absolute top-0 bottom-0 pointer-events-none z-50 overflow-hidden" style={{ left: '8rem', right: 0 }}>
             <div
-              className="absolute top-0 bottom-0 w-0.5 bg-red-500 will-change-transform"
+              className="absolute top-0 bottom-0 w-[2px] bg-[#B3FF00] will-change-transform shadow-[0_0_10px_rgba(179,255,0,0.8)]"
               style={{ transform: `translateX(${(globalTime * PIXELS_PER_SECOND) - scrollLeft}px)` }}
             >
-              <div className="absolute -top-0 -left-1.5 w-3 h-3 bg-red-500 rounded-sm shadow-md"></div>
+              <div className="absolute -top-0 -left-1.5 w-3.5 h-3.5 bg-[#B3FF00] rounded-sm shadow-md flex items-center justify-center">
+                <div className="w-1 h-2 bg-[#191D23] rounded-full"></div>
+              </div>
             </div>
           </div>
 

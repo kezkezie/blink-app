@@ -579,17 +579,17 @@ export default function ContentDetailPage({
 
   if (loading)
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
+      <div className="flex items-center justify-center py-32">
+        <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
       </div>
     );
   if (!content)
     return (
-      <div className="text-center py-20">
-        <p className="text-gray-500 font-medium">Content not found</p>
+      <div className="text-center py-32">
+        <p className="text-[#989DAA] font-bold text-lg">Content not found</p>
         <Button
           variant="ghost"
-          className="mt-4"
+          className="mt-4 text-[#57707A] hover:text-[#DEDCDC] hover:bg-[#2A2F38]"
           onClick={() => router.push("/dashboard/content")}
         >
           <ArrowLeft className="h-4 w-4 mr-2" /> Back to content
@@ -608,21 +608,25 @@ export default function ContentDetailPage({
   const isGenerationDisabled = generatingImage || (generationMode === "style_transfer" && refFiles.length === 0);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
       <button
         onClick={() => router.push("/dashboard/content")}
-        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blink-dark transition-colors"
+        className="flex items-center gap-1.5 text-sm font-bold text-[#57707A] hover:text-[#C5BAC4] transition-colors"
       >
         <ArrowLeft className="h-4 w-4" /> Back to content
       </button>
+
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="lg:col-span-3 space-y-5">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div className="relative h-[400px] md:h-[500px] w-full bg-gray-900 flex items-center justify-center overflow-hidden">
+        <div className="lg:col-span-3 space-y-6">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] shadow-lg overflow-hidden relative">
+            <div className="relative h-[400px] md:h-[550px] w-full bg-[#0F1115] flex items-center justify-center overflow-hidden shadow-inner">
               {generatingImage ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm z-20 gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
-                  <p className="text-sm font-medium text-blink-dark">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#191D23]/80 backdrop-blur-md z-20 gap-4">
+                  <div className="relative">
+                    <div className="absolute inset-0 rounded-full blur-xl bg-[#C5BAC4]/20 animate-pulse"></div>
+                    <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4] relative z-10" />
+                  </div>
+                  <p className="text-sm font-bold text-[#DEDCDC] tracking-wider uppercase animate-pulse">
                     Painting your image...
                   </p>
                 </div>
@@ -631,7 +635,7 @@ export default function ContentDetailPage({
                   {isVideo ? (
                     <video
                       src={`${displayImage}#t=0.1`}
-                      className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-110 pointer-events-none"
+                      className="absolute inset-0 w-full h-full object-cover blur-[40px] opacity-30 scale-110 pointer-events-none"
                       muted
                       playsInline
                       preload="metadata"
@@ -639,7 +643,7 @@ export default function ContentDetailPage({
                   ) : (
                     <img
                       src={displayImage}
-                      className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-110 pointer-events-none"
+                      className="absolute inset-0 w-full h-full object-cover blur-[40px] opacity-30 scale-110 pointer-events-none"
                       alt=""
                     />
                   )}
@@ -650,7 +654,7 @@ export default function ContentDetailPage({
                         controls
                         playsInline
                         preload="metadata"
-                        className="h-full w-full object-contain drop-shadow-2xl transition-transform duration-300 group-hover:scale-[1.02]"
+                        className="h-full w-full object-contain drop-shadow-[0_0_30px_rgba(0,0,0,0.8)] transition-transform duration-500 group-hover:scale-[1.02]"
                       />
                     ) : (
                       <div
@@ -660,11 +664,11 @@ export default function ContentDetailPage({
                         <img
                           src={displayImage}
                           alt="Generated Content"
-                          className="h-full w-full object-contain drop-shadow-2xl transition-transform duration-300 group-hover:scale-[1.02]"
+                          className="h-full w-full object-contain drop-shadow-[0_0_30px_rgba(0,0,0,0.8)] transition-transform duration-500 group-hover:scale-[1.02]"
                         />
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-20">
-                          <div className="bg-black/70 text-white px-4 py-2 rounded-full flex items-center gap-2 font-medium text-sm shadow-lg backdrop-blur-md">
-                            <ZoomIn className="h-4 w-4" /> Click to Enlarge
+                          <div className="bg-[#191D23]/90 border border-[#57707A]/50 text-[#DEDCDC] px-5 py-2.5 rounded-full flex items-center gap-2 font-bold text-xs uppercase tracking-wider shadow-xl backdrop-blur-md">
+                            <ZoomIn className="h-4 w-4 text-[#C5BAC4]" /> Click to Enlarge
                           </div>
                         </div>
                       </div>
@@ -672,61 +676,63 @@ export default function ContentDetailPage({
                   </div>
                 </>
               ) : (
-                <div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-gray-50 relative z-10">
-                  <ImageIcon className="h-12 w-12 text-gray-300" />
-                  <p className="text-sm text-gray-400">No media yet</p>
+                <div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-[#191D23] relative z-10">
+                  <ImageIcon className="h-12 w-12 text-[#57707A]" />
+                  <p className="text-sm font-bold text-[#57707A] uppercase tracking-wider">No media yet</p>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-5">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] shadow-lg p-6 md:p-8 space-y-6 relative overflow-hidden">
+            {/* Subtle bg glow */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-[#C5BAC4]/5 rounded-full blur-[80px] pointer-events-none -translate-y-1/2 translate-x-1/2" />
 
             {/* ✨ OMNI-PUBLISHING SELECTOR */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="block text-sm font-medium text-gray-800 flex items-center gap-2">
-                  <Send className="w-4 h-4 text-blink-primary" /> Publish Destinations
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-4 border-b border-[#57707A]/20 pb-3">
+                <label className="block text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display">
+                  <Send className="w-4 h-4 text-[#C5BAC4]" /> Publish Destinations
                 </label>
-                <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100 font-bold uppercase tracking-wide">
+                <span className="text-[10px] bg-[#C5BAC4]/10 text-[#C5BAC4] px-2.5 py-1 rounded-md border border-[#C5BAC4]/20 font-bold uppercase tracking-wide">
                   Powered by PostForMe
                 </span>
               </div>
 
               {connectedPlatforms.length === 0 ? (
-                <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-500 border border-gray-200">
-                  No social accounts connected. Go to <a href="/dashboard/settings" className="text-blink-primary hover:underline">Settings</a> to connect accounts.
+                <div className="p-4 bg-[#191D23]/50 rounded-xl text-sm text-[#989DAA] border border-[#57707A]/30 font-medium">
+                  No social accounts connected. Go to <a href="/dashboard/settings" className="text-[#C5BAC4] font-bold hover:text-white hover:underline transition-colors">Settings</a> to connect accounts.
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
 
                   {/* TikTok Controls */}
                   {connectedPlatforms.includes('tiktok') && (
-                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.tiktok?.enabled ? "border-gray-300 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.tiktok?.enabled ? "border-[#C5BAC4]/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                       <div
-                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
                         onClick={() => togglePlatform('tiktok', 'post')}
                       >
                         <div className="flex items-center gap-3">
-                          <div className="p-2 bg-black text-white rounded-lg"><Music className="w-4 h-4" /></div>
+                          <div className="p-2 bg-black border border-gray-800 text-white rounded-lg shadow-inner"><Music className="w-4 h-4" /></div>
                           <div>
-                            <p className={cn("text-sm font-bold", publishSettings.tiktok?.enabled ? "text-gray-900" : "text-gray-500")}>TikTok</p>
+                            <p className={cn("text-sm font-bold", publishSettings.tiktok?.enabled ? "text-white" : "text-[#989DAA]")}>TikTok</p>
                           </div>
                         </div>
-                        <input type="checkbox" checked={publishSettings.tiktok?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black pointer-events-none" />
+                        <input type="checkbox" checked={publishSettings.tiktok?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] text-[#C5BAC4] focus:ring-[#C5BAC4] pointer-events-none" />
                       </div>
 
                       {publishSettings.tiktok?.enabled && (
-                        <div className="bg-gray-50 p-3 border-t border-gray-100 flex gap-4 pl-14 animate-in slide-in-from-top-2">
+                        <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex gap-4 pl-14 animate-in slide-in-from-top-2">
                           <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="radio" checked={publishSettings.tiktok?.format === 'post'} onChange={() => setPlatformFormat('tiktok', 'post')} className="text-black focus:ring-black" />
-                            <Smartphone className={cn("w-4 h-4", publishSettings.tiktok?.format === 'post' ? "text-black" : "text-gray-400 group-hover:text-gray-600")} />
-                            <span className={cn("text-xs font-semibold", publishSettings.tiktok?.format === 'post' ? "text-gray-900" : "text-gray-500")}>Normal Post</span>
+                            <input type="radio" checked={publishSettings.tiktok?.format === 'post'} onChange={() => setPlatformFormat('tiktok', 'post')} className="text-[#C5BAC4] bg-[#191D23] border-[#57707A]/50 focus:ring-[#C5BAC4]" />
+                            <Smartphone className={cn("w-4 h-4", publishSettings.tiktok?.format === 'post' ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === 'post' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Normal Post</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="radio" checked={publishSettings.tiktok?.format === 'story'} onChange={() => setPlatformFormat('tiktok', 'story')} className="text-black focus:ring-black" />
-                            <CirclePlay className={cn("w-4 h-4", publishSettings.tiktok?.format === 'story' ? "text-black" : "text-gray-400 group-hover:text-gray-600")} />
-                            <span className={cn("text-xs font-semibold", publishSettings.tiktok?.format === 'story' ? "text-gray-900" : "text-gray-500")}>Story</span>
+                            <input type="radio" checked={publishSettings.tiktok?.format === 'story'} onChange={() => setPlatformFormat('tiktok', 'story')} className="text-[#C5BAC4] bg-[#191D23] border-[#57707A]/50 focus:ring-[#C5BAC4]" />
+                            <CirclePlay className={cn("w-4 h-4", publishSettings.tiktok?.format === 'story' ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === 'story' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Story</span>
                           </label>
                         </div>
                       )}
@@ -735,31 +741,31 @@ export default function ContentDetailPage({
 
                   {/* Instagram Controls */}
                   {connectedPlatforms.includes('instagram') && (
-                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.instagram?.enabled ? "border-pink-200 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.instagram?.enabled ? "border-pink-500/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                       <div
-                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
                         onClick={() => togglePlatform('instagram', isVideo ? 'reel' : 'feed')}
                       >
                         <div className="flex items-center gap-3">
-                          <div className={cn("p-2 rounded-lg text-white", publishSettings.instagram?.enabled ? "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600" : "bg-gray-400")}><Instagram className="w-4 h-4" /></div>
+                          <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.instagram?.enabled ? "bg-gradient-to-tr from-yellow-500 via-pink-600 to-purple-600" : "bg-[#57707A]")}><Instagram className="w-4 h-4" /></div>
                           <div>
-                            <p className={cn("text-sm font-bold", publishSettings.instagram?.enabled ? "text-gray-900" : "text-gray-500")}>Instagram</p>
+                            <p className={cn("text-sm font-bold", publishSettings.instagram?.enabled ? "text-white" : "text-[#989DAA]")}>Instagram</p>
                           </div>
                         </div>
-                        <input type="checkbox" checked={publishSettings.instagram?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500 pointer-events-none" />
+                        <input type="checkbox" checked={publishSettings.instagram?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] text-pink-500 focus:ring-pink-500 pointer-events-none" />
                       </div>
 
                       {publishSettings.instagram?.enabled && (
-                        <div className="bg-pink-50/30 p-3 border-t border-pink-100 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
+                        <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
                           <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="radio" checked={publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed'} onChange={() => setPlatformFormat('instagram', isVideo ? 'reel' : 'feed')} className="text-pink-600 focus:ring-pink-500" />
-                            <Smartphone className={cn("w-4 h-4", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-pink-600" : "text-gray-400 group-hover:text-gray-600")} />
-                            <span className={cn("text-xs font-semibold", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-gray-900" : "text-gray-500")}>Feed / Reel</span>
+                            <input type="radio" checked={publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed'} onChange={() => setPlatformFormat('instagram', isVideo ? 'reel' : 'feed')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
+                            <Smartphone className={cn("w-4 h-4", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Feed / Reel</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="radio" checked={publishSettings.instagram?.format === 'story'} onChange={() => setPlatformFormat('instagram', 'story')} className="text-pink-600 focus:ring-pink-500" />
-                            <CirclePlay className={cn("w-4 h-4", publishSettings.instagram?.format === 'story' ? "text-pink-600" : "text-gray-400 group-hover:text-gray-600")} />
-                            <span className={cn("text-xs font-semibold", publishSettings.instagram?.format === 'story' ? "text-gray-900" : "text-gray-500")}>Story</span>
+                            <input type="radio" checked={publishSettings.instagram?.format === 'story'} onChange={() => setPlatformFormat('instagram', 'story')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
+                            <CirclePlay className={cn("w-4 h-4", publishSettings.instagram?.format === 'story' ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", publishSettings.instagram?.format === 'story' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Story</span>
                           </label>
                         </div>
                       )}
@@ -768,31 +774,31 @@ export default function ContentDetailPage({
 
                   {/* YouTube Controls */}
                   {connectedPlatforms.includes('youtube') && (
-                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.youtube?.enabled ? "border-red-200 shadow-sm" : "border-gray-200 bg-gray-50/50")}>
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.youtube?.enabled ? "border-red-500/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                       <div
-                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50"
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
                         onClick={() => togglePlatform('youtube', 'standard')}
                       >
                         <div className="flex items-center gap-3">
-                          <div className={cn("p-2 rounded-lg text-white", publishSettings.youtube?.enabled ? "bg-red-600" : "bg-gray-400")}><Youtube className="w-4 h-4" /></div>
+                          <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.youtube?.enabled ? "bg-red-600" : "bg-[#57707A]")}><Youtube className="w-4 h-4" /></div>
                           <div>
-                            <p className={cn("text-sm font-bold", publishSettings.youtube?.enabled ? "text-gray-900" : "text-gray-500")}>YouTube</p>
+                            <p className={cn("text-sm font-bold", publishSettings.youtube?.enabled ? "text-white" : "text-[#989DAA]")}>YouTube</p>
                           </div>
                         </div>
-                        <input type="checkbox" checked={publishSettings.youtube?.enabled || false} readOnly className="w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500 pointer-events-none" />
+                        <input type="checkbox" checked={publishSettings.youtube?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] text-red-600 focus:ring-red-500 pointer-events-none" />
                       </div>
 
                       {publishSettings.youtube?.enabled && (
-                        <div className="bg-red-50/30 p-3 border-t border-red-100 flex gap-4 pl-14 animate-in slide-in-from-top-2">
+                        <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex gap-4 pl-14 animate-in slide-in-from-top-2">
                           <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="radio" checked={publishSettings.youtube?.format === 'standard'} onChange={() => setPlatformFormat('youtube', 'standard')} className="text-red-600 focus:ring-red-500" />
-                            <MonitorPlay className={cn("w-4 h-4", publishSettings.youtube?.format === 'standard' ? "text-red-600" : "text-gray-400 group-hover:text-gray-600")} />
-                            <span className={cn("text-xs font-semibold", publishSettings.youtube?.format === 'standard' ? "text-gray-900" : "text-gray-500")}>Standard Video</span>
+                            <input type="radio" checked={publishSettings.youtube?.format === 'standard'} onChange={() => setPlatformFormat('youtube', 'standard')} className="text-red-500 bg-[#191D23] border-[#57707A]/50 focus:ring-red-500" />
+                            <MonitorPlay className={cn("w-4 h-4", publishSettings.youtube?.format === 'standard' ? "text-red-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", publishSettings.youtube?.format === 'standard' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Standard Video</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="radio" checked={publishSettings.youtube?.format === 'short'} onChange={() => setPlatformFormat('youtube', 'short')} className="text-red-600 focus:ring-red-500" />
-                            <Smartphone className={cn("w-4 h-4", publishSettings.youtube?.format === 'short' ? "text-red-600" : "text-gray-400 group-hover:text-gray-600")} />
-                            <span className={cn("text-xs font-semibold", publishSettings.youtube?.format === 'short' ? "text-gray-900" : "text-gray-500")}>YouTube Short (9:16)</span>
+                            <input type="radio" checked={publishSettings.youtube?.format === 'short'} onChange={() => setPlatformFormat('youtube', 'short')} className="text-red-500 bg-[#191D23] border-[#57707A]/50 focus:ring-red-500" />
+                            <Smartphone className={cn("w-4 h-4", publishSettings.youtube?.format === 'short' ? "text-red-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", publishSettings.youtube?.format === 'short' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>YouTube Short (9:16)</span>
                           </label>
                         </div>
                       )}
@@ -805,46 +811,57 @@ export default function ContentDetailPage({
               )}
             </div>
 
-            <div className="pt-4 border-t border-gray-100">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5 mt-2">Caption (Long)</label>
-              <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={5} className="resize-none" />
+            <div className="pt-5 border-t border-[#57707A]/20 relative z-10">
+              <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 mt-2">Caption (Long)</label>
+              <Textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                rows={5}
+                className="resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
+              />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Caption (Short)</label>
-              <Input value={captionShort} onChange={(e) => setCaptionShort(e.target.value)} />
+            <div className="relative z-10">
+              <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">Caption (Short)</label>
+              <Input
+                value={captionShort}
+                onChange={(e) => setCaptionShort(e.target.value)}
+                className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-11 shadow-inner"
+              />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Hashtags</label>
-              <Input value={hashtags} onChange={(e) => setHashtags(e.target.value)} />
+            <div className="relative z-10">
+              <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">Hashtags</label>
+              <Input
+                value={hashtags}
+                onChange={(e) => setHashtags(e.target.value)}
+                className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-11 shadow-inner"
+              />
             </div>
-            <div className="pt-2">
-              <Button onClick={handleSave} disabled={saving} className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-2">
+            <div className="pt-4 relative z-10">
+              <Button onClick={handleSave} disabled={saving} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold gap-2 h-11 px-6 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Changes
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="lg:col-span-2 space-y-5">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-blink-dark font-heading">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] shadow-lg p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-[#57707A]/20 pb-4">
+              <h3 className="text-sm font-bold text-[#DEDCDC] uppercase tracking-wider font-display">
                 Status
               </h3>
               <StatusBadge status={content.status as ContentStatus} size="md" />
             </div>
             {content.status === "rejected" && content.rejection_reason && (
-              <div className="bg-red-50 border border-red-100 rounded-lg p-3">
-                <p className="text-xs font-medium text-red-700 mb-1">
-                  Rejection Reason
-                </p>
-                <p className="text-sm text-red-600">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 shadow-inner">
+                <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"><XCircle className="w-3.5 h-3.5" /> Rejection Reason</p>
+                <p className="text-sm text-red-300 font-medium">
                   {content.rejection_reason}
                 </p>
               </div>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               {content.status === "draft" && (
                 <>
                   {!isVideo && (
@@ -853,23 +870,23 @@ export default function ContentDetailPage({
                         onClick={openImageGenerationModal}
                         disabled={generatingImage || actionLoading}
                         variant="outline"
-                        className="flex-1 justify-center gap-2"
+                        className="flex-1 justify-center gap-2 bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white rounded-xl h-11 font-bold shadow-sm transition-colors"
                       >
                         {generatingImage ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <Sparkles className="h-4 w-4 text-blink-secondary" />
+                          <Sparkles className="h-4 w-4 text-[#C5BAC4]" />
                         )}{" "}
-                        {displayImage ? "Regenerate Image" : "Generate Image"}
+                        {displayImage ? "Regen Image" : "Generate Image"}
                       </Button>
 
                       {displayImage && (
                         <Button
                           onClick={() => router.push(`/dashboard/content/${content.id}/edit`)}
                           disabled={generatingImage || actionLoading}
-                          className="flex-1 justify-center gap-2 bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-200 shadow-sm"
+                          className="flex-1 justify-center gap-2 bg-[#C5BAC4]/10 hover:bg-[#C5BAC4]/20 text-[#C5BAC4] border border-[#C5BAC4]/30 shadow-sm rounded-xl h-11 font-bold transition-colors"
                         >
-                          <Palette className="h-4 w-4" /> Enter Image Studio
+                          <Palette className="h-4 w-4" /> Image Studio
                         </Button>
                       )}
                     </div>
@@ -877,7 +894,7 @@ export default function ContentDetailPage({
                   <Button
                     onClick={handleSendForApproval}
                     disabled={actionLoading || !displayImage}
-                    className="w-full justify-start gap-2 bg-blink-primary hover:bg-blink-primary/90 text-white"
+                    className="w-full justify-start gap-2 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all"
                   >
                     {actionLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -891,41 +908,41 @@ export default function ContentDetailPage({
 
               {(content.status === "pending_approval" ||
                 content.status === "approved") && (
-                  <div className="space-y-3 pt-1">
+                  <div className="space-y-4 pt-1">
                     {content.status === "pending_approval" && (
-                      <div className="p-2.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium mb-1 border border-blue-100">
+                      <div className="p-3 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold mb-2 shadow-inner">
+                        <Sparkles className="w-3.5 h-3.5 inline mr-1.5" />
                         Post looks good? Choose how to proceed:
                       </div>
                     )}
                     {content.status === "approved" &&
                       (content as any).scheduled_at ? (
-                      <div className="p-4 border border-emerald-200 rounded-xl bg-emerald-50 shadow-inner space-y-3 animate-in fade-in">
+                      <div className="p-5 border border-[#B3FF00]/30 rounded-xl bg-[#B3FF00]/5 shadow-inner space-y-4 animate-in fade-in">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-emerald-700 font-bold">
+                          <div className="flex items-center gap-2 text-[#B3FF00] font-bold font-display">
                             <CheckCircle className="h-5 w-5" />
                             Ghost Poster Active 👻
                           </div>
                         </div>
-                        <p className="text-xs text-emerald-700/80 leading-relaxed">
+                        <p className="text-xs text-[#989DAA] font-medium leading-relaxed bg-[#191D23] p-3 rounded-lg border border-[#57707A]/30">
                           This post is queued. The AI will automatically publish
-                          it on{" "}
-                          <b>
+                          it on <br />
+                          <b className="text-[#DEDCDC] text-sm mt-1 inline-block">
                             {new Date(
                               (content as any).scheduled_at
                             ).toLocaleString()}
                           </b>
-                          .
                         </p>
-                        <div className="flex flex-col gap-2 pt-2">
+                        <div className="flex flex-col gap-2.5 pt-2">
                           <Button
                             onClick={handleApproveAndPublishNow}
                             disabled={actionLoading}
-                            className="w-full text-xs h-9 gap-1.5 bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                            className="w-full text-sm font-bold h-11 gap-1.5 bg-[#191D23] text-[#B3FF00] border border-[#B3FF00]/30 hover:bg-[#B3FF00]/20 hover:border-[#B3FF00]/50 rounded-xl transition-colors"
                           >
                             {actionLoading ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <Zap className="h-3.5 w-3.5" />
+                              <Zap className="h-4 w-4" />
                             )}{" "}
                             Publish Now Instead
                           </Button>
@@ -933,9 +950,9 @@ export default function ContentDetailPage({
                             onClick={handleCancelSchedule}
                             disabled={actionLoading}
                             variant="outline"
-                            className="w-full text-xs h-9 gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100 bg-white"
+                            className="w-full text-xs font-bold h-10 gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 bg-transparent rounded-xl transition-colors"
                           >
-                            <XCircle className="h-3.5 w-3.5" /> Cancel Schedule
+                            <XCircle className="h-4 w-4" /> Cancel Schedule
                           </Button>
                         </div>
                       </div>
@@ -944,7 +961,7 @@ export default function ContentDetailPage({
                         <Button
                           onClick={handleApproveAndPublishNow}
                           disabled={actionLoading}
-                          className="w-full justify-start gap-2 bg-blink-primary hover:bg-blink-primary/90 text-white"
+                          className="w-full justify-start gap-2 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all"
                         >
                           {actionLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -955,9 +972,9 @@ export default function ContentDetailPage({
                             ? "Approve & Publish Now"
                             : "Publish Now"}
                         </Button>
-                        <div className="p-3 border border-gray-100 rounded-xl bg-gray-50 shadow-inner inset-0 space-y-2.5">
-                          <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
-                            <CalendarIcon className="h-3.5 w-3.5 text-emerald-600" />{" "}
+                        <div className="p-4 border border-[#57707A]/30 rounded-xl bg-[#191D23]/50 shadow-inner inset-0 space-y-3">
+                          <label className="text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider flex items-center gap-1.5">
+                            <CalendarIcon className="h-3.5 w-3.5 text-[#B3FF00]" />{" "}
                             {content.status === "pending_approval"
                               ? "Approve & Schedule"
                               : "Schedule Post"}
@@ -966,13 +983,13 @@ export default function ContentDetailPage({
                             type="datetime-local"
                             value={scheduleDate}
                             onChange={(e) => setScheduleDate(e.target.value)}
-                            className="w-full text-sm bg-white border-gray-200 focus:ring-emerald-500"
+                            className="w-full text-sm bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] focus:ring-[#B3FF00] rounded-lg color-scheme-dark"
                             min={new Date().toISOString().slice(0, 16)}
                           />
                           <Button
                             onClick={handleApproveAndSchedule}
                             disabled={actionLoading || !scheduleDate}
-                            className="w-full justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                            className="w-full justify-center gap-2 bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] font-bold h-11 rounded-lg shadow-md border-none transition-all"
                           >
                             {actionLoading ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -989,7 +1006,7 @@ export default function ContentDetailPage({
                         onClick={() => setRejectOpen(true)}
                         disabled={actionLoading}
                         variant="outline"
-                        className="w-full justify-start gap-2 border-red-200 text-red-600 hover:bg-red-50 mt-2"
+                        className="w-full justify-start gap-2 border border-red-500/30 text-red-400 bg-transparent hover:bg-red-500/10 hover:text-red-300 hover:border-red-500/50 mt-3 font-bold h-11 rounded-xl transition-colors"
                       >
                         <XCircle className="h-4 w-4" /> Reject & Request Edit
                       </Button>
@@ -1020,7 +1037,7 @@ export default function ContentDetailPage({
                     setActionLoading(false);
                   }}
                   disabled={actionLoading}
-                  className="w-full justify-start gap-2 bg-blink-primary hover:bg-blink-primary/90 text-white"
+                  className="w-full justify-start gap-2 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-11 rounded-xl shadow-md transition-all"
                 >
                   <Pencil className="h-4 w-4" /> Edit & Resubmit
                 </Button>
@@ -1028,20 +1045,20 @@ export default function ContentDetailPage({
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-blink-dark font-heading">
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] shadow-lg p-6 space-y-4">
+            <h3 className="text-sm font-bold text-[#DEDCDC] uppercase tracking-wider font-display border-b border-[#57707A]/20 pb-3">
               Details
             </h3>
-            <div className="space-y-2.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Content Type</span>
-                <span className="text-blink-dark font-medium capitalize">
-                  {content.content_type}
+            <div className="space-y-3 text-sm font-medium">
+              <div className="flex justify-between items-center">
+                <span className="text-[#57707A]">Content Type</span>
+                <span className="text-[#DEDCDC] bg-[#191D23] px-2 py-1 rounded border border-[#57707A]/30 capitalize text-xs">
+                  {content.content_type.replace('_', ' ')}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Created</span>
-                <span className="text-blink-dark font-medium">
+              <div className="flex justify-between items-center">
+                <span className="text-[#57707A]">Created</span>
+                <span className="text-[#DEDCDC]">
                   {new Date(content.created_at).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
@@ -1050,11 +1067,11 @@ export default function ContentDetailPage({
                 </span>
               </div>
               {(content as any).scheduled_at && (
-                <div className="flex justify-between">
-                  <span className="text-emerald-600 font-semibold">
+                <div className="flex justify-between items-center pt-2 border-t border-[#57707A]/20">
+                  <span className="text-[#B3FF00] font-bold">
                     Scheduled For
                   </span>
-                  <span className="text-emerald-700 font-bold">
+                  <span className="text-[#B3FF00] font-bold bg-[#B3FF00]/10 px-2 py-1 rounded border border-[#B3FF00]/20 text-xs">
                     {new Date((content as any).scheduled_at).toLocaleString(
                       "en-US",
                       {
@@ -1068,9 +1085,9 @@ export default function ContentDetailPage({
                 </div>
               )}
               {content.ai_model && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">AI Model</span>
-                  <span className="text-blink-dark font-medium">
+                <div className="flex justify-between items-center pt-2 border-t border-[#57707A]/20">
+                  <span className="text-[#57707A]">AI Model</span>
+                  <span className="text-[#C5BAC4] font-bold text-xs uppercase tracking-wider">
                     {content.ai_model}
                   </span>
                 </div>
@@ -1081,7 +1098,7 @@ export default function ContentDetailPage({
             <Button
               variant="ghost"
               onClick={() => setDeleteOpen(true)}
-              className="w-full text-red-500 hover:text-red-600 hover:bg-red-50 gap-2"
+              className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10 gap-2 font-bold h-11 rounded-xl transition-colors"
             >
               <Trash2 className="h-4 w-4" /> Delete Content
             </Button>
@@ -1093,8 +1110,9 @@ export default function ContentDetailPage({
         open={!!previewImageUrl}
         onOpenChange={(open) => !open && setPreviewImageUrl(null)}
       >
-        <DialogContent className="max-w-4xl p-1 bg-transparent border-none shadow-none flex flex-col items-center justify-center">
+        <DialogContent className="max-w-5xl p-1 bg-[#191D23]/90 backdrop-blur-xl border border-[#57707A]/50 shadow-2xl flex flex-col items-center justify-center rounded-2xl">
           <DialogTitle className="sr-only">Media Preview</DialogTitle>
+          <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none rounded-2xl"></div>
           {previewImageUrl &&
             (previewImageUrl.includes(".mp4") ||
               previewImageUrl.includes(".mov") ? (
@@ -1103,81 +1121,84 @@ export default function ContentDetailPage({
                 controls
                 playsInline
                 preload="metadata"
-                className="w-auto h-auto max-h-[85vh] max-w-full object-contain rounded-lg shadow-2xl bg-black"
+                className="w-auto h-auto max-h-[85vh] max-w-full object-contain rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-black relative z-10"
               />
             ) : (
               <img
                 src={previewImageUrl}
                 alt="Preview"
-                className="w-auto h-auto max-h-[85vh] max-w-full object-contain rounded-lg shadow-2xl"
+                className="w-auto h-auto max-h-[85vh] max-w-full object-contain rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] relative z-10"
               />
             ))}
+          <button onClick={() => setPreviewImageUrl(null)} className="absolute top-4 right-4 z-30 p-2 bg-black/50 backdrop-blur-md text-white rounded-full border border-white/20 hover:bg-black/80 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </DialogContent>
       </Dialog>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
           <DialogHeader>
-            <DialogTitle className="text-red-600">Delete Content</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this content?
+            <DialogTitle className="text-red-400 flex items-center gap-2 font-display"><Trash2 className="w-5 h-5" /> Delete Content</DialogTitle>
+            <DialogDescription className="text-[#989DAA] pt-2">
+              Are you sure you want to delete this content? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+          <DialogFooter className="mt-6">
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20">
               Cancel
             </Button>
             <Button
               onClick={handleDelete}
               disabled={deleting}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-500 hover:bg-red-600 text-white font-bold border-none"
             >
               {deleting ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
                 <Trash2 className="h-4 w-4 mr-2" />
               )}{" "}
-              Delete
+              Delete Permanently
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-blink-primary" />
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] custom-scrollbar shadow-2xl">
+          <DialogHeader className="border-b border-[#57707A]/20 pb-4">
+            <DialogTitle className="flex items-center gap-2 text-xl font-display text-[#DEDCDC]">
+              <Sparkles className="h-6 w-6 text-[#C5BAC4]" />
               {displayImage ? "Regenerate Image" : "Generate Image"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-[#989DAA] mt-1">
               Adjust settings and provide prompts to guide the AI in painting your post.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4 space-y-6">
+          <div className="py-5 space-y-6">
             <div className="space-y-3">
-              <label className="text-sm font-medium text-gray-700">Generation Mode</label>
+              <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Generation Mode</label>
               <Select value={generationMode} onValueChange={(v: GenerationMode) => setGenerationMode(v)}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] h-12 rounded-xl shadow-inner focus:ring-[#C5BAC4]">
                   <SelectValue placeholder="Select mode" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="generate">Pure Generation (Text to Image)</SelectItem>
-                  <SelectItem value="style_transfer">Style Transfer (Image to Image)</SelectItem>
+                <SelectContent className="bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
+                  <SelectItem value="generate" className="focus:bg-[#191D23] focus:text-white cursor-pointer">Pure Generation (Text to Image)</SelectItem>
+                  <SelectItem value="style_transfer" className="focus:bg-[#191D23] focus:text-white cursor-pointer">Style Transfer (Image to Image)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-3">
-              <label className="text-sm font-medium text-gray-700">Art Style</label>
+              <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Art Style</label>
               <Select value={selectedStyle} onValueChange={setSelectedStyle}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] h-12 rounded-xl shadow-inner focus:ring-[#C5BAC4]">
                   <SelectValue placeholder="Select style" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
                   {STYLE_OPTIONS.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    <SelectItem key={opt.value} value={opt.value} className="focus:bg-[#191D23] focus:text-white cursor-pointer">{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1185,15 +1206,15 @@ export default function ContentDetailPage({
 
             <div className="space-y-3 relative">
               <div className="flex justify-between items-center">
-                <label className="text-sm font-medium text-gray-700">Custom Prompt Instructions (Optional)</label>
+                <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Custom Prompt Instructions (Optional)</label>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={handlePromptHelp}
                   disabled={isHelpLoading}
-                  className={cn("h-7 text-xs px-2 hover:bg-blink-primary/10 hover:text-blink-primary transition-colors border border-transparent hover:border-blink-primary/20", isHelpLoading && "animate-pulse")}
+                  className={cn("h-8 text-xs px-3 bg-transparent border-[#57707A]/50 text-[#C5BAC4] hover:bg-[#C5BAC4]/10 hover:text-white hover:border-[#C5BAC4]/50 transition-colors rounded-lg", isHelpLoading && "animate-pulse")}
                 >
-                  {isHelpLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wand2 className="w-3 h-3 mr-1" />}
+                  {isHelpLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Wand2 className="w-3.5 h-3.5 mr-1.5" />}
                   {isHelpLoading ? "Writing..." : "AI Magic Writer"}
                 </Button>
               </div>
@@ -1202,29 +1223,29 @@ export default function ContentDetailPage({
                   value={customPrompt}
                   onChange={(e) => setCustomPrompt(e.target.value)}
                   placeholder={"e.g., A dramatic product shot with neon lighting..."}
-                  className={cn("resize-none pr-10 transition-all", isHelpLoading && "opacity-50")}
-                  rows={3}
+                  className={cn("resize-none pr-10 transition-all bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar", isHelpLoading && "opacity-50")}
+                  rows={4}
                   readOnly={isHelpLoading}
                 />
                 {isHelpLoading && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <Sparkles className="w-8 h-8 text-blink-primary animate-bounce opacity-50" />
+                    <Sparkles className="w-8 h-8 text-[#C5BAC4] animate-bounce opacity-50" />
                   </div>
                 )}
               </div>
             </div>
 
             {generationMode === "style_transfer" && (
-              <div className="space-y-4 p-4 border border-gray-200 rounded-xl bg-gray-50">
-                <h4 className="text-sm font-medium text-gray-800">Reference Images</h4>
+              <div className="space-y-4 p-5 border border-[#57707A]/40 rounded-xl bg-[#191D23]/50 shadow-inner">
+                <h4 className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">Reference Images</h4>
 
-                <div className="space-y-2">
+                <div className="space-y-4">
                   {refPreviews.length > 0 && (
-                    <div className="grid grid-cols-4 gap-2 mb-2">
+                    <div className="grid grid-cols-4 gap-3 mb-2">
                       {refPreviews.map((src, i) => (
-                        <div key={i} className="relative aspect-square rounded-md overflow-hidden border border-gray-200">
-                          <img src={src} className="w-full h-full object-cover" alt={`Ref ${i}`} />
-                          <button onClick={() => removeRefFile(i)} className="absolute top-1 right-1 p-1 bg-white/80 rounded-full shadow-sm hover:bg-white text-red-500">
+                        <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-[#57707A]/50 shadow-sm bg-[#191D23]">
+                          <img src={src} className="w-full h-full object-cover opacity-90" alt={`Ref ${i}`} />
+                          <button onClick={() => removeRefFile(i)} className="absolute top-1 right-1 p-1 bg-red-500/90 rounded-full shadow-sm hover:bg-red-500 text-white transition-colors">
                             <X className="h-3 w-3" />
                           </button>
                         </div>
@@ -1236,10 +1257,10 @@ export default function ContentDetailPage({
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleRefFilesDrop}
                     onClick={() => refInputRef.current?.click()}
-                    className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors border-gray-300 hover:border-blink-primary hover:bg-blink-primary/5"
+                    className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20"
                   >
-                    <Upload className="h-6 w-6 mx-auto mb-2 text-gray-400" />
-                    <p className="text-xs font-medium text-gray-600">Click or drag & drop reference images</p>
+                    <Upload className="h-8 w-8 mx-auto mb-3 text-[#57707A]" />
+                    <p className="text-xs font-bold text-[#989DAA] uppercase tracking-wider">Click or drag & drop reference images</p>
                   </div>
                   <input
                     ref={refInputRef}
@@ -1254,12 +1275,12 @@ export default function ContentDetailPage({
             )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setImageModalOpen(false)}>Cancel</Button>
+          <DialogFooter className="border-t border-[#57707A]/20 pt-5">
+            <Button variant="outline" onClick={() => setImageModalOpen(false)} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/30 hover:text-white rounded-xl font-bold h-11 px-6">Cancel</Button>
             <Button
               onClick={handleGenerateImage}
               disabled={isGenerationDisabled}
-              className="bg-blink-primary hover:bg-blink-primary/90 text-white"
+              className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold shadow-lg shadow-[#C5BAC4]/10 rounded-xl h-11 px-6 transition-all"
             >
               {generatingImage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
               {displayImage ? "Regenerate Image" : "Generate Image"}

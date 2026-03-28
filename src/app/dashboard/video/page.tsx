@@ -506,29 +506,35 @@ export default function VideoStudioPage() {
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6 pb-20">
-      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
+      {/* ── HERO BANNER: Dark bento panel + subtle lime glow ── */}
+      <div className="relative bg-[#2A2F38] rounded-2xl p-8 border border-[#57707A]/40 shadow-xl overflow-hidden">
+        {/* Subtle lime glow */}
+        <div className="absolute top-0 right-0 w-72 h-72 bg-[#C5BAC4]/5 blur-[100px] rounded-full pointer-events-none" />
         <div className="relative z-10">
-          <h1 className="text-3xl font-bold font-heading flex items-center gap-3">
-            <Film className="h-8 w-8" /> AI Video Studio
-          </h1>
-          <p className="mt-2 text-indigo-100 max-w-xl text-sm leading-relaxed">
-            Generate stunning commercial clips with AI, then polish them in the
-            built-in editor.
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-[#C5BAC4]/10 border border-[#C5BAC4]/20 flex items-center justify-center">
+              <Film className="h-5 w-5 text-[#C5BAC4]" />
+            </div>
+            <h1 className="text-2xl font-bold text-[#DEDCDC] font-display">AI Video Studio</h1>
+          </div>
+          <p className="text-sm text-[#DEDCDC]/50 max-w-xl leading-relaxed">
+            Generate stunning commercial clips with AI, then polish them in the built-in editor.
           </p>
         </div>
-        <div className="absolute top-0 right-0 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
-          <PlaySquare className="h-64 w-64" />
+        <div className="absolute bottom-0 right-8 opacity-5 pointer-events-none">
+          <PlaySquare className="h-48 w-48 text-[#C5BAC4]" />
         </div>
       </div>
 
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+      {/* ── TAB SWITCHER ── */}
+      <div className="flex gap-1 p-1 bg-[#2A2F38] border border-[#57707A]/30 rounded-xl w-fit">
         <button
           onClick={() => setActiveTab("studio")}
           className={cn(
             "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200",
             activeTab === "studio"
-              ? "bg-white text-purple-700 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              ? "bg-[#57707A] text-[#DEDCDC] shadow-sm"
+              : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70"
           )}
         >
           <Sparkles className="h-4 w-4" /> Generate Video
@@ -538,8 +544,8 @@ export default function VideoStudioPage() {
           className={cn(
             "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200",
             activeTab === "editor"
-              ? "bg-white text-purple-700 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              ? "bg-[#57707A] text-[#DEDCDC] shadow-sm"
+              : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70"
           )}
         >
           <Video className="h-4 w-4" /> Video Editor
@@ -550,8 +556,8 @@ export default function VideoStudioPage() {
         <div className="space-y-6 w-full">
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in">
-              <h2 className="text-xl font-bold text-blink-dark">
-                Step 1: Choose Video Style
+              <h2 className="text-base font-bold text-[#DEDCDC]/60 uppercase tracking-widest">
+                Step 1 — Choose Video Style
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {VIDEO_MODES.map((mode) => {
@@ -566,42 +572,42 @@ export default function VideoStudioPage() {
                         setBRollScenes([]);
                       }}
                       className={cn(
-                        "relative p-5 rounded-xl border-2 cursor-pointer transition-all duration-200",
+                        "relative p-5 rounded-xl border cursor-pointer transition-all duration-200 hover:-translate-y-0.5",
                         isSelected
-                          ? "border-purple-500 bg-purple-50 shadow-md"
-                          : "border-gray-200 hover:border-purple-300 bg-white"
+                          ? "border-[#C5BAC4]/50 bg-[#57707A] shadow-lg shadow-black/20"
+                          : "border-[#57707A]/30 bg-[#2A2F38] hover:bg-[#57707A]/50 hover:border-[#57707A]/60"
                       )}
                     >
                       {isSelected && (
                         <div className="absolute top-3 right-3">
-                          <CheckCircle className="h-5 w-5 text-purple-600" />
+                          <CheckCircle className="h-5 w-5 text-[#C5BAC4]" />
                         </div>
                       )}
                       <div
                         className={cn(
-                          "h-10 w-10 rounded-full flex items-center justify-center mb-3",
+                          "h-10 w-10 rounded-xl flex items-center justify-center mb-3",
                           isSelected
-                            ? "bg-purple-600 text-white"
-                            : "bg-gray-100 text-gray-500"
+                            ? "bg-[#C5BAC4]/15 border border-[#C5BAC4]/20"
+                            : "bg-[#191D23]/60 border border-white/5"
                         )}
                       >
-                        <mode.icon className="h-5 w-5" />
+                        <mode.icon className={cn("h-5 w-5", isSelected ? "text-[#C5BAC4]" : "text-[#DEDCDC]/40")} />
                       </div>
-                      <h3 className="text-sm font-bold text-blink-dark">
+                      <h3 className="text-sm font-bold text-[#DEDCDC]">
                         {mode.title}
                       </h3>
-                      <p className="text-xs text-gray-500 mt-1">{mode.desc}</p>
+                      <p className="text-xs text-[#DEDCDC]/40 mt-1">{mode.desc}</p>
                     </div>
                   );
                 })}
               </div>
               <div className="flex justify-end pt-4">
-                <Button
+                <button
                   onClick={() => setStep(2)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-8"
+                  className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[#C5BAC4] text-[#191D23] text-sm font-bold hover:bg-white transition-colors shadow-lg"
                 >
-                  Next Step <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                  Next Step <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
             </div>
           )}
@@ -611,12 +617,12 @@ export default function VideoStudioPage() {
               <div className="flex items-center gap-4 mb-2">
                 <button
                   onClick={() => setStep(1)}
-                  className="p-2 bg-white border border-gray-200 rounded-full hover:bg-gray-50"
+                  className="p-2 bg-[#2A2F38] border border-[#57707A]/40 rounded-full hover:bg-[#57707A]/50 text-[#DEDCDC]/60 hover:text-[#DEDCDC] transition-colors"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
-                <h2 className="text-xl font-bold text-blink-dark">
-                  Step 2: Director's Setup ({activeModeConfig.title})
+                <h2 className="text-base font-bold text-[#DEDCDC]/60 uppercase tracking-widest">
+                  Step 2 — Director's Setup ({activeModeConfig.title})
                 </h2>
               </div>
 
@@ -667,13 +673,14 @@ export default function VideoStudioPage() {
                 }
               })()}
 
-              <div className="space-y-4 pt-4 border-t border-gray-200">
-                {/* ✨ THE NEW BRAND ALIGNMENT TOGGLE ✨ */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm gap-4">
+              {/* ── STEP 2 FOOTER: Brand alignment + AI engine + Generate CTA ── */}
+              <div className="space-y-4 pt-4 border-t border-[#57707A]/30">
+                {/* Brand Alignment Toggle */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-[#2A2F38] p-4 rounded-xl border border-[#57707A]/30 gap-4">
                   <div>
-                    <p className="text-sm font-bold text-blink-dark">Strict Brand Alignment</p>
-                    <p className="text-xs text-gray-500 max-w-lg mt-1">
-                      When active, the AI ensures the video strictly aligns with your saved brand profile ({businessInfo.name || "your brand"}). Turn this off if you are generating content for a different product or want total creative freedom based purely on your prompt.
+                    <p className="text-sm font-bold text-[#DEDCDC]">Strict Brand Alignment</p>
+                    <p className="text-xs text-[#DEDCDC]/40 max-w-lg mt-1">
+                      When active, the AI ensures the video strictly aligns with your saved brand profile ({businessInfo.name || "your brand"}). Turn off for creative freedom.
                     </p>
                   </div>
                   <Switch
@@ -683,12 +690,12 @@ export default function VideoStudioPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  {/* Master AI Engine Picker */}
                   <div className="flex items-center gap-3">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    <label className="text-xs font-bold text-[#DEDCDC]/40 uppercase tracking-wider whitespace-nowrap">
                       Master AI Engine
                     </label>
-
-                    <div className="flex flex-wrap rounded-lg border border-gray-200 bg-gray-50 p-0.5 gap-0.5">
+                    <div className="flex flex-wrap rounded-lg border border-[#57707A]/40 bg-[#191D23]/60 p-0.5 gap-0.5">
                       {[
                         { value: "auto", label: "🌟 Auto" },
                         { value: "replicate:prunaai/p-video", label: "⚡ Pruna AI (Fast)" },
@@ -701,8 +708,8 @@ export default function VideoStudioPage() {
                           key={engine.value}
                           onClick={() => setSelectedAiModel(engine.value)}
                           className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
-                            ? "bg-white text-purple-700 shadow-sm ring-1 ring-purple-200"
-                            : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
+                              ? "bg-[#57707A] text-[#DEDCDC] shadow-sm ring-1 ring-[#C5BAC4]/30"
+                              : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#57707A]/30"
                             }`}
                         >
                           {engine.label}
@@ -710,28 +717,22 @@ export default function VideoStudioPage() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Generate Button */}
                   <Button
                     onClick={handleGenerate}
                     disabled={
                       isGenerating ||
-                      (selectedMode === "storytelling" &&
-                        bRollScenes.length === 0) ||
-                      (selectedMode !== "storytelling" &&
-                        !!activeModeConfig.primaryLabel &&
-                        !primaryFile && !primaryPreview)
+                      (selectedMode === "storytelling" && bRollScenes.length === 0) ||
+                      (selectedMode !== "storytelling" && !!activeModeConfig.primaryLabel && !primaryFile && !primaryPreview)
                     }
-                    className="bg-purple-600 hover:bg-purple-700 text-white h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0"
+                    className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isGenerating ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing...
-                      </>
+                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing...</>
                     ) : (
-                      <>
-                        <Film className="mr-2 h-5 w-5" />{" "}
-                        {selectedMode === "storytelling"
-                          ? "Generate Sequence"
-                          : "Generate AI Video"}
+                      <><Film className="mr-2 h-5 w-5" />{" "}
+                        {selectedMode === "storytelling" ? "Generate Sequence" : "Generate AI Video"}
                       </>
                     )}
                   </Button>
@@ -741,24 +742,21 @@ export default function VideoStudioPage() {
           )}
 
           {step === 3 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-10 text-center shadow-sm animate-in fade-in">
+            <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-10 text-center shadow-lg animate-in fade-in">
               {generationError ? (
                 <div className="space-y-6 animate-in zoom-in duration-500">
-                  <div className="h-20 w-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto shadow-md">
+                  <div className="h-20 w-20 bg-red-500/10 border border-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto">
                     <X className="h-10 w-10" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-blink-dark font-heading">
-                      Generation Failed
-                    </h2>
-                    <p className="text-red-500 mt-2 max-w-md mx-auto leading-relaxed font-medium bg-red-50 p-3 rounded-lg border border-red-100">
+                    <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">Generation Failed</h2>
+                    <p className="text-red-400/80 mt-2 max-w-md mx-auto leading-relaxed font-medium bg-red-500/10 p-3 rounded-lg border border-red-500/20 text-sm">
                       {generationError}
                     </p>
                   </div>
                   <div className="mt-8 flex justify-center">
-                    <Button
-                      variant="outline"
-                      className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    <button
+                      className="px-6 py-2.5 rounded-lg border border-[#57707A]/40 text-[#DEDCDC]/60 hover:text-[#DEDCDC] hover:border-[#57707A] text-sm font-medium transition-colors"
                       onClick={() => {
                         setStep(1);
                         setGenerationError(null);
@@ -766,38 +764,34 @@ export default function VideoStudioPage() {
                         setIsGenerating(false);
                       }}
                     >
-                      Go Back & Try Again
-                    </Button>
+                      Go Back &amp; Try Again
+                    </button>
                   </div>
                 </div>
               ) : !generatedVideoUrl ? (
                 <div className="space-y-6">
-                  <div className="h-24 w-24 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                  <div className="h-24 w-24 bg-[#C5BAC4]/10 border border-[#C5BAC4]/20 text-[#C5BAC4] rounded-full flex items-center justify-center mx-auto">
                     <Loader2 className="h-10 w-10 animate-spin" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-blink-dark font-heading">
-                      Rendering Your AI Video... 🎬
-                    </h2>
-                    <p className="text-gray-500 mt-3 max-w-md mx-auto leading-relaxed">
+                    <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">Rendering Your AI Video... 🎬</h2>
+                    <p className="text-[#DEDCDC]/40 mt-3 max-w-md mx-auto leading-relaxed text-sm">
                       Our cinematic AI engine is currently animating your scene pixel by pixel.
                     </p>
-                    <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-100 text-sm text-purple-800">
-                      ⏱️ High-fidelity video generation typically takes <b>5 to 15 minutes</b> depending on server load. You can leave this tab open and grab a coffee!
+                    <div className="mt-4 p-4 bg-[#191D23]/60 rounded-lg border border-[#57707A]/30 text-sm text-[#DEDCDC]/50">
+                      ⏱️ High-fidelity video generation typically takes <b className="text-[#DEDCDC]/70">5 to 15 minutes</b> depending on server load. You can leave this tab open and grab a coffee!
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-6 animate-in zoom-in duration-500">
-                  <div className="h-20 w-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-md">
+                  <div className="h-20 w-20 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
                     <CheckCircle className="h-10 w-10" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-blink-dark font-heading">
-                      Your Sequence is Ready! 🎉
-                    </h2>
+                    <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">Your Sequence is Ready! 🎉</h2>
                   </div>
-                  <div className="mt-6 aspect-video max-w-lg mx-auto bg-black rounded-lg overflow-hidden shadow-xl ring-4 ring-purple-500/20">
+                  <div className="mt-6 aspect-video max-w-lg mx-auto bg-black rounded-lg overflow-hidden shadow-xl ring-2 ring-[#C5BAC4]/20">
                     <video
                       src={generatedVideoUrl}
                       controls
@@ -806,8 +800,8 @@ export default function VideoStudioPage() {
                     />
                   </div>
                   <div className="mt-8 flex justify-center gap-4">
-                    <Button
-                      variant="outline"
+                    <button
+                      className="px-6 py-2.5 rounded-lg border border-[#57707A]/40 text-[#DEDCDC]/60 hover:text-[#DEDCDC] hover:border-[#57707A] text-sm font-medium transition-colors"
                       onClick={() => {
                         setStep(1);
                         setPrimaryFile(null);
@@ -820,13 +814,13 @@ export default function VideoStudioPage() {
                       }}
                     >
                       Create Another
-                    </Button>
-                    <Button
-                      className="bg-purple-600 hover:bg-purple-700 text-white shadow-md"
+                    </button>
+                    <button
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[#C5BAC4] text-[#191D23] text-sm font-bold hover:bg-white transition-colors shadow-lg"
                       onClick={() => setActiveTab("editor")}
                     >
-                      <Video className="w-4 h-4 mr-2" /> Open in Timeline Editor
-                    </Button>
+                      <Video className="w-4 h-4" /> Open in Timeline Editor
+                    </button>
                   </div>
                 </div>
               )}
@@ -837,9 +831,9 @@ export default function VideoStudioPage() {
 
       {activeTab === "editor" && (
         <div className="animate-in fade-in w-full">
-          <div className="mb-4">
-            <h2 className="text-xl font-bold text-blink-dark">Video Editor</h2>
-            <p className="text-sm text-gray-500 mt-1">
+          <div className="mb-6 p-6 rounded-xl bg-[#2A2F38] border border-[#57707A]/30">
+            <h2 className="text-base font-bold text-[#DEDCDC]/60 uppercase tracking-widest">Video Editor</h2>
+            <p className="text-sm text-[#DEDCDC]/30 mt-1">
               Timeline-based editor for your AI generated assets.
             </p>
           </div>

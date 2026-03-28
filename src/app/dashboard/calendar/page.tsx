@@ -230,8 +230,8 @@ export default function CalendarPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
+      <div className="flex justify-center py-32">
+        <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
       </div>
     );
   }
@@ -241,32 +241,32 @@ export default function CalendarPage() {
       {message && (
         <div
           className={cn(
-            "px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-sm",
+            "px-5 py-3.5 rounded-xl text-sm font-bold flex items-center gap-3 transition-all shadow-lg animate-in slide-in-from-top-4",
             message.type === "success"
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              ? "bg-[#B3FF00]/10 text-[#B3FF00] border border-[#B3FF00]/20"
               : message.type === "info"
-                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                : "bg-red-50 text-red-700 border border-red-200"
+                ? "bg-[#C5BAC4]/10 text-[#C5BAC4] border border-[#C5BAC4]/20"
+                : "bg-red-500/10 text-red-400 border border-red-500/20"
           )}
         >
           {message.type === "success" ? (
-            <CheckCircle className="h-4 w-4 shrink-0" />
+            <CheckCircle className="h-5 w-5 shrink-0" />
           ) : message.type === "info" ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin" />
           ) : (
-            <AlertCircle className="h-4 w-4 shrink-0" />
+            <AlertCircle className="h-5 w-5 shrink-0" />
           )}
-          <span className="leading-relaxed">{message.text}</span>
+          <span className="leading-relaxed tracking-wide">{message.text}</span>
           <button
             onClick={() => setMessage(null)}
-            className="ml-auto p-0.5 hover:bg-black/5 rounded-full"
+            className="ml-auto p-1 hover:bg-black/20 rounded-full transition-colors"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 md:p-6 min-h-[600px]">
+      <div className="bg-[#191D23] rounded-2xl border border-[#57707A]/30 shadow-xl md:p-6 min-h-[600px] overflow-hidden">
         <CalendarView
           content={content}
           currentMonth={currentMonth}

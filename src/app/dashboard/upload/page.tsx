@@ -422,10 +422,10 @@ export default function YourContentPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 pt-8 pb-20">
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-blink-dark font-heading">
+        <h1 className="text-3xl font-bold text-[#DEDCDC] font-display">
           Content Studio
         </h1>
-        <p className="text-gray-500">
+        <p className="text-[#989DAA]">
           Upload media to write captions and generate content.
         </p>
       </div>
@@ -455,44 +455,44 @@ export default function YourContentPage() {
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDropFile}
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-blink-primary/30 bg-white rounded-3xl p-20 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blink-primary/5 hover:border-blink-primary/50 transition-all duration-300 shadow-sm"
+          className="border-2 border-dashed border-[#57707A]/50 bg-[#2A2F38] rounded-3xl p-20 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-[#57707A]/20 hover:border-[#C5BAC4]/50 transition-all duration-300 shadow-lg"
         >
           <div className="flex gap-4 mb-6">
-            <div className="h-16 w-16 bg-blue-50 rounded-2xl shadow-sm flex items-center justify-center text-blue-500 -rotate-6 transform hover:rotate-0 transition-all border border-blue-100">
+            <div className="h-16 w-16 bg-[#191D23] rounded-2xl shadow-inner flex items-center justify-center text-[#C5BAC4] -rotate-6 transform hover:rotate-0 transition-all border border-[#57707A]/30">
               <ImageIcon className="h-8 w-8" />
             </div>
-            <div className="h-16 w-16 bg-purple-50 rounded-2xl shadow-sm flex items-center justify-center text-purple-500 rotate-6 transform hover:rotate-0 transition-all border border-purple-100">
+            <div className="h-16 w-16 bg-[#191D23] rounded-2xl shadow-inner flex items-center justify-center text-[#C5BAC4] rotate-6 transform hover:rotate-0 transition-all border border-[#57707A]/30">
               <Video className="h-8 w-8" />
             </div>
           </div>
-          <h3 className="text-lg font-bold text-blink-dark mb-2">
+          <h3 className="text-lg font-bold text-[#DEDCDC] mb-2 font-display">
             Drag & drop your masterpiece here
           </h3>
-          <p className="text-sm text-gray-500 mb-6 max-w-sm">
+          <p className="text-sm text-[#989DAA] mb-6 max-w-sm">
             Upload images or videos to generate AI content.
           </p>
-          <Button className="bg-blink-dark text-white rounded-full px-8 h-12 shadow-md pointer-events-none">
+          <Button className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-full px-8 h-12 shadow-lg shadow-[#C5BAC4]/10 pointer-events-none transition-colors">
             <UploadCloud className="mr-2 h-5 w-5" /> Browse Files
           </Button>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-200">
+        <div className="bg-[#2A2F38] rounded-3xl p-6 md:p-8 shadow-2xl border border-[#57707A]/30">
 
           {/* ========================================================================
             VERSION 2 TABS TEMPORARILY COMMENTED OUT (API Limitation)
             ======================================================================== 
           */}
           {!isVideo && (
-            <div className="flex p-1 bg-gray-100 rounded-lg mb-6 mx-auto max-w-sm overflow-x-auto">
-              <button onClick={() => setActiveTab('caption')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'caption' ? "bg-white shadow-sm text-blink-dark" : "text-gray-500 hover:text-gray-700")}>
+            <div className="flex p-1.5 bg-[#191D23] border border-[#57707A]/30 rounded-xl mb-8 mx-auto max-w-sm overflow-x-auto shadow-inner">
+              <button onClick={() => setActiveTab('caption')} className={cn("flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'caption' ? "bg-[#57707A]/80 shadow-md text-[#DEDCDC]" : "text-[#57707A] hover:text-[#989DAA]")}>
                 <ScrollText className="w-4 h-4" /> AI Caption
               </button>
 
               {/* --- V2 TABS HIDDEN ---
-              <button onClick={() => setActiveTab('animate')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'animate' ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+              <button onClick={() => setActiveTab('animate')} className={cn("flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'animate' ? "bg-[#C5BAC4] text-[#191D23] shadow-md" : "text-[#57707A] hover:text-[#989DAA]")}>
                 <Sparkles className="w-4 h-4" /> Motion Brush
               </button>
-              <button onClick={() => setActiveTab('motion_transfer')} className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'motion_transfer' ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+              <button onClick={() => setActiveTab('motion_transfer')} className={cn("flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'motion_transfer' ? "bg-[#C5BAC4] text-[#191D23] shadow-md" : "text-[#57707A] hover:text-[#989DAA]")}>
                 <Activity className="w-4 h-4" /> Motion Transfer
               </button>
               ------------------------ */}
@@ -503,7 +503,7 @@ export default function YourContentPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
 
             {/* Left: The Visuals */}
-            <div className="md:col-span-2 relative w-full aspect-video bg-gray-100 rounded-2xl overflow-hidden border border-gray-200 flex items-center justify-center" ref={containerRef}>
+            <div className="md:col-span-2 relative w-full aspect-video bg-[#191D23] rounded-2xl overflow-hidden border border-[#57707A]/40 flex items-center justify-center shadow-inner" ref={containerRef}>
 
               {/* ========================================================================
                 VERSION 2 INTERACTIVE CANVAS COMMENTED OUT
@@ -536,12 +536,12 @@ export default function YourContentPage() {
               {/* )} */}
 
               {isProcessing && (
-                <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 space-y-4">
+                <div className="absolute inset-0 bg-[#191D23]/80 backdrop-blur-md flex flex-col items-center justify-center z-50 space-y-4">
                   <div className="relative">
-                    <div className="absolute inset-0 rounded-full blur-xl bg-purple-500/30 animate-pulse"></div>
-                    <Loader2 className="h-12 w-12 animate-spin text-purple-600 relative z-10" />
+                    <div className="absolute inset-0 rounded-full blur-xl bg-[#C5BAC4]/20 animate-pulse"></div>
+                    <Loader2 className="h-12 w-12 animate-spin text-[#C5BAC4] relative z-10" />
                   </div>
-                  <p className="font-bold text-purple-900 tracking-wider uppercase text-sm animate-pulse">{loadingText}</p>
+                  <p className="font-bold text-[#DEDCDC] tracking-wider uppercase text-sm animate-pulse">{loadingText}</p>
                 </div>
               )}
             </div>
@@ -553,25 +553,25 @@ export default function YourContentPage() {
               {activeTab === 'caption' && (
                 <>
                   <div>
-                    <h3 className="text-sm font-bold text-blink-dark mb-1">File Uploaded</h3>
-                    <p className="font-medium text-gray-500 text-xs truncate w-full">{file?.name}</p>
+                    <h3 className="text-sm font-bold text-[#DEDCDC] mb-1 font-display">File Uploaded</h3>
+                    <p className="font-medium text-[#57707A] text-xs truncate w-full">{file?.name}</p>
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Context (Optional)</label>
+                    <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Context (Optional)</label>
                     <Textarea
                       value={mediaContext}
                       onChange={(e) => setMediaContext(e.target.value)}
                       placeholder="e.g., Behind the scenes of our new product launch..."
-                      className="text-sm resize-none h-32 bg-gray-50 border-gray-200"
+                      className="text-sm resize-none h-32 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                       disabled={isProcessing}
                     />
-                    <p className="text-[10px] text-gray-400 mt-2 font-medium">Providing context helps the AI write much better captions.</p>
+                    <p className="text-[10px] text-[#57707A] mt-2 font-bold">Providing context helps the AI write much better captions.</p>
                   </div>
                   <div className="flex flex-col gap-3">
-                    <Button onClick={handleAnalyze} disabled={isProcessing} className="w-full bg-blink-primary text-white h-12 rounded-xl shadow-md font-bold">
+                    <Button onClick={handleAnalyze} disabled={isProcessing} className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 font-bold transition-all">
                       {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ScrollText className="mr-2 h-5 w-5" />} Write Caption
                     </Button>
-                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-500 hover:bg-red-50 font-bold">
+                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold transition-colors">
                       Cancel
                     </Button>
                   </div>
@@ -588,20 +588,20 @@ export default function YourContentPage() {
               {activeTab === 'animate' && (
                 <div className="flex flex-col h-full gap-4">
                   <div>
-                    <h3 className="text-sm font-bold text-purple-900 flex items-center gap-2 mb-1"><Sparkles className="w-4 h-4 text-purple-600" /> Animation Tools</h3>
-                    <p className="text-[10px] text-gray-500 font-medium">1. Paint over what you want to move. <br />2. Draw an arrow for direction.</p>
+                    <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 mb-1"><Sparkles className="w-4 h-4 text-[#C5BAC4]" /> Animation Tools</h3>
+                    <p className="text-[10px] text-[#989DAA] font-medium">1. Paint over what you want to move. <br />2. Draw an arrow for direction.</p>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 bg-gray-100 p-1.5 rounded-lg border border-gray-200">
-                    <button onClick={() => setToolMode('brush')} className={cn("flex flex-col items-center justify-center p-2 rounded-md transition-all", toolMode === 'brush' ? "bg-white shadow-sm text-purple-600" : "text-gray-500 hover:text-gray-700")}>
+                  <div className="grid grid-cols-3 gap-2 bg-[#191D23] p-1.5 rounded-xl border border-[#57707A]/30">
+                    <button onClick={() => setToolMode('brush')} className={cn("flex flex-col items-center justify-center p-2 rounded-lg transition-all", toolMode === 'brush' ? "bg-[#2A2F38] shadow-sm text-[#C5BAC4]" : "text-[#57707A] hover:text-[#989DAA]")}>
                       <Paintbrush className="w-5 h-5 mb-1" />
                       <span className="text-[9px] font-bold uppercase tracking-wider">Paint</span>
                     </button>
-                    <button onClick={() => setToolMode('arrow')} className={cn("flex flex-col items-center justify-center p-2 rounded-md transition-all", toolMode === 'arrow' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}>
+                    <button onClick={() => setToolMode('arrow')} className={cn("flex flex-col items-center justify-center p-2 rounded-lg transition-all", toolMode === 'arrow' ? "bg-[#2A2F38] shadow-sm text-blue-400" : "text-[#57707A] hover:text-[#989DAA]")}>
                       <MoveRight className="w-5 h-5 mb-1" />
                       <span className="text-[9px] font-bold uppercase tracking-wider">Direction</span>
                     </button>
-                    <button onClick={() => setToolMode('eraser')} className={cn("flex flex-col items-center justify-center p-2 rounded-md transition-all", toolMode === 'eraser' ? "bg-white shadow-sm text-red-600" : "text-gray-500 hover:text-gray-700")}>
+                    <button onClick={() => setToolMode('eraser')} className={cn("flex flex-col items-center justify-center p-2 rounded-lg transition-all", toolMode === 'eraser' ? "bg-[#2A2F38] shadow-sm text-red-400" : "text-[#57707A] hover:text-[#989DAA]")}>
                       <Eraser className="w-5 h-5 mb-1" />
                       <span className="text-[9px] font-bold uppercase tracking-wider">Erase</span>
                     </button>
@@ -609,35 +609,35 @@ export default function YourContentPage() {
 
                   {(toolMode === 'brush' || toolMode === 'eraser') && (
                     <div className="space-y-2">
-                      <div className="flex justify-between items-center"><label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Brush Size</label><span className="text-xs font-bold text-gray-700">{brushSize}px</span></div>
-                      <input type="range" min="5" max="100" value={brushSize} onChange={(e) => setBrushSize(parseInt(e.target.value))} className="w-full accent-purple-600 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                      <div className="flex justify-between items-center"><label className="text-[10px] font-bold text-[#989DAA] uppercase tracking-wider">Brush Size</label><span className="text-xs font-bold text-[#DEDCDC]">{brushSize}px</span></div>
+                      <input type="range" min="5" max="100" value={brushSize} onChange={(e) => setBrushSize(parseInt(e.target.value))} className="w-full accent-[#C5BAC4] h-1.5 bg-[#57707A]/30 rounded-lg appearance-none cursor-pointer" />
                     </div>
                   )}
 
                   {arrowVector && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-blue-700 uppercase flex items-center gap-1"><MoveRight className="w-3 h-3" /> Direction Set</span>
-                      <button onClick={() => { setArrowVector(null); uiCanvasRef.current?.getContext('2d')?.clearRect(0, 0, uiCanvasRef.current.width, uiCanvasRef.current.height); }} className="text-[10px] text-red-500 hover:underline font-bold">Remove</button>
+                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-blue-400 uppercase flex items-center gap-1"><MoveRight className="w-3 h-3" /> Direction Set</span>
+                      <button onClick={() => { setArrowVector(null); uiCanvasRef.current?.getContext('2d')?.clearRect(0, 0, uiCanvasRef.current.width, uiCanvasRef.current.height); }} className="text-[10px] text-red-400 hover:underline font-bold">Remove</button>
                     </div>
                   )}
 
                   <div className="flex-1 pt-2">
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Prompt (Optional)</label>
+                    <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Prompt (Optional)</label>
                     <Textarea
                       value={mediaContext}
                       onChange={(e) => setMediaContext(e.target.value)}
                       placeholder="e.g., The water ripples softly..."
-                      className="text-xs resize-none h-20 bg-gray-50 border-gray-200"
+                      className="text-xs resize-none h-20 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl"
                       disabled={isProcessing}
                     />
                   </div>
 
-                  <div className="flex flex-col gap-2 mt-auto">
-                    <Button onClick={clearCanvas} variant="outline" className="w-full border-gray-200 text-gray-600 h-9 text-xs font-bold"><Undo2 className="w-3.5 h-3.5 mr-2" /> Reset Canvas</Button>
-                    <Button onClick={handleMotionBrush} disabled={isProcessing} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white h-12 rounded-xl shadow-lg shadow-purple-500/20 font-bold text-sm">
+                  <div className="flex flex-col gap-3 mt-auto">
+                    <Button onClick={clearCanvas} variant="outline" className="w-full border-[#57707A]/40 text-[#DEDCDC] bg-transparent hover:bg-[#57707A]/20 h-10 text-xs font-bold rounded-xl"><Undo2 className="w-3.5 h-3.5 mr-2" /> Reset Canvas</Button>
+                    <Button onClick={handleMotionBrush} disabled={isProcessing} className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 font-bold text-sm">
                       {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Play className="mr-2 h-5 w-5 fill-current" />} Animate Motion
                     </Button>
-                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-500 hover:bg-red-50 font-bold h-9">Cancel</Button>
+                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold transition-colors">Cancel</Button>
                   </div>
                 </div>
               )}
@@ -648,52 +648,52 @@ export default function YourContentPage() {
               {activeTab === 'motion_transfer' && (
                 <div className="flex flex-col h-full gap-4">
                   <div>
-                    <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2 mb-1"><Activity className="w-4 h-4 text-blue-600" /> Reference Motion</h3>
-                    <p className="text-[10px] text-gray-500 font-medium">Upload a video. The AI will make your image mimic the video's movements.</p>
+                    <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 mb-1"><Activity className="w-4 h-4 text-blue-400" /> Reference Motion</h3>
+                    <p className="text-[10px] text-[#989DAA] font-medium">Upload a video. The AI will make your image mimic the video's movements.</p>
                   </div>
 
                   <div className="flex-1 space-y-4">
                     {referenceVideoPreview ? (
-                      <div className="relative rounded-xl border border-blue-200 bg-blue-50/50 p-2">
+                      <div className="relative rounded-xl border border-blue-500/30 bg-[#191D23] p-2">
                         <video src={referenceVideoPreview} controls className="w-full h-32 object-cover rounded-lg bg-black" />
-                        <button onClick={() => { setReferenceVideoFile(null); setReferenceVideoPreview(null); }} className="absolute top-4 right-4 p-1.5 bg-white/90 text-red-500 rounded-full shadow-md hover:bg-red-50 transition-colors">
+                        <button onClick={() => { setReferenceVideoFile(null); setReferenceVideoPreview(null); }} className="absolute top-4 right-4 p-1.5 bg-[#191D23]/90 text-red-400 rounded-full shadow-md hover:bg-red-500/20 transition-colors">
                           <X className="h-4 w-4" />
                         </button>
-                        <p className="text-[10px] font-bold text-blue-700 mt-2 text-center truncate px-2">{referenceVideoFile?.name}</p>
+                        <p className="text-[10px] font-bold text-blue-400 mt-2 text-center truncate px-2">{referenceVideoFile?.name}</p>
                       </div>
                     ) : (
                       <div
                         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         onDrop={handleRefVideoDrop}
                         onClick={() => refVideoInputRef.current?.click()}
-                        className="h-32 border-2 border-dashed border-blue-300 bg-blue-50/30 hover:bg-blue-50 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors"
+                        className="h-32 border-2 border-dashed border-blue-500/30 bg-[#191D23] hover:bg-[#57707A]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors"
                       >
                         <Video className="h-6 w-6 text-blue-400 mb-2" />
-                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Drop Reference Video</span>
+                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Drop Reference Video</span>
                       </div>
                     )}
 
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Prompt (Optional)</label>
+                      <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Prompt (Optional)</label>
                       <Textarea
                         value={mediaContext}
                         onChange={(e) => setMediaContext(e.target.value)}
                         placeholder="e.g., The character dances energetically..."
-                        className="text-xs resize-none h-20 bg-gray-50 border-gray-200"
+                        className="text-xs resize-none h-20 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl"
                         disabled={isProcessing}
                       />
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2 mt-auto">
+                  <div className="flex flex-col gap-3 mt-auto">
                     <Button
                       onClick={handleMotionTransfer}
                       disabled={isProcessing || !referenceVideoFile}
-                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white h-12 rounded-xl shadow-lg shadow-blue-500/20 font-bold text-sm"
+                      className="w-full bg-blue-500 hover:bg-blue-400 text-white h-12 rounded-xl shadow-lg shadow-blue-500/20 font-bold text-sm"
                     >
                       {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Activity className="mr-2 h-5 w-5" />} Transfer Motion
                     </Button>
-                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-500 hover:bg-red-50 font-bold h-9">Cancel</Button>
+                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold transition-colors">Cancel</Button>
                   </div>
                 </div>
               )}

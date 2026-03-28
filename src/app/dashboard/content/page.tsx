@@ -84,16 +84,17 @@ export default function ContentPage() {
   };
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-6 pb-20 animate-in fade-in duration-500">
 
-      <div className="flex gap-2 p-1 bg-gray-100 rounded-xl w-fit">
+      {/* ── TAB SWITCHER ── */}
+      <div className="flex gap-1 p-1 bg-[#2A2F38] border border-[#57707A]/30 rounded-xl w-fit shadow-sm">
         <button
           onClick={() => setActiveTab("finished")}
           className={cn(
             "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200",
             activeTab === "finished"
-              ? "bg-white text-purple-700 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              ? "bg-[#57707A] text-[#DEDCDC] shadow-sm"
+              : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#57707A]/10"
           )}
         >
           <Film className="h-4 w-4" /> Finished Content
@@ -103,29 +104,30 @@ export default function ContentPage() {
           className={cn(
             "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200",
             activeTab === "sequences"
-              ? "bg-white text-purple-700 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              ? "bg-[#57707A] text-[#DEDCDC] shadow-sm"
+              : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#57707A]/10"
           )}
         >
           <Clapperboard className="h-4 w-4" /> Story Sequences
         </button>
       </div>
 
-      <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-200 shadow-sm sticky top-20 z-20">
-        <div className="flex items-center gap-3">
+      {/* ── SELECTION CONTROL BAR ── */}
+      <div className="flex items-center justify-between bg-[#2A2F38] p-4 rounded-xl border border-[#57707A]/40 shadow-lg sticky top-20 z-20 backdrop-blur-md bg-opacity-95">
+        <div className="flex items-center gap-4">
           <Button
             variant="outline"
             size="sm"
             onClick={selectAll}
-            className="text-xs font-medium border-gray-300"
+            className="text-xs font-bold border-[#57707A]/50 bg-[#191D23] text-[#DEDCDC]/70 hover:bg-[#57707A]/30 hover:text-[#DEDCDC] transition-colors h-9"
           >
-            <CheckSquare className="h-4 w-4 mr-2 text-gray-500" />
+            <CheckSquare className="h-4 w-4 mr-2 opacity-70" />
             {selectedIds.size === content.length && content.length > 0
               ? "Deselect All"
               : "Select All"}
           </Button>
           {selectedIds.size > 0 && (
-            <span className="text-sm font-medium text-blink-primary">
+            <span className="text-sm font-bold text-[#C5BAC4] animate-in fade-in slide-in-from-left-2">
               {selectedIds.size} selected
             </span>
           )}
@@ -136,7 +138,7 @@ export default function ContentPage() {
             onClick={handleBatchDelete}
             disabled={isDeleting}
             variant="destructive"
-            className="bg-red-500 hover:bg-red-600 text-white shadow-sm"
+            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 shadow-sm h-9 text-xs font-bold transition-colors animate-in zoom-in duration-200"
           >
             {isDeleting ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -148,39 +150,54 @@ export default function ContentPage() {
         )}
       </div>
 
+      {/* ── CONTENT GRID ── */}
       {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-blink-primary" />
+        <div className="flex justify-center py-32">
+          <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
         </div>
       ) : content.length === 0 ? (
-        <div className="text-center py-20 bg-white border border-gray-200 rounded-xl">
-          <p className="text-gray-500 font-medium">
+        <div className="text-center py-32 bg-[#2A2F38] border border-[#57707A]/30 rounded-2xl shadow-inner flex flex-col items-center justify-center">
+          <div className="h-16 w-16 bg-[#191D23] rounded-full flex items-center justify-center mb-4 border border-[#57707A]/30">
+            {activeTab === "finished" ? (
+              <Film className="h-6 w-6 text-[#57707A]" />
+            ) : (
+              <Clapperboard className="h-6 w-6 text-[#57707A]" />
+            )}
+          </div>
+          <p className="text-[#DEDCDC] font-bold text-lg">
+            {activeTab === "finished" ? "No content found." : "No sequences found."}
+          </p>
+          <p className="text-sm text-[#989DAA] mt-2 max-w-sm">
             {activeTab === "finished"
-              ? "No content found. Go generate some!"
-              : "No sequences found. Head to the Video Studio to create a Storytelling B-Roll!"}
+              ? "Head over to the Video Studio to generate your first cinematic clip!"
+              : "Head to the Video Studio and build a Storytelling B-Roll to see your raw sequences here."}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {content.map((item) => {
             const isSelected = selectedIds.has(item.id);
             return (
               <div
                 key={item.id}
-                className={`relative group rounded-xl transition-all duration-200 ${isSelected
-                    ? "ring-2 ring-red-400 scale-[0.98]"
-                    : "hover:shadow-md"
-                  }`}
+                className={cn(
+                  "relative group rounded-2xl transition-all duration-300",
+                  isSelected
+                    ? "ring-2 ring-red-400/80 scale-[0.98] shadow-lg shadow-red-500/10"
+                    : "hover:shadow-xl hover:shadow-black/20 hover:-translate-y-1"
+                )}
               >
+                {/* Custom Checkbox overlay */}
                 <div
                   onClick={() => toggleSelect(item.id)}
-                  className={`absolute top-3 left-3 z-10 h-6 w-6 rounded-md border-2 flex items-center justify-center cursor-pointer transition-colors backdrop-blur-sm
-                    ${isSelected
-                      ? "bg-red-500 border-red-500 text-white"
-                      : "bg-white/50 border-white hover:bg-white"
-                    }`}
+                  className={cn(
+                    "absolute top-4 left-4 z-10 h-7 w-7 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all backdrop-blur-md shadow-sm",
+                    isSelected
+                      ? "bg-red-500/90 border-red-400 text-white"
+                      : "bg-[#191D23]/60 border-[#DEDCDC]/40 hover:bg-[#57707A]/80 hover:border-[#DEDCDC] opacity-0 group-hover:opacity-100 text-transparent hover:text-white/50"
+                  )}
                 >
-                  {isSelected && <CheckSquare className="h-4 w-4" />}
+                  <CheckSquare className="h-4 w-4" />
                 </div>
 
                 <ContentCard content={item} />
