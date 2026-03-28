@@ -36,38 +36,39 @@ export function UgcSetup({
     };
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-500">
             {/* Primary Image (Product) */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-3 hover:border-purple-200 transition-colors">
-                <label className="text-sm font-bold text-blink-dark flex items-center justify-between">
+            <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-lg space-y-4 hover:border-[#C5BAC4]/50 transition-colors group/card">
+                <label className="text-sm font-bold text-[#DEDCDC] flex items-center justify-between font-display tracking-wide">
                     {activeModeConfig.primaryLabel}
-                    <span className="text-xs font-normal text-red-500 bg-red-50 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-md uppercase tracking-wider">
                         Required
                     </span>
                 </label>
                 {primaryPreview ? (
-                    <div className="relative aspect-square rounded-lg border border-gray-200 bg-gray-50 overflow-hidden group">
-                        <img src={primaryPreview} alt="Primary" className="w-full h-full object-contain p-2" />
+                    <div className="relative aspect-square rounded-xl border border-[#57707A]/40 bg-[#191D23] overflow-hidden group shadow-inner">
+                        <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none"></div>
+                        <img src={primaryPreview} alt="Primary" className="w-full h-full object-contain p-4 relative z-10 drop-shadow-2xl" />
                         <button
                             onClick={() => { setPrimaryFile(null); setPrimaryPreview(null); }}
-                            className="absolute top-2 right-2 p-2 bg-white/90 text-red-500 rounded-full shadow-sm hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute top-2 right-2 p-2 bg-red-500/90 text-white rounded-full shadow-md hover:bg-red-500 hover:scale-110 opacity-0 group-hover:opacity-100 transition-all z-20"
                         >
                             <X className="h-4 w-4" />
                         </button>
                     </div>
                 ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                         <div
                             onClick={() => primaryInputRef.current?.click()}
-                            className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-400 hover:bg-purple-50 flex flex-col items-center justify-center cursor-pointer transition-colors text-center p-6"
+                            className="aspect-square rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 flex flex-col items-center justify-center cursor-pointer transition-all text-center p-6 shadow-inner"
                         >
-                            <Upload className="h-8 w-8 text-gray-400 mb-3" />
-                            <p className="text-sm font-medium text-blink-dark">Upload {activeModeConfig.primaryLabel}</p>
-                            <p className="text-xs text-gray-400 mt-1">PNG or JPG of the product</p>
+                            <Upload className="h-10 w-10 text-[#57707A] mb-4 group-hover/card:text-[#C5BAC4] transition-colors" />
+                            <p className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">Upload {activeModeConfig.primaryLabel}</p>
+                            <p className="text-[10px] text-[#989DAA] mt-1.5 font-medium">PNG or JPG of the product</p>
                         </div>
                         <button
                             onClick={() => setLibraryTarget("primary")}
-                            className="w-full flex items-center justify-center gap-2 text-xs font-bold text-blue-600 hover:bg-blue-50 py-2 rounded-lg border border-blue-200 transition-colors"
+                            className="w-full flex items-center justify-center gap-2 text-xs font-bold text-[#C5BAC4] bg-[#191D23] hover:bg-[#C5BAC4]/20 py-2.5 rounded-xl border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-colors shadow-sm"
                         >
                             <FolderOpen className="h-3.5 w-3.5" /> Select from Library
                         </button>
@@ -78,36 +79,36 @@ export function UgcSetup({
 
             {/* Secondary Image (Influencer Face) */}
             {activeModeConfig.secondaryLabel && (
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-3 hover:border-purple-200 transition-colors">
-                    <label className="text-sm font-bold text-blink-dark flex items-center justify-between">
+                <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-lg space-y-4 hover:border-[#C5BAC4]/50 transition-colors group/card">
+                    <label className="text-sm font-bold text-[#DEDCDC] flex items-center justify-between font-display tracking-wide">
                         {activeModeConfig.secondaryLabel}
-                        <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-bold text-[#989DAA] bg-[#191D23] border border-[#57707A]/40 px-2.5 py-1 rounded-md uppercase tracking-wider">
                             Optional
                         </span>
                     </label>
                     {secondaryPreview ? (
-                        <div className="relative aspect-square rounded-lg border border-gray-200 bg-gray-50 overflow-hidden group">
-                            <img src={secondaryPreview} alt="Secondary" className="w-full h-full object-cover" />
+                        <div className="relative aspect-square rounded-xl border border-[#57707A]/40 bg-[#191D23] overflow-hidden group shadow-inner">
+                            <img src={secondaryPreview} alt="Secondary" className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
                             <button
                                 onClick={() => { setSecondaryFile(null); setSecondaryPreview(null); }}
-                                className="absolute top-2 right-2 p-2 bg-white/90 text-red-500 rounded-full shadow-sm hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute top-2 right-2 p-2 bg-red-500/90 text-white rounded-full shadow-md hover:bg-red-500 hover:scale-110 opacity-0 group-hover:opacity-100 transition-all z-20"
                             >
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
                     ) : (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                             <div
                                 onClick={() => secondaryInputRef.current?.click()}
-                                className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-400 hover:bg-purple-50 flex flex-col items-center justify-center cursor-pointer transition-colors text-center p-6"
+                                className="aspect-square rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 flex flex-col items-center justify-center cursor-pointer transition-all text-center p-6 shadow-inner"
                             >
-                                <UserCircle className="h-8 w-8 text-gray-400 mb-3" />
-                                <p className="text-sm font-medium text-blink-dark">Upload {activeModeConfig.secondaryLabel}</p>
-                                <p className="text-xs text-gray-400 mt-1">Clear, front-facing portrait</p>
+                                <UserCircle className="h-10 w-10 text-[#57707A] mb-4 group-hover/card:text-[#C5BAC4] transition-colors" />
+                                <p className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">Upload {activeModeConfig.secondaryLabel}</p>
+                                <p className="text-[10px] text-[#989DAA] mt-1.5 font-medium">Clear, front-facing portrait</p>
                             </div>
                             <button
                                 onClick={() => setLibraryTarget("secondary")}
-                                className="w-full flex items-center justify-center gap-2 text-xs font-bold text-blue-600 hover:bg-blue-50 py-2 rounded-lg border border-blue-200 transition-colors"
+                                className="w-full flex items-center justify-center gap-2 text-xs font-bold text-[#C5BAC4] bg-[#191D23] hover:bg-[#C5BAC4]/20 py-2.5 rounded-xl border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-colors shadow-sm"
                             >
                                 <FolderOpen className="h-3.5 w-3.5" /> Select from Library
                             </button>
@@ -118,19 +119,19 @@ export function UgcSetup({
             )}
 
             {/* Director's Prompt */}
-            <div className="md:col-span-2 bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4 relative overflow-hidden">
+            <div className="md:col-span-2 bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-lg space-y-5 relative overflow-hidden">
                 <div className="flex justify-between items-start">
                     <div>
                         {/* ✨ UPDATED LABEL & DESCRIPTION FOR UGC STRATEGY */}
-                        <label className="text-sm font-bold text-blink-dark">Viral Hook & Pain Point</label>
-                        <p className="text-xs text-gray-500 mt-1 max-w-md">
+                        <label className="text-sm font-bold text-[#DEDCDC] font-display tracking-wide">Viral Hook & Pain Point</label>
+                        <p className="text-xs text-[#989DAA] mt-1.5 max-w-md font-medium leading-relaxed">
                             Describe the customer's problem or the catchy hook. Our AI will automatically generate a viral TikTok/Reels script, captions, and visual action.
                         </p>
                     </div>
                     <button
                         onClick={handleAISuggest}
                         disabled={isSuggesting}
-                        className="text-xs text-purple-600 hover:bg-purple-50 font-bold flex items-center gap-1.5 px-3 py-2 rounded-lg border border-purple-200 transition-colors shadow-sm bg-white shrink-0"
+                        className="text-xs text-[#191D23] bg-[#C5BAC4] hover:bg-white font-bold flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all shadow-md shadow-[#C5BAC4]/10 shrink-0"
                     >
                         {isSuggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{" "}
                         {isSuggesting ? "Writing..." : "AI Suggest Concept"}
@@ -142,11 +143,11 @@ export function UgcSetup({
                     <Textarea
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        rows={3}
+                        rows={4}
                         placeholder="e.g., 'Stop scrolling! If you struggle with organizing your messy room, you need to see this...'"
-                        className="resize-none border-gray-300 focus-visible:ring-purple-500 text-sm p-4 bg-gray-50"
+                        className="resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] text-sm p-4 rounded-xl shadow-inner custom-scrollbar"
                     />
-                    <div className="absolute bottom-3 right-3 flex items-center gap-1 text-xs text-gray-400">
+                    <div className="absolute bottom-3 right-4 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#57707A]">
                         <Info className="h-3.5 w-3.5" /> Focus on the viewer's problem
                     </div>
                 </div>

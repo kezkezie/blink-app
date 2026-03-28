@@ -44,7 +44,7 @@ export default function DashboardLayout({
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="flex min-h-screen bg-blink-light">
+      <div className="flex min-h-screen bg-[#2A2F38]/50">
         <Sidebar userEmail={userEmail} />
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar pageTitle={pageTitle} />
