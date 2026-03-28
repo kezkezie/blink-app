@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Layers, MonitorPlay, LayoutGrid, Send } from "lucide-react";
-// Add this new import right below the standard imports:
 import { PublishModal } from "@/components/publishing/PublishModal";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -44,14 +43,11 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
   const [angles, setAngles] = useState<(File | null)[]>(Array(6).fill(null));
   const [previews, setPreviews] = useState<(string | null)[]>(Array(6).fill(null));
 
-  // AI Generation state
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
-
   const CHARACTER_SHEET_INJECTION = "Character reference sheet, identical character, multiple angles, front view, side view, back profile, white background, hyper-realistic, highly detailed.";
-
   const ANGLE_LABELS = ["Front Face", "Left Profile", "Right Profile", "Front Body", "Side Body", "Back Body"];
 
   const handleAngleUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,7 +70,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
     setPreviews(newPreviews);
   };
 
-  // 🧠 The Magic Auto-Stitcher
   const handleSaveAndStitch = async () => {
     if (!actorName.trim()) return alert("Please name your actor.");
     if (angles.filter(a => a !== null).length === 0) return alert("Please upload at least one angle.");
@@ -84,8 +79,8 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 
     try {
       const canvas = document.createElement("canvas");
-      canvas.width = 1536; // 3 columns of 512
-      canvas.height = 1024; // 2 rows of 512
+      canvas.width = 1536;
+      canvas.height = 1024;
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas not supported");
 
@@ -106,8 +101,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
           const img = await loadImage(angles[i]!);
           const col = i % 3;
           const row = Math.floor(i / 3);
-
-          // Draw image covering the 512x512 cell
           const size = 512;
           const scale = Math.max(size / img.width, size / img.height);
           const x = (size / 2) - (img.width / 2) * scale;
@@ -149,7 +142,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
     }
   };
 
-  // 🧠 AI Character Sheet Generator
   const handleAIGenerate = async () => {
     if (!actorName.trim()) return alert("Please name your actor.");
     if (!aiPrompt.trim()) return alert("Please describe your character.");
@@ -196,7 +188,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
               <Input value={actorName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setActorName(e.target.value)} placeholder="e.g., Emma (Lead)" className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-lg shadow-inner h-11" />
             </div>
 
-            {/* Tab Toggle: Manual Upload vs Generate with AI */}
             <div className="flex gap-1 p-1 bg-[#191D23] border border-[#57707A]/30 rounded-lg shadow-inner">
               <button
                 onClick={() => setCreationMode("manual")}
@@ -219,7 +210,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
             </div>
 
             {creationMode === "manual" ? (
-              /* Manual Upload View */
               <>
                 <div>
                   <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-3 block">Upload Angles (The more, the better)</label>
@@ -254,7 +244,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
                 </div>
               </>
             ) : (
-              /* Generate with AI View */
               <>
                 <div>
                   <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Character Description</label>
@@ -391,8 +380,6 @@ export function StorytellingSetup({
   const [isCastingOpen, setIsCastingOpen] = useState(false);
   const [enableCharacterLock, setEnableCharacterLock] = useState(false);
   const [isCharacterLockModalOpen, setIsCharacterLockModalOpen] = useState(false);
-
-  // Global Actor selection
   const [selectedActorA, setSelectedActorA] = useState<string>("");
 
   useEffect(() => {
@@ -453,7 +440,6 @@ export function StorytellingSetup({
   const [frameReferencePreview, setFrameReferencePreview] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState("cinematic");
 
-  // ✨ Scene Reordering
   const moveSceneUp = (index: number) => {
     if (index <= 0) return;
     const newScenes = [...bRollScenes];
@@ -468,12 +454,10 @@ export function StorytellingSetup({
     setBRollScenes(newScenes);
   };
 
-  // ✨ Apply AI Model to All Scenes
   const applyModelToAll = (targetModel: string) => {
     const newScenes = bRollScenes.map(s => ({ ...s, aiModel: targetModel }));
     setBRollScenes(newScenes);
   };
-
 
   const totalImageSlots = bRollScenes.reduce((count, scene) => count + 1 + (scene.useEndFrame ? 1 : 0), 0);
   const filledImageSlots = bRollScenes.reduce((count, scene) => count + (scene.primaryPreview ? 1 : 0) + (scene.useEndFrame && scene.secondaryPreview ? 1 : 0), 0);
@@ -991,7 +975,7 @@ export function StorytellingSetup({
   };
 
   return (
-    <div className="flex flex-row gap-6 animate-in fade-in duration-500 w-full h-[calc(100vh-160px)] min-h-[600px] pb-4">
+    <div className="flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500 w-full items-start pb-10">
 
       {/* ✨ RENDER CASTING ROOM MODAL */}
       <CastingRoomModal
@@ -1007,481 +991,467 @@ export function StorytellingSetup({
       />
 
       {/* ── LEFT PANE: STORYBOARD ROWS ── */}
-      <div className="flex-1 flex flex-col min-w-0 h-full gap-6 relative">
+      <div className="flex-1 w-full flex flex-col gap-6 relative">
 
-        {/* Storyboard scroll area */}
-        <div className="flex-1 bg-[#191D23]/60 rounded-2xl border border-[#57707A]/30 p-5 shadow-inner overflow-y-auto custom-scrollbar relative">
-          <div className="flex items-center justify-between mb-5 sticky top-0 bg-[#191D23]/95 backdrop-blur-md z-10 py-3 border-b border-[#57707A]/20 -mx-2 px-2 shadow-sm">
-            <div>
-              <h3 className="text-base font-bold text-[#DEDCDC] flex items-center gap-2 uppercase tracking-widest font-display">
-                <Film className="h-5 w-5 text-[#C5BAC4]" /> Visual Storyboard
-              </h3>
-              <p className="text-xs text-[#989DAA] mt-0.5 font-medium">Write prompts, pick images, and generate videos.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={cn(
-                "text-xs font-bold px-3 py-1.5 rounded-md border uppercase tracking-wider",
-                hasAnyImages ? "bg-[#B3FF00]/10 border-[#B3FF00]/30 text-[#B3FF00]" : "bg-[#2A2F38] border-[#57707A]/30 text-[#57707A]"
-              )}>
-                {filledImageSlots}/{totalImageSlots} Images
-              </span>
-            </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-bold text-[#DEDCDC] flex items-center gap-2 font-display">
+              <Film className="h-5 w-5 text-[#C5BAC4]" /> Visual Storyboard
+            </h3>
+            <p className="text-sm text-[#989DAA] mt-1 font-medium">Write prompts, pick images, and generate videos.</p>
           </div>
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "text-xs font-bold px-3.5 py-1.5 rounded-lg border uppercase tracking-wider",
+              hasAnyImages ? "bg-[#B3FF00]/10 border-[#B3FF00]/30 text-[#B3FF00] shadow-sm" : "bg-[#2A2F38] border-[#57707A]/30 text-[#57707A]"
+            )}>
+              {filledImageSlots}/{totalImageSlots} Images
+            </span>
+          </div>
+        </div>
 
-          <div className="flex flex-col space-y-8">
-            {bRollScenes.map((scene, index) => {
-              const labels = getLabels(scene.mode);
-              const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
-              return (
-                <div key={scene.id} className={cn(
-                  "relative rounded-xl border overflow-hidden flex flex-col transition-all duration-300 group bg-[#2A2F38] shadow-lg",
-                  scene.videoUrl ? "border-[#B3FF00]/40 shadow-[0_0_20px_rgba(179,255,0,0.1)]" : (scene.primaryPreview ? "border-[#C5BAC4]/30 hover:border-[#C5BAC4]/50" : "border-dashed border-[#57707A]/40 hover:border-[#57707A]/60")
-                )}>
-                  {/* ── Scene Header ── */}
-                  <div className="bg-[#191D23]/80 border-b border-[#57707A]/20 px-4 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-[10px] font-black text-[#C5BAC4] tracking-widest uppercase bg-[#191D23] border border-[#C5BAC4]/30 px-2.5 py-1 rounded-md shadow-sm">
-                        SCENE {index + 1}
-                      </span>
-                      <select value={scene.mode} onChange={(e) => updateScene(scene.id, "mode", e.target.value)} className="text-[11px] font-bold rounded-lg border border-[#57707A]/40 shadow-sm py-1.5 px-3 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
-                        {SCENE_MODES.map((m) => <option key={m.id} value={m.id} className="bg-[#191D23]">{m.label}</option>)}
-                      </select>
+        <div className="flex flex-col space-y-8">
+          {bRollScenes.map((scene, index) => {
+            const labels = getLabels(scene.mode);
+            const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
+            return (
+              <div key={scene.id} className={cn(
+                "relative rounded-[2rem] border overflow-hidden flex flex-col transition-all duration-300 group bg-[#2A2F38] shadow-lg",
+                scene.videoUrl ? "border-[#B3FF00]/40 shadow-[0_0_30px_rgba(179,255,0,0.1)]" : (scene.primaryPreview ? "border-[#C5BAC4]/30 hover:border-[#C5BAC4]/50" : "border-dashed border-[#57707A]/40 hover:border-[#57707A]/60")
+              )}>
+                {/* ── Scene Header ── */}
+                <div className="bg-[#191D23]/80 border-b border-[#57707A]/30 px-6 py-4 flex flex-wrap gap-4 items-center justify-between shrink-0">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <span className="text-xs font-black text-[#C5BAC4] tracking-widest uppercase bg-[#191D23] border border-[#C5BAC4]/30 px-3 py-1.5 rounded-lg shadow-inner">
+                      SCENE {index + 1}
+                    </span>
+                    <select value={scene.mode} onChange={(e) => updateScene(scene.id, "mode", e.target.value)} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
+                      {SCENE_MODES.map((m) => <option key={m.id} value={m.id} className="bg-[#191D23]">{m.label}</option>)}
+                    </select>
 
-                      <select value={scene.aiModel || "auto"} onChange={(e) => updateScene(scene.id, "aiModel", e.target.value)} className="text-[11px] font-bold rounded-lg border border-[#57707A]/40 shadow-sm py-1.5 px-3 bg-[#2A2F38] text-[#B3FF00] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#B3FF00]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
-                        <option value="auto" className="bg-[#191D23]">✨ Auto Engine</option>
-                        <option value="replicate:openai/sora-2" className="bg-[#191D23]">Sora 2</option>
-                        <option value="bytedance/seedance-1.5-pro" className="bg-[#191D23]">Seedance Pro</option>
-                        <option value="replicate:prunaai/p-video" className="bg-[#191D23]">Pruna (Fast)</option>
-                        <option value="kling-3.0/video" className="bg-[#191D23]">Kling 3.0</option>
-                      </select>
+                    <select value={scene.aiModel || "auto"} onChange={(e) => updateScene(scene.id, "aiModel", e.target.value)} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#B3FF00] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#B3FF00]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
+                      <option value="auto" className="bg-[#191D23]">✨ Auto Engine</option>
+                      <option value="replicate:openai/sora-2" className="bg-[#191D23]">Sora 2</option>
+                      <option value="bytedance/seedance-1.5-pro" className="bg-[#191D23]">Seedance Pro</option>
+                      <option value="replicate:prunaai/p-video" className="bg-[#191D23]">Pruna (Fast)</option>
+                      <option value="kling-3.0/video" className="bg-[#191D23]">Kling 3.0</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-3">
+
+
+                    <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
+                      <input
+                        type="checkbox"
+                        checked={scene.useEndFrame || false}
+                        onChange={(e) => updateScene(scene.id, "useEndFrame", e.target.checked)}
+                        className="rounded border-[#57707A]/50 bg-[#191D23] text-[#C5BAC4] focus:ring-[#C5BAC4] cursor-pointer"
+                      />
+                      <span className="text-[10px] font-bold text-[#989DAA] group-hover/check:text-[#DEDCDC] uppercase tracking-widest transition-colors mt-0.5">Use End Frame</span>
+                    </label>
+
+                    <div className="flex gap-1.5 bg-[#191D23] rounded-xl p-1 border border-[#57707A]/30 shadow-inner">
+                      <button
+                        onClick={() => moveSceneUp(index)}
+                        disabled={index === 0}
+                        title="Move scene up"
+                        className={cn("p-1.5 rounded-lg transition-colors", index === 0 ? "text-[#57707A]/30 cursor-not-allowed" : "text-[#57707A] hover:text-[#C5BAC4] hover:bg-[#2A2F38]")}
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => moveSceneDown(index)}
+                        disabled={index === bRollScenes.length - 1}
+                        title="Move scene down"
+                        className={cn("p-1.5 rounded-lg transition-colors", index === bRollScenes.length - 1 ? "text-[#57707A]/30 cursor-not-allowed" : "text-[#57707A] hover:text-[#C5BAC4] hover:bg-[#2A2F38]")}
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </button>
                     </div>
-                    <div className="flex items-center gap-3">
 
+                    {bRollScenes.length > 1 && (
+                      <button onClick={() => removeScene(scene.id)} title="Delete Scene" className="text-[#57707A] hover:text-white p-2.5 rounded-xl transition-colors bg-[#191D23] border border-[#57707A]/30 hover:bg-red-500/80 hover:border-red-500 shadow-sm ml-1">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                      <label className="flex items-center gap-2 cursor-pointer bg-[#2A2F38] px-2.5 py-1.5 border border-[#57707A]/40 rounded-lg hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
-                        <input
-                          type="checkbox"
-                          checked={scene.useEndFrame || false}
-                          onChange={(e) => updateScene(scene.id, "useEndFrame", e.target.checked)}
-                          className="rounded border-[#57707A]/50 bg-[#191D23] text-[#C5BAC4] focus:ring-[#C5BAC4] cursor-pointer"
-                        />
-                        <span className="text-[9px] font-bold text-[#989DAA] group-hover/check:text-[#DEDCDC] uppercase tracking-widest transition-colors">Use End Frame</span>
-                      </label>
+                {/* ── Scene Content (Row Layout) ── */}
+                <div className="flex flex-col lg:flex-row p-6 gap-8">
 
-                      <div className="flex gap-1 bg-[#191D23] rounded-lg p-0.5 border border-[#57707A]/30">
-                        <button
-                          onClick={() => moveSceneUp(index)}
-                          disabled={index === 0}
-                          title="Move scene up"
-                          className={cn("p-1 rounded-md transition-colors", index === 0 ? "text-[#57707A]/30 cursor-not-allowed" : "text-[#57707A] hover:text-[#C5BAC4] hover:bg-[#2A2F38]")}
-                        >
-                          <ChevronUp className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => moveSceneDown(index)}
-                          disabled={index === bRollScenes.length - 1}
-                          title="Move scene down"
-                          className={cn("p-1 rounded-md transition-colors", index === bRollScenes.length - 1 ? "text-[#57707A]/30 cursor-not-allowed" : "text-[#57707A] hover:text-[#C5BAC4] hover:bg-[#2A2F38]")}
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </button>
+                  {/* Image Area (Left) */}
+                  <div className="w-full lg:w-1/2 flex flex-col sm:flex-row gap-5 lg:border-r border-[#57707A]/20 lg:pr-8 relative">
+                    {scene.videoUrl && <div className="absolute inset-0 bg-[#191D23]/80 backdrop-blur-md z-30 cursor-not-allowed rounded-xl border border-[#57707A]/30 flex flex-col items-center justify-center" title="Delete video to edit images">
+                      <Lock className="w-8 h-8 text-[#57707A] mb-2" />
+                      <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Images Locked</span>
+                    </div>}
+
+                    {/* PRIMARY SLOT */}
+                    <div className="flex-1 flex flex-col gap-3">
+                      <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block truncate">{labels.primary}</label>
+                      <div onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, scene.id, "primary")} className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex items-center justify-center transition-all group/upload shadow-inner">
+                        {generatingSlot?.index === index && generatingSlot.type === 'primary' ? (
+                          <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
+                        ) : scene.primaryPreview ? (
+                          <><img src={scene.primaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
+                            <div className="absolute top-2 right-2 flex gap-2 z-20">
+                              <button type="button" onClick={() => setPreviewModalImg(scene.primaryPreview)} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#989DAA] hover:text-[#DEDCDC] rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-4 w-4" /></button>
+                              <button type="button" onClick={() => clearSlot(scene.id, "primary")} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:bg-red-500/90 hover:border-red-400 text-[#989DAA] hover:text-white rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><X className="h-4 w-4" /></button>
+                            </div></>
+                        ) : (
+                          <label htmlFor={`primary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors"><ImageIcon className="h-8 w-8 mb-2" /><p className="text-[10px] font-bold uppercase tracking-wider">Drop Start Frame</p><p className="text-[8px] font-medium mt-1 text-[#57707A]/70">OR leave blank for Text-to-Video</p></label>
+                        )}
+                        <input id={`primary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "primary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
                       </div>
+                      <div className="flex gap-2 shrink-0 mt-1">
+                        {scene.primaryPreview ? (
+                          <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
+                      </div>
+                    </div>
 
-                      {bRollScenes.length > 1 && (
-                        <button onClick={() => removeScene(scene.id)} title="Delete Scene" className="text-[#57707A] hover:text-white p-1.5 rounded-lg transition-colors bg-[#191D23] border border-[#57707A]/30 hover:bg-red-500/80 hover:border-red-500 shadow-sm ml-1">
-                          <Trash2 className="h-4 w-4" />
+                    {/* SECONDARY SLOT */}
+                    <div className={cn("flex-1 flex flex-col gap-3 transition-all duration-300", !scene.useEndFrame && "opacity-40 grayscale pointer-events-none")}>
+                      <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block truncate">{labels.secondary}</label>
+                      <div onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, scene.id, "secondary")} className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex items-center justify-center transition-all group/upload shadow-inner">
+                        {!scene.useEndFrame ? (
+                          <div className="text-center p-3"><p className="text-[10px] font-bold text-[#57707A]/50 uppercase tracking-widest">Disabled</p><p className="text-[8px] text-[#57707A]/40 mt-1.5 font-medium">Toggle "Use End Frame" to activate</p></div>
+                        ) : generatingSlot?.index === index && generatingSlot.type === 'secondary' ? (
+                          <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
+                        ) : scene.secondaryPreview ? (
+                          <><img src={scene.secondaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
+                            <div className="absolute top-2 right-2 flex gap-2 z-20">
+                              <button type="button" onClick={() => setPreviewModalImg(scene.secondaryPreview)} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#989DAA] hover:text-[#DEDCDC] rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-4 w-4" /></button>
+                              <button type="button" onClick={() => clearSlot(scene.id, "secondary")} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:bg-red-500/90 hover:border-red-400 text-[#989DAA] hover:text-white rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><X className="h-4 w-4" /></button>
+                            </div></>
+                        ) : (
+                          <label htmlFor={`secondary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors"><ImageIcon className="h-8 w-8 mb-2" /><p className="text-[10px] font-bold uppercase tracking-wider">Drop File</p></label>
+                        )}
+                        <input id={`secondary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "secondary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                      </div>
+                      <div className="flex gap-2 shrink-0 mt-1">
+                        {scene.secondaryPreview ? (
+                          <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'secondary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Panel UI (Video + Audio) */}
+                  <div className="w-full lg:w-1/2 flex flex-col relative gap-4">
+                    <div className="flex items-center justify-between shrink-0 mb-1">
+                      <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider flex items-center gap-1.5">
+                        {scene.videoUrl ? <><Video className="h-4 w-4 text-[#B3FF00]" /> <span className="text-[#B3FF00]">Generated Video & Audio</span></> : <span className="text-[#DEDCDC]">Scene Director</span>}
+                      </label>
+                      {!scene.videoUrl && (
+                        <button onClick={() => handleSuggestPrompt(scene.id, index)} disabled={suggestingPromptIndex === index} className="text-[#191D23] bg-[#C5BAC4] hover:bg-white px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold shadow-md shadow-[#C5BAC4]/10 border-none">
+                          {suggestingPromptIndex === index ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Suggest
+                        </button>
+                      )}
+                      {scene.videoUrl && (
+                        <button onClick={() => handleDeleteVideo(scene.id)} className="text-red-400 hover:text-white bg-red-500/10 hover:bg-red-500/80 border border-red-500/30 hover:border-red-500 px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold shadow-sm">
+                          <Trash2 className="h-3.5 w-3.5" /> Delete Video
                         </button>
                       )}
                     </div>
-                  </div>
 
-                  {/* ── Scene Content (Row Layout) ── */}
-                  <div className="flex flex-col lg:flex-row p-5 gap-6">
-
-                    {/* Image Area (Left) */}
-                    <div className="w-full lg:w-1/2 flex gap-4 lg:border-r border-[#57707A]/20 lg:pr-6 relative">
-                      {scene.videoUrl && <div className="absolute inset-0 bg-[#191D23]/80 backdrop-blur-[2px] z-30 cursor-not-allowed rounded-lg" title="Delete video to edit images"></div>}
-
-                      {/* PRIMARY SLOT */}
-                      <div className="flex-1 flex flex-col gap-2">
-                        <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block truncate">{labels.primary}</label>
-                        <div onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, scene.id, "primary")} className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex items-center justify-center transition-all group/upload shadow-inner">
-                          {generatingSlot?.index === index && generatingSlot.type === 'primary' ? (
-                            <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
-                          ) : scene.primaryPreview ? (
-                            <><img src={scene.primaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
-                              <div className="absolute top-2 right-2 flex gap-1.5 z-20">
-                                <button type="button" onClick={() => setPreviewModalImg(scene.primaryPreview)} className="p-1.5 bg-[#191D23]/80 border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#989DAA] hover:text-[#DEDCDC] rounded-md shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-3.5 w-3.5" /></button>
-                                <button type="button" onClick={() => clearSlot(scene.id, "primary")} className="p-1.5 bg-[#191D23]/80 border border-[#57707A]/50 hover:bg-red-500/90 hover:border-red-400 text-[#989DAA] hover:text-white rounded-md shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><X className="h-3.5 w-3.5" /></button>
-                              </div></>
-                          ) : (
-                            <label htmlFor={`primary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors"><ImageIcon className="h-8 w-8 mb-2" /><p className="text-[10px] font-bold uppercase tracking-wider">Drop Start Frame</p><p className="text-[8px] font-medium mt-1 text-[#57707A]/70">OR leave blank for Text-to-Video</p></label>
-                          )}
-                          <input id={`primary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "primary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
-                        </div>
-                        <div className="flex gap-2 shrink-0 mt-1">
-                          {scene.primaryPreview ? (
-                            <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-2 rounded-lg transition-colors"><Wand2 className="h-3 w-3 mr-1.5" /> Re-Gen</Button>
-                          ) : (
-                            <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-2 rounded-lg transition-colors"><Wand2 className="h-3 w-3 mr-1.5" /> Generate</Button>
-                          )}
-                          <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-2 rounded-lg transition-colors"><FolderOpen className="h-3 w-3 mr-1.5" /> Library</Button>
-                        </div>
-                      </div>
-
-                      {/* SECONDARY SLOT */}
-                      <div className={cn("flex-1 flex flex-col gap-2 transition-all duration-300", !scene.useEndFrame && "opacity-40 grayscale pointer-events-none")}>
-                        <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block truncate">{labels.secondary}</label>
-                        <div onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, scene.id, "secondary")} className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex items-center justify-center transition-all group/upload shadow-inner">
-                          {!scene.useEndFrame ? (
-                            <div className="text-center p-3"><p className="text-[10px] font-bold text-[#57707A]/50 uppercase tracking-widest">Disabled</p><p className="text-[8px] text-[#57707A]/40 mt-1.5 font-medium">Toggle "Use End Frame" to activate</p></div>
-                          ) : generatingSlot?.index === index && generatingSlot.type === 'secondary' ? (
-                            <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
-                          ) : scene.secondaryPreview ? (
-                            <><img src={scene.secondaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
-                              <div className="absolute top-2 right-2 flex gap-1.5 z-20">
-                                <button type="button" onClick={() => setPreviewModalImg(scene.secondaryPreview)} className="p-1.5 bg-[#191D23]/80 border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#989DAA] hover:text-[#DEDCDC] rounded-md shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-3.5 w-3.5" /></button>
-                                <button type="button" onClick={() => clearSlot(scene.id, "secondary")} className="p-1.5 bg-[#191D23]/80 border border-[#57707A]/50 hover:bg-red-500/90 hover:border-red-400 text-[#989DAA] hover:text-white rounded-md shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><X className="h-3.5 w-3.5" /></button>
-                              </div></>
-                          ) : (
-                            <label htmlFor={`secondary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors"><ImageIcon className="h-8 w-8 mb-2" /><p className="text-[10px] font-bold uppercase tracking-wider">Drop File</p></label>
-                          )}
-                          <input id={`secondary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "secondary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
-                        </div>
-                        <div className="flex gap-2 shrink-0 mt-1">
-                          {scene.secondaryPreview ? (
-                            <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-2 rounded-lg transition-colors"><Wand2 className="h-3 w-3 mr-1.5" /> Re-Gen</Button>
-                          ) : (
-                            <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-2 rounded-lg transition-colors"><Wand2 className="h-3 w-3 mr-1.5" /> Generate</Button>
-                          )}
-                          <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'secondary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-2 rounded-lg transition-colors"><FolderOpen className="h-3 w-3 mr-1.5" /> Library</Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right Panel UI (Video + Audio) */}
-                    <div className="w-full lg:w-1/2 flex flex-col relative gap-3">
-                      <div className="flex items-center justify-between shrink-0 mb-1">
-                        <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider flex items-center gap-1.5">
-                          {scene.videoUrl ? <><Video className="h-4 w-4 text-[#B3FF00]" /> <span className="text-[#B3FF00]">Generated Video & Audio</span></> : <span className="text-[#DEDCDC]">Scene Director</span>}
-                        </label>
-                        {!scene.videoUrl && (
-                          <button onClick={() => handleSuggestPrompt(scene.id, index)} disabled={suggestingPromptIndex === index} className="text-[#191D23] bg-[#C5BAC4] hover:bg-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold shadow-md shadow-[#C5BAC4]/10 border-none">
-                            {suggestingPromptIndex === index ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Suggest
-                          </button>
-                        )}
-                        {scene.videoUrl && (
-                          <button onClick={() => handleDeleteVideo(scene.id)} className="text-red-400 hover:text-white bg-red-500/10 hover:bg-red-500/80 border border-red-500/30 hover:border-red-500 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold shadow-sm">
-                            <Trash2 className="h-3.5 w-3.5" /> Delete Video
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex-1 rounded-xl overflow-hidden border border-[#57707A]/30 bg-[#191D23] flex flex-col shadow-inner">
-                        {scene.isGeneratingVideo ? (
-                          <div className="flex-1 flex flex-col items-center justify-center bg-[#191D23]/90 backdrop-blur-sm gap-4 p-6 min-h-[220px]">
-                            <Loader2 className="h-10 w-10 text-[#B3FF00] animate-spin" />
-                            <span className="text-[11px] font-bold text-[#DEDCDC] uppercase tracking-widest animate-pulse">Rendering Video...</span>
-                            <span className="text-[10px] text-[#989DAA] text-center font-medium">Polling for the finished file...</span>
-                            {/* ✅ STEP 3: Friendly Force Cancel button */}
-                            <button
-                              onClick={() => updateScene(scene.id, "isGeneratingVideo", false)}
-                              className="mt-4 text-[10px] font-bold text-[#57707A] hover:text-red-400 px-5 py-2.5 bg-[#2A2F38] border border-[#57707A]/40 hover:border-red-400/50 rounded-lg transition-colors shadow-sm"
-                            >
-                              Taking too long? Click here to cancel.
-                            </button>
+                    <div className="flex-1 rounded-xl overflow-hidden border border-[#57707A]/30 bg-[#191D23] flex flex-col shadow-inner">
+                      {scene.isGeneratingVideo ? (
+                        <div className="flex-1 flex flex-col items-center justify-center bg-[#191D23]/90 backdrop-blur-sm gap-4 p-8 min-h-[250px]">
+                          <div className="relative">
+                            <div className="absolute inset-0 bg-[#B3FF00]/20 blur-xl rounded-full animate-pulse"></div>
+                            <Loader2 className="h-12 w-12 text-[#B3FF00] animate-spin relative z-10" />
                           </div>
-                        ) : (
-                          <div className="flex flex-col flex-1 h-full">
+                          <span className="text-xs font-bold text-[#DEDCDC] uppercase tracking-widest animate-pulse font-display mt-2">Rendering Video...</span>
+                          <span className="text-[10px] text-[#989DAA] text-center font-medium">Polling for the finished file...</span>
+                          <button
+                            onClick={() => updateScene(scene.id, "isGeneratingVideo", false)}
+                            className="mt-6 text-[10px] font-bold text-[#57707A] hover:text-red-400 px-5 py-2.5 bg-[#2A2F38] border border-[#57707A]/40 hover:border-red-400/50 rounded-lg transition-colors shadow-sm"
+                          >
+                            Taking too long? Click here to cancel.
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col flex-1 h-full">
 
-                            {scene.videoUrl ? (
-                              <div className="w-full aspect-video bg-[#0F1115] relative shrink-0 border-b border-[#57707A]/30">
-                                <video src={scene.videoUrl} controls className="w-full h-full object-contain" playsInline />
-                              </div>
-                            ) : (
-                              <Textarea
-                                value={scene.prompt}
-                                onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}
-                                className="flex-1 w-full text-xs p-4 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[120px]"
-                                placeholder={
-                                  scene.mode === 'ugc'
-                                    ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
-                                    : isNativeAudio
-                                      ? "Describe your scene...\n\nExample: Slow panning shot of a neon city. [sound of rain]. A man turns and says \"This is incredible!\""
-                                      : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
-                                }
-                              />
-                            )}
+                          {scene.videoUrl ? (
+                            <div className="w-full flex-1 bg-[#0F1115] relative shrink-0 border-b border-[#57707A]/30 flex items-center justify-center">
+                              <video src={scene.videoUrl} controls className="w-full h-full max-h-[300px] object-contain" playsInline />
+                            </div>
+                          ) : (
+                            <Textarea
+                              value={scene.prompt}
+                              onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}
+                              className="flex-1 w-full text-sm p-5 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[140px]"
+                              placeholder={
+                                scene.mode === 'ugc'
+                                  ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
+                                  : isNativeAudio
+                                    ? "Describe your scene...\n\nExample: Slow panning shot of a neon city. [sound of rain]. A man turns and says \"This is incredible!\""
+                                    : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
+                              }
+                            />
+                          )}
 
-                            {/* PROMPT CHARACTER COUNTER */}
-                            {!scene.videoUrl && (
-                              <div className={cn("text-right text-[9px] font-mono px-4 py-1.5 border-b border-[#57707A]/30 bg-[#2A2F38]/50", (scene.prompt?.length || 0) > 500 ? "text-red-400 font-bold" : "text-[#57707A]")}>
-                                {scene.prompt?.length || 0} / 500
-                              </div>
-                            )}
+                          {/* PROMPT CHARACTER COUNTER */}
+                          {!scene.videoUrl && (
+                            <div className={cn("text-right text-[10px] font-mono px-5 py-2 border-b border-[#57707A]/30 bg-[#2A2F38]/50", (scene.prompt?.length || 0) > 500 ? "text-red-400 font-bold" : "text-[#57707A]")}>
+                              {scene.prompt?.length || 0} / 500
+                            </div>
+                          )}
 
-                            {/* ✨ QUICK INJECT PROMPT HELPERS */}
-                            {!scene.videoUrl && (
-                              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-[#2A2F38] border-b border-[#57707A]/30 shrink-0">
-                                <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider mr-1">Inject:</span>
-                                <select
-                                  value=""
-                                  onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
-                                  className="text-[10px] font-bold text-[#C5BAC4] bg-[#191D23] border border-[#C5BAC4]/30 px-3 py-1.5 rounded-lg cursor-pointer hover:border-[#C5BAC4]/60 hover:bg-[#C5BAC4]/10 transition-colors appearance-none shadow-sm"
-                                >
-                                  <option value="" disabled hidden>🎥 Add Camera...</option>
-                                  <option value=" Cinematic tracking shot, " className="bg-[#191D23]">Cinematic Tracking</option>
-                                  <option value=" Slow drone flyover, " className="bg-[#191D23]">Drone Flyover</option>
-                                  <option value=" Handheld shaky cam, " className="bg-[#191D23]">Handheld Shaky</option>
-                                  <option value=" Extreme macro close-up, " className="bg-[#191D23]">Macro Close-up</option>
-                                  <option value=" Smooth dolly-in, " className="bg-[#191D23]">Smooth Dolly-in</option>
-                                </select>
-                                <select
-                                  value=""
-                                  onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
-                                  className="text-[10px] font-bold text-[#B3FF00] bg-[#191D23] border border-[#B3FF00]/30 px-3 py-1.5 rounded-lg cursor-pointer hover:border-[#B3FF00]/60 hover:bg-[#B3FF00]/10 transition-colors appearance-none shadow-sm"
-                                >
-                                  <option value="" disabled hidden>🔊 Add Sound FX...</option>
-                                  <option value=" [ambient street noise] " className="bg-[#191D23]">Street Noise</option>
-                                  <option value=" [heavy rain and thunder] " className="bg-[#191D23]">Rain & Thunder</option>
-                                  <option value=" [cinematic bass drop] " className="bg-[#191D23]">Bass Drop</option>
-                                  <option value=" [muffled cafe chatter] " className="bg-[#191D23]">Cafe Chatter</option>
-                                  <option value=" [whoosh transition] " className="bg-[#191D23]">Whoosh Transition</option>
-                                </select>
-                                <button
-                                  onClick={() => updateScene(scene.id, "prompt", (scene.prompt || "") + ' The character says "Type your script here..." ')}
-                                  className="inline-flex items-center text-[10px] font-bold text-[#DEDCDC] bg-[#191D23] hover:bg-[#57707A]/30 border border-[#57707A]/50 hover:border-[#DEDCDC]/50 px-3 py-1.5 rounded-lg transition-all shadow-sm"
-                                >
-                                  <MessageSquare className="w-3 h-3 mr-1.5 text-[#57707A]" /> Dialogue
-                                </button>
-                              </div>
-                            )}
+                          {/* ✨ QUICK INJECT PROMPT HELPERS */}
+                          {!scene.videoUrl && (
+                            <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 bg-[#2A2F38] border-b border-[#57707A]/30 shrink-0">
+                              <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider mr-1">Inject:</span>
+                              <select
+                                value=""
+                                onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
+                                className="text-[10px] font-bold text-[#C5BAC4] bg-[#191D23] border border-[#C5BAC4]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#C5BAC4]/60 hover:bg-[#C5BAC4]/10 transition-colors appearance-none shadow-sm"
+                              >
+                                <option value="" disabled hidden>🎥 Add Camera...</option>
+                                <option value=" Cinematic tracking shot, " className="bg-[#191D23]">Cinematic Tracking</option>
+                                <option value=" Slow drone flyover, " className="bg-[#191D23]">Drone Flyover</option>
+                                <option value=" Handheld shaky cam, " className="bg-[#191D23]">Handheld Shaky</option>
+                                <option value=" Extreme macro close-up, " className="bg-[#191D23]">Macro Close-up</option>
+                                <option value=" Smooth dolly-in, " className="bg-[#191D23]">Smooth Dolly-in</option>
+                              </select>
+                              <select
+                                value=""
+                                onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
+                                className="text-[10px] font-bold text-[#B3FF00] bg-[#191D23] border border-[#B3FF00]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#B3FF00]/60 hover:bg-[#B3FF00]/10 transition-colors appearance-none shadow-sm"
+                              >
+                                <option value="" disabled hidden>🔊 Add Sound FX...</option>
+                                <option value=" [ambient street noise] " className="bg-[#191D23]">Street Noise</option>
+                                <option value=" [heavy rain and thunder] " className="bg-[#191D23]">Rain & Thunder</option>
+                                <option value=" [cinematic bass drop] " className="bg-[#191D23]">Bass Drop</option>
+                                <option value=" [muffled cafe chatter] " className="bg-[#191D23]">Cafe Chatter</option>
+                                <option value=" [whoosh transition] " className="bg-[#191D23]">Whoosh Transition</option>
+                              </select>
+                              <button
+                                onClick={() => updateScene(scene.id, "prompt", (scene.prompt || "") + ' The character says "Type your script here..." ')}
+                                className="inline-flex items-center text-[10px] font-bold text-[#DEDCDC] bg-[#191D23] hover:bg-[#57707A]/30 border border-[#57707A]/50 hover:border-[#DEDCDC]/50 px-3 py-2 rounded-lg transition-all shadow-sm"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-[#57707A]" /> Dialogue
+                              </button>
+                            </div>
+                          )}
 
-                            {/* DYNAMIC AUDIO UI */}
-                            {(() => {
-                              const isNativeAudioModel = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
+                          {/* DYNAMIC AUDIO UI */}
+                          {(() => {
+                            const isNativeAudioModel = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
 
-                              return (
-                                <div className="flex flex-col flex-1 bg-[#191D23]">
-                                  {!isNativeAudioModel && (
-                                    <Textarea
-                                      value={scene.audioPrompt || ""}
-                                      onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
-                                      className="flex-1 w-full text-xs p-4 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[80px]"
-                                      placeholder="Optional Voiceover: Type English narration script or upload an audio file below..."
-                                    />
-                                  )}
+                            return (
+                              <div className="flex flex-col flex-1 bg-[#191D23]">
+                                {!isNativeAudioModel && (
+                                  <Textarea
+                                    value={scene.audioPrompt || ""}
+                                    onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
+                                    className="flex-1 w-full text-xs p-5 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[90px]"
+                                    placeholder="Optional Voiceover: Type English narration script or upload an audio file below..."
+                                  />
+                                )}
 
-                                  {isNativeAudioModel ? (
-                                    <div className="p-4 bg-[#2A2F38]/50 border-b border-[#57707A]/30">
-                                      <div className="flex items-start gap-2.5 bg-[#191D23] text-[#989DAA] text-[10px] font-bold px-4 py-3 rounded-lg border border-[#57707A]/40 shadow-inner">
-                                        <Mic className="w-4 h-4 shrink-0 text-[#C5BAC4]" />
-                                        <span className="leading-relaxed">Native Audio Engine Selected: Type exact dialogue in quotes within your visual prompt above.</span>
+                                {isNativeAudioModel ? (
+                                  <div className="p-5 bg-[#2A2F38]/50 border-b border-[#57707A]/30">
+                                    <div className="flex items-start gap-3 bg-[#191D23] text-[#989DAA] text-[10px] font-bold px-4 py-3.5 rounded-xl border border-[#57707A]/40 shadow-inner">
+                                      <Mic className="w-4 h-4 shrink-0 text-[#C5BAC4] mt-0.5" />
+                                      <span className="leading-relaxed">Native Audio Engine Selected: Type exact dialogue in quotes within your visual prompt above.</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="p-4 border-b border-[#57707A]/30 bg-[#2A2F38] flex flex-col gap-3 shrink-0 shadow-inner">
+                                    {scene.sceneAudioUrl ? (
+                                      <div className="flex flex-col gap-3 w-full">
+                                        <div className="flex items-center gap-3">
+                                          <audio controls src={scene.sceneAudioUrl} className="h-10 flex-1 w-full min-w-0 rounded-lg opacity-90" />
+                                          <button onClick={() => handleRemoveSceneAudio(scene.id)} className="p-2.5 text-[#57707A] hover:text-white bg-[#191D23] hover:bg-red-500/80 border border-[#57707A]/50 hover:border-red-500 rounded-lg transition-colors shadow-sm" title="Delete Track">
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        </div>
+                                        <div className="flex gap-2 w-full items-center">
+                                          <input type="text" value={scene.audioName || ""} onChange={(e) => updateScene(scene.id, "audioName", e.target.value)} className="flex-1 text-xs font-bold text-[#DEDCDC] px-3 py-2.5 rounded-lg border border-[#57707A]/50 bg-[#191D23] min-w-0 focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 shadow-inner" placeholder="Name this clip..." />
+                                          <Button size="sm" onClick={() => handleSendAudioToEditor(scene.id, scene.audioName || `Scene Audio`, scene.sceneAudioUrl!, scene.sceneAudioPublicUrl)} disabled={sendingAudioId === scene.id} className="h-10 px-4 text-[10px] font-bold bg-[#C5BAC4] hover:bg-white text-[#191D23] shrink-0 rounded-lg shadow-md transition-all">
+                                            {sendingAudioId === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                          </Button>
+                                        </div>
                                       </div>
-                                    </div>
-                                  ) : (
-                                    <div className="p-3 border-b border-[#57707A]/30 bg-[#2A2F38] flex flex-col gap-3 shrink-0 shadow-inner">
-                                      {scene.sceneAudioUrl ? (
-                                        <div className="flex flex-col gap-2.5 w-full">
-                                          <div className="flex items-center gap-2">
-                                            <audio controls src={scene.sceneAudioUrl} className="h-9 flex-1 w-full min-w-0 rounded-md opacity-90" />
-                                            <button onClick={() => handleRemoveSceneAudio(scene.id)} className="p-2 text-[#57707A] hover:text-white bg-[#191D23] hover:bg-red-500/80 border border-[#57707A]/50 hover:border-red-500 rounded-lg transition-colors shadow-sm" title="Delete Track">
-                                              <Trash2 className="w-4 h-4" />
-                                            </button>
-                                          </div>
-                                          <div className="flex gap-2 w-full items-center">
-                                            <input type="text" value={scene.audioName || ""} onChange={(e) => updateScene(scene.id, "audioName", e.target.value)} className="flex-1 text-xs font-bold text-[#DEDCDC] px-3 py-2 rounded-lg border border-[#57707A]/50 bg-[#191D23] min-w-0 focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 shadow-inner" placeholder="Name this clip..." />
-                                            <Button size="sm" onClick={() => handleSendAudioToEditor(scene.id, scene.audioName || `Scene Audio`, scene.sceneAudioUrl!, scene.sceneAudioPublicUrl)} disabled={sendingAudioId === scene.id} className="h-9 px-3 text-[10px] font-bold bg-[#C5BAC4] hover:bg-white text-[#191D23] shrink-0 rounded-lg shadow-md transition-all">
-                                              {sendingAudioId === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                            </Button>
-                                          </div>
+                                    ) : (
+                                      <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+                                        <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider truncate hidden xl:inline-block">
+                                          {scene.audioPrompt ? "Ready for TTS" : "Add script"}
+                                        </span>
+                                        <div className="flex gap-2.5 shrink-0 w-full xl:w-auto justify-end">
+                                          <label className="flex items-center justify-center h-10 px-4 bg-[#191D23] border border-[#57707A]/50 text-[#DEDCDC]/80 hover:text-white hover:border-[#C5BAC4]/50 rounded-lg text-[10px] font-bold cursor-pointer transition-colors flex-1 xl:flex-none shadow-sm">
+                                            <Upload className="w-3.5 h-3.5 xl:mr-2 text-[#57707A]" /> <span className="hidden xl:inline">Upload</span>
+                                            <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleCustomAudioUpload(e, scene.id)} />
+                                          </label>
+                                          <Button size="sm" onClick={() => handleGenerateSceneAudio(index)} disabled={!scene.audioPrompt || scene.isGeneratingAudio || scene.audioPrompt.startsWith("[Custom Upload]")} className={cn("h-10 text-[10px] font-bold px-5 rounded-lg shadow-sm transition-all flex-1 xl:flex-none", scene.audioPrompt && !scene.audioPrompt.startsWith("[Custom Upload]") ? "bg-[#B3FF00] hover:bg-white text-[#191D23] shadow-[0_0_15px_rgba(179,255,0,0.2)]" : "bg-[#191D23] border border-[#57707A]/30 text-[#57707A] hover:bg-[#191D23]")}>
+                                            {scene.isGeneratingAudio ? <Loader2 className="w-4 h-4 xl:mr-2 animate-spin" /> : <Mic className="w-4 h-4 xl:mr-2" />} <span className="hidden xl:inline">Generate TTS</span>
+                                          </Button>
                                         </div>
-                                      ) : (
-                                        <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-                                          <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider truncate hidden xl:inline-block">
-                                            {scene.audioPrompt ? "Ready for TTS" : "Add script"}
-                                          </span>
-                                          <div className="flex gap-2 shrink-0 w-full xl:w-auto justify-end">
-                                            <label className="flex items-center justify-center h-9 px-4 bg-[#191D23] border border-[#57707A]/50 text-[#DEDCDC]/80 hover:text-white hover:border-[#C5BAC4]/50 rounded-lg text-[10px] font-bold cursor-pointer transition-colors flex-1 xl:flex-none shadow-sm">
-                                              <Upload className="w-3.5 h-3.5 xl:mr-2 text-[#57707A]" /> <span className="hidden xl:inline">Upload</span>
-                                              <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleCustomAudioUpload(e, scene.id)} />
-                                            </label>
-                                            <Button size="sm" onClick={() => handleGenerateSceneAudio(index)} disabled={!scene.audioPrompt || scene.isGeneratingAudio || scene.audioPrompt.startsWith("[Custom Upload]")} className={cn("h-9 text-[10px] font-bold px-4 rounded-lg shadow-sm transition-all flex-1 xl:flex-none", scene.audioPrompt && !scene.audioPrompt.startsWith("[Custom Upload]") ? "bg-[#B3FF00] hover:bg-white text-[#191D23] shadow-[0_0_10px_rgba(179,255,0,0.2)]" : "bg-[#191D23] border border-[#57707A]/30 text-[#57707A] hover:bg-[#191D23]")}>
-                                              {scene.isGeneratingAudio ? <Loader2 className="w-3.5 h-3.5 xl:mr-2 animate-spin" /> : <Mic className="w-3.5 h-3.5 xl:mr-2" />} <span className="hidden xl:inline">Generate TTS</span>
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-
-                            {/* Video Generation Toolbar */}
-                            {!scene.videoUrl && (
-                              <div className="p-3 bg-[#191D23]/80 border-t border-[#57707A]/30 flex justify-between items-center shrink-0">
-                                <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider pl-1">
-                                  {scene.primaryPreview ? "Ready for animation" : "Requires an image"}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleGenerateSingleVideo(index)}
-                                  disabled={!scene.primaryPreview || scene.isGeneratingVideo}
-                                  className={cn("h-9 text-[10px] font-bold px-4 rounded-lg transition-all shadow-md", scene.primaryPreview ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] border-none" : "bg-[#2A2F38] border border-[#57707A]/40 text-[#57707A]")}
-                                >
-                                  <Film className="w-3.5 h-3.5 mr-2" /> Generate Scene Video
-                                </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            );
+                          })()}
 
-                          </div>
-                        )}
-                      </div>
+                          {/* Video Generation Toolbar */}
+                          {!scene.videoUrl && (
+                            <div className="p-4 bg-[#191D23]/80 border-t border-[#57707A]/30 flex justify-between items-center shrink-0">
+                              <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider pl-2">
+                                {scene.primaryPreview ? "Ready for animation" : "Requires an image"}
+                              </span>
+                              <Button
+                                size="sm"
+                                onClick={() => handleGenerateSingleVideo(index)}
+                                disabled={!scene.primaryPreview || scene.isGeneratingVideo}
+                                className={cn("h-10 text-[10px] font-bold px-5 rounded-lg transition-all shadow-md", scene.primaryPreview ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] border-none" : "bg-[#2A2F38] border border-[#57707A]/40 text-[#57707A]")}
+                              >
+                                <Film className="w-4 h-4 mr-2" /> Generate Scene Video
+                              </Button>
+                            </div>
+                          )}
+
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            );
+          })}
+        </div>
+
+        <Button onClick={addEmptyScene} variant="outline" className="w-full mt-2 border-dashed border-2 border-[#57707A]/50 bg-[#191D23]/50 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/50 hover:bg-[#2A2F38]/80 py-8 rounded-2xl font-bold transition-all shadow-inner text-sm">
+          <Plus className="mr-2 h-5 w-5" /> Add Another Scene
+        </Button>
+      </div>
+
+      {/* ── RIGHT PANE: DIRECTOR & PREVIEW ── */}
+      <div className="w-full xl:w-[400px] shrink-0 xl:sticky xl:top-6 flex flex-col gap-6 z-20">
+
+        {/* CARD 1: MASTER DIRECTOR */}
+        <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative overflow-hidden">
+          <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide mb-5 pb-4 border-b border-[#57707A]/20"><Settings2 className="w-4 h-4 text-[#C5BAC4]" /> Master Director</h3>
+
+          <div className="flex flex-col gap-4 mb-2">
+            <div className="relative">
+              <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Master Story Concept</label>
+              <Textarea value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder="Describe the full story flow AND dialogue..." className="flex-1 w-full resize-none h-40 text-sm p-4 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar" />
+            </div>
+
+            <div className="flex flex-col gap-3 mt-1">
+              <Button onClick={handleWriteScript} disabled={isWritingScript || !bRollConcept.trim()} variant="outline" className="w-full border-[#57707A]/50 text-[#DEDCDC] hover:text-[#191D23] hover:border-[#C5BAC4] bg-[#191D23] hover:bg-[#C5BAC4] h-12 text-xs font-bold justify-center rounded-xl shadow-sm transition-all">
+                {isWritingScript ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ScrollText className="h-4 w-4 mr-2" />} Write Prompts &amp; Audio
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* CARD 2: CASTING ROOM */}
+        <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative overflow-hidden">
+          <div className="flex items-center justify-between mb-5 pb-4 border-b border-[#57707A]/20">
+            <label className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide">
+              <Lock className="h-4 w-4 text-[#C5BAC4]" /> Consistency Lock
+            </label>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer bg-[#191D23] px-2.5 py-1.5 border border-[#57707A]/50 rounded-lg hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm">
+                <input type="checkbox" checked={enableCharacterLock} onChange={(e) => {
+                  const checked = e.target.checked;
+                  setEnableCharacterLock(checked);
+                  if (checked && actors.length > 0) setIsCharacterLockModalOpen(true);
+                }} className="rounded cursor-pointer border-[#57707A]/50 bg-[#2A2F38] text-[#C5BAC4] focus:ring-[#C5BAC4]" />
+                <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider">Enable</span>
+              </label>
+            </div>
           </div>
 
-          <Button onClick={addEmptyScene} variant="outline" className="w-full mt-8 border-dashed border-2 border-[#57707A]/50 bg-[#191D23]/50 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/50 hover:bg-[#2A2F38]/80 py-8 rounded-xl font-bold transition-all shadow-inner">
-            <Plus className="mr-2 h-5 w-5" /> Add Another Scene
+          {enableCharacterLock && selectedActorA && (
+            <div className="flex flex-col gap-3 mt-1 animate-in fade-in">
+              <div className="flex items-center justify-between bg-[#191D23] border border-[#C5BAC4]/30 rounded-xl p-2 shadow-inner">
+                {(() => {
+                  const actorA = actors.find(a => a.id === selectedActorA);
+                  return actorA ? (
+                    <div className="flex items-center gap-3 pl-2">
+                      <div className="w-10 h-10 rounded-lg overflow-hidden border border-[#57707A]/50">
+                        <img src={actorA.stitchedSheetUrl} className="w-full h-full object-cover" />
+                      </div>
+                      <span className="text-[#C5BAC4] text-sm font-bold">
+                        {actorA.name}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
+                <button onClick={() => setIsCharacterLockModalOpen(true)} className="inline-flex items-center justify-center h-10 w-10 bg-[#2A2F38] text-[#DEDCDC] hover:text-[#C5BAC4] rounded-lg border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-colors shadow-sm" title="Change Actor">
+                  <Settings2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {enableCharacterLock && !selectedActorA && (
+            <button onClick={() => setIsCharacterLockModalOpen(true)} className="mt-1 w-full flex items-center justify-center gap-2 bg-[#191D23] hover:bg-[#57707A]/30 text-[#DEDCDC]/60 hover:text-[#C5BAC4] text-xs font-bold py-3.5 rounded-xl border border-dashed border-[#57707A]/50 hover:border-[#C5BAC4]/50 transition-all animate-in fade-in shadow-inner">
+              <UserPlus className="w-4 h-4" /> Select Actor to Lock
+            </button>
+          )}
+
+          <Button onClick={() => setIsCastingOpen(true)} variant="outline" className="w-full mt-4 h-11 text-xs font-bold border-[#57707A]/40 text-[#DEDCDC] hover:text-[#191D23] hover:bg-[#C5BAC4] hover:border-[#C5BAC4] bg-[#191D23] transition-all rounded-xl shadow-sm">
+            <Users className="w-4 h-4 mr-2" /> Open Casting Room
           </Button>
         </div>
 
-        {/* ── RIGHT PANE: DIRECTOR & PREVIEW ── */}
-        <div className="w-[360px] shrink-0 h-full flex flex-col bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative overflow-hidden z-20">
+        {/* CARD 3: RENDER ENGINE & PREVIEWS */}
+        <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl flex flex-col relative">
+          <div className="flex items-center justify-between mb-5 pb-4 border-b border-[#57707A]/20">
+            <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide"><Palette className="w-4 h-4 text-[#C5BAC4]" /> Render Engine</h3>
+          </div>
 
-          {/* GLOBAL ACTOR SELECTION & CASTING ROOM */}
-          <div className="mb-6 pb-6 border-b border-[#57707A]/20">
-            <div className="flex items-center justify-between mb-4">
-              <label className="text-xs font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide">
-                <Lock className="h-4 w-4 text-[#C5BAC4]" /> Character Consistency Lock
-              </label>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer bg-[#191D23] px-2.5 py-1.5 border border-[#57707A]/50 rounded-lg hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm">
-                  <input type="checkbox" checked={enableCharacterLock} onChange={(e) => {
-                    const checked = e.target.checked;
-                    setEnableCharacterLock(checked);
-                    if (checked && actors.length > 0) setIsCharacterLockModalOpen(true);
-                  }} className="rounded cursor-pointer border-[#57707A]/50 bg-[#2A2F38] text-[#C5BAC4] focus:ring-[#C5BAC4]" />
-                  <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider">Enable</span>
+          <div className="flex items-center gap-3 bg-[#191D23] p-2 rounded-xl border border-[#57707A]/40 shadow-inner mb-5">
+            <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-xs font-bold text-[#DEDCDC] focus:outline-none cursor-pointer flex-1 appearance-none px-2 py-1">
+              {VISUAL_STYLES.map(s => <option key={s.id} value={s.id} className="bg-[#191D23]">{s.label}</option>)}
+            </select>
+          </div>
+
+          <div className="mb-6">
+            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 flex items-center gap-1.5"><Upload className="h-3.5 w-3.5 text-[#C5BAC4]" /> Global Style Reference</label>
+            <div onDragOver={handleDragOver} onDrop={handleRefDrop} className="h-28 relative w-full rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 transition-all overflow-hidden group/ref flex flex-col shadow-inner">
+              {frameReferencePreview ? (
+                <>
+                  <img src={frameReferencePreview} className="w-full h-full object-cover opacity-90" />
+                  <button onClick={() => { setFrameReferenceFile(null); setFrameReferencePreview(null); }} className="absolute top-2 right-2 p-2 bg-red-500/90 text-white rounded-full shadow-md opacity-0 group-hover/ref:opacity-100 transition-all hover:scale-110 hover:bg-red-500 z-20"><X className="h-3 w-3" /></button>
+                  <div className="absolute bottom-0 inset-x-0 bg-black/80 backdrop-blur-sm text-[9px] text-[#C5BAC4] text-center py-1.5 font-bold tracking-widest uppercase z-10">Style Locked</div>
+                </>
+              ) : (
+                <label htmlFor="sidebar-ref-upload" className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors">
+                  <ImageIcon className="h-6 w-6 mb-2" />
+                  <span className="text-[10px] font-bold text-center uppercase tracking-widest">Click or Drop<br />Image Here</span>
                 </label>
-              </div>
+              )}
+              <input id="sidebar-ref-upload" type="file" accept="image/*" className="hidden" onChange={handleFrameReferenceSelect} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
             </div>
+          </div>
 
-            {enableCharacterLock && selectedActorA && (
-              <div className="flex flex-col gap-3 mt-3 animate-in fade-in">
-                <div className="flex items-center justify-between bg-[#191D23] border border-[#C5BAC4]/30 rounded-xl p-2 shadow-inner">
-                  {(() => {
-                    const actorA = actors.find(a => a.id === selectedActorA);
-                    return actorA ? (
-                      <div className="flex items-center gap-3 pl-2">
-                        <div className="w-8 h-8 rounded-md overflow-hidden border border-[#57707A]/50">
-                          <img src={actorA.stitchedSheetUrl} className="w-full h-full object-cover" />
-                        </div>
-                        <span className="text-[#C5BAC4] text-xs font-bold">
-                          {actorA.name}
-                        </span>
-                      </div>
-                    ) : null;
-                  })()}
-                  <button onClick={() => setIsCharacterLockModalOpen(true)} className="inline-flex items-center justify-center h-8 w-8 bg-[#2A2F38] text-[#DEDCDC] hover:text-[#C5BAC4] rounded-lg border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-colors shadow-sm" title="Change Actor">
-                    <Settings2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
+          <div className="flex flex-col gap-3">
+            <Button onClick={handleGenerateAllImages} disabled={isGeneratingAllImages || generatingSlot !== null || !bRollConcept.trim()} variant="outline" className="w-full border-[#57707A]/50 text-[#DEDCDC] hover:text-[#191D23] hover:border-[#B3FF00] bg-[#191D23] hover:bg-[#B3FF00] h-12 text-xs font-bold justify-center rounded-xl shadow-sm transition-all">
+              {isGeneratingAllImages ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Images className="h-4 w-4 mr-2" />} Generate Images ({filledImageSlots}/{totalImageSlots})
+            </Button>
 
-            {enableCharacterLock && !selectedActorA && (
-              <button onClick={() => setIsCharacterLockModalOpen(true)} className="mt-3 w-full flex items-center justify-center gap-2 bg-[#191D23] hover:bg-[#57707A]/30 text-[#DEDCDC]/60 hover:text-[#C5BAC4] text-xs font-bold py-3 rounded-xl border border-dashed border-[#57707A]/50 hover:border-[#C5BAC4]/50 transition-all animate-in fade-in shadow-inner">
-                <UserPlus className="w-4 h-4" /> Select Actor to Lock
-              </button>
-            )}
-
-            <Button onClick={() => setIsCastingOpen(true)} variant="outline" className="w-full mt-4 h-10 text-[10px] font-bold border-[#57707A]/40 text-[#DEDCDC] hover:text-[#191D23] hover:bg-[#C5BAC4] hover:border-[#C5BAC4] bg-[#191D23] transition-all rounded-lg shadow-sm">
-              <Users className="w-4 h-4 mr-2" /> Open Casting Room
+            <Button onClick={handleGenerateSceneVideos} disabled={!hasAnyImages || isGeneratingVideos} className={cn("w-full h-14 justify-center text-sm font-bold rounded-xl transition-all shadow-lg border-none", hasAnyImages ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23]" : "bg-[#191D23]/80 text-[#57707A] cursor-not-allowed border border-[#57707A]/30")}>
+              {isGeneratingVideos ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Film className="h-5 w-5 mr-2" />} Generate Scene Videos
             </Button>
           </div>
-
-          <div className="flex flex-col gap-4 mb-6 pb-6 border-b border-[#57707A]/20">
-            <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide"><Settings2 className="w-4 h-4 text-[#C5BAC4]" /> Master Director</h3>
-            <div className="flex items-center gap-3 bg-[#191D23] p-2 rounded-xl border border-[#57707A]/40 shadow-inner">
-              <div className="p-2 bg-[#2A2F38] rounded-lg border border-[#57707A]/30"><Palette className="h-4 w-4 text-[#C5BAC4]" /></div>
-              <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="bg-transparent text-xs font-bold text-[#DEDCDC] focus:outline-none cursor-pointer flex-1 appearance-none">
-                {VISUAL_STYLES.map(s => <option key={s.id} value={s.id} className="bg-[#191D23]">{s.label}</option>)}
-              </select>
-            </div>
-
-            <div className="relative mt-2">
-              <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Master Story Concept</label>
-              <Textarea value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder="Describe the full story flow AND dialogue..." className="flex-1 w-full resize-none h-32 text-sm p-4 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar" />
-            </div>
-
-            <div className="flex flex-col gap-3 mt-2">
-              <Button onClick={handleWriteScript} disabled={isWritingScript || !bRollConcept.trim()} variant="outline" className="w-full border-[#57707A]/50 text-[#DEDCDC] hover:text-[#191D23] hover:border-[#C5BAC4] bg-[#191D23] hover:bg-[#C5BAC4] h-11 text-xs font-bold justify-center rounded-xl shadow-sm transition-all">
-                {isWritingScript ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ScrollText className="h-4 w-4 mr-2" />} Write Prompts &amp; Audio
-              </Button>
-
-              <Button onClick={handleGenerateAllImages} disabled={isGeneratingAllImages || generatingSlot !== null || !bRollConcept.trim()} variant="outline" className="w-full border-[#57707A]/50 text-[#DEDCDC] hover:text-[#191D23] hover:border-[#B3FF00] bg-[#191D23] hover:bg-[#B3FF00] h-11 text-xs font-bold justify-center rounded-xl shadow-sm transition-all">
-                {isGeneratingAllImages ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Images className="h-4 w-4 mr-2" />} Generate Images ({filledImageSlots}/{totalImageSlots})
-              </Button>
-
-              <Button onClick={handleGenerateSceneVideos} disabled={!hasAnyImages || isGeneratingVideos} className={cn("w-full h-12 justify-center text-sm font-bold rounded-xl transition-all shadow-md mt-2 border-none", hasAnyImages ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23]" : "bg-[#191D23]/80 text-[#57707A] cursor-not-allowed border border-[#57707A]/30")}>
-                {isGeneratingVideos ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Film className="h-5 w-5 mr-2" />} Generate Scene Videos
-              </Button>
-            </div>
-          </div>
-
-          <div className="shrink-0 flex flex-col flex-1 min-h-0">
-            <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide mb-4"><Images className="h-4 w-4 text-[#C5BAC4]" /> Scene Previews</h3>
-            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4">
-              <div className="grid grid-cols-2 gap-3">
-                {bRollScenes.flatMap((scene, index) => {
-                  const previews = [];
-                  if (scene.primaryPreview) {
-                    previews.push(
-                      <div key={`preview-${index}-1`} className="relative aspect-square w-full rounded-xl border border-[#57707A]/40 bg-[#191D23] overflow-hidden group animate-in zoom-in duration-300 shadow-sm">
-                        <img src={scene.primaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90" />
-                        <div className="absolute top-0 right-0 bg-[#C5BAC4] text-[#191D23] text-[9px] px-2 py-1 rounded-bl-lg font-black shadow-md pointer-events-none">#{index + 1}.1</div>
-                      </div>
-                    );
-                  }
-                  if (scene.useEndFrame && scene.secondaryPreview) {
-                    previews.push(
-                      <div key={`preview-${index}-2`} className="relative aspect-square w-full rounded-xl border border-[#57707A]/40 bg-[#191D23] overflow-hidden group animate-in zoom-in duration-300 shadow-sm">
-                        <img src={scene.secondaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90" />
-                        <div className="absolute top-0 right-0 bg-[#C5BAC4] text-[#191D23] text-[9px] px-2 py-1 rounded-bl-lg font-black shadow-md pointer-events-none">#{index + 1}.2</div>
-                      </div>
-                    );
-                  }
-                  return previews;
-                })}
-                {!hasAnyImages && (<div className="col-span-2 h-32 flex flex-col items-center justify-center text-[#57707A] border-2 border-dashed border-[#57707A]/40 rounded-xl bg-[#191D23]/50 shadow-inner"><ImageIcon className="h-8 w-8 mb-3 opacity-50" /><span className="text-[10px] font-bold uppercase tracking-widest text-center">Add images to<br />see previews!</span></div>)}
-              </div>
-            </div>
-
-            <div className="shrink-0 border-t border-[#57707A]/20 pt-5 mt-2">
-              <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-3 flex items-center gap-1.5"><Upload className="h-3.5 w-3.5 text-[#C5BAC4]" /> Drop Global Style Reference</label>
-              <div onDragOver={handleDragOver} onDrop={handleRefDrop} className="h-24 relative w-full rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 transition-all overflow-hidden group/ref flex flex-col shadow-inner">
-                {frameReferencePreview ? (
-                  <>
-                    <img src={frameReferencePreview} className="w-full h-full object-cover opacity-90" />
-                    <button onClick={() => { setFrameReferenceFile(null); setFrameReferencePreview(null); }} className="absolute top-1.5 right-1.5 p-1.5 bg-red-500/90 text-white rounded-full shadow-md opacity-0 group-hover/ref:opacity-100 transition-all hover:scale-110 hover:bg-red-500 z-20"><X className="h-3 w-3" /></button>
-                    <div className="absolute bottom-0 inset-x-0 bg-black/80 backdrop-blur-sm text-[9px] text-[#C5BAC4] text-center py-1.5 font-bold tracking-widest uppercase z-10">Style Locked</div>
-                  </>
-                ) : (
-                  <label htmlFor="sidebar-ref-upload" className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors">
-                    <ImageIcon className="h-6 w-6 mb-2" />
-                    <span className="text-[9px] font-bold text-center uppercase tracking-widest">Click or Drop<br />Image Here</span>
-                  </label>
-                )}
-                <input id="sidebar-ref-upload" type="file" accept="image/*" className="hidden" onChange={handleFrameReferenceSelect} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
-              </div>
-            </div>
-          </div>
         </div>
+
       </div>
 
       <AssetSelectionModal open={libraryTarget !== null} onClose={() => setLibraryTarget(null)} onSelect={handleLibrarySelect} />
