@@ -103,36 +103,36 @@ export function BrandRefinementModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Brain className="h-5 w-5 text-blink-primary" /> Refine Your Brand's
+      <DialogContent className="sm:max-w-xl bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl rounded-2xl">
+        <DialogHeader className="border-b border-[#57707A]/20 pb-4">
+          <DialogTitle className="flex items-center gap-2.5 text-xl font-display text-[#DEDCDC] tracking-wide">
+            <Brain className="h-5 w-5 text-[#C5BAC4]" /> Refine Your Brand's
             AI Brain
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-[#989DAA] font-medium leading-relaxed mt-2">
             Help the AI understand your specific visual identity. The more
             details you provide about how your content should{" "}
-            <i>look and feel</i>, the better the results.
+            <i className="text-[#DEDCDC]">look and feel</i>, the better the results.
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-4">
           {fetching ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-300" />
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-[#C5BAC4]" />
             </div>
           ) : (
-            <div className="space-y-2">
-              <div className="flex justify-between items-end mb-1">
-                <label className="text-sm font-medium text-gray-700">
+            <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">
                   Visual Style Guide & Preferences
                 </label>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={handleSuggest}
                   disabled={suggesting || loading}
-                  className="h-7 px-2 text-xs font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-100 transition-colors"
+                  className="h-8 px-3 text-xs font-bold bg-transparent border-[#57707A]/50 text-[#C5BAC4] hover:bg-[#C5BAC4]/10 hover:text-[#DEDCDC] hover:border-[#C5BAC4]/50 transition-colors rounded-lg"
                 >
                   {suggesting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
@@ -147,9 +147,9 @@ export function BrandRefinementModal({
                 onChange={(e) => setVisualGuide(e.target.value)}
                 rows={8}
                 placeholder="e.g., 'We prefer bright, airy shots with natural light. Our aesthetic is minimalist Scandinavian. Never use neon colors. We want to feel luxurious but approachable.'"
-                className="resize-none text-[13px] leading-relaxed bg-purple-50/40 border-purple-100 focus-visible:ring-blink-primary"
+                className="resize-none text-sm leading-relaxed bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
               />
-              <p className="text-xs text-gray-500 pt-1">
+              <p className="text-[10px] font-bold text-[#57707A] mt-1 tracking-wide">
                 This context will be added to every image generation and edit
                 prompt.
               </p>
@@ -157,19 +157,23 @@ export function BrandRefinementModal({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="border-t border-[#57707A]/20 pt-4">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 font-bold rounded-xl h-11 px-6 transition-colors"
+          >
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={loading || fetching || suggesting}
-            className="bg-blink-primary hover:bg-blink-primary/90 text-white gap-2"
+            className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-xl h-11 px-6 shadow-lg shadow-[#C5BAC4]/10 transition-all border-none"
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
             ) : (
-              <Sparkles className="h-4 w-4" />
+              <Sparkles className="h-4 w-4 mr-2" />
             )}{" "}
             Save AI Brain
           </Button>
