@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Layers, MonitorPlay, LayoutGrid, Send } from "lucide-react";
+import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Layers, MonitorPlay, LayoutGrid, Send, Globe, ChevronRight, Zap, Play } from "lucide-react";
 import { PublishModal } from "@/components/publishing/PublishModal";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
 import type { VideoSetupProps } from "./types";
+import { useRouter } from "next/navigation";
 
 // ============================================================================
 // ✨ 1. ACTOR PROFILE TYPES & CASTING ROOM MODAL
@@ -33,9 +34,10 @@ interface CastingRoomModalProps {
   setSelectedActorA: (id: string) => void;
   callN8n: (mode: 'director' | 'generator' | 'manual' | 'scene_video_generator', body: any) => Promise<any>;
   clientId: string | null;
+  onPreviewActor: (url: string) => void;
 }
 
-function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, selectedActorA, setSelectedActorA, callN8n, clientId }: CastingRoomModalProps) {
+function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, selectedActorA, setSelectedActorA, callN8n, clientId, onPreviewActor }: CastingRoomModalProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [isStitching, setIsStitching] = useState(false);
 
@@ -283,14 +285,20 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
                     )}>
                       <button
                         onClick={() => confirm("Delete this actor?") && onDeleteActor(actor.id)}
-                        className="absolute top-1.5 right-1.5 z-10 p-1.5 bg-red-500/90 hover:bg-red-500 text-white rounded-full shadow-md opacity-0 group-hover:opacity-100 hover:opacity-100 transition-all scale-90 hover:scale-100"
+                        className="absolute top-1.5 right-1.5 z-20 p-1.5 bg-red-500/90 hover:bg-red-500 text-white rounded-full shadow-md opacity-0 group-hover:opacity-100 hover:opacity-100 transition-all scale-90 hover:scale-100"
                         title="Delete Actor"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
-                      <div className="aspect-video rounded-lg overflow-hidden bg-[#0F1115] border border-[#57707A]/20 relative group">
-                        <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
-                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded shadow-md">Locked</div>}
+                      <div
+                        className="aspect-video rounded-lg overflow-hidden bg-[#0F1115] border border-[#57707A]/20 relative group cursor-pointer"
+                        onClick={() => onPreviewActor(actor.stitchedSheetUrl)}
+                      >
+                        <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-50 transition-opacity" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Maximize2 className="w-4 h-4 text-white" />
+                        </div>
+                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded shadow-md z-10">Locked</div>}
                       </div>
                       <span className="text-xs font-bold text-center text-[#DEDCDC] truncate px-1">{actor.name}</span>
                       <button
@@ -313,7 +321,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
     </Dialog>
   );
 }
-
 
 // ============================================================================
 // ✨ 2. THE MAIN STORYTELLING SETUP COMPONENT
@@ -374,6 +381,7 @@ export function StorytellingSetup({
   isSuggesting,
 }: StorytellingSetupProps) {
   const { clientId } = useClient();
+  const router = useRouter();
 
   // ✨ STATE: Digital Casting Room
   const [actors, setActors] = useState<ActorProfile[]>([]);
@@ -451,11 +459,6 @@ export function StorytellingSetup({
     if (index >= bRollScenes.length - 1) return;
     const newScenes = [...bRollScenes];
     [newScenes[index], newScenes[index + 1]] = [newScenes[index + 1], newScenes[index]];
-    setBRollScenes(newScenes);
-  };
-
-  const applyModelToAll = (targetModel: string) => {
-    const newScenes = bRollScenes.map(s => ({ ...s, aiModel: targetModel }));
     setBRollScenes(newScenes);
   };
 
@@ -550,22 +553,49 @@ export function StorytellingSetup({
   };
 
   const handleSuggestPrompt = async (sceneId: string, index: number) => {
-    if (!bRollConcept.trim()) return alert("Please enter a master concept first.");
+    const scene = bRollScenes[index];
+    const currentScenePrompt = scene.prompt || "";
+    const fallbackConcept = bRollConcept.trim();
+
+    // If both the scene prompt AND the master concept are empty, we have nothing to work with.
+    if (!currentScenePrompt.trim() && !fallbackConcept) {
+      return alert("Please write a rough idea in this scene's prompt box, or fill out the Master Story Concept first.");
+    }
+
     setSuggestingPromptIndex(index);
     try {
-      const sceneMode = SCENE_MODES.find(m => m.id === bRollScenes[index].mode)?.label || "Cinematic Pan";
+      const sceneMode = SCENE_MODES.find(m => m.id === scene.mode)?.label || "Cinematic Pan";
+
+      let aiInstruction = "";
+
+      if (currentScenePrompt.trim()) {
+        // ✨ NEW: Refine the user's rough scene idea
+        aiInstruction = `Refine and enhance the following rough scene idea into a highly descriptive, professional cinematic visual prompt (maximum 500 characters). The camera movement is "${sceneMode}". \n\nRough idea to refine: "${currentScenePrompt.trim()}". \n\nCRITICAL: Write it in a highly descriptive narrative script format. Include setting, character actions, lighting, and exact spoken dialogue in quotes if applicable. Output ONLY the prompt.`;
+      } else {
+        // Fallback: Generate from Master Concept if scene box is empty
+        aiInstruction = `Write a visual image prompt for Scene ${index + 1} based on this master concept: "${fallbackConcept}". The camera movement is "${sceneMode}". CRITICAL: Write it in a highly descriptive narrative script format (maximum 500 characters). Include setting, character actions, camera movements, and exact spoken dialogue in quotes. Output ONLY the prompt.`;
+      }
+
       const directorData = await callN8n('director', {
-        prompt: `Write a visual image prompt for Scene ${index + 1} based on this concept: "${bRollConcept}". The camera movement is "${sceneMode}". CRITICAL: Write it in a highly descriptive narrative script format. Include setting, character actions, camera movements, and exact spoken dialogue in quotes (e.g., The camera zooms in, the woman says, 'Only about summers with you.').`,
+        prompt: aiInstruction,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         audioEngine: "video_native",
         totalDuration: 8
       });
-      const suggestedPrompt = directorData.scenes?.[0]?.image_prompt || "Cinematic shot. Highly detailed.";
+
+      const suggestedPrompt = directorData.scenes?.[0]?.image_prompt || directorData.scenes?.[0]?.video_prompt || "Cinematic shot. Highly detailed.";
       const suggestedAudio = directorData.scenes?.[0]?.audio_prompt || "Inspiring background music with english narration.";
+
       updateScene(sceneId, "prompt", suggestedPrompt);
-      updateScene(sceneId, "audioPrompt", suggestedAudio);
+
+      // Only overwrite the audio prompt if they haven't uploaded a custom track
+      if (!scene.audioPrompt?.startsWith("[Custom Upload]")) {
+        updateScene(sceneId, "audioPrompt", suggestedAudio);
+      }
+
     } catch (err) {
       console.error(err);
+      alert("Failed to suggest prompt. Check console for details.");
     } finally {
       setSuggestingPromptIndex(null);
     }
@@ -671,15 +701,15 @@ export function StorytellingSetup({
     }
   };
 
-  // ✨ IMAGE GENERATION: Now injects the Stitched Actor Sheet if Lock is enabled
+  // ✨ IMAGE GENERATION: Updated strict Character Lock injection
   const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string) => {
     const scene = bRollScenes[slotIndex];
     const promptToUse = overridePrompt || scene.prompt || bRollConcept;
 
     if (!promptToUse.trim()) return alert("Please write a visual prompt for this scene first.");
 
-    // ✅ FUNCTIONAL FIX: Inject strict no-text constraint to prevent burn-in text on images
-    const NO_TEXT_CONSTRAINT = " CRITICAL: The generated image MUST NOT contain any overlay text, watermarks, burned-in captions, subtitles, or typographic elements unless explicitly requested in the prompt.";
+    // ✨ FIXED: Strict character lock prompt injection
+    const NO_TEXT_CONSTRAINT = " CRITICAL: Do NOT output a character reference sheet, split screen, or multiple angles. Output a SINGLE, unified, cinematic scene featuring this exact character integrated naturally into the described environment.";
     const safePrompt = promptToUse + NO_TEXT_CONSTRAINT;
 
     setGeneratingSlot({ index: slotIndex, type });
@@ -690,7 +720,6 @@ export function StorytellingSetup({
         previousUrl = bRollScenes[slotIndex - 1].secondaryPreview || bRollScenes[slotIndex - 1].primaryPreview;
       }
 
-      // ✨ Inject Actor Sheet if Character Lock is enabled
       let characterSheetUrlA: string | null = null;
       if (enableCharacterLock && selectedActorA) {
         const actorA = actors.find(a => a.id === selectedActorA);
@@ -710,7 +739,6 @@ export function StorytellingSetup({
         updateScene(scene.id, type === 'primary' ? "primaryFile" : "secondaryFile", null);
         updateScene(scene.id, "videoUrl", null);
 
-        // ✨ Auto-save generated image to Supabase
         try {
           await supabase.from("content").insert({
             client_id: clientId,
@@ -750,26 +778,26 @@ export function StorytellingSetup({
     setIsGeneratingAllImages(false);
   };
 
-  // ✨ VIDEO GENERATION: Now injects the Stitched Actor Sheet if Lock is enabled
+  // ✨ VIDEO GENERATION: Removed primary image requirement for Text-to-Video
   const handleGenerateSingleVideo = async (slotIndex: number) => {
     const scene = bRollScenes[slotIndex];
-    if (!scene.primaryPreview || !clientId) return alert("Please generate or upload a primary image first.");
+    if (!clientId) return;
+
+    // Check if end frame is toggled but missing
     if (scene.useEndFrame && !scene.secondaryPreview) return alert("You enabled the End Frame toggle. Please generate or upload an End Frame before animating.");
 
     updateScene(scene.id, "isGeneratingVideo", true);
 
     try {
-      let finalPrimaryUrl = scene.primaryPreview;
+      let finalPrimaryUrl = scene.primaryPreview || null;
+      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : null;
 
-      // ✨ Extract character sheet (NOT into End Frame)
       let characterSheetA = null;
       if (enableCharacterLock) {
         characterSheetA = actors.find(a => a.id === selectedActorA)?.stitchedSheetUrl || null;
       }
 
-      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : null;
-
-      if ((scene.mode === 'ugc' || scene.mode === 'clothing') && finalSecondaryUrl && !characterSheetA) {
+      if ((scene.mode === 'ugc' || scene.mode === 'clothing') && finalSecondaryUrl && !characterSheetA && scene.primaryPreview) {
         const mergePrompt = scene.mode === 'ugc'
           ? `A highly realistic, viral TikTok style smartphone photo of an influencer interacting with the product. ${scene.prompt || bRollConcept}`
           : `A highly realistic fashion editorial photo of a model wearing the clothing. ${scene.prompt || bRollConcept}`;
@@ -789,7 +817,7 @@ export function StorytellingSetup({
         }
       }
 
-      if (finalPrimaryUrl.startsWith('data:')) {
+      if (finalPrimaryUrl && finalPrimaryUrl.startsWith('data:')) {
         const mimeMatch = finalPrimaryUrl.match(/data:(.*?);/);
         const mime = mimeMatch ? mimeMatch[1] : 'image/png';
         const blob = base64ToBlob(finalPrimaryUrl, mime);
@@ -827,7 +855,6 @@ export function StorytellingSetup({
         client_id: clientId,
         ai_model_override: scene.aiModel || "auto",
         scene_data: {
-          // ✅ FUNCTIONAL FIX: Always pass the current edited scene.prompt directly
           visual_prompt: scene.prompt?.trim() || bRollConcept,
           video_mode: scene.mode,
           duration: "8",
@@ -880,11 +907,11 @@ export function StorytellingSetup({
   };
 
   const handleGenerateSceneVideos = async () => {
-    if (!hasAnyImages) return alert("Please generate some images first.");
+    // Note: We no longer strictly require images for Text-to-Video
     setIsGeneratingVideos(true);
     for (let i = 0; i < bRollScenes.length; i++) {
       const scene = bRollScenes[i];
-      if (!scene.primaryPreview || scene.videoUrl) continue;
+      if (scene.videoUrl) continue;
       await handleGenerateSingleVideo(i);
     }
     setIsGeneratingVideos(false);
@@ -975,7 +1002,7 @@ export function StorytellingSetup({
   };
 
   return (
-    <div className="flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500 w-full items-start pb-10">
+    <div className="flex flex-row gap-6 animate-in fade-in duration-500 w-full items-start pb-10">
 
       {/* ✨ RENDER CASTING ROOM MODAL */}
       <CastingRoomModal
@@ -988,11 +1015,13 @@ export function StorytellingSetup({
         setSelectedActorA={setSelectedActorA}
         callN8n={callN8n}
         clientId={clientId}
+        onPreviewActor={setPreviewModalImg}
       />
 
       {/* ── LEFT PANE: STORYBOARD ROWS ── */}
       <div className="flex-1 w-full flex flex-col gap-6 relative">
 
+        {/* Storyboard Header */}
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xl font-bold text-[#DEDCDC] flex items-center gap-2 font-display">
@@ -1010,10 +1039,13 @@ export function StorytellingSetup({
           </div>
         </div>
 
+        {/* Scenes List */}
         <div className="flex flex-col space-y-8">
           {bRollScenes.map((scene, index) => {
             const labels = getLabels(scene.mode);
             const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
+            const isPruna = scene.aiModel === 'replicate:prunaai/p-video';
+
             return (
               <div key={scene.id} className={cn(
                 "relative rounded-[2rem] border overflow-hidden flex flex-col transition-all duration-300 group bg-[#2A2F38] shadow-lg",
@@ -1038,7 +1070,6 @@ export function StorytellingSetup({
                     </select>
                   </div>
                   <div className="flex items-center gap-3">
-
 
                     <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
                       <input
@@ -1170,7 +1201,7 @@ export function StorytellingSetup({
                             <Loader2 className="h-12 w-12 text-[#B3FF00] animate-spin relative z-10" />
                           </div>
                           <span className="text-xs font-bold text-[#DEDCDC] uppercase tracking-widest animate-pulse font-display mt-2">Rendering Video...</span>
-                          <span className="text-[10px] text-[#989DAA] text-center font-medium">Polling for the finished file...</span>
+                          <span className="text-[10px] text-[#989DAA] text-center font-medium">Media generation runs in the background.<br />It is safe to navigate away from this page.</span>
                           <button
                             onClick={() => updateScene(scene.id, "isGeneratingVideo", false)}
                             className="mt-6 text-[10px] font-bold text-[#57707A] hover:text-red-400 px-5 py-2.5 bg-[#2A2F38] border border-[#57707A]/40 hover:border-red-400/50 rounded-lg transition-colors shadow-sm"
@@ -1186,18 +1217,30 @@ export function StorytellingSetup({
                               <video src={scene.videoUrl} controls className="w-full h-full max-h-[300px] object-contain" playsInline />
                             </div>
                           ) : (
-                            <Textarea
-                              value={scene.prompt}
-                              onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}
-                              className="flex-1 w-full text-sm p-5 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[140px]"
-                              placeholder={
-                                scene.mode === 'ugc'
-                                  ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
-                                  : isNativeAudio
-                                    ? "Describe your scene...\n\nExample: Slow panning shot of a neon city. [sound of rain]. A man turns and says \"This is incredible!\""
-                                    : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
-                              }
-                            />
+                            <div className="flex flex-col flex-1 relative">
+                              {/* ✨ PRUNA AI DYNAMIC BANNER */}
+                              {isPruna && (
+                                <div className="bg-gradient-to-r from-[#B3FF00]/20 to-transparent border-b border-[#B3FF00]/30 p-3 flex items-start gap-2.5">
+                                  <Zap className="w-4 h-4 text-[#B3FF00] mt-0.5 shrink-0" />
+                                  <p className="text-[10px] text-[#DEDCDC] leading-relaxed font-medium">
+                                    <strong className="text-[#B3FF00]">Pruna AI Active:</strong> Supports Text-to-Video and advanced Lipsync. Upload or generate Audio below, and write dialogue in quotes in your prompt to auto-sync the character's lips!
+                                  </p>
+                                </div>
+                              )}
+
+                              <Textarea
+                                value={scene.prompt}
+                                onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}
+                                className="flex-1 w-full text-sm p-5 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[140px]"
+                                placeholder={
+                                  scene.mode === 'ugc'
+                                    ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
+                                    : isNativeAudio
+                                      ? "Describe your scene...\n\nExample: Slow panning shot of a neon city. [sound of rain]. A man turns and says \"This is incredible!\""
+                                      : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
+                                }
+                              />
+                            </div>
                           )}
 
                           {/* PROMPT CHARACTER COUNTER */}
@@ -1246,11 +1289,9 @@ export function StorytellingSetup({
 
                           {/* DYNAMIC AUDIO UI */}
                           {(() => {
-                            const isNativeAudioModel = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
-
                             return (
                               <div className="flex flex-col flex-1 bg-[#191D23]">
-                                {!isNativeAudioModel && (
+                                {!isNativeAudio && (
                                   <Textarea
                                     value={scene.audioPrompt || ""}
                                     onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
@@ -1259,7 +1300,7 @@ export function StorytellingSetup({
                                   />
                                 )}
 
-                                {isNativeAudioModel ? (
+                                {isNativeAudio ? (
                                   <div className="p-5 bg-[#2A2F38]/50 border-b border-[#57707A]/30">
                                     <div className="flex items-start gap-3 bg-[#191D23] text-[#989DAA] text-[10px] font-bold px-4 py-3.5 rounded-xl border border-[#57707A]/40 shadow-inner">
                                       <Mic className="w-4 h-4 shrink-0 text-[#C5BAC4] mt-0.5" />
@@ -1294,7 +1335,7 @@ export function StorytellingSetup({
                                             <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleCustomAudioUpload(e, scene.id)} />
                                           </label>
                                           <Button size="sm" onClick={() => handleGenerateSceneAudio(index)} disabled={!scene.audioPrompt || scene.isGeneratingAudio || scene.audioPrompt.startsWith("[Custom Upload]")} className={cn("h-10 text-[10px] font-bold px-5 rounded-lg shadow-sm transition-all flex-1 xl:flex-none", scene.audioPrompt && !scene.audioPrompt.startsWith("[Custom Upload]") ? "bg-[#B3FF00] hover:bg-white text-[#191D23] shadow-[0_0_15px_rgba(179,255,0,0.2)]" : "bg-[#191D23] border border-[#57707A]/30 text-[#57707A] hover:bg-[#191D23]")}>
-                                            {scene.isGeneratingAudio ? <Loader2 className="w-4 h-4 xl:mr-2 animate-spin" /> : <Mic className="w-4 h-4 xl:mr-2" />} <span className="hidden xl:inline">Generate TTS</span>
+                                            {scene.isGeneratingAudio ? <Loader2 className="w-3.5 h-3.5 xl:mr-2 animate-spin" /> : <Mic className="w-3.5 h-3.5 xl:mr-2" />} <span className="hidden xl:inline">Generate TTS</span>
                                           </Button>
                                         </div>
                                       </div>
@@ -1309,13 +1350,13 @@ export function StorytellingSetup({
                           {!scene.videoUrl && (
                             <div className="p-4 bg-[#191D23]/80 border-t border-[#57707A]/30 flex justify-between items-center shrink-0">
                               <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider pl-2">
-                                {scene.primaryPreview ? "Ready for animation" : "Requires an image"}
+                                {scene.primaryPreview ? "Ready for animation" : "Text-to-Video Ready"}
                               </span>
                               <Button
                                 size="sm"
                                 onClick={() => handleGenerateSingleVideo(index)}
-                                disabled={!scene.primaryPreview || scene.isGeneratingVideo}
-                                className={cn("h-10 text-[10px] font-bold px-5 rounded-lg transition-all shadow-md", scene.primaryPreview ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] border-none" : "bg-[#2A2F38] border border-[#57707A]/40 text-[#57707A]")}
+                                disabled={scene.isGeneratingVideo}
+                                className={cn("h-10 text-[10px] font-bold px-5 rounded-lg transition-all shadow-md", "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] border-none")}
                               >
                                 <Film className="w-4 h-4 mr-2" /> Generate Scene Video
                               </Button>
@@ -1383,8 +1424,12 @@ export function StorytellingSetup({
                   const actorA = actors.find(a => a.id === selectedActorA);
                   return actorA ? (
                     <div className="flex items-center gap-3 pl-2">
-                      <div className="w-10 h-10 rounded-lg overflow-hidden border border-[#57707A]/50">
-                        <img src={actorA.stitchedSheetUrl} className="w-full h-full object-cover" />
+                      <div
+                        className="w-10 h-10 rounded-lg overflow-hidden border border-[#57707A]/50 shadow-sm relative group cursor-pointer"
+                        onClick={() => setPreviewModalImg(actorA.stitchedSheetUrl)}
+                      >
+                        <img src={actorA.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-50 transition-opacity" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Maximize2 className="w-4 h-4 text-white" /></div>
                       </div>
                       <span className="text-[#C5BAC4] text-sm font-bold">
                         {actorA.name}
@@ -1445,10 +1490,30 @@ export function StorytellingSetup({
             <Button onClick={handleGenerateAllImages} disabled={isGeneratingAllImages || generatingSlot !== null || !bRollConcept.trim()} variant="outline" className="w-full border-[#57707A]/50 text-[#DEDCDC] hover:text-[#191D23] hover:border-[#B3FF00] bg-[#191D23] hover:bg-[#B3FF00] h-12 text-xs font-bold justify-center rounded-xl shadow-sm transition-all">
               {isGeneratingAllImages ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Images className="h-4 w-4 mr-2" />} Generate Images ({filledImageSlots}/{totalImageSlots})
             </Button>
+            {isGeneratingAllImages && (
+              <p className="text-[9px] text-[#C5BAC4] font-bold uppercase tracking-wider text-center animate-pulse mt-1">
+                Images generate in background. You can safely leave this page.
+              </p>
+            )}
 
-            <Button onClick={handleGenerateSceneVideos} disabled={!hasAnyImages || isGeneratingVideos} className={cn("w-full h-14 justify-center text-sm font-bold rounded-xl transition-all shadow-lg border-none", hasAnyImages ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23]" : "bg-[#191D23]/80 text-[#57707A] cursor-not-allowed border border-[#57707A]/30")}>
-              {isGeneratingVideos ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Film className="h-5 w-5 mr-2" />} Generate Scene Videos
-            </Button>
+            <div className="bg-[#191D23] border border-[#57707A]/40 p-3.5 rounded-xl mt-3 shadow-inner">
+              <p className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-3 text-center">Video Processing</p>
+              <div className="flex flex-col gap-3">
+                <Button onClick={handleGenerateSceneVideos} disabled={isGeneratingVideos} className={cn("w-full h-11 justify-center text-xs font-bold rounded-lg transition-all shadow-md border-none", "bg-[#57707A]/30 hover:bg-[#57707A]/50 text-[#DEDCDC]")}>
+                  {isGeneratingVideos ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Film className="h-4 w-4 mr-2" />} 1. Gen Scene Videos
+                </Button>
+
+                {isGeneratingVideos && (
+                  <p className="text-[9px] text-[#B3FF00] font-bold uppercase tracking-wider text-center animate-pulse">
+                    Videos rendering in background. You can safely leave this page.
+                  </p>
+                )}
+
+                <Button onClick={() => { }} disabled={!allVideosGenerated} className={cn("w-full h-12 justify-center text-sm font-bold rounded-lg transition-all shadow-md border-none", allVideosGenerated ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23]" : "bg-[#191D23] text-[#57707A] cursor-not-allowed border border-[#57707A]/30")}>
+                  2. Render Final Sequence
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1499,9 +1564,13 @@ export function StorytellingSetup({
                           "bg-[#191D23]/60 border-[#57707A]/40 hover:border-[#C5BAC4]/60 hover:bg-[#191D23] hover:shadow-md"
                       )}
                     >
-                      <div className="aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-[#57707A]/30 relative">
-                        <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
-                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black px-2 py-0.5 uppercase tracking-widest rounded shadow-md">Locked</div>}
+                      <div
+                        className="aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-[#57707A]/30 relative cursor-pointer"
+                        onClick={(e) => { e.stopPropagation(); setPreviewModalImg(actor.stitchedSheetUrl); }}
+                      >
+                        <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-50 transition-opacity" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Maximize2 className="w-5 h-5 text-white" /></div>
+                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black px-2 py-0.5 uppercase tracking-widest rounded shadow-md z-10">Locked</div>}
                       </div>
                       <span className={cn(
                         "text-xs font-bold text-center truncate px-2 w-full",

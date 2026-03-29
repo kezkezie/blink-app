@@ -16,6 +16,8 @@ import {
   ScrollText,
   Activity,
   X,
+  Music,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +27,7 @@ import { useClient } from "@/hooks/useClient";
 import { cn } from "@/lib/utils";
 
 type ToolMode = "brush" | "eraser" | "arrow";
-type ActiveTab = "caption" | "animate" | "motion_transfer";
+type ActiveTab = "caption" | "animate" | "motion_transfer" | "audio_to_video";
 
 export default function YourContentPage() {
   const router = useRouter();
@@ -33,6 +35,7 @@ export default function YourContentPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refVideoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   // Main File States
   const [file, setFile] = useState<File | null>(null);
@@ -43,6 +46,10 @@ export default function YourContentPage() {
   // Reference Video States for Motion Transfer (V2)
   const [referenceVideoFile, setReferenceVideoFile] = useState<File | null>(null);
   const [referenceVideoPreview, setReferenceVideoPreview] = useState<string | null>(null);
+
+  // Audio to Video States
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
 
   // UI States
   const [isProcessing, setIsProcessing] = useState(false);
@@ -191,7 +198,13 @@ export default function YourContentPage() {
   // Main File Upload Handlers
   const handleDropFile = (e: React.DragEvent) => {
     e.preventDefault();
-    handleFileSelect(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.length) {
+      if (activeTab === 'audio_to_video' && e.dataTransfer.files[0].type.startsWith("audio")) {
+        handleAudioSelect(e.dataTransfer.files[0]);
+      } else {
+        handleFileSelect(e.dataTransfer.files[0]);
+      }
+    }
   };
 
   const handleFileSelect = (selectedFile: File) => {
@@ -202,6 +215,22 @@ export default function YourContentPage() {
       clearCanvas();
       setReferenceVideoFile(null);
       setReferenceVideoPreview(null);
+    }
+  };
+
+  // Audio Upload Handlers
+  const handleAudioDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.files?.length) handleAudioSelect(e.dataTransfer.files[0]);
+  };
+
+  const handleAudioSelect = (selectedFile: File) => {
+    if (selectedFile && selectedFile.type.startsWith("audio")) {
+      setAudioFile(selectedFile);
+      setAudioPreviewUrl(URL.createObjectURL(selectedFile));
+    } else {
+      alert("Please upload a valid audio file (.mp3, .wav, .flac).");
     }
   };
 
@@ -264,6 +293,72 @@ export default function YourContentPage() {
       router.push("/dashboard/content");
     } catch (error) {
       alert("Something went wrong during analysis.");
+      setIsProcessing(false);
+    }
+  };
+
+  // --- AUDIO TO VIDEO ANIMATION TRIGGER ---
+  const handleAudioToVideo = async () => {
+    if (!audioFile || !clientId) return alert("Please upload an audio file.");
+    if (!mediaContext.trim()) return alert("Please write a prompt for the video generation.");
+
+    setIsProcessing(true);
+    setLoadingText("Uploading Assets...");
+
+    try {
+      // 1. Upload Audio
+      const audioPath = `videos/${clientId}/pruna_audio_${Date.now()}.${audioFile.name.split(".").pop()}`;
+      await supabase.storage.from("assets").upload(audioPath, audioFile);
+      const audioPublicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
+
+      // 2. Upload Image (Optional)
+      let imagePublicUrl = null;
+      if (file) {
+        const imgPath = `videos/${clientId}/pruna_image_${Date.now()}.${file.name.split(".").pop()}`;
+        await supabase.storage.from("assets").upload(imgPath, file);
+        imagePublicUrl = supabase.storage.from("assets").getPublicUrl(imgPath).data.publicUrl;
+      }
+
+      setLoadingText("Initializing Pruna AI...");
+
+      // 3. Create Placeholder in Supabase
+      const { data: dbData, error: dbError } = await supabase.from("content").insert({
+        client_id: clientId,
+        content_type: "sequence_clip",
+        caption: `🎵 Audio Reactive Video`,
+        status: "draft",
+        image_urls: imagePublicUrl ? [imagePublicUrl] : [],
+        ai_model: "replicate:prunaai/p-video",
+      }).select('id').single();
+
+      if (dbError) throw dbError;
+
+      // 4. Send to n8n
+      const n8nRes = await fetch("/api/video/nano-banana", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "scene_video_generator",
+          post_id: dbData.id,
+          client_id: clientId,
+          primary_image_url: imagePublicUrl,
+          user_prompt: mediaContext,
+          duration: "10",
+          video_mode: "audio_to_video",
+          ai_model_override: "replicate:prunaai/p-video",
+          scene_data: {
+            audio: {
+              audio_url: audioPublicUrl
+            }
+          }
+        })
+      });
+
+      if (!n8nRes.ok) throw new Error("Failed to trigger video generation");
+      router.push(`/dashboard/content/${dbData.id}`);
+
+    } catch (err: any) {
+      alert(`Audio to Video failed: ${err.message}`);
       setIsProcessing(false);
     }
   };
@@ -417,6 +512,8 @@ export default function YourContentPage() {
     clearCanvas();
     setReferenceVideoFile(null);
     setReferenceVideoPreview(null);
+    setAudioFile(null);
+    setAudioPreviewUrl(null);
   };
 
   return (
@@ -426,10 +523,28 @@ export default function YourContentPage() {
           Content Studio
         </h1>
         <p className="text-[#989DAA]">
-          Upload media to write captions and generate content.
+          Upload media to write captions, animate, or sync audio.
         </p>
       </div>
 
+      {/* ✨ ALWAYS VISIBLE TABS */}
+      <div className="flex p-1.5 bg-[#191D23] border border-[#57707A]/30 rounded-xl mx-auto max-w-[400px] overflow-x-auto shadow-inner relative z-10">
+        <button
+          onClick={() => setActiveTab('caption')}
+          className={cn("flex-1 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'caption' ? "bg-[#57707A]/80 shadow-md text-[#DEDCDC]" : "text-[#57707A] hover:text-[#989DAA]")}
+        >
+          <ScrollText className="w-3.5 h-3.5" /> AI Caption
+        </button>
+
+        <button
+          onClick={() => setActiveTab('audio_to_video')}
+          className={cn("flex-1 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'audio_to_video' ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] shadow-[0_0_15px_rgba(179,255,0,0.2)] text-[#191D23]" : "text-[#57707A] hover:text-[#989DAA]")}
+        >
+          <Music className="w-3.5 h-3.5" /> Audio to Video
+        </button>
+      </div>
+
+      {/* Hidden Inputs */}
       <input
         type="file"
         className="hidden"
@@ -439,7 +554,6 @@ export default function YourContentPage() {
           if (e.target.files?.length) handleFileSelect(e.target.files[0]);
         }}
       />
-
       <input
         type="file"
         className="hidden"
@@ -449,8 +563,19 @@ export default function YourContentPage() {
           if (e.target.files?.length) handleRefVideoSelect(e.target.files[0]);
         }}
       />
+      <input
+        type="file"
+        className="hidden"
+        ref={audioInputRef}
+        accept="audio/*"
+        onChange={(e) => {
+          if (e.target.files?.length) handleAudioSelect(e.target.files[0]);
+        }}
+      />
 
-      {!file ? (
+      {/* ─── DYNAMIC VIEW RENDERING ─── */}
+      {activeTab === 'caption' && !file ? (
+        /* BIG DROPZONE FOR CAPTIONS */
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDropFile}
@@ -465,75 +590,34 @@ export default function YourContentPage() {
               <Video className="h-8 w-8" />
             </div>
           </div>
-          <h3 className="text-lg font-bold text-[#DEDCDC] mb-2 font-display">
-            Drag & drop your masterpiece here
-          </h3>
-          <p className="text-sm text-[#989DAA] mb-6 max-w-sm">
-            Upload images or videos to generate AI content.
-          </p>
+          <h3 className="text-lg font-bold text-[#DEDCDC] mb-2 font-display">Drag & drop your masterpiece here</h3>
+          <p className="text-sm text-[#989DAA] mb-6 max-w-sm">Upload images or videos to generate AI captions.</p>
+
           <Button className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-full px-8 h-12 shadow-lg shadow-[#C5BAC4]/10 pointer-events-none transition-colors">
             <UploadCloud className="mr-2 h-5 w-5" /> Browse Files
           </Button>
         </div>
       ) : (
+        /* EDITOR UI (Used for both Caption and Audio-to-Video) */
         <div className="bg-[#2A2F38] rounded-3xl p-6 md:p-8 shadow-2xl border border-[#57707A]/30">
 
-          {/* ========================================================================
-            VERSION 2 TABS TEMPORARILY COMMENTED OUT (API Limitation)
-            ======================================================================== 
-          */}
-          {!isVideo && (
-            <div className="flex p-1.5 bg-[#191D23] border border-[#57707A]/30 rounded-xl mb-8 mx-auto max-w-sm overflow-x-auto shadow-inner">
-              <button onClick={() => setActiveTab('caption')} className={cn("flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'caption' ? "bg-[#57707A]/80 shadow-md text-[#DEDCDC]" : "text-[#57707A] hover:text-[#989DAA]")}>
-                <ScrollText className="w-4 h-4" /> AI Caption
-              </button>
-
-              {/* --- V2 TABS HIDDEN ---
-              <button onClick={() => setActiveTab('animate')} className={cn("flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'animate' ? "bg-[#C5BAC4] text-[#191D23] shadow-md" : "text-[#57707A] hover:text-[#989DAA]")}>
-                <Sparkles className="w-4 h-4" /> Motion Brush
-              </button>
-              <button onClick={() => setActiveTab('motion_transfer')} className={cn("flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'motion_transfer' ? "bg-[#C5BAC4] text-[#191D23] shadow-md" : "text-[#57707A] hover:text-[#989DAA]")}>
-                <Activity className="w-4 h-4" /> Motion Transfer
-              </button>
-              ------------------------ */}
-            </div>
-          )}
-
-          {/* MEDIA VIEWER / CANVAS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-
             {/* Left: The Visuals */}
-            <div className="md:col-span-2 relative w-full aspect-video bg-[#191D23] rounded-2xl overflow-hidden border border-[#57707A]/40 flex items-center justify-center shadow-inner" ref={containerRef}>
+            <div className="md:col-span-2 relative w-full aspect-video bg-[#191D23] rounded-2xl overflow-hidden border border-[#57707A]/40 flex flex-col items-center justify-center shadow-inner" ref={containerRef}>
 
-              {/* ========================================================================
-                VERSION 2 INTERACTIVE CANVAS COMMENTED OUT
-                ======================================================================== 
-              */}
-              {/* {activeTab === 'animate' && !isVideo ? (
-                <div
-                  className="relative touch-none"
-                  style={{ width: imageDims.w, height: imageDims.h }}
-                  onPointerDown={handlePointerDown}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerUp}
-                  onPointerLeave={handlePointerUp}
-                >
-                  <img src={preview!} className="absolute inset-0 w-full h-full pointer-events-none select-none" draggable={false} />
-
-                  <canvas ref={maskCanvasRef} width={imageDims.w} height={imageDims.h} className="absolute inset-0 w-full h-full cursor-crosshair" />
-                  <canvas ref={uiCanvasRef} width={imageDims.w} height={imageDims.h} className="absolute inset-0 w-full h-full pointer-events-none" />
+              {preview ? (
+                isVideo ? (
+                  <video src={preview!} controls className="w-full h-full object-contain bg-black" />
+                ) : (
+                  <img src={preview!} alt="Upload preview" className="w-full h-full object-contain" />
+                )
+              ) : activeTab === 'audio_to_video' ? (
+                <div className="flex flex-col items-center text-[#57707A] gap-3">
+                  <ImageIcon className="w-8 h-8 opacity-50" />
+                  <p className="text-xs font-bold uppercase tracking-wider">No Image Reference</p>
+                  <p className="text-[10px] text-[#989DAA] max-w-[200px] text-center">Video will be generated purely from the prompt and audio.</p>
                 </div>
-              ) : ( 
-              */}
-
-              {/* Standard preview used for V1 */}
-              {isVideo ? (
-                <video src={preview!} controls className="w-full h-full object-contain bg-black" />
-              ) : (
-                <img src={preview!} alt="Upload preview" className="w-full h-full object-contain" />
-              )}
-
-              {/* )} */}
+              ) : null}
 
               {isProcessing && (
                 <div className="absolute inset-0 bg-[#191D23]/80 backdrop-blur-md flex flex-col items-center justify-center z-50 space-y-4">
@@ -542,6 +626,9 @@ export default function YourContentPage() {
                     <Loader2 className="h-12 w-12 animate-spin text-[#C5BAC4] relative z-10" />
                   </div>
                   <p className="font-bold text-[#DEDCDC] tracking-wider uppercase text-sm animate-pulse">{loadingText}</p>
+                  {activeTab === 'audio_to_video' && (
+                    <p className="text-[10px] text-[#989DAA] text-center max-w-[250px] font-medium">Media generation runs in the background. It is safe to navigate away.</p>
+                  )}
                 </div>
               )}
             </div>
@@ -549,7 +636,7 @@ export default function YourContentPage() {
             {/* Right: The Controls */}
             <div className="flex flex-col space-y-6 h-full">
 
-              {/* ─── CAPTION MODE CONTROLS (V1 ACTIVE) ─── */}
+              {/* ─── CAPTION MODE CONTROLS ─── */}
               {activeTab === 'caption' && (
                 <>
                   <div>
@@ -578,108 +665,68 @@ export default function YourContentPage() {
                 </>
               )}
 
-              {/* ========================================================================
-                VERSION 2 CONTROLS TEMPORARILY COMMENTED OUT
-                ======================================================================== 
-              */}
-
-              {/* ─── MOTION BRUSH CONTROLS (V2) ─── */}
-              {/*
-              {activeTab === 'animate' && (
+              {/* ─── AUDIO TO VIDEO CONTROLS ─── */}
+              {activeTab === 'audio_to_video' && (
                 <div className="flex flex-col h-full gap-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 mb-1"><Sparkles className="w-4 h-4 text-[#C5BAC4]" /> Animation Tools</h3>
-                    <p className="text-[10px] text-[#989DAA] font-medium">1. Paint over what you want to move. <br />2. Draw an arrow for direction.</p>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 bg-[#191D23] p-1.5 rounded-xl border border-[#57707A]/30">
-                    <button onClick={() => setToolMode('brush')} className={cn("flex flex-col items-center justify-center p-2 rounded-lg transition-all", toolMode === 'brush' ? "bg-[#2A2F38] shadow-sm text-[#C5BAC4]" : "text-[#57707A] hover:text-[#989DAA]")}>
-                      <Paintbrush className="w-5 h-5 mb-1" />
-                      <span className="text-[9px] font-bold uppercase tracking-wider">Paint</span>
-                    </button>
-                    <button onClick={() => setToolMode('arrow')} className={cn("flex flex-col items-center justify-center p-2 rounded-lg transition-all", toolMode === 'arrow' ? "bg-[#2A2F38] shadow-sm text-blue-400" : "text-[#57707A] hover:text-[#989DAA]")}>
-                      <MoveRight className="w-5 h-5 mb-1" />
-                      <span className="text-[9px] font-bold uppercase tracking-wider">Direction</span>
-                    </button>
-                    <button onClick={() => setToolMode('eraser')} className={cn("flex flex-col items-center justify-center p-2 rounded-lg transition-all", toolMode === 'eraser' ? "bg-[#2A2F38] shadow-sm text-red-400" : "text-[#57707A] hover:text-[#989DAA]")}>
-                      <Eraser className="w-5 h-5 mb-1" />
-                      <span className="text-[9px] font-bold uppercase tracking-wider">Erase</span>
-                    </button>
-                  </div>
-
-                  {(toolMode === 'brush' || toolMode === 'eraser') && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center"><label className="text-[10px] font-bold text-[#989DAA] uppercase tracking-wider">Brush Size</label><span className="text-xs font-bold text-[#DEDCDC]">{brushSize}px</span></div>
-                      <input type="range" min="5" max="100" value={brushSize} onChange={(e) => setBrushSize(parseInt(e.target.value))} className="w-full accent-[#C5BAC4] h-1.5 bg-[#57707A]/30 rounded-lg appearance-none cursor-pointer" />
+                  <div className="bg-gradient-to-r from-[#B3FF00]/10 to-transparent border border-[#B3FF00]/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-[#B3FF00]/10 blur-xl rounded-full translate-x-1/2 -translate-y-1/2" />
+                    <div className="flex items-center gap-2 mb-2 relative z-10">
+                      <Zap className="w-4 h-4 text-[#B3FF00]" />
+                      <h3 className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">Pruna AI Engine</h3>
                     </div>
-                  )}
+                    <p className="text-[10px] text-[#989DAA] font-medium relative z-10 leading-relaxed">Converts your audio into a synced video. Upload an image as a starting frame, or leave it blank for pure Text-to-Video.</p>
+                  </div>
 
-                  {arrowVector && (
-                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-blue-400 uppercase flex items-center gap-1"><MoveRight className="w-3 h-3" /> Direction Set</span>
-                      <button onClick={() => { setArrowVector(null); uiCanvasRef.current?.getContext('2d')?.clearRect(0, 0, uiCanvasRef.current.width, uiCanvasRef.current.height); }} className="text-[10px] text-red-400 hover:underline font-bold">Remove</button>
+                  <div className="space-y-4 flex-1">
+                    {/* Audio Status Block */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Driving Audio</label>
+                      {audioPreviewUrl ? (
+                        <div className="flex items-center justify-between bg-[#191D23] border border-[#57707A]/50 p-2.5 rounded-xl shadow-inner">
+                          <div className="flex items-center gap-3 w-full min-w-0">
+                            <div className="w-8 h-8 rounded bg-[#B3FF00]/10 flex items-center justify-center shrink-0">
+                              <Music className="w-4 h-4 text-[#B3FF00]" />
+                            </div>
+                            <audio src={audioPreviewUrl} controls className="h-8 w-full min-w-0" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          onDrop={handleAudioDrop}
+                          onClick={() => audioInputRef.current?.click()}
+                          className="h-16 border-2 border-dashed border-[#B3FF00]/30 bg-[#191D23]/50 hover:bg-[#B3FF00]/5 rounded-xl flex items-center justify-center cursor-pointer transition-colors shadow-inner"
+                        >
+                          <span className="text-[10px] font-bold text-[#B3FF00] uppercase tracking-wider flex items-center gap-2"><UploadCloud className="w-4 h-4" /> Drop Audio File</span>
+                        </div>
+                      )}
                     </div>
-                  )}
 
-                  <div className="flex-1 pt-2">
-                    <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Prompt (Optional)</label>
-                    <Textarea
-                      value={mediaContext}
-                      onChange={(e) => setMediaContext(e.target.value)}
-                      placeholder="e.g., The water ripples softly..."
-                      className="text-xs resize-none h-20 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl"
-                      disabled={isProcessing}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-3 mt-auto">
-                    <Button onClick={clearCanvas} variant="outline" className="w-full border-[#57707A]/40 text-[#DEDCDC] bg-transparent hover:bg-[#57707A]/20 h-10 text-xs font-bold rounded-xl"><Undo2 className="w-3.5 h-3.5 mr-2" /> Reset Canvas</Button>
-                    <Button onClick={handleMotionBrush} disabled={isProcessing} className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 font-bold text-sm">
-                      {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Play className="mr-2 h-5 w-5 fill-current" />} Animate Motion
-                    </Button>
-                    <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold transition-colors">Cancel</Button>
-                  </div>
-                </div>
-              )}
-              */}
-
-              {/* ─── MOTION TRANSFER CONTROLS (V2) ─── */}
-              {/*
-              {activeTab === 'motion_transfer' && (
-                <div className="flex flex-col h-full gap-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 mb-1"><Activity className="w-4 h-4 text-blue-400" /> Reference Motion</h3>
-                    <p className="text-[10px] text-[#989DAA] font-medium">Upload a video. The AI will make your image mimic the video's movements.</p>
-                  </div>
-
-                  <div className="flex-1 space-y-4">
-                    {referenceVideoPreview ? (
-                      <div className="relative rounded-xl border border-blue-500/30 bg-[#191D23] p-2">
-                        <video src={referenceVideoPreview} controls className="w-full h-32 object-cover rounded-lg bg-black" />
-                        <button onClick={() => { setReferenceVideoFile(null); setReferenceVideoPreview(null); }} className="absolute top-4 right-4 p-1.5 bg-[#191D23]/90 text-red-400 rounded-full shadow-md hover:bg-red-500/20 transition-colors">
-                          <X className="h-4 w-4" />
-                        </button>
-                        <p className="text-[10px] font-bold text-blue-400 mt-2 text-center truncate px-2">{referenceVideoFile?.name}</p>
-                      </div>
-                    ) : (
-                      <div
-                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onDrop={handleRefVideoDrop}
-                        onClick={() => refVideoInputRef.current?.click()}
-                        className="h-32 border-2 border-dashed border-blue-500/30 bg-[#191D23] hover:bg-[#57707A]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors"
-                      >
-                        <Video className="h-6 w-6 text-blue-400 mb-2" />
-                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Drop Reference Video</span>
+                    {/* Image Upload Block */}
+                    {!preview && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Start Image (Optional)</label>
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          onDrop={handleDropFile}
+                          onClick={() => fileInputRef.current?.click()}
+                          className="h-16 border-2 border-dashed border-[#57707A]/40 bg-[#191D23] hover:bg-[#57707A]/20 rounded-xl flex items-center justify-center cursor-pointer transition-colors shadow-inner"
+                        >
+                          <span className="text-[10px] font-bold text-[#57707A] hover:text-[#C5BAC4] uppercase tracking-wider flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Drop Image File</span>
+                        </div>
                       </div>
                     )}
 
                     <div>
-                      <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Prompt (Optional)</label>
+                      <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2 flex justify-between">
+                        <span>Video Prompt</span>
+                        <span className="text-red-400">*Required</span>
+                      </label>
                       <Textarea
                         value={mediaContext}
                         onChange={(e) => setMediaContext(e.target.value)}
-                        placeholder="e.g., The character dances energetically..."
-                        className="text-xs resize-none h-20 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl"
+                        placeholder="e.g., A man talking to the camera. 'Include dialogue in quotes for lipsyncing!'"
+                        className="text-xs resize-none h-24 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#B3FF00]/50 rounded-xl shadow-inner custom-scrollbar"
                         disabled={isProcessing}
                       />
                     </div>
@@ -687,18 +734,16 @@ export default function YourContentPage() {
 
                   <div className="flex flex-col gap-3 mt-auto">
                     <Button
-                      onClick={handleMotionTransfer}
-                      disabled={isProcessing || !referenceVideoFile}
-                      className="w-full bg-blue-500 hover:bg-blue-400 text-white h-12 rounded-xl shadow-lg shadow-blue-500/20 font-bold text-sm"
+                      onClick={handleAudioToVideo}
+                      disabled={isProcessing || !audioFile || !mediaContext.trim()}
+                      className="w-full bg-gradient-to-r from-[#B3FF00]/90 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] h-12 rounded-xl shadow-lg shadow-[#B3FF00]/20 font-bold text-sm border-none"
                     >
-                      {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Activity className="mr-2 h-5 w-5" />} Transfer Motion
+                      {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Video className="mr-2 h-5 w-5" />} Generate Sync Video
                     </Button>
                     <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold transition-colors">Cancel</Button>
                   </div>
                 </div>
               )}
-              */}
-
             </div>
           </div>
         </div>
