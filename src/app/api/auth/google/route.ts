@@ -1,34 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
-/**
- * Google Sign-In OAuth flow handler
- * Initiates the OAuth flow with Google
- */
 export async function POST(request: NextRequest) {
   try {
+    const cookieStore = await cookies()
+    const origin = request.nextUrl.origin
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll() {
-            return request.cookies.getAll()
+            return cookieStore.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              // Don't set cookies in this handler - let Supabase handle it
-            })
+            try {
+              cookiesToSet.forEach(({ name, value, options }) => {
+                cookieStore.set(name, value, options)
+              })
+            } catch (error) {
+              // Safe to ignore in a Route Handler
+            }
           },
         },
       }
     )
 
-    // Start OAuth flow with Google
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/onboarding`,
+        // ✨ This line forces Supabase to send them to the exact catcher route
+        redirectTo: `${origin}/auth/callback?next=/get-started`,
       },
     })
 
@@ -36,8 +40,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    // Redirect to Google OAuth URL
-    return NextResponse.redirect(data.url)
+    return NextResponse.json({ url: data.url })
+
   } catch (error) {
     console.error('Google auth error:', error)
     return NextResponse.json(

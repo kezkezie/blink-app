@@ -131,24 +131,43 @@ export default function GetStartedPage() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       if (session?.user) {
+        // ✨ FIX: If an existing user logs in with Google, they'll land here. 
+        // Check if they already completed onboarding and route them away.
+        if (session.user.user_metadata?.onboarding_completed === true) {
+          router.replace("/dashboard");
+          return;
+        }
+
+        // ✨ FIX: If they haven't completed onboarding, automatically 
+        // skip Step 1 and drop them right into the Brand Identity forms!
         setUserId(session.user.id);
         setEmail(session.user.email || "");
         setStep(2);
       }
+
       setLoading(false);
     }
+
     checkAuth();
-  }, []);
+  }, [router]);
 
   async function handleGoogleSignUp() {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/get-started`,
-      },
-    });
-    if (error) alert(error.message);
+    try {
+      // Force the app to use our backend route that sets the cookies
+      const res = await fetch("/api/auth/google", { method: "POST" });
+      const data = await res.json();
+
+      if (data.url) {
+        window.location.href = data.url; // Redirect to Google
+      } else {
+        alert(data.error || "Failed to initiate Google login");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Could not connect to Google.");
+    }
   }
 
   async function handleSignUp(e: React.FormEvent) {
@@ -427,7 +446,7 @@ export default function GetStartedPage() {
           {/* STEP 1: Sign Up */}
           {step === 1 && (
             <div>
-              <Button
+              {/* <Button
                 type="button"
                 variant="outline"
                 onClick={handleGoogleSignUp}
@@ -435,7 +454,7 @@ export default function GetStartedPage() {
               >
                 <GoogleIcon className="mr-3 h-5 w-5" />
                 Sign up with Google
-              </Button>
+              </Button> */}
 
               <div className="relative mb-8">
                 <div className="absolute inset-0 flex items-center">

@@ -85,8 +85,25 @@ export default function LoginPage() {
     }
   }
 
-  function handleGoogleSubmit() {
+  async function handleGoogleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setGoogleLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/google", { method: "POST" });
+      const data = await res.json();
+
+      if (data.url) {
+        // Redirect the user to the Google consent screen safely
+        window.location.href = data.url;
+      } else {
+        throw new Error(data.error || "Failed to initiate Google login");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Could not connect to Google.");
+      setGoogleLoading(false);
+    }
   }
 
   return (
@@ -185,26 +202,24 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <form
-              method="post"
-              action="/api/auth/google"
-              onSubmit={handleGoogleSubmit}
+            {/* Replace the whole <form action="..."> with just this button */}
+            {/* <Button
+              type="button"
+              onClick={handleGoogleSubmit}
+              variant="outline"
+              disabled={googleLoading}
+              className="w-full py-6 rounded-xl font-bold flex items-center justify-center gap-3 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white transition-all text-sm"
             >
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={googleLoading}
-                className="w-full py-6 rounded-xl font-bold flex items-center justify-center gap-3 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white transition-all text-sm"
-              >
-                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032 c0-3.331,2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.461,2.268,15.365,1,12.545,1 C6.477,1,1.54,5.952,1.54,12s4.938,11,11.005,11c6.495,0,10.933-4.565,10.933-11c0-0.811-0.081-1.584-0.231-2.39H12.545z"
-                  />
-                </svg>
-                {googleLoading ? "Continuing..." : "Continue with Google"}
-              </Button>
-            </form>
+              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24">
+                <path
+                  fill="currentColor"
+                  d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032 c0-3.331,2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.461,2.268,15.365,1,12.545,1 C6.477,1,1.54,5.952,1.54,12s4.938,11,11.005,11c6.495,0,10.933-4.565,10.933-11c0-0.811-0.081-1.584-0.231-2.39H12.545z"
+                />
+              </svg>
+              {googleLoading ? "Continuing..." : "Continue with Google"}
+            </Button> */}
+
+
 
             <div className="text-center pt-6 mt-6 border-t border-[#57707A]/20">
               <p className="text-sm text-[#989DAA]">
