@@ -689,54 +689,56 @@ export default function VideoStudioPage() {
                   />
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  {/* Master AI Engine Picker */}
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs font-bold text-[#DEDCDC]/40 uppercase tracking-wider whitespace-nowrap">
-                      Master AI Engine
-                    </label>
-                    <div className="flex flex-wrap rounded-lg border border-[#57707A]/40 bg-[#191D23]/60 p-0.5 gap-0.5">
-                      {[
-                        { value: "auto", label: "🌟 Auto" },
-                        { value: "replicate:prunaai/p-video", label: "⚡ Pruna AI (Fast)" },
-                        { value: "replicate:openai/sora-2", label: "Sora 2 (Replicate)" },
-                        { value: "bytedance/seedance-1.5-pro", label: "Seedance 1.5" },
-                        { value: "grok-imagine/text-to-video", label: "Grok (Uncensored)" },
-                        { value: "kling-3.0/video", label: "Kling 3.0" },
-                      ].map((engine) => (
-                        <button
-                          key={engine.value}
-                          onClick={() => setSelectedAiModel(engine.value)}
-                          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
+                {selectedMode !== "storytelling" && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    {/* Master AI Engine Picker */}
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-bold text-[#DEDCDC]/40 uppercase tracking-wider whitespace-nowrap">
+                        Master AI Engine
+                      </label>
+                      <div className="flex flex-wrap rounded-lg border border-[#57707A]/40 bg-[#191D23]/60 p-0.5 gap-0.5">
+                        {[
+                          { value: "auto", label: "🌟 Auto" },
+                          { value: "replicate:prunaai/p-video", label: "⚡ Pruna AI (Fast)" },
+                          { value: "replicate:openai/sora-2", label: "Sora 2 (Replicate)" },
+                          { value: "bytedance/seedance-1.5-pro", label: "Seedance 1.5" },
+                          { value: "grok-imagine/text-to-video", label: "Grok (Uncensored)" },
+                          { value: "kling-3.0/video", label: "Kling 3.0" },
+                        ].map((engine) => (
+                          <button
+                            key={engine.value}
+                            onClick={() => setSelectedAiModel(engine.value)}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
                               ? "bg-[#57707A] text-[#DEDCDC] shadow-sm ring-1 ring-[#C5BAC4]/30"
                               : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#57707A]/30"
-                            }`}
-                        >
-                          {engine.label}
-                        </button>
-                      ))}
+                              }`}
+                          >
+                            {engine.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Generate Button */}
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={
-                      isGenerating ||
-                      (selectedMode === "storytelling" && bRollScenes.length === 0) ||
-                      (selectedMode !== "storytelling" && !!activeModeConfig.primaryLabel && !primaryFile && !primaryPreview)
-                    }
-                    className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isGenerating ? (
-                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing...</>
-                    ) : (
-                      <><Film className="mr-2 h-5 w-5" />{" "}
-                        {selectedMode === "storytelling" ? "Generate Sequence" : "Generate AI Video"}
-                      </>
-                    )}
-                  </Button>
-                </div>
+                    {/* Generate Button */}
+                    <Button
+                      onClick={handleGenerate}
+                      disabled={
+                        isGenerating ||
+                        (selectedMode === "storytelling" && bRollScenes.length === 0) ||
+                        (selectedMode !== "storytelling" && !!activeModeConfig.primaryLabel && !primaryFile && !primaryPreview)
+                      }
+                      className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isGenerating ? (
+                        <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing...</>
+                      ) : (
+                        <><Film className="mr-2 h-5 w-5" />{" "}
+                          {selectedMode === "storytelling" ? "Generate Sequence" : "Generate AI Video"}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}

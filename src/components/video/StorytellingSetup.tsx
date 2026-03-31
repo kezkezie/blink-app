@@ -332,12 +332,6 @@ type StoryboardScene = any & {
   prompt?: string;
   aiModel?: string;
   useEndFrame?: boolean;
-
-  audioPrompt?: string;
-  sceneAudioUrl?: string | null;
-  sceneAudioPublicUrl?: string | null;
-  audioName?: string;
-  isGeneratingAudio?: boolean;
 };
 
 export interface StorytellingSetupProps extends VideoSetupProps {
@@ -410,11 +404,6 @@ export function StorytellingSetup({
         secondaryFile: null,
         secondaryPreview: null,
         prompt: "",
-        audioPrompt: "",
-        sceneAudioUrl: null,
-        sceneAudioPublicUrl: null,
-        audioName: "",
-        isGeneratingAudio: false,
         videoUrl: null,
         isGeneratingVideo: false
       }));
@@ -433,13 +422,11 @@ export function StorytellingSetup({
   const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary' } | null>(null);
   const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary' } | null>(null);
   const [suggestingPromptIndex, setSuggestingPromptIndex] = useState<number | null>(null);
-  const [sendingAudioId, setSendingAudioId] = useState<string | null>(null);
 
   const [regenDialogState, setRegenDialogState] = useState<{ isOpen: boolean; sceneId: string | null; index: number | null; slotType: 'primary' | 'secondary'; promptText: string }>({
     isOpen: false, sceneId: null, index: null, slotType: 'primary', promptText: ""
   });
 
-  const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
   const [isWritingScript, setIsWritingScript] = useState(false);
   const [isGeneratingAllImages, setIsGeneratingAllImages] = useState(false);
   const [isGeneratingVideos, setIsGeneratingVideos] = useState(false);
@@ -508,7 +495,7 @@ export function StorytellingSetup({
     return new Blob([byteArray], { type: mimeType });
   };
 
-  const generateScriptAndAudio = async (): Promise<string[]> => {
+  const generateScript = async (): Promise<string[]> => {
     setIsWritingScript(true);
     let generatedPrompts: string[] = [];
     try {
@@ -531,13 +518,10 @@ export function StorytellingSetup({
       const scenesData = directorData.scenes || [];
       generatedPrompts = bRollScenes.map((scene, i) => {
         const newVisualPrompt = scenesData[i]?.video_prompt || scenesData[i]?.image_prompt || "";
-        const newAudioPrompt = scenesData[i]?.audio_prompt || scenesData[i]?.narration || scenesData[i]?.script || "";
         if (!scene.prompt?.trim()) updateScene(scene.id, "prompt", newVisualPrompt);
-        if (!scene.audioPrompt?.trim()) updateScene(scene.id, "audioPrompt", newAudioPrompt);
         return scene.prompt?.trim() || newVisualPrompt;
       });
 
-      if (directorData.audioUrl) setGeneratedAudioUrl(directorData.audioUrl);
     } catch (err: any) {
       alert(`Script generation failed: ${err.message}`);
       throw err;
@@ -549,7 +533,7 @@ export function StorytellingSetup({
 
   const handleWriteScript = async () => {
     if (!bRollConcept.trim()) return alert("Please enter a concept first.");
-    await generateScriptAndAudio();
+    await generateScript();
   };
 
   const handleSuggestPrompt = async (sceneId: string, index: number) => {
@@ -557,7 +541,6 @@ export function StorytellingSetup({
     const currentScenePrompt = scene.prompt || "";
     const fallbackConcept = bRollConcept.trim();
 
-    // If both the scene prompt AND the master concept are empty, we have nothing to work with.
     if (!currentScenePrompt.trim() && !fallbackConcept) {
       return alert("Please write a rough idea in this scene's prompt box, or fill out the Master Story Concept first.");
     }
@@ -569,10 +552,8 @@ export function StorytellingSetup({
       let aiInstruction = "";
 
       if (currentScenePrompt.trim()) {
-        // ✨ NEW: Refine the user's rough scene idea
         aiInstruction = `Refine and enhance the following rough scene idea into a highly descriptive, professional cinematic visual prompt (maximum 500 characters). The camera movement is "${sceneMode}". \n\nRough idea to refine: "${currentScenePrompt.trim()}". \n\nCRITICAL: Write it in a highly descriptive narrative script format. Include setting, character actions, lighting, and exact spoken dialogue in quotes if applicable. Output ONLY the prompt.`;
       } else {
-        // Fallback: Generate from Master Concept if scene box is empty
         aiInstruction = `Write a visual image prompt for Scene ${index + 1} based on this master concept: "${fallbackConcept}". The camera movement is "${sceneMode}". CRITICAL: Write it in a highly descriptive narrative script format (maximum 500 characters). Include setting, character actions, camera movements, and exact spoken dialogue in quotes. Output ONLY the prompt.`;
       }
 
@@ -584,14 +565,7 @@ export function StorytellingSetup({
       });
 
       const suggestedPrompt = directorData.scenes?.[0]?.image_prompt || directorData.scenes?.[0]?.video_prompt || "Cinematic shot. Highly detailed.";
-      const suggestedAudio = directorData.scenes?.[0]?.audio_prompt || "Inspiring background music with english narration.";
-
       updateScene(sceneId, "prompt", suggestedPrompt);
-
-      // Only overwrite the audio prompt if they haven't uploaded a custom track
-      if (!scene.audioPrompt?.startsWith("[Custom Upload]")) {
-        updateScene(sceneId, "audioPrompt", suggestedAudio);
-      }
 
     } catch (err) {
       console.error(err);
@@ -601,114 +575,14 @@ export function StorytellingSetup({
     }
   };
 
-  const handleCustomAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>, sceneId: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    try {
-      const localUrl = URL.createObjectURL(file);
-      const defaultName = file.name.replace(/\.[^/.]+$/, "");
-
-      updateScene(sceneId, "sceneAudioUrl", localUrl);
-      updateScene(sceneId, "audioPrompt", `[Custom Upload] ${file.name}`);
-      updateScene(sceneId, "audioName", defaultName);
-
-      const audioPath = `videos/${clientId}/custom_audio_${Date.now()}_${file.name}`;
-      await supabase.storage.from("assets").upload(audioPath, file);
-      const publicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
-
-      updateScene(sceneId, "sceneAudioPublicUrl", publicUrl);
-
-    } catch (err) {
-      console.error("Audio upload failed:", err);
-      alert("Failed to process uploaded audio file.");
-    }
-  };
-
-  const handleGenerateSceneAudio = async (index: number) => {
-    const scene = bRollScenes[index];
-    const promptText = scene.audioPrompt;
-
-    if (!promptText?.trim() || !clientId) return alert("Please write an audio script first.");
-
-    updateScene(scene.id, "isGeneratingAudio", true);
-
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: promptText })
-      });
-      if (!res.ok) throw new Error(await res.text());
-
-      const blob = await res.blob();
-      const localUrl = URL.createObjectURL(blob);
-      const audioPath = `videos/${clientId}/scene_${index + 1}_audio_${Date.now()}.mp3`;
-
-      await supabase.storage.from("assets").upload(audioPath, blob);
-      const publicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
-
-      updateScene(scene.id, "sceneAudioUrl", localUrl);
-      updateScene(scene.id, "audioName", `Scene ${index + 1} Voice`);
-      updateScene(scene.id, "sceneAudioPublicUrl", publicUrl);
-
-    } catch (err: any) {
-      console.error("Audio generation failed:", err);
-      alert(`Audio generation failed: ${err.message}`);
-    } finally {
-      updateScene(scene.id, "isGeneratingAudio", false);
-    }
-  };
-
-  const handleRemoveSceneAudio = (sceneId: string) => {
-    updateScene(sceneId, "sceneAudioUrl", null);
-    updateScene(sceneId, "sceneAudioPublicUrl", null);
-    updateScene(sceneId, "audioName", "");
-  };
-
-  const handleSendAudioToEditor = async (sceneId: string, audioName: string, localUrl: string, existingPublicUrl?: string | null) => {
-    if (!clientId || !localUrl) return;
-    setSendingAudioId(sceneId);
-
-    try {
-      let finalPublicUrl = existingPublicUrl;
-
-      if (!finalPublicUrl) {
-        const response = await fetch(localUrl);
-        const blob = await response.blob();
-        const audioPath = `videos/${clientId}/saved_audio_${Date.now()}.mp3`;
-        await supabase.storage.from("assets").upload(audioPath, blob);
-        finalPublicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
-      }
-
-      const { error } = await supabase.from("content").insert({
-        client_id: clientId,
-        content_type: "generated_audio",
-        caption: audioName || "Unnamed Audio",
-        status: "approved",
-        video_urls: [finalPublicUrl],
-        image_urls: [finalPublicUrl],
-        ai_model: "audio_asset"
-      });
-
-      if (error) throw error;
-      alert("✅ Audio saved to Video Editor Library!");
-
-    } catch (err: any) {
-      alert(`Failed to save audio: ${err.message}`);
-    } finally {
-      setSendingAudioId(null);
-    }
-  };
-
-  // ✨ IMAGE GENERATION: Updated strict Character Lock injection
+  // ✨ IMAGE GENERATION: Strict Character Lock injection
   const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string) => {
     const scene = bRollScenes[slotIndex];
     const promptToUse = overridePrompt || scene.prompt || bRollConcept;
 
     if (!promptToUse.trim()) return alert("Please write a visual prompt for this scene first.");
 
-    // ✨ FIXED: Strict character lock prompt injection
     const NO_TEXT_CONSTRAINT = " CRITICAL: Do NOT output a character reference sheet, split screen, or multiple angles. Output a SINGLE, unified, cinematic scene featuring this exact character integrated naturally into the described environment.";
     const safePrompt = promptToUse + NO_TEXT_CONSTRAINT;
 
@@ -764,7 +638,7 @@ export function StorytellingSetup({
 
     let currentPrompts = bRollScenes.map(s => s.prompt);
     if (currentPrompts.every(p => !p?.trim())) {
-      try { currentPrompts = await generateScriptAndAudio(); } catch (e) { setIsGeneratingAllImages(false); return; }
+      try { currentPrompts = await generateScript(); } catch (e) { setIsGeneratingAllImages(false); return; }
     }
 
     for (let i = 0; i < bRollScenes.length; i++) {
@@ -778,12 +652,11 @@ export function StorytellingSetup({
     setIsGeneratingAllImages(false);
   };
 
-  // ✨ VIDEO GENERATION: Removed primary image requirement for Text-to-Video
+  // ✨ VIDEO GENERATION
   const handleGenerateSingleVideo = async (slotIndex: number) => {
     const scene = bRollScenes[slotIndex];
     if (!clientId) return;
 
-    // Check if end frame is toggled but missing
     if (scene.useEndFrame && !scene.secondaryPreview) return alert("You enabled the End Frame toggle. Please generate or upload an End Frame before animating.");
 
     updateScene(scene.id, "isGeneratingVideo", true);
@@ -862,10 +735,6 @@ export function StorytellingSetup({
             start_frame: finalPrimaryUrl,
             end_frame: finalSecondaryUrl
           },
-          audio: {
-            script: scene.audioPrompt || null,
-            audio_url: scene.sceneAudioPublicUrl || null
-          },
           casting: enableCharacterLock ? {
             actor_1_sheet: characterSheetA
           } : null
@@ -907,7 +776,6 @@ export function StorytellingSetup({
   };
 
   const handleGenerateSceneVideos = async () => {
-    // Note: We no longer strictly require images for Text-to-Video
     setIsGeneratingVideos(true);
     for (let i = 0; i < bRollScenes.length; i++) {
       const scene = bRollScenes[i];
@@ -1043,7 +911,7 @@ export function StorytellingSetup({
         <div className="flex flex-col space-y-8">
           {bRollScenes.map((scene, index) => {
             const labels = getLabels(scene.mode);
-            const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2';
+            const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2' || scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'auto';
             const isPruna = scene.aiModel === 'replicate:prunaai/p-video';
 
             return (
@@ -1223,7 +1091,7 @@ export function StorytellingSetup({
                                 <div className="bg-gradient-to-r from-[#B3FF00]/20 to-transparent border-b border-[#B3FF00]/30 p-3 flex items-start gap-2.5">
                                   <Zap className="w-4 h-4 text-[#B3FF00] mt-0.5 shrink-0" />
                                   <p className="text-[10px] text-[#DEDCDC] leading-relaxed font-medium">
-                                    <strong className="text-[#B3FF00]">Pruna AI Active:</strong> Supports Text-to-Video and advanced Lipsync. Upload or generate Audio below, and write dialogue in quotes in your prompt to auto-sync the character's lips!
+                                    <strong className="text-[#B3FF00]">Pruna AI Active:</strong> Supports Text-to-Video and advanced Lipsync. Write dialogue in quotes in your prompt to auto-sync the character's lips!
                                   </p>
                                 </div>
                               )}
@@ -1236,7 +1104,7 @@ export function StorytellingSetup({
                                   scene.mode === 'ugc'
                                     ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
                                     : isNativeAudio
-                                      ? "Describe your scene...\n\nExample: Slow panning shot of a neon city. [sound of rain]. A man turns and says \"This is incredible!\""
+                                      ? "Describe your scene...\n\nExample: Slow panning shot of a neon city. A man turns and says \"This is incredible!\""
                                       : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
                                 }
                               />
@@ -1287,59 +1155,23 @@ export function StorytellingSetup({
                             </div>
                           )}
 
-                          {/* DYNAMIC AUDIO UI */}
+                          {/* DYNAMIC AUDIO UI - REMOVED */}
                           {(() => {
                             return (
                               <div className="flex flex-col flex-1 bg-[#191D23]">
-                                {!isNativeAudio && (
-                                  <Textarea
-                                    value={scene.audioPrompt || ""}
-                                    onChange={(e) => updateScene(scene.id, "audioPrompt", e.target.value)}
-                                    className="flex-1 w-full text-xs p-5 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[90px]"
-                                    placeholder="Optional Voiceover: Type English narration script or upload an audio file below..."
-                                  />
-                                )}
-
                                 {isNativeAudio ? (
-                                  <div className="p-5 bg-[#2A2F38]/50 border-b border-[#57707A]/30">
+                                  <div className="p-5 bg-[#2A2F38]/50 border-b border-[#57707A]/30 flex-1">
                                     <div className="flex items-start gap-3 bg-[#191D23] text-[#989DAA] text-[10px] font-bold px-4 py-3.5 rounded-xl border border-[#57707A]/40 shadow-inner">
                                       <Mic className="w-4 h-4 shrink-0 text-[#C5BAC4] mt-0.5" />
                                       <span className="leading-relaxed">Native Audio Engine Selected: Type exact dialogue in quotes within your visual prompt above.</span>
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="p-4 border-b border-[#57707A]/30 bg-[#2A2F38] flex flex-col gap-3 shrink-0 shadow-inner">
-                                    {scene.sceneAudioUrl ? (
-                                      <div className="flex flex-col gap-3 w-full">
-                                        <div className="flex items-center gap-3">
-                                          <audio controls src={scene.sceneAudioUrl} className="h-10 flex-1 w-full min-w-0 rounded-lg opacity-90" />
-                                          <button onClick={() => handleRemoveSceneAudio(scene.id)} className="p-2.5 text-[#57707A] hover:text-white bg-[#191D23] hover:bg-red-500/80 border border-[#57707A]/50 hover:border-red-500 rounded-lg transition-colors shadow-sm" title="Delete Track">
-                                            <Trash2 className="w-4 h-4" />
-                                          </button>
-                                        </div>
-                                        <div className="flex gap-2 w-full items-center">
-                                          <input type="text" value={scene.audioName || ""} onChange={(e) => updateScene(scene.id, "audioName", e.target.value)} className="flex-1 text-xs font-bold text-[#DEDCDC] px-3 py-2.5 rounded-lg border border-[#57707A]/50 bg-[#191D23] min-w-0 focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 shadow-inner" placeholder="Name this clip..." />
-                                          <Button size="sm" onClick={() => handleSendAudioToEditor(scene.id, scene.audioName || `Scene Audio`, scene.sceneAudioUrl!, scene.sceneAudioPublicUrl)} disabled={sendingAudioId === scene.id} className="h-10 px-4 text-[10px] font-bold bg-[#C5BAC4] hover:bg-white text-[#191D23] shrink-0 rounded-lg shadow-md transition-all">
-                                            {sendingAudioId === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-                                        <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider truncate hidden xl:inline-block">
-                                          {scene.audioPrompt ? "Ready for TTS" : "Add script"}
-                                        </span>
-                                        <div className="flex gap-2.5 shrink-0 w-full xl:w-auto justify-end">
-                                          <label className="flex items-center justify-center h-10 px-4 bg-[#191D23] border border-[#57707A]/50 text-[#DEDCDC]/80 hover:text-white hover:border-[#C5BAC4]/50 rounded-lg text-[10px] font-bold cursor-pointer transition-colors flex-1 xl:flex-none shadow-sm">
-                                            <Upload className="w-3.5 h-3.5 xl:mr-2 text-[#57707A]" /> <span className="hidden xl:inline">Upload</span>
-                                            <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleCustomAudioUpload(e, scene.id)} />
-                                          </label>
-                                          <Button size="sm" onClick={() => handleGenerateSceneAudio(index)} disabled={!scene.audioPrompt || scene.isGeneratingAudio || scene.audioPrompt.startsWith("[Custom Upload]")} className={cn("h-10 text-[10px] font-bold px-5 rounded-lg shadow-sm transition-all flex-1 xl:flex-none", scene.audioPrompt && !scene.audioPrompt.startsWith("[Custom Upload]") ? "bg-[#B3FF00] hover:bg-white text-[#191D23] shadow-[0_0_15px_rgba(179,255,0,0.2)]" : "bg-[#191D23] border border-[#57707A]/30 text-[#57707A] hover:bg-[#191D23]")}>
-                                            {scene.isGeneratingAudio ? <Loader2 className="w-3.5 h-3.5 xl:mr-2 animate-spin" /> : <Mic className="w-3.5 h-3.5 xl:mr-2" />} <span className="hidden xl:inline">Generate TTS</span>
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    )}
+                                  <div className="p-5 bg-[#2A2F38]/50 border-b border-[#57707A]/30 flex-1">
+                                    <div className="flex items-start gap-3 bg-[#191D23] text-[#989DAA] text-[10px] font-bold px-4 py-3.5 rounded-xl border border-[#57707A]/40 shadow-inner">
+                                      <Mic className="w-4 h-4 shrink-0 text-[#57707A] mt-0.5" />
+                                      <span className="leading-relaxed">This AI model generates silent video.</span>
+                                    </div>
                                   </div>
                                 )}
                               </div>
