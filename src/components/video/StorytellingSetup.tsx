@@ -730,10 +730,17 @@ export function StorytellingSetup({
         scene_data: {
           visual_prompt: scene.prompt?.trim() || bRollConcept,
           video_mode: scene.mode,
-          duration: "8",
+
+          // ✨ THE FIX: Use the dropdown value instead of the hardcoded "8"
+          duration: scene.duration || "5",
+
           frames: {
             start_frame: finalPrimaryUrl,
             end_frame: finalSecondaryUrl
+          },
+          audio: {
+            script: scene.audioPrompt || null,
+            audio_url: scene.sceneAudioPublicUrl || null
           },
           casting: enableCharacterLock ? {
             actor_1_sheet: characterSheetA
@@ -939,6 +946,20 @@ export function StorytellingSetup({
                   </div>
                   <div className="flex items-center gap-3">
 
+                    {/* ✨ NEW: Duration Dropdown */}
+                    <select
+                      value={scene.duration || "5"}
+                      onChange={(e) => updateScene(scene.id, "duration", e.target.value)}
+                      className="text-[10px] font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2.5 px-3 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
+                    >
+                      <option value="5" className="bg-[#191D23]">5 Secs</option>
+                      <option value="10" className="bg-[#191D23]">10 Secs</option>
+                      {/* Only show 15s if the model supports it (like Kling or Auto) */}
+                      {(scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'auto' || scene.aiModel === 'replicate:openai/sora-2') && (
+                        <option value="15" className="bg-[#191D23]">15 Secs</option>
+                      )}
+                    </select>
+
                     <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
                       <input
                         type="checkbox"
@@ -946,7 +967,7 @@ export function StorytellingSetup({
                         onChange={(e) => updateScene(scene.id, "useEndFrame", e.target.checked)}
                         className="rounded border-[#57707A]/50 bg-[#191D23] text-[#C5BAC4] focus:ring-[#C5BAC4] cursor-pointer"
                       />
-                      <span className="text-[10px] font-bold text-[#989DAA] group-hover/check:text-[#DEDCDC] uppercase tracking-widest transition-colors mt-0.5">Use End Frame</span>
+                      <span className="text-[10px] font-bold text-[#989DAA] group-hover/check:text-[#DEDCDC] uppercase tracking-widest transition-colors mt-0.5">End Frame</span>
                     </label>
 
                     <div className="flex gap-1.5 bg-[#191D23] rounded-xl p-1 border border-[#57707A]/30 shadow-inner">
@@ -1122,33 +1143,55 @@ export function StorytellingSetup({
                           {!scene.videoUrl && (
                             <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 bg-[#2A2F38] border-b border-[#57707A]/30 shrink-0">
                               <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider mr-1">Inject:</span>
+
+                              {/* 🎥 Camera Dropdown */}
                               <select
                                 value=""
                                 onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
                                 className="text-[10px] font-bold text-[#C5BAC4] bg-[#191D23] border border-[#C5BAC4]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#C5BAC4]/60 hover:bg-[#C5BAC4]/10 transition-colors appearance-none shadow-sm"
                               >
-                                <option value="" disabled hidden>🎥 Add Camera...</option>
+                                <option value="" disabled hidden>🎥 Camera...</option>
                                 <option value=" Cinematic tracking shot, " className="bg-[#191D23]">Cinematic Tracking</option>
                                 <option value=" Slow drone flyover, " className="bg-[#191D23]">Drone Flyover</option>
                                 <option value=" Handheld shaky cam, " className="bg-[#191D23]">Handheld Shaky</option>
                                 <option value=" Extreme macro close-up, " className="bg-[#191D23]">Macro Close-up</option>
                                 <option value=" Smooth dolly-in, " className="bg-[#191D23]">Smooth Dolly-in</option>
+                                <option value=" Slow orbit around, " className="bg-[#191D23]">Slow Orbit</option>
                               </select>
+
+                              {/* 🔊 Sound FX Dropdown */}
                               <select
                                 value=""
                                 onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
                                 className="text-[10px] font-bold text-[#B3FF00] bg-[#191D23] border border-[#B3FF00]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#B3FF00]/60 hover:bg-[#B3FF00]/10 transition-colors appearance-none shadow-sm"
                               >
-                                <option value="" disabled hidden>🔊 Add Sound FX...</option>
+                                <option value="" disabled hidden>🔊 Sound FX...</option>
                                 <option value=" [ambient street noise] " className="bg-[#191D23]">Street Noise</option>
                                 <option value=" [heavy rain and thunder] " className="bg-[#191D23]">Rain & Thunder</option>
                                 <option value=" [cinematic bass drop] " className="bg-[#191D23]">Bass Drop</option>
                                 <option value=" [muffled cafe chatter] " className="bg-[#191D23]">Cafe Chatter</option>
                                 <option value=" [whoosh transition] " className="bg-[#191D23]">Whoosh Transition</option>
                               </select>
+
+                              {/* ⏱️ Timing / Multi-Shot Dropdown (Kling 3.0 Specific) */}
+                              <select
+                                value=""
+                                onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
+                                className="text-[10px] font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#FFB300]/60 hover:bg-[#FFB300]/10 transition-colors appearance-none shadow-sm"
+                                title="Use for Kling 3.0 Multi-Shot sequences"
+                              >
+                                <option value="" disabled hidden>⏱️ Timing...</option>
+                                <option value=" At the 4th second, " className="bg-[#191D23]">At 4 Seconds</option>
+                                <option value=" At the 8th second, " className="bg-[#191D23]">At 8 Seconds</option>
+                                <option value=" \n\nShot 2: " className="bg-[#191D23]">Shot 2 (Cut)</option>
+                                <option value=" \n\nShot 3: " className="bg-[#191D23]">Shot 3 (Cut)</option>
+                              </select>
+
+                              {/* 💬 Dialogue Button (Kling 3.0 Exact Format) */}
                               <button
-                                onClick={() => updateScene(scene.id, "prompt", (scene.prompt || "") + ' The character says "Type your script here..." ')}
+                                onClick={() => updateScene(scene.id, "prompt", (scene.prompt || "") + '\nCharacter Name (confident, English): "Type exact dialogue here" ')}
                                 className="inline-flex items-center text-[10px] font-bold text-[#DEDCDC] bg-[#191D23] hover:bg-[#57707A]/30 border border-[#57707A]/50 hover:border-[#DEDCDC]/50 px-3 py-2 rounded-lg transition-all shadow-sm"
+                                title="Inserts Kling 3.0 Native Audio format"
                               >
                                 <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-[#57707A]" /> Dialogue
                               </button>
