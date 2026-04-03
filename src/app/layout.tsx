@@ -13,8 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Blink — Create at the Speed of Light",
+  title: "BlinkSpot — Create at the Speed of Light",
   description: "The first social media operating system for modern creators. One workspace, zero friction.",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({

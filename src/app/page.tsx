@@ -27,6 +27,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import Image from "next/image";
 
 // --- UI Mockup Components ---
 
@@ -72,8 +73,16 @@ const Navbar = () => {
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 px-6 py-4 ${scrolled ? 'bg-[#191D23]/80 backdrop-blur-xl border-b border-[#57707A]/30' : ''}`}>
       <div className="max-w-7xl mx-auto flex justify-between items-center">
         <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="w-10 h-10 bg-[#C5BAC4] text-[#191D23] rounded-xl flex items-center justify-center font-bold text-xl group-hover:rotate-12 transition-transform shadow-lg shadow-[#C5BAC4]/20">B</div>
-          <span className="text-xl font-display font-bold tracking-tighter text-[#DEDCDC]">Blink</span>
+          <div className="w-10 h-10 bg-[#C5BAC4] text-[#191D23] rounded-xl flex items-center justify-center font-bold text-xl group-hover:rotate-12 transition-transform shadow-lg shadow-[#C5BAC4]/20">
+            <Image
+              src="/bsw.png"
+              alt="Blink Logo"
+              width={24}
+              height={24}
+              className="shrink-0"
+            />
+          </div>
+          <span className="text-xl font-display font-bold tracking-tighter text-[#DEDCDC]">BlinkSpot</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm font-bold text-[#989DAA]">
           <a href="#features" className="hover:text-[#DEDCDC] transition-colors">Features</a>
@@ -443,8 +452,15 @@ export default function App() {
       <footer className="py-20 px-6 border-t border-[#57707A]/30 bg-[#191D23]">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[#C5BAC4] text-[#191D23] rounded-lg flex items-center justify-center font-bold shadow-sm">B</div>
-            <span className="text-lg font-bold text-[#DEDCDC] font-display">Blink</span>
+            <div className="w-8 h-8 bg-[#C5BAC4] text-[#191D23] rounded-lg flex items-center justify-center font-bold shadow-sm">
+              <Image
+                src="/bsw.png"
+                alt="Blink Logo"
+                width={24}
+                height={24}
+              />
+            </div>
+            <span className="text-lg font-bold text-[#DEDCDC] font-display">BlinkSpot</span>
           </div>
           <div className="flex gap-12 text-sm text-[#989DAA] font-bold tracking-wide">
             <a href="#" className="hover:text-[#DEDCDC] transition-colors">Twitter</a>
