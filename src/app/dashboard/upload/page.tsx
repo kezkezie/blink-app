@@ -18,6 +18,7 @@ import {
   X,
   Music,
   Zap,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,8 @@ export default function YourContentPage() {
   // Audio to Video States
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
+  const [audioModel, setAudioModel] = useState("kling-3.0/video");
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
 
   // UI States
   const [isProcessing, setIsProcessing] = useState(false);
@@ -302,6 +305,11 @@ export default function YourContentPage() {
     if (!audioFile || !clientId) return alert("Please upload an audio file.");
     if (!mediaContext.trim()) return alert("Please write a prompt for the video generation.");
 
+    // Kling strict validation check
+    if (audioModel === 'kling-3.0/video' && !file) {
+      return alert("Kling 3.0 requires a Start Image to lip-sync with the audio. Please upload an image containing a clear face.");
+    }
+
     setIsProcessing(true);
     setLoadingText("Uploading Assets...");
 
@@ -311,7 +319,7 @@ export default function YourContentPage() {
       await supabase.storage.from("assets").upload(audioPath, audioFile);
       const audioPublicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
 
-      // 2. Upload Image (Optional)
+      // 2. Upload Image (Optional for Pruna, Required for Kling)
       let imagePublicUrl = null;
       if (file) {
         const imgPath = `videos/${clientId}/pruna_image_${Date.now()}.${file.name.split(".").pop()}`;
@@ -319,7 +327,7 @@ export default function YourContentPage() {
         imagePublicUrl = supabase.storage.from("assets").getPublicUrl(imgPath).data.publicUrl;
       }
 
-      setLoadingText("Initializing Pruna AI...");
+      setLoadingText(`Initializing ${audioModel.includes('kling') ? 'Kling 3.0' : 'Pruna AI'} Engine...`);
 
       // 3. Create Placeholder in Supabase
       const { data: dbData, error: dbError } = await supabase.from("content").insert({
@@ -328,7 +336,7 @@ export default function YourContentPage() {
         caption: `🎵 Audio Reactive Video`,
         status: "draft",
         image_urls: imagePublicUrl ? [imagePublicUrl] : [],
-        ai_model: "replicate:prunaai/p-video",
+        ai_model: audioModel,
       }).select('id').single();
 
       if (dbError) throw dbError;
@@ -345,7 +353,7 @@ export default function YourContentPage() {
           user_prompt: mediaContext,
           duration: "10",
           video_mode: "audio_to_video",
-          ai_model_override: "replicate:prunaai/p-video",
+          ai_model_override: audioModel,
           scene_data: {
             audio: {
               audio_url: audioPublicUrl
@@ -355,7 +363,11 @@ export default function YourContentPage() {
       });
 
       if (!n8nRes.ok) throw new Error("Failed to trigger video generation");
-      router.push(`/dashboard/content/${dbData.id}`);
+
+      setLoadingText("Generation started successfully! Check your Content tab.");
+      setTimeout(() => {
+        router.push(`/dashboard/content/${dbData.id}`);
+      }, 1500);
 
     } catch (err: any) {
       alert(`Audio to Video failed: ${err.message}`);
@@ -538,7 +550,7 @@ export default function YourContentPage() {
 
         <button
           onClick={() => setActiveTab('audio_to_video')}
-          className={cn("flex-1 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'audio_to_video' ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] shadow-[0_0_15px_rgba(179,255,0,0.2)] text-[#191D23]" : "text-[#57707A] hover:text-[#989DAA]")}
+          className={cn("flex-1 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 whitespace-nowrap px-4", activeTab === 'audio_to_video' ? "bg-gradient-to-r from-[#00E5FF] to-[#00B3CC] shadow-[0_0_15px_rgba(0,229,255,0.2)] text-[#191D23]" : "text-[#57707A] hover:text-[#989DAA]")}
         >
           <Music className="w-3.5 h-3.5" /> Audio to Video
         </button>
@@ -614,8 +626,8 @@ export default function YourContentPage() {
               ) : activeTab === 'audio_to_video' ? (
                 <div className="flex flex-col items-center text-[#57707A] gap-3">
                   <ImageIcon className="w-8 h-8 opacity-50" />
-                  <p className="text-xs font-bold uppercase tracking-wider">No Image Reference</p>
-                  <p className="text-[10px] text-[#989DAA] max-w-[200px] text-center">Video will be generated purely from the prompt and audio.</p>
+                  <p className="text-xs font-bold uppercase tracking-wider">No Start Image</p>
+                  <p className="text-[10px] text-[#989DAA] max-w-[200px] text-center">Upload an image to preview it here.</p>
                 </div>
               ) : null}
 
@@ -668,75 +680,112 @@ export default function YourContentPage() {
               {/* ─── AUDIO TO VIDEO CONTROLS ─── */}
               {activeTab === 'audio_to_video' && (
                 <div className="flex flex-col h-full gap-4">
-                  <div className="bg-gradient-to-r from-[#B3FF00]/10 to-transparent border border-[#B3FF00]/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-20 h-20 bg-[#B3FF00]/10 blur-xl rounded-full translate-x-1/2 -translate-y-1/2" />
+                  <div className="bg-gradient-to-r from-[#00E5FF]/10 to-transparent border border-[#00E5FF]/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-[#00E5FF]/10 blur-xl rounded-full translate-x-1/2 -translate-y-1/2" />
                     <div className="flex items-center gap-2 mb-2 relative z-10">
-                      <Zap className="w-4 h-4 text-[#B3FF00]" />
-                      <h3 className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">Pruna AI Engine</h3>
+                      <Zap className="w-4 h-4 text-[#00E5FF]" />
+                      <h3 className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">
+                        {audioModel === "kling-3.0/video" ? "Kling 3.0 Engine" : "Pruna AI Engine"}
+                      </h3>
                     </div>
-                    <p className="text-[10px] text-[#989DAA] font-medium relative z-10 leading-relaxed">Converts your audio into a synced video. Upload an image as a starting frame, or leave it blank for pure Text-to-Video.</p>
+                    <p className="text-[10px] text-[#989DAA] font-medium relative z-10 leading-relaxed">
+                      {audioModel === "kling-3.0/video"
+                        ? "Kling requires BOTH an audio file and a start image with a clear face to generate a lip-synced video."
+                        : "Pruna converts your audio into a synced video. Upload an image for best results, or leave blank for pure AI generation."}
+                    </p>
                   </div>
 
                   <div className="space-y-4 flex-1">
+                    {/* Model Selection Dropdown */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">1. AI Model</label>
+                      <select
+                        value={audioModel}
+                        onChange={(e) => setAudioModel(e.target.value)}
+                        className="w-full text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-3 px-3 bg-[#191D23] text-[#DEDCDC] cursor-pointer focus:outline-none focus:border-[#00E5FF]/50 transition-colors appearance-none"
+                      >
+                        <option value="kling-3.0/video">Kling 3.0 (Cinematic Lipsync)</option>
+                        <option value="replicate:prunaai/p-video">Pruna P-Video (Fast Action Lipsync)</option>
+                      </select>
+                    </div>
+
                     {/* Audio Status Block */}
                     <div>
-                      <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Driving Audio</label>
+                      <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">2. Driving Audio <span className="text-red-400">*Required</span></label>
                       {audioPreviewUrl ? (
                         <div className="flex items-center justify-between bg-[#191D23] border border-[#57707A]/50 p-2.5 rounded-xl shadow-inner">
                           <div className="flex items-center gap-3 w-full min-w-0">
-                            <div className="w-8 h-8 rounded bg-[#B3FF00]/10 flex items-center justify-center shrink-0">
-                              <Music className="w-4 h-4 text-[#B3FF00]" />
+                            <div className="w-8 h-8 rounded bg-[#00E5FF]/10 flex items-center justify-center shrink-0">
+                              <Music className="w-4 h-4 text-[#00E5FF]" />
                             </div>
                             <audio src={audioPreviewUrl} controls className="h-8 w-full min-w-0" />
                           </div>
+                          <button onClick={() => { setAudioFile(null); setAudioPreviewUrl(null); }} className="text-red-400 hover:text-red-300 text-xs font-bold px-2 py-1 ml-2 shrink-0">Remove</button>
                         </div>
                       ) : (
                         <div
                           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                           onDrop={handleAudioDrop}
                           onClick={() => audioInputRef.current?.click()}
-                          className="h-16 border-2 border-dashed border-[#B3FF00]/30 bg-[#191D23]/50 hover:bg-[#B3FF00]/5 rounded-xl flex items-center justify-center cursor-pointer transition-colors shadow-inner"
+                          className="h-16 border-2 border-dashed border-[#00E5FF]/30 bg-[#191D23]/50 hover:bg-[#00E5FF]/5 rounded-xl flex items-center justify-center cursor-pointer transition-colors shadow-inner"
                         >
-                          <span className="text-[10px] font-bold text-[#B3FF00] uppercase tracking-wider flex items-center gap-2"><UploadCloud className="w-4 h-4" /> Drop Audio File</span>
+                          <span className="text-[10px] font-bold text-[#00E5FF] uppercase tracking-wider flex items-center gap-2"><UploadCloud className="w-4 h-4" /> Drop Audio File</span>
                         </div>
                       )}
                     </div>
 
                     {/* Image Upload Block */}
-                    {!preview && (
-                      <div>
-                        <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">Start Image (Optional)</label>
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2 flex items-center gap-1">
+                        3. Start Image
+                        {audioModel === 'kling-3.0/video' ? <span className="text-red-400">*Required for Kling</span> : <span className="text-[#57707A]">(Optional)</span>}
+                      </label>
+
+                      {!preview ? (
                         <div
                           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                           onDrop={handleDropFile}
                           onClick={() => fileInputRef.current?.click()}
-                          className="h-16 border-2 border-dashed border-[#57707A]/40 bg-[#191D23] hover:bg-[#57707A]/20 rounded-xl flex items-center justify-center cursor-pointer transition-colors shadow-inner"
+                          className={cn("h-16 border-2 border-dashed rounded-xl flex items-center justify-center cursor-pointer transition-colors shadow-inner",
+                            audioModel === 'kling-3.0/video' ? "border-red-400/30 bg-[#191D23] hover:bg-red-400/5" : "border-[#57707A]/40 bg-[#191D23] hover:bg-[#57707A]/20"
+                          )}
                         >
-                          <span className="text-[10px] font-bold text-[#57707A] hover:text-[#C5BAC4] uppercase tracking-wider flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Drop Image File</span>
+                          <span className={cn("text-[10px] font-bold uppercase tracking-wider flex items-center gap-2", audioModel === 'kling-3.0/video' ? "text-red-400" : "text-[#57707A] hover:text-[#C5BAC4]")}><ImageIcon className="w-4 h-4" /> Drop Image File</span>
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="flex items-center justify-between bg-[#191D23] border border-[#57707A]/50 p-2.5 rounded-xl shadow-inner">
+                          <div className="flex items-center gap-3 w-full min-w-0">
+                            <div className="w-8 h-8 rounded bg-[#57707A]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                              <img src={preview} className="w-full h-full object-cover" />
+                            </div>
+                            <span className="text-xs font-bold text-[#DEDCDC] truncate">{file?.name}</span>
+                          </div>
+                          <button onClick={() => { setFile(null); setPreview(null); }} className="text-red-400 hover:text-red-300 text-xs font-bold px-2 py-1 ml-2 shrink-0">Remove</button>
+                        </div>
+                      )}
+                    </div>
 
                     <div>
                       <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2 flex justify-between">
-                        <span>Video Prompt</span>
+                        <span>4. Visual Prompt</span>
                         <span className="text-red-400">*Required</span>
                       </label>
                       <Textarea
                         value={mediaContext}
                         onChange={(e) => setMediaContext(e.target.value)}
-                        placeholder="e.g., A man talking to the camera. 'Include dialogue in quotes for lipsyncing!'"
-                        className="text-xs resize-none h-24 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#B3FF00]/50 rounded-xl shadow-inner custom-scrollbar"
+                        placeholder="e.g., A cinematic medium close-up of a person speaking naturally to the camera..."
+                        className="text-xs resize-none h-24 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#00E5FF]/50 rounded-xl shadow-inner custom-scrollbar"
                         disabled={isProcessing}
                       />
+                      <p className="text-[9px] text-[#57707A] mt-2 font-medium">Describe the scene and the speaker. <strong className="text-red-400">Do not use quotes here</strong>—the uploaded audio file handles the speech!</p>
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-3 mt-auto">
                     <Button
                       onClick={handleAudioToVideo}
-                      disabled={isProcessing || !audioFile || !mediaContext.trim()}
-                      className="w-full bg-gradient-to-r from-[#B3FF00]/90 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] h-12 rounded-xl shadow-lg shadow-[#B3FF00]/20 font-bold text-sm border-none"
+                      disabled={isProcessing || !audioFile || !mediaContext.trim() || (audioModel === 'kling-3.0/video' && !file)}
+                      className="w-full bg-gradient-to-r from-[#00E5FF] to-[#00B3CC] hover:from-[#00B3CC] hover:to-[#0099B3] text-[#191D23] h-12 rounded-xl shadow-lg shadow-[#00E5FF]/20 font-bold text-sm border-none disabled:opacity-50 disabled:grayscale transition-all duration-300"
                     >
                       {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Video className="mr-2 h-5 w-5" />} Generate Sync Video
                     </Button>

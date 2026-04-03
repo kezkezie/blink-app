@@ -326,12 +326,16 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 // ✨ 2. THE MAIN STORYTELLING SETUP COMPONENT
 // ============================================================================
 
+// NOTE: Custom audio file properties removed. Kept TTS text prompt.
 type StoryboardScene = any & {
   videoUrl?: string | null;
   isGeneratingVideo?: boolean;
   prompt?: string;
   aiModel?: string;
   useEndFrame?: boolean;
+  duration?: string;
+  prunaDraft?: boolean;
+  audioPrompt?: string;
 };
 
 export interface StorytellingSetupProps extends VideoSetupProps {
@@ -552,9 +556,9 @@ export function StorytellingSetup({
       let aiInstruction = "";
 
       if (currentScenePrompt.trim()) {
-        aiInstruction = `Refine and enhance the following rough scene idea into a highly descriptive, professional cinematic visual prompt (maximum 500 characters). The camera movement is "${sceneMode}". \n\nRough idea to refine: "${currentScenePrompt.trim()}". \n\nCRITICAL: Write it in a highly descriptive narrative script format. Include setting, character actions, lighting, and exact spoken dialogue in quotes if applicable. Output ONLY the prompt.`;
+        aiInstruction = `Refine and enhance the following rough scene idea into a highly descriptive, professional cinematic visual prompt (maximum 500 characters). The camera movement is "${sceneMode}". \n\nRough idea to refine: "${currentScenePrompt.trim()}". \n\nCRITICAL: Write it in a highly descriptive narrative script format. Include setting, character actions, lighting, and exact spoken dialogue in quotes if applicable. IF dialogue or audio is present, explicitly state the camera is a MEDIUM CLOSE-UP or CLOSE-UP to capture the face clearly. Output ONLY the prompt.`;
       } else {
-        aiInstruction = `Write a visual image prompt for Scene ${index + 1} based on this master concept: "${fallbackConcept}". The camera movement is "${sceneMode}". CRITICAL: Write it in a highly descriptive narrative script format (maximum 500 characters). Include setting, character actions, camera movements, and exact spoken dialogue in quotes. Output ONLY the prompt.`;
+        aiInstruction = `Write a visual image prompt for Scene ${index + 1} based on this master concept: "${fallbackConcept}". The camera movement is "${sceneMode}". CRITICAL: Write it in a highly descriptive narrative script format (maximum 500 characters). Include setting, character actions, camera movements, and exact spoken dialogue in quotes. IF dialogue or audio is present, explicitly state the camera is a MEDIUM CLOSE-UP or CLOSE-UP to capture the face clearly. Output ONLY the prompt.`;
       }
 
       const directorData = await callN8n('director', {
@@ -730,17 +734,15 @@ export function StorytellingSetup({
         scene_data: {
           visual_prompt: scene.prompt?.trim() || bRollConcept,
           video_mode: scene.mode,
-
-          // ✨ THE FIX: Use the dropdown value instead of the hardcoded "8"
           duration: scene.duration || "5",
-
+          prunaDraft: scene.prunaDraft || false,
           frames: {
             start_frame: finalPrimaryUrl,
             end_frame: finalSecondaryUrl
           },
           audio: {
-            script: scene.audioPrompt || null,
-            audio_url: scene.sceneAudioPublicUrl || null
+            script: scene.audioPrompt || null, // Keeping TTS prompt capability
+            audio_url: null // Removed custom audio file feature here
           },
           casting: enableCharacterLock ? {
             actor_1_sheet: characterSheetA
@@ -918,8 +920,9 @@ export function StorytellingSetup({
         <div className="flex flex-col space-y-8">
           {bRollScenes.map((scene, index) => {
             const labels = getLabels(scene.mode);
-            const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2' || scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'auto';
+            const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2' || scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'replicate:prunaai/p-video' || scene.aiModel === 'auto';
             const isPruna = scene.aiModel === 'replicate:prunaai/p-video';
+            const isKling = scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'auto';
 
             return (
               <div key={scene.id} className={cn(
@@ -946,7 +949,7 @@ export function StorytellingSetup({
                   </div>
                   <div className="flex items-center gap-3">
 
-                    {/* ✨ NEW: Duration Dropdown */}
+                    {/* Duration Dropdown */}
                     <select
                       value={scene.duration || "5"}
                       onChange={(e) => updateScene(scene.id, "duration", e.target.value)}
@@ -954,11 +957,23 @@ export function StorytellingSetup({
                     >
                       <option value="5" className="bg-[#191D23]">5 Secs</option>
                       <option value="10" className="bg-[#191D23]">10 Secs</option>
-                      {/* Only show 15s if the model supports it (like Kling or Auto) */}
-                      {(scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'auto' || scene.aiModel === 'replicate:openai/sora-2') && (
+                      {(isKling || scene.aiModel === 'replicate:openai/sora-2') && (
                         <option value="15" className="bg-[#191D23]">15 Secs</option>
                       )}
                     </select>
+
+                    {/* ✨ Pruna Draft Mode Toggle */}
+                    {isPruna && (
+                      <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#B3FF00]/30 rounded-xl hover:bg-[#B3FF00]/10 hover:border-[#B3FF00]/60 transition-all shadow-sm group/draft" title="4x Faster rendering for quick previews">
+                        <input
+                          type="checkbox"
+                          checked={scene.prunaDraft || false}
+                          onChange={(e) => updateScene(scene.id, "prunaDraft", e.target.checked)}
+                          className="rounded border-[#57707A]/50 bg-[#191D23] text-[#B3FF00] focus:ring-[#B3FF00] cursor-pointer"
+                        />
+                        <span className="text-[10px] font-bold text-[#B3FF00] uppercase tracking-widest transition-colors mt-0.5">Draft Mode</span>
+                      </label>
+                    )}
 
                     <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
                       <input
@@ -1068,7 +1083,7 @@ export function StorytellingSetup({
                   <div className="w-full lg:w-1/2 flex flex-col relative gap-4">
                     <div className="flex items-center justify-between shrink-0 mb-1">
                       <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider flex items-center gap-1.5">
-                        {scene.videoUrl ? <><Video className="h-4 w-4 text-[#B3FF00]" /> <span className="text-[#B3FF00]">Generated Video & Audio</span></> : <span className="text-[#DEDCDC]">Scene Director</span>}
+                        {scene.videoUrl ? <><Video className="h-4 w-4 text-[#B3FF00]" /> <span className="text-[#B3FF00]">Generated Video</span></> : <span className="text-[#DEDCDC]">Scene Director</span>}
                       </label>
                       {!scene.videoUrl && (
                         <button onClick={() => handleSuggestPrompt(scene.id, index)} disabled={suggestingPromptIndex === index} className="text-[#191D23] bg-[#C5BAC4] hover:bg-white px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold shadow-md shadow-[#C5BAC4]/10 border-none">
@@ -1107,16 +1122,6 @@ export function StorytellingSetup({
                             </div>
                           ) : (
                             <div className="flex flex-col flex-1 relative">
-                              {/* ✨ PRUNA AI DYNAMIC BANNER */}
-                              {isPruna && (
-                                <div className="bg-gradient-to-r from-[#B3FF00]/20 to-transparent border-b border-[#B3FF00]/30 p-3 flex items-start gap-2.5">
-                                  <Zap className="w-4 h-4 text-[#B3FF00] mt-0.5 shrink-0" />
-                                  <p className="text-[10px] text-[#DEDCDC] leading-relaxed font-medium">
-                                    <strong className="text-[#B3FF00]">Pruna AI Active:</strong> Supports Text-to-Video and advanced Lipsync. Write dialogue in quotes in your prompt to auto-sync the character's lips!
-                                  </p>
-                                </div>
-                              )}
-
                               <Textarea
                                 value={scene.prompt}
                                 onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}
@@ -1125,7 +1130,7 @@ export function StorytellingSetup({
                                   scene.mode === 'ugc'
                                     ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
                                     : isNativeAudio
-                                      ? "Describe your scene...\n\nExample: Slow panning shot of a neon city. A man turns and says \"This is incredible!\""
+                                      ? "Describe your scene...\n\nExample: Medium close-up of a neon city. A man turns and says \"This is incredible!\""
                                       : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
                                 }
                               />
@@ -1154,6 +1159,7 @@ export function StorytellingSetup({
                                 <option value=" Cinematic tracking shot, " className="bg-[#191D23]">Cinematic Tracking</option>
                                 <option value=" Slow drone flyover, " className="bg-[#191D23]">Drone Flyover</option>
                                 <option value=" Handheld shaky cam, " className="bg-[#191D23]">Handheld Shaky</option>
+                                <option value=" Medium close-up, " className="bg-[#191D23]">Medium Close-up (Lipsync)</option>
                                 <option value=" Extreme macro close-up, " className="bg-[#191D23]">Macro Close-up</option>
                                 <option value=" Smooth dolly-in, " className="bg-[#191D23]">Smooth Dolly-in</option>
                                 <option value=" Slow orbit around, " className="bg-[#191D23]">Slow Orbit</option>
@@ -1173,40 +1179,63 @@ export function StorytellingSetup({
                                 <option value=" [whoosh transition] " className="bg-[#191D23]">Whoosh Transition</option>
                               </select>
 
-                              {/* ⏱️ Timing / Multi-Shot Dropdown (Kling 3.0 Specific) */}
+                              {/* 🌌 Physics & Environment Dropdown */}
                               <select
                                 value=""
                                 onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
-                                className="text-[10px] font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#FFB300]/60 hover:bg-[#FFB300]/10 transition-colors appearance-none shadow-sm"
-                                title="Use for Kling 3.0 Multi-Shot sequences"
+                                className="text-[10px] font-bold text-[#00E5FF] bg-[#191D23] border border-[#00E5FF]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#00E5FF]/60 hover:bg-[#00E5FF]/10 transition-colors appearance-none shadow-sm"
                               >
-                                <option value="" disabled hidden>⏱️ Timing...</option>
-                                <option value=" At the 4th second, " className="bg-[#191D23]">At 4 Seconds</option>
-                                <option value=" At the 8th second, " className="bg-[#191D23]">At 8 Seconds</option>
-                                <option value=" \n\nShot 2: " className="bg-[#191D23]">Shot 2 (Cut)</option>
-                                <option value=" \n\nShot 3: " className="bg-[#191D23]">Shot 3 (Cut)</option>
+                                <option value="" disabled hidden>🌌 Physics...</option>
+                                <option value=" Zero-gravity environment, objects floating gracefully in mid-air. " className="bg-[#191D23]">Zero-Gravity (Antigravity)</option>
+                                <option value=" Extreme slow-motion, 120fps, cinematic time-dilation. " className="bg-[#191D23]">Epic Slow-Motion</option>
+                                <option value=" Hyper time-lapse, fast-moving clouds and shadows. " className="bg-[#191D23]">Hyper Time-Lapse</option>
+                                <option value=" Underwater physics, bubbles rising, distorted light rays. " className="bg-[#191D23]">Underwater Physics</option>
+                                <option value=" Reversed time, objects moving backwards perfectly. " className="bg-[#191D23]">Reversed Time</option>
                               </select>
 
-                              {/* 💬 Dialogue Button (Kling 3.0 Exact Format) */}
+                              {/* ⏱️ Timing / Multi-Shot Dropdown (Kling 3.0 Specific) */}
+                              {isKling && (
+                                <select
+                                  value=""
+                                  onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
+                                  className="text-[10px] font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#FFB300]/60 hover:bg-[#FFB300]/10 transition-colors appearance-none shadow-sm"
+                                  title="Use for Kling 3.0 Multi-Shot sequences"
+                                >
+                                  <option value="" disabled hidden>⏱️ Timing...</option>
+                                  <option value=" At the 4th second, " className="bg-[#191D23]">At 4 Seconds</option>
+                                  <option value=" At the 8th second, " className="bg-[#191D23]">At 8 Seconds</option>
+                                  <option value=" \n\nShot 2: " className="bg-[#191D23]">Shot 2 (Cut)</option>
+                                  <option value=" \n\nShot 3: " className="bg-[#191D23]">Shot 3 (Cut)</option>
+                                </select>
+                              )}
+
+                              {/* ✨ 💬 Dialogue Button (TTS ONLY) */}
                               <button
-                                onClick={() => updateScene(scene.id, "prompt", (scene.prompt || "") + '\nCharacter Name (confident, English): "Type exact dialogue here" ')}
-                                className="inline-flex items-center text-[10px] font-bold text-[#DEDCDC] bg-[#191D23] hover:bg-[#57707A]/30 border border-[#57707A]/50 hover:border-[#DEDCDC]/50 px-3 py-2 rounded-lg transition-all shadow-sm"
-                                title="Inserts Kling 3.0 Native Audio format"
+                                onClick={() => {
+                                  const dialogueFormat = isKling
+                                    ? '\nMedium close-up shot. Character Name (confident, English): "Type exact dialogue here" '
+                                    : ' Medium close-up shot. The character says "Type exact dialogue here" ';
+                                  updateScene(scene.id, "prompt", (scene.prompt || "") + dialogueFormat);
+                                }}
+                                className="inline-flex items-center text-[10px] font-bold px-3 py-2 rounded-lg transition-all shadow-sm text-[#DEDCDC] bg-[#191D23] hover:bg-[#57707A]/30 border border-[#57707A]/50 hover:border-[#DEDCDC]/50"
+                                title="Inserts model-specific TTS dialogue format"
                               >
-                                <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-[#57707A]" /> Dialogue
+                                <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-[#57707A]" /> TTS Dialogue
                               </button>
                             </div>
                           )}
 
-                          {/* DYNAMIC AUDIO UI - REMOVED */}
+                          {/* DYNAMIC AUDIO UI (Stripped down to just TTS explanation) */}
                           {(() => {
                             return (
                               <div className="flex flex-col flex-1 bg-[#191D23]">
                                 {isNativeAudio ? (
-                                  <div className="p-5 bg-[#2A2F38]/50 border-b border-[#57707A]/30 flex-1">
-                                    <div className="flex items-start gap-3 bg-[#191D23] text-[#989DAA] text-[10px] font-bold px-4 py-3.5 rounded-xl border border-[#57707A]/40 shadow-inner">
-                                      <Mic className="w-4 h-4 shrink-0 text-[#C5BAC4] mt-0.5" />
-                                      <span className="leading-relaxed">Native Audio Engine Selected: Type exact dialogue in quotes within your visual prompt above.</span>
+                                  <div className="p-4 border-b border-[#57707A]/30 flex-1">
+                                    <div className="flex items-start gap-3 bg-[#191D23] text-[#DEDCDC] text-[10px] font-bold px-4 py-3 rounded-xl border border-[#57707A]/40 shadow-inner">
+                                      <Zap className="w-4 h-4 shrink-0 text-[#B3FF00] mt-0.5" />
+                                      <span className="leading-relaxed text-[#989DAA]">
+                                        <strong className="text-[#B3FF00]">Native Text-To-Speech Active:</strong> Use the "TTS Dialogue" button above to inject spoken dialogue natively through the prompt. To lip-sync with an uploaded MP3, use the <strong>Upload</strong> tool on the dashboard.
+                                      </span>
                                     </div>
                                   </div>
                                 ) : (
