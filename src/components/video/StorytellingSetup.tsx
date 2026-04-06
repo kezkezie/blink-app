@@ -326,7 +326,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 // ✨ 2. THE MAIN STORYTELLING SETUP COMPONENT
 // ============================================================================
 
-// NOTE: Custom audio file properties removed. Kept TTS text prompt.
 type StoryboardScene = any & {
   videoUrl?: string | null;
   isGeneratingVideo?: boolean;
@@ -336,6 +335,10 @@ type StoryboardScene = any & {
   duration?: string;
   prunaDraft?: boolean;
   audioPrompt?: string;
+  seedanceImages?: (File | null)[];
+  seedancePreviews?: (string | null)[];
+  referenceVideoFile?: File | null;
+  referenceVideoPreview?: string | null;
 };
 
 export interface StorytellingSetupProps extends VideoSetupProps {
@@ -348,14 +351,6 @@ export interface StorytellingSetupProps extends VideoSetupProps {
   updateScene: (id: string, field: string, value: any) => void;
   removeScene: (id: string) => void;
 }
-
-const SCENE_MODES = [
-  { id: "showcase", label: "Cinematic Pan" },
-  { id: "logo_reveal", label: "3D Reveal" },
-  { id: "ugc", label: "UGC Influencer" },
-  { id: "clothing", label: "Clothing Try-On" },
-  { id: "keyframe", label: "Keyframe (Start/End)" },
-];
 
 const VISUAL_STYLES = [
   { id: "cinematic", label: "Cinematic Realism" },
@@ -381,7 +376,6 @@ export function StorytellingSetup({
   const { clientId } = useClient();
   const router = useRouter();
 
-  // ✨ STATE: Digital Casting Room
   const [actors, setActors] = useState<ActorProfile[]>([]);
   const [isCastingOpen, setIsCastingOpen] = useState(false);
   const [enableCharacterLock, setEnableCharacterLock] = useState(false);
@@ -400,13 +394,16 @@ export function StorytellingSetup({
       const defaultScenes = Array.from({ length: 4 }).map((_, i) => ({
         id: crypto.randomUUID(),
         scene_number: i + 1,
-        mode: "showcase",
         aiModel: "auto",
         useEndFrame: false,
         primaryFile: null,
         primaryPreview: null,
         secondaryFile: null,
         secondaryPreview: null,
+        seedanceImages: [null], // Start with 1 slot
+        seedancePreviews: [null],
+        referenceVideoFile: null,
+        referenceVideoPreview: null,
         prompt: "",
         videoUrl: null,
         isGeneratingVideo: false
@@ -423,11 +420,12 @@ export function StorytellingSetup({
     if (actors.length > 0) localStorage.setItem('blink_saved_actors', JSON.stringify(actors));
   }, [actors]);
 
-  const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary' } | null>(null);
-  const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary' } | null>(null);
+  // ✨ Added seedanceIndex to properly track exactly which slot is loading
+  const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number } | null>(null);
+  const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number } | null>(null);
   const [suggestingPromptIndex, setSuggestingPromptIndex] = useState<number | null>(null);
 
-  const [regenDialogState, setRegenDialogState] = useState<{ isOpen: boolean; sceneId: string | null; index: number | null; slotType: 'primary' | 'secondary'; promptText: string }>({
+  const [regenDialogState, setRegenDialogState] = useState<{ isOpen: boolean; sceneId: string | null; index: number | null; slotType: 'primary' | 'secondary'; promptText: string; seedanceIndex?: number }>({
     isOpen: false, sceneId: null, index: null, slotType: 'primary', promptText: ""
   });
 
@@ -453,8 +451,24 @@ export function StorytellingSetup({
     setBRollScenes(newScenes);
   };
 
-  const totalImageSlots = bRollScenes.reduce((count, scene) => count + 1 + (scene.useEndFrame ? 1 : 0), 0);
-  const filledImageSlots = bRollScenes.reduce((count, scene) => count + (scene.primaryPreview ? 1 : 0) + (scene.useEndFrame && scene.secondaryPreview ? 1 : 0), 0);
+  const ensureArray = (val: any) => Array.isArray(val) ? val : [val || null];
+
+  const totalImageSlots = bRollScenes.reduce((count, scene) => {
+    const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
+    if (isSeedance2) {
+      return count + ensureArray(scene.seedancePreviews || [null]).length;
+    }
+    return count + 1 + (scene.useEndFrame ? 1 : 0);
+  }, 0);
+
+  const filledImageSlots = bRollScenes.reduce((count, scene) => {
+    const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
+    if (isSeedance2) {
+      return count + ensureArray(scene.seedancePreviews || [null]).filter(p => p !== null).length;
+    }
+    return count + (scene.primaryPreview ? 1 : 0) + (scene.useEndFrame && scene.secondaryPreview ? 1 : 0);
+  }, 0);
+
   const hasAnyImages = filledImageSlots > 0;
   const allVideosGenerated = bRollScenes.length > 0 && bRollScenes.every(s => s.videoUrl);
 
@@ -506,7 +520,6 @@ export function StorytellingSetup({
       const totalDuration = bRollScenes.length * 8;
 
       const sceneConfigs = bRollScenes.map(scene => ({
-        mode: scene.mode,
         aiModel: scene.aiModel
       }));
 
@@ -551,14 +564,12 @@ export function StorytellingSetup({
 
     setSuggestingPromptIndex(index);
     try {
-      const sceneMode = SCENE_MODES.find(m => m.id === scene.mode)?.label || "Cinematic Pan";
-
       let aiInstruction = "";
 
       if (currentScenePrompt.trim()) {
-        aiInstruction = `Refine and enhance the following rough scene idea into a highly descriptive, professional cinematic visual prompt (maximum 500 characters). The camera movement is "${sceneMode}". \n\nRough idea to refine: "${currentScenePrompt.trim()}". \n\nCRITICAL: Write it in a highly descriptive narrative script format. Include setting, character actions, lighting, and exact spoken dialogue in quotes if applicable. IF dialogue or audio is present, explicitly state the camera is a MEDIUM CLOSE-UP or CLOSE-UP to capture the face clearly. Output ONLY the prompt.`;
+        aiInstruction = `Refine and enhance the following rough scene idea into a highly descriptive, professional cinematic visual prompt (maximum 500 characters). \n\nRough idea to refine: "${currentScenePrompt.trim()}". \n\nCRITICAL: Write it in a highly descriptive narrative script format. Include setting, character actions, lighting, and exact spoken dialogue in quotes if applicable. Output ONLY the prompt.`;
       } else {
-        aiInstruction = `Write a visual image prompt for Scene ${index + 1} based on this master concept: "${fallbackConcept}". The camera movement is "${sceneMode}". CRITICAL: Write it in a highly descriptive narrative script format (maximum 500 characters). Include setting, character actions, camera movements, and exact spoken dialogue in quotes. IF dialogue or audio is present, explicitly state the camera is a MEDIUM CLOSE-UP or CLOSE-UP to capture the face clearly. Output ONLY the prompt.`;
+        aiInstruction = `Write a visual image prompt for Scene ${index + 1} based on this master concept: "${fallbackConcept}". CRITICAL: Write it in a highly descriptive narrative script format (maximum 500 characters). Include setting, character actions, camera movements, and exact spoken dialogue in quotes. Output ONLY the prompt.`;
       }
 
       const directorData = await callN8n('director', {
@@ -581,8 +592,9 @@ export function StorytellingSetup({
 
 
   // ✨ IMAGE GENERATION: Strict Character Lock injection
-  const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string) => {
+  const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string, seedanceIndex: number = 0) => {
     const scene = bRollScenes[slotIndex];
+    const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
     const promptToUse = overridePrompt || scene.prompt || bRollConcept;
 
     if (!promptToUse.trim()) return alert("Please write a visual prompt for this scene first.");
@@ -590,7 +602,7 @@ export function StorytellingSetup({
     const NO_TEXT_CONSTRAINT = " CRITICAL: Do NOT output a character reference sheet, split screen, or multiple angles. Output a SINGLE, unified, cinematic scene featuring this exact character integrated naturally into the described environment.";
     const safePrompt = promptToUse + NO_TEXT_CONSTRAINT;
 
-    setGeneratingSlot({ index: slotIndex, type });
+    setGeneratingSlot({ index: slotIndex, type, seedanceIndex });
     try {
       const styleRefUrl = await uploadRefImage();
       let previousUrl = null;
@@ -613,9 +625,38 @@ export function StorytellingSetup({
       });
 
       if (genData.url) {
-        updateScene(scene.id, type === 'primary' ? "primaryPreview" : "secondaryPreview", genData.url);
-        updateScene(scene.id, type === 'primary' ? "primaryFile" : "secondaryFile", null);
-        updateScene(scene.id, "videoUrl", null);
+        if (isSeedance2) {
+          // ✨ THE FIX: Safely and immutably update the array
+          setBRollScenes(currentScenes => {
+            const newScenes = [...currentScenes];
+            const oldScene = newScenes[slotIndex];
+
+            const currentPreviews = ensureArray(oldScene.seedancePreviews || [null]);
+            const currentFiles = ensureArray(oldScene.seedanceImages || [null]);
+
+            const newPreviews = [...currentPreviews];
+            const newFiles = [...currentFiles];
+
+            newPreviews[seedanceIndex] = genData.url;
+            newFiles[seedanceIndex] = null;
+
+            newScenes[slotIndex] = {
+              ...oldScene,
+              seedancePreviews: newPreviews,
+              seedanceImages: newFiles,
+              primaryPreview: seedanceIndex === 0 ? genData.url : oldScene.primaryPreview,
+              primaryFile: seedanceIndex === 0 ? null : oldScene.primaryFile,
+              videoUrl: null
+            };
+
+            return newScenes;
+          });
+
+        } else {
+          updateScene(scene.id, type === 'primary' ? "primaryPreview" : "secondaryPreview", genData.url);
+          updateScene(scene.id, type === 'primary' ? "primaryFile" : "secondaryFile", null);
+          updateScene(scene.id, "videoUrl", null);
+        }
 
         try {
           await supabase.from("content").insert({
@@ -646,52 +687,66 @@ export function StorytellingSetup({
     }
 
     for (let i = 0; i < bRollScenes.length; i++) {
-      if (!bRollScenes[i].primaryPreview && currentPrompts[i]) {
-        await handleGenerateSlot(i, 'primary', currentPrompts[i]);
-      }
-      if (bRollScenes[i].useEndFrame && !bRollScenes[i].secondaryPreview && currentPrompts[i]) {
-        await handleGenerateSlot(i, 'secondary', currentPrompts[i]);
+      const isSeedance2 = bRollScenes[i].aiModel === 'bytedance/seedance-2' || bRollScenes[i].aiModel === 'bytedance/seedance-2-fast';
+
+      if (isSeedance2) {
+        const previews = ensureArray(bRollScenes[i].seedancePreviews || [null]);
+        // ✨ THE FIX: Loop through ALL slots in the tray to generate them if empty
+        for (let sIdx = 0; sIdx < previews.length; sIdx++) {
+          if (!previews[sIdx] && currentPrompts[i]) {
+            await handleGenerateSlot(i, 'primary', currentPrompts[i], sIdx);
+          }
+        }
+      } else {
+        if (!bRollScenes[i].primaryPreview && currentPrompts[i]) {
+          await handleGenerateSlot(i, 'primary', currentPrompts[i]);
+        }
+        if (bRollScenes[i].useEndFrame && !bRollScenes[i].secondaryPreview && currentPrompts[i]) {
+          await handleGenerateSlot(i, 'secondary', currentPrompts[i]);
+        }
       }
     }
     setIsGeneratingAllImages(false);
   };
 
-  // ✨ VIDEO GENERATION
   const handleGenerateSingleVideo = async (slotIndex: number) => {
     const scene = bRollScenes[slotIndex];
     if (!clientId) return;
 
-    if (scene.useEndFrame && !scene.secondaryPreview) return alert("You enabled the End Frame toggle. Please generate or upload an End Frame before animating.");
+    const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
+
+    if (scene.useEndFrame && !scene.secondaryPreview && !isSeedance2) {
+      return alert("You enabled the End Frame toggle. Please generate or upload an End Frame before animating.");
+    }
 
     updateScene(scene.id, "isGeneratingVideo", true);
 
     try {
-      let finalPrimaryUrl = scene.primaryPreview || null;
-      let finalSecondaryUrl = scene.useEndFrame ? scene.secondaryPreview : null;
+      let finalPrimaryUrl = null;
+      if (isSeedance2 && scene.seedancePreviews && scene.seedancePreviews[0]) {
+        finalPrimaryUrl = scene.seedancePreviews[0];
+      } else {
+        finalPrimaryUrl = scene.primaryPreview || null;
+      }
+
+      let finalSecondaryUrl = null;
+      if (isSeedance2 && scene.seedancePreviews && scene.seedancePreviews[1]) {
+        finalSecondaryUrl = scene.seedancePreviews[1];
+      } else if (scene.useEndFrame) {
+        finalSecondaryUrl = scene.secondaryPreview || null;
+      }
+
+      let finalReferenceVideoUrl = null;
+      if (scene.referenceVideoFile) {
+        const mimeExt = scene.referenceVideoFile.name.split('.').pop() || 'mp4';
+        const vidPath = `videos/${clientId}/scene_ref_video_${Date.now()}.${mimeExt}`;
+        await supabase.storage.from("assets").upload(vidPath, scene.referenceVideoFile);
+        finalReferenceVideoUrl = supabase.storage.from("assets").getPublicUrl(vidPath).data.publicUrl;
+      }
 
       let characterSheetA = null;
       if (enableCharacterLock) {
         characterSheetA = actors.find(a => a.id === selectedActorA)?.stitchedSheetUrl || null;
-      }
-
-      if ((scene.mode === 'ugc' || scene.mode === 'clothing') && finalSecondaryUrl && !characterSheetA && scene.primaryPreview) {
-        const mergePrompt = scene.mode === 'ugc'
-          ? `A highly realistic, viral TikTok style smartphone photo of an influencer interacting with the product. ${scene.prompt || bRollConcept}`
-          : `A highly realistic fashion editorial photo of a model wearing the clothing. ${scene.prompt || bRollConcept}`;
-
-        const mergedImageData = await callN8n('generator', {
-          prompt: mergePrompt,
-          refImage: scene.primaryPreview,
-          styleRefImage: scene.secondaryPreview,
-        });
-
-        if (mergedImageData.url) {
-          finalPrimaryUrl = mergedImageData.url;
-          finalSecondaryUrl = null;
-          updateScene(scene.id, "primaryPreview", finalPrimaryUrl);
-          updateScene(scene.id, "secondaryPreview", null);
-          updateScene(scene.id, "useEndFrame", false);
-        }
       }
 
       if (finalPrimaryUrl && finalPrimaryUrl.startsWith('data:')) {
@@ -731,18 +786,20 @@ export function StorytellingSetup({
         post_id: postId,
         client_id: clientId,
         ai_model_override: scene.aiModel || "auto",
+        referenceVideoUrl: finalReferenceVideoUrl,
         scene_data: {
           visual_prompt: scene.prompt?.trim() || bRollConcept,
-          video_mode: scene.mode,
+          video_mode: scene.mode, // Passed just in case legacy models need it, but mostly ignored by Seedance
           duration: scene.duration || "5",
           prunaDraft: scene.prunaDraft || false,
+          referenceVideoUrl: finalReferenceVideoUrl,
           frames: {
             start_frame: finalPrimaryUrl,
             end_frame: finalSecondaryUrl
           },
           audio: {
-            script: scene.audioPrompt || null, // Keeping TTS prompt capability
-            audio_url: null // Removed custom audio file feature here
+            script: scene.audioPrompt || null,
+            audio_url: null
           },
           casting: enableCharacterLock ? {
             actor_1_sheet: characterSheetA
@@ -800,14 +857,15 @@ export function StorytellingSetup({
     }
   };
 
-  const openRegenModal = (scene: any, index: number, slotType: 'primary' | 'secondary') => {
-    setRegenDialogState({ isOpen: true, sceneId: scene.id, index: index, slotType: slotType, promptText: scene.prompt || bRollConcept || "" });
+  const openRegenModal = (scene: any, index: number, slotType: 'primary' | 'secondary', seedanceIndex?: number) => {
+    setRegenDialogState({ isOpen: true, sceneId: scene.id, index: index, slotType: slotType, promptText: scene.prompt || bRollConcept || "", seedanceIndex });
   };
+
   const handleConfirmRegen = () => {
-    const { sceneId, index, slotType, promptText } = regenDialogState;
+    const { sceneId, index, slotType, promptText, seedanceIndex } = regenDialogState;
     if (sceneId && index !== null) {
       updateScene(sceneId, "prompt", promptText);
-      handleGenerateSlot(index, slotType, promptText);
+      handleGenerateSlot(index, slotType, promptText, seedanceIndex || 0);
     }
     setRegenDialogState(prev => ({ ...prev, isOpen: false }));
   };
@@ -815,44 +873,162 @@ export function StorytellingSetup({
   const handleLibrarySelect = (url: string) => {
     if (!libraryTarget) return;
     const scene = bRollScenes[libraryTarget.index];
-    const targetField = libraryTarget.type === "primary" ? "primaryPreview" : "secondaryPreview";
-    updateScene(scene.id, targetField, url);
-    updateScene(scene.id, libraryTarget.type === "primary" ? "primaryFile" : "secondaryFile", null);
+
+    if (libraryTarget.seedanceIndex !== undefined) {
+      const currentPreviews = ensureArray(scene.seedancePreviews || [null]);
+      const currentFiles = ensureArray(scene.seedanceImages || [null]);
+      const newPreviews = [...currentPreviews];
+      const newFiles = [...currentFiles];
+      newPreviews[libraryTarget.seedanceIndex] = url;
+      newFiles[libraryTarget.seedanceIndex] = null;
+      updateScene(scene.id, "seedancePreviews", newPreviews);
+      updateScene(scene.id, "seedanceImages", newFiles);
+      if (libraryTarget.seedanceIndex === 0) updateScene(scene.id, "primaryPreview", url);
+    } else {
+      const targetField = libraryTarget.type === "primary" ? "primaryPreview" : "secondaryPreview";
+      updateScene(scene.id, targetField, url);
+      updateScene(scene.id, libraryTarget.type === "primary" ? "primaryFile" : "secondaryFile", null);
+    }
     updateScene(scene.id, "videoUrl", null);
     setLibraryTarget(null);
   };
-  const clearSlot = (sceneId: string, type: 'primary' | 'secondary') => {
-    updateScene(sceneId, type === "primary" ? "primaryPreview" : "secondaryPreview", null);
-    updateScene(sceneId, type === "primary" ? "primaryFile" : "secondaryFile", null);
+
+  const removeSeedanceSlot = (sceneId: string, seedanceIndex: number) => {
+    const scene = bRollScenes.find(s => s.id === sceneId);
+    if (scene) {
+      const currentPreviews = ensureArray(scene.seedancePreviews || [null]);
+      const currentFiles = ensureArray(scene.seedanceImages || [null]);
+
+      const newPreviews = currentPreviews.filter((_, idx) => idx !== seedanceIndex);
+      const newFiles = currentFiles.filter((_, idx) => idx !== seedanceIndex);
+
+      if (newPreviews.length === 0) {
+        updateScene(sceneId, "seedancePreviews", [null]);
+        updateScene(sceneId, "seedanceImages", [null]);
+        updateScene(sceneId, "primaryPreview", null);
+      } else {
+        updateScene(sceneId, "seedancePreviews", newPreviews);
+        updateScene(sceneId, "seedanceImages", newFiles);
+        updateScene(sceneId, "primaryPreview", newPreviews[0] || null);
+      }
+    }
     updateScene(sceneId, "videoUrl", null);
   };
-  const handleSceneFile = (e: React.ChangeEvent<HTMLInputElement>, sceneId: string, type: "primary" | "secondary") => {
+
+  const clearSlot = (sceneId: string, type: 'primary' | 'secondary', seedanceIndex?: number) => {
+    if (seedanceIndex !== undefined) {
+      const scene = bRollScenes.find(s => s.id === sceneId);
+      if (scene) {
+        const currentPreviews = ensureArray(scene.seedancePreviews || [null]);
+        const currentFiles = ensureArray(scene.seedanceImages || [null]);
+        const newPreviews = [...currentPreviews];
+        const newFiles = [...currentFiles];
+        newPreviews[seedanceIndex] = null;
+        newFiles[seedanceIndex] = null;
+
+        updateScene(sceneId, "seedancePreviews", newPreviews);
+        updateScene(sceneId, "seedanceImages", newFiles);
+
+        if (seedanceIndex === 0) updateScene(sceneId, "primaryPreview", null);
+      }
+    } else {
+      updateScene(sceneId, type === "primary" ? "primaryPreview" : "secondaryPreview", null);
+      updateScene(sceneId, type === "primary" ? "primaryFile" : "secondaryFile", null);
+    }
+    updateScene(sceneId, "videoUrl", null);
+  };
+
+  const handleSceneFile = (e: React.ChangeEvent<HTMLInputElement>, sceneId: string, type: "primary" | "secondary", seedanceIndex?: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
-      updateScene(sceneId, type === "primary" ? "primaryFile" : "secondaryFile", file);
-      updateScene(sceneId, type === "primary" ? "primaryPreview" : "secondaryPreview", event.target?.result as string);
+      if (seedanceIndex !== undefined) {
+        const scene = bRollScenes.find(s => s.id === sceneId);
+        if (scene) {
+          const currentPreviews = ensureArray(scene.seedancePreviews || [null]);
+          const currentFiles = ensureArray(scene.seedanceImages || [null]);
+          const newPreviews = [...currentPreviews];
+          const newFiles = [...currentFiles];
+          newPreviews[seedanceIndex] = event.target?.result as string;
+          newFiles[seedanceIndex] = file;
+          updateScene(sceneId, "seedancePreviews", newPreviews);
+          updateScene(sceneId, "seedanceImages", newFiles);
+          if (seedanceIndex === 0) updateScene(sceneId, "primaryPreview", event.target?.result as string);
+        }
+      } else {
+        updateScene(sceneId, type === "primary" ? "primaryFile" : "secondaryFile", file);
+        updateScene(sceneId, type === "primary" ? "primaryPreview" : "secondaryPreview", event.target?.result as string);
+      }
       updateScene(sceneId, "videoUrl", null);
     };
     reader.readAsDataURL(file);
   };
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, sceneId: string, type: "primary" | "secondary") => {
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, sceneId: string, type: "primary" | "secondary", seedanceIndex?: number) => {
     e.preventDefault(); e.stopPropagation();
     updateScene(sceneId, "videoUrl", null);
+
     if (e.dataTransfer.files?.length > 0) {
       const file = e.dataTransfer.files[0];
       const reader = new FileReader();
-      reader.onload = (event) => updateScene(sceneId, type === "primary" ? "primaryPreview" : "secondaryPreview", event.target?.result as string);
+      reader.onload = (event) => {
+        if (seedanceIndex !== undefined) {
+          const scene = bRollScenes.find(s => s.id === sceneId);
+          if (scene) {
+            const currentPreviews = ensureArray(scene.seedancePreviews || [null]);
+            const currentFiles = ensureArray(scene.seedanceImages || [null]);
+            const newPreviews = [...currentPreviews];
+            const newFiles = [...currentFiles];
+            newPreviews[seedanceIndex] = event.target?.result as string;
+            newFiles[seedanceIndex] = file;
+            updateScene(sceneId, "seedancePreviews", newPreviews);
+            updateScene(sceneId, "seedanceImages", newFiles);
+            if (seedanceIndex === 0) updateScene(sceneId, "primaryPreview", event.target?.result as string);
+          }
+        } else {
+          updateScene(sceneId, type === "primary" ? "primaryPreview" : "secondaryPreview", event.target?.result as string);
+          updateScene(sceneId, type === "primary" ? "primaryFile" : "secondaryFile", file);
+        }
+      };
       reader.readAsDataURL(file);
-      updateScene(sceneId, type === "primary" ? "primaryFile" : "secondaryFile", file);
       return;
     }
     const url = e.dataTransfer.getData("text/plain") || e.dataTransfer.getData("URL");
     if (url) {
-      updateScene(sceneId, type === "primary" ? "primaryPreview" : "secondaryPreview", url);
-      updateScene(sceneId, type === "primary" ? "primaryFile" : "secondaryFile", null);
+      if (seedanceIndex !== undefined) {
+        const scene = bRollScenes.find(s => s.id === sceneId);
+        if (scene) {
+          const currentPreviews = ensureArray(scene.seedancePreviews || [null]);
+          const currentFiles = ensureArray(scene.seedanceImages || [null]);
+          const newPreviews = [...currentPreviews];
+          const newFiles = [...currentFiles];
+          newPreviews[seedanceIndex] = url;
+          newFiles[seedanceIndex] = null;
+          updateScene(sceneId, "seedancePreviews", newPreviews);
+          updateScene(sceneId, "seedanceImages", newFiles);
+          if (seedanceIndex === 0) updateScene(sceneId, "primaryPreview", url);
+        }
+      } else {
+        updateScene(sceneId, type === "primary" ? "primaryPreview" : "secondaryPreview", url);
+        updateScene(sceneId, type === "primary" ? "primaryFile" : "secondaryFile", null);
+      }
     }
+  };
+
+  const handleRefVideoDrop = async (e: React.DragEvent<HTMLDivElement>, sceneId: string) => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.dataTransfer.files?.length > 0 && e.dataTransfer.files[0].type.startsWith("video")) {
+      const file = e.dataTransfer.files[0];
+      updateScene(sceneId, "referenceVideoFile", file);
+      updateScene(sceneId, "referenceVideoPreview", URL.createObjectURL(file));
+    }
+  };
+  const handleRefVideoSelect = (e: React.ChangeEvent<HTMLInputElement>, sceneId: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    updateScene(sceneId, "referenceVideoFile", file);
+    updateScene(sceneId, "referenceVideoPreview", URL.createObjectURL(file));
   };
 
   const handleFrameReferenceSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -876,6 +1052,20 @@ export function StorytellingSetup({
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "copy";
+  };
+
+  const addSeedanceSlot = (sceneId: string) => {
+    const scene = bRollScenes.find(s => s.id === sceneId);
+    if (scene) {
+      const currentPreviews = ensureArray(scene.seedancePreviews || [null]);
+      const currentFiles = ensureArray(scene.seedanceImages || [null]);
+      if (currentPreviews.length < 5) {
+        updateScene(sceneId, "seedancePreviews", [...currentPreviews, null]);
+        updateScene(sceneId, "seedanceImages", [...currentFiles, null]);
+      } else {
+        alert("Seedance 2 supports a maximum of 5 reference images.");
+      }
+    }
   };
 
   return (
@@ -919,15 +1109,18 @@ export function StorytellingSetup({
         {/* Scenes List */}
         <div className="flex flex-col space-y-8">
           {bRollScenes.map((scene, index) => {
-            const labels = getLabels(scene.mode);
-            const isNativeAudio = scene.aiModel === 'bytedance/seedance-1.5-pro' || scene.aiModel === 'replicate:openai/sora-2' || scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'replicate:prunaai/p-video' || scene.aiModel === 'auto';
+            const labels = getLabels(scene.mode || "showcase");
+            const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
+            const isNativeAudio = isSeedance2 || scene.aiModel === 'replicate:openai/sora-2' || scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'replicate:prunaai/p-video' || scene.aiModel === 'auto';
             const isPruna = scene.aiModel === 'replicate:prunaai/p-video';
             const isKling = scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'auto';
+
+            const seedancePreviews = ensureArray(scene.seedancePreviews || [scene.primaryPreview || null]);
 
             return (
               <div key={scene.id} className={cn(
                 "relative rounded-[2rem] border overflow-hidden flex flex-col transition-all duration-300 group bg-[#2A2F38] shadow-lg",
-                scene.videoUrl ? "border-[#B3FF00]/40 shadow-[0_0_30px_rgba(179,255,0,0.1)]" : (scene.primaryPreview ? "border-[#C5BAC4]/30 hover:border-[#C5BAC4]/50" : "border-dashed border-[#57707A]/40 hover:border-[#57707A]/60")
+                scene.videoUrl ? "border-[#B3FF00]/40 shadow-[0_0_30px_rgba(179,255,0,0.1)]" : (scene.primaryPreview || seedancePreviews[0] ? "border-[#C5BAC4]/30 hover:border-[#C5BAC4]/50" : "border-dashed border-[#57707A]/40 hover:border-[#57707A]/60")
               )}>
                 {/* ── Scene Header ── */}
                 <div className="bg-[#191D23]/80 border-b border-[#57707A]/30 px-6 py-4 flex flex-wrap gap-4 items-center justify-between shrink-0">
@@ -935,21 +1128,18 @@ export function StorytellingSetup({
                     <span className="text-xs font-black text-[#C5BAC4] tracking-widest uppercase bg-[#191D23] border border-[#C5BAC4]/30 px-3 py-1.5 rounded-lg shadow-inner">
                       SCENE {index + 1}
                     </span>
-                    <select value={scene.mode} onChange={(e) => updateScene(scene.id, "mode", e.target.value)} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
-                      {SCENE_MODES.map((m) => <option key={m.id} value={m.id} className="bg-[#191D23]">{m.label}</option>)}
-                    </select>
 
                     <select value={scene.aiModel || "auto"} onChange={(e) => updateScene(scene.id, "aiModel", e.target.value)} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#B3FF00] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#B3FF00]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
                       <option value="auto" className="bg-[#191D23]">✨ Auto Engine</option>
                       <option value="replicate:openai/sora-2" className="bg-[#191D23]">Sora 2</option>
-                      <option value="bytedance/seedance-1.5-pro" className="bg-[#191D23]">Seedance Pro</option>
-                      <option value="replicate:prunaai/p-video" className="bg-[#191D23]">Pruna (Fast)</option>
                       <option value="kling-3.0/video" className="bg-[#191D23]">Kling 3.0</option>
+                      <option value="bytedance/seedance-2" className="bg-[#191D23]">Seedance 2 (Cinematic)</option>
+                      <option value="bytedance/seedance-2-fast" className="bg-[#191D23]">Seedance 2 (Fast)</option>
+                      <option value="replicate:prunaai/p-video" className="bg-[#191D23]">Pruna (Fast)</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-3">
 
-                    {/* Duration Dropdown */}
                     <select
                       value={scene.duration || "5"}
                       onChange={(e) => updateScene(scene.id, "duration", e.target.value)}
@@ -957,12 +1147,11 @@ export function StorytellingSetup({
                     >
                       <option value="5" className="bg-[#191D23]">5 Secs</option>
                       <option value="10" className="bg-[#191D23]">10 Secs</option>
-                      {(isKling || scene.aiModel === 'replicate:openai/sora-2') && (
+                      {(isKling || isSeedance2 || scene.aiModel === 'replicate:openai/sora-2') && (
                         <option value="15" className="bg-[#191D23]">15 Secs</option>
                       )}
                     </select>
 
-                    {/* ✨ Pruna Draft Mode Toggle */}
                     {isPruna && (
                       <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#B3FF00]/30 rounded-xl hover:bg-[#B3FF00]/10 hover:border-[#B3FF00]/60 transition-all shadow-sm group/draft" title="4x Faster rendering for quick previews">
                         <input
@@ -975,15 +1164,17 @@ export function StorytellingSetup({
                       </label>
                     )}
 
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
-                      <input
-                        type="checkbox"
-                        checked={scene.useEndFrame || false}
-                        onChange={(e) => updateScene(scene.id, "useEndFrame", e.target.checked)}
-                        className="rounded border-[#57707A]/50 bg-[#191D23] text-[#C5BAC4] focus:ring-[#C5BAC4] cursor-pointer"
-                      />
-                      <span className="text-[10px] font-bold text-[#989DAA] group-hover/check:text-[#DEDCDC] uppercase tracking-widest transition-colors mt-0.5">End Frame</span>
-                    </label>
+                    {!isSeedance2 && (
+                      <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
+                        <input
+                          type="checkbox"
+                          checked={scene.useEndFrame || false}
+                          onChange={(e) => updateScene(scene.id, "useEndFrame", e.target.checked)}
+                          className="rounded border-[#57707A]/50 bg-[#191D23] text-[#C5BAC4] focus:ring-[#C5BAC4] cursor-pointer"
+                        />
+                        <span className="text-[10px] font-bold text-[#989DAA] group-hover/check:text-[#DEDCDC] uppercase tracking-widest transition-colors mt-0.5">End Frame</span>
+                      </label>
+                    )}
 
                     <div className="flex gap-1.5 bg-[#191D23] rounded-xl p-1 border border-[#57707A]/30 shadow-inner">
                       <button
@@ -1012,74 +1203,168 @@ export function StorytellingSetup({
                   </div>
                 </div>
 
-                {/* ── Scene Content (Row Layout) ── */}
                 <div className="flex flex-col lg:flex-row p-6 gap-8">
 
-                  {/* Image Area (Left) */}
-                  <div className="w-full lg:w-1/2 flex flex-col sm:flex-row gap-5 lg:border-r border-[#57707A]/20 lg:pr-8 relative">
+                  <div className="w-full lg:w-1/2 flex flex-col gap-6 lg:border-r border-[#57707A]/20 lg:pr-8 relative">
                     {scene.videoUrl && <div className="absolute inset-0 bg-[#191D23]/80 backdrop-blur-md z-30 cursor-not-allowed rounded-xl border border-[#57707A]/30 flex flex-col items-center justify-center" title="Delete video to edit images">
                       <Lock className="w-8 h-8 text-[#57707A] mb-2" />
                       <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Images Locked</span>
                     </div>}
 
-                    {/* PRIMARY SLOT */}
-                    <div className="flex-1 flex flex-col gap-3">
-                      <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block truncate">{labels.primary}</label>
-                      <div onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, scene.id, "primary")} className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex items-center justify-center transition-all group/upload shadow-inner">
-                        {generatingSlot?.index === index && generatingSlot.type === 'primary' ? (
-                          <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
-                        ) : scene.primaryPreview ? (
-                          <><img src={scene.primaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
-                            <div className="absolute top-2 right-2 flex gap-2 z-20">
-                              <button type="button" onClick={() => setPreviewModalImg(scene.primaryPreview)} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#989DAA] hover:text-[#DEDCDC] rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-4 w-4" /></button>
-                              <button type="button" onClick={() => clearSlot(scene.id, "primary")} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:bg-red-500/90 hover:border-red-400 text-[#989DAA] hover:text-white rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><X className="h-4 w-4" /></button>
-                            </div></>
-                        ) : (
-                          <label htmlFor={`primary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors"><ImageIcon className="h-8 w-8 mb-2" /><p className="text-[10px] font-bold uppercase tracking-wider">Drop Start Frame</p><p className="text-[8px] font-medium mt-1 text-[#57707A]/70">OR leave blank for Text-to-Video</p></label>
-                        )}
-                        <input id={`primary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "primary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
-                      </div>
-                      <div className="flex gap-2 shrink-0 mt-1">
-                        {scene.primaryPreview ? (
-                          <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
-                        )}
-                        <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
-                      </div>
-                    </div>
+                    {isSeedance2 ? (
+                      <div className="flex-1 flex flex-col gap-5">
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block">
+                              Visual Reference Tray <span className="text-[#57707A]/60 normal-case ml-1">(Optional)</span>
+                            </label>
+                            {seedancePreviews.length < 5 && (
+                              <button
+                                onClick={() => addSeedanceSlot(scene.id)}
+                                className="text-[9px] font-bold text-[#C5BAC4] hover:text-white flex items-center gap-1 bg-[#191D23] border border-[#57707A]/40 hover:border-[#C5BAC4]/50 px-2 py-1 rounded shadow-sm transition-all"
+                              >
+                                <Plus className="w-3 h-3" /> Add Image
+                              </button>
+                            )}
+                          </div>
 
-                    {/* SECONDARY SLOT */}
-                    <div className={cn("flex-1 flex flex-col gap-3 transition-all duration-300", !scene.useEndFrame && "opacity-40 grayscale pointer-events-none")}>
-                      <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block truncate">{labels.secondary}</label>
-                      <div onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, scene.id, "secondary")} className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex items-center justify-center transition-all group/upload shadow-inner">
-                        {!scene.useEndFrame ? (
-                          <div className="text-center p-3"><p className="text-[10px] font-bold text-[#57707A]/50 uppercase tracking-widest">Disabled</p><p className="text-[8px] text-[#57707A]/40 mt-1.5 font-medium">Toggle "Use End Frame" to activate</p></div>
-                        ) : generatingSlot?.index === index && generatingSlot.type === 'secondary' ? (
-                          <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
-                        ) : scene.secondaryPreview ? (
-                          <><img src={scene.secondaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
-                            <div className="absolute top-2 right-2 flex gap-2 z-20">
-                              <button type="button" onClick={() => setPreviewModalImg(scene.secondaryPreview)} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#989DAA] hover:text-[#DEDCDC] rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-4 w-4" /></button>
-                              <button type="button" onClick={() => clearSlot(scene.id, "secondary")} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:bg-red-500/90 hover:border-red-400 text-[#989DAA] hover:text-white rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><X className="h-4 w-4" /></button>
-                            </div></>
-                        ) : (
-                          <label htmlFor={`secondary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors"><ImageIcon className="h-8 w-8 mb-2" /><p className="text-[10px] font-bold uppercase tracking-wider">Drop File</p></label>
-                        )}
-                        <input id={`secondary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "secondary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                          <div className={cn("grid gap-4", seedancePreviews.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
+                            {seedancePreviews.map((preview: string | null, sIdx: number) => (
+                              // ✨ ADDED: A flex-col wrapper so the toolbar sits underneath each slot perfectly
+                              <div key={sIdx} className="flex flex-col gap-1">
+                                <div className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex flex-col items-center justify-center transition-all group/upload shadow-inner">
+                                  <div className="absolute top-2 left-2 z-20 bg-[#C5BAC4] text-[#191D23] px-2 py-1 text-[10px] font-black rounded uppercase shadow-lg border border-[#191D23]/20">@Image{sIdx + 1}</div>
+
+                                  {seedancePreviews.length > 1 && (
+                                    <button
+                                      onClick={() => removeSeedanceSlot(scene.id, sIdx)}
+                                      className="absolute -top-2 -right-2 z-30 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover/upload:opacity-100 transition-opacity hover:scale-110 shadow-xl border-2 border-[#191D23]"
+                                      title="Remove this slot entirely"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+
+                                  {generatingSlot?.index === index && generatingSlot.type === 'primary' && generatingSlot.seedanceIndex === sIdx ? (
+                                    <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
+                                  ) : preview ? (
+                                    <><img src={preview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
+                                      <div className="absolute bottom-2 right-2 flex gap-2 z-20">
+                                        <button type="button" onClick={() => setPreviewModalImg(preview)} className="p-2 bg-[#191D23] border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#DEDCDC] rounded-lg shadow-lg opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-4 w-4" /></button>
+                                        <button type="button" onClick={() => clearSlot(scene.id, 'primary', sIdx)} className="p-2 bg-[#191D23] border border-[#57707A]/50 hover:bg-red-500 hover:border-red-400 text-white rounded-lg shadow-lg opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Trash2 className="h-4 w-4" /></button>
+                                      </div></>
+                                  ) : (
+                                    <label htmlFor={`seedance-${scene.id}-${sIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors">
+                                      <ImageIcon className="h-6 w-6 mb-1.5" />
+                                      <p className="text-[9px] font-bold uppercase tracking-wider">Drop Image</p>
+                                    </label>
+                                  )}
+                                  <input id={`seedance-${scene.id}-${sIdx}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "primary", sIdx)} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                                  <div
+                                    className="absolute inset-0 z-10 w-full h-full opacity-0"
+                                    onDragOver={handleDragOver}
+                                    onDrop={(e) => handleDrop(e, scene.id, "primary", sIdx)}
+                                  />
+                                </div>
+
+                                {/* ✨ ADDED: Toolbar for every Seedance slot */}
+                                <div className="flex gap-2 shrink-0 mt-1">
+                                  {preview ? (
+                                    <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary', sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
+                                  ) : (
+                                    <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary', scene.prompt, sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
+                                  )}
+                                  <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary', seedanceIndex: sIdx })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[9px] text-[#57707A] mt-2 font-medium">Add up to 5 images and tag them using <strong className="text-[#C5BAC4]">@Image1</strong>, <strong className="text-[#C5BAC4]">@Image2</strong>, etc. in your prompt.</p>
+                        </div>
+
+                        <div className="mt-2">
+                          <label className="text-[10px] font-bold text-[#b488d4] uppercase tracking-wider block mb-3">
+                            Motion Reference Video <span className="text-[#57707A]/60 normal-case ml-1">(Optional)</span>
+                          </label>
+                          <div onDragOver={handleDragOver} onDrop={(e) => handleRefVideoDrop(e, scene.id)} className="relative h-28 rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#b488d4]/40 hover:border-[#b488d4]/80 hover:bg-[#b488d4]/5 flex flex-col items-center justify-center transition-all group/upload shadow-inner">
+                            <div className="absolute top-1.5 left-1.5 z-20 bg-[#b488d4] text-[#191D23] px-1.5 py-0.5 text-[9px] font-black rounded uppercase shadow-md">@Video1</div>
+
+                            {scene.referenceVideoPreview ? (
+                              <>
+                                <video src={scene.referenceVideoPreview} className="w-full h-full object-cover opacity-80" muted loop autoPlay playsInline />
+                                <button type="button" onClick={() => { updateScene(scene.id, "referenceVideoFile", null); updateScene(scene.id, "referenceVideoPreview", null); }} className="absolute top-2 right-2 p-2 bg-[#191D23]/80 border border-[#b488d4]/50 hover:bg-red-500/90 hover:border-red-400 text-white rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100 z-20"><X className="h-4 w-4" /></button>
+                              </>
+                            ) : (
+                              <label htmlFor={`refvideo-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#b488d4]/70 hover:text-[#b488d4] transition-colors">
+                                <Video className="h-6 w-6 mb-1.5" />
+                                <p className="text-[10px] font-bold uppercase tracking-wider">Drop Video File</p>
+                              </label>
+                            )}
+                            <input id={`refvideo-${scene.id}`} type="file" accept="video/mp4, video/quicktime" className="hidden" onChange={(e) => handleRefVideoSelect(e, scene.id)} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                          </div>
+                          <p className="text-[9px] text-[#57707A] mt-2 font-medium">Upload a video to guide camera and character movement. Use <strong className="text-[#b488d4]">@Video1</strong> in your prompt.</p>
+                        </div>
                       </div>
-                      <div className="flex gap-2 shrink-0 mt-1">
-                        {scene.secondaryPreview ? (
-                          <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
-                        )}
-                        <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'secondary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
+                    ) : (
+                      // STANDARD LAYOUT
+                      <div className="flex flex-col sm:flex-row gap-5 w-full">
+                        <div className="flex-1 flex flex-col gap-3">
+                          <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block truncate">{labels.primary}</label>
+                          <div onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, scene.id, "primary")} className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex items-center justify-center transition-all group/upload shadow-inner">
+                            {generatingSlot?.index === index && generatingSlot.type === 'primary' ? (
+                              <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
+                            ) : scene.primaryPreview ? (
+                              <><img src={scene.primaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
+                                <div className="absolute top-2 right-2 flex gap-2 z-20">
+                                  <button type="button" onClick={() => setPreviewModalImg(scene.primaryPreview)} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#989DAA] hover:text-[#DEDCDC] rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-4 w-4" /></button>
+                                  <button type="button" onClick={() => clearSlot(scene.id, "primary")} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:bg-red-500/90 hover:border-red-400 text-[#989DAA] hover:text-white rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><X className="h-4 w-4" /></button>
+                                </div></>
+                            ) : (
+                              <label htmlFor={`primary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors"><ImageIcon className="h-8 w-8 mb-2" /><p className="text-[10px] font-bold uppercase tracking-wider">Drop Start Frame</p><p className="text-[8px] font-medium mt-1 text-[#57707A]/70">OR leave blank for Text-to-Video</p></label>
+                            )}
+                            <input id={`primary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "primary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                          </div>
+                          <div className="flex gap-2 shrink-0 mt-1">
+                            {scene.primaryPreview ? (
+                              <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
+                            ) : (
+                              <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
+                            )}
+                            <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
+                          </div>
+                        </div>
+
+                        <div className={cn("flex-1 flex flex-col gap-3 transition-all duration-300", !scene.useEndFrame && "opacity-40 grayscale pointer-events-none")}>
+                          <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block truncate">{labels.secondary}</label>
+                          <div onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, scene.id, "secondary")} className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex items-center justify-center transition-all group/upload shadow-inner">
+                            {!scene.useEndFrame ? (
+                              <div className="text-center p-3"><p className="text-[10px] font-bold text-[#57707A]/50 uppercase tracking-widest">Disabled</p><p className="text-[8px] text-[#57707A]/40 mt-1.5 font-medium">Toggle "Use End Frame" to activate</p></div>
+                            ) : generatingSlot?.index === index && generatingSlot.type === 'secondary' ? (
+                              <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
+                            ) : scene.secondaryPreview ? (
+                              <><img src={scene.secondaryPreview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
+                                <div className="absolute top-2 right-2 flex gap-2 z-20">
+                                  <button type="button" onClick={() => setPreviewModalImg(scene.secondaryPreview)} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#989DAA] hover:text-[#DEDCDC] rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-4 w-4" /></button>
+                                  <button type="button" onClick={() => clearSlot(scene.id, "secondary")} className="p-2 bg-[#191D23]/80 border border-[#57707A]/50 hover:bg-red-500/90 hover:border-red-400 text-[#989DAA] hover:text-white rounded-lg shadow-md opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><X className="h-4 w-4" /></button>
+                                </div></>
+                            ) : (
+                              <label htmlFor={`secondary-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors"><ImageIcon className="h-8 w-8 mb-2" /><p className="text-[10px] font-bold uppercase tracking-wider">Drop File</p></label>
+                            )}
+                            <input id={`secondary-${scene.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "secondary")} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                          </div>
+                          <div className="flex gap-2 shrink-0 mt-1">
+                            {scene.secondaryPreview ? (
+                              <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
+                            ) : (
+                              <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
+                            )}
+                            <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'secondary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
-                  {/* Right Panel UI (Video + Audio) */}
                   <div className="w-full lg:w-1/2 flex flex-col relative gap-4">
                     <div className="flex items-center justify-between shrink-0 mb-1">
                       <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider flex items-center gap-1.5">
@@ -1130,7 +1415,7 @@ export function StorytellingSetup({
                                   scene.mode === 'ugc'
                                     ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
                                     : isNativeAudio
-                                      ? "Describe your scene...\n\nExample: Medium close-up of a neon city. A man turns and says \"This is incredible!\""
+                                      ? "Describe your scene...\n\nExample: A wide shot of a neon city. A man turns and says \"This is incredible!\""
                                       : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
                                 }
                               />
@@ -1149,7 +1434,6 @@ export function StorytellingSetup({
                             <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 bg-[#2A2F38] border-b border-[#57707A]/30 shrink-0">
                               <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider mr-1">Inject:</span>
 
-                              {/* 🎥 Camera Dropdown */}
                               <select
                                 value=""
                                 onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
@@ -1159,13 +1443,27 @@ export function StorytellingSetup({
                                 <option value=" Cinematic tracking shot, " className="bg-[#191D23]">Cinematic Tracking</option>
                                 <option value=" Slow drone flyover, " className="bg-[#191D23]">Drone Flyover</option>
                                 <option value=" Handheld shaky cam, " className="bg-[#191D23]">Handheld Shaky</option>
-                                <option value=" Medium close-up, " className="bg-[#191D23]">Medium Close-up (Lipsync)</option>
+                                <option value=" Medium close-up, " className="bg-[#191D23]">Medium Close-up</option>
                                 <option value=" Extreme macro close-up, " className="bg-[#191D23]">Macro Close-up</option>
                                 <option value=" Smooth dolly-in, " className="bg-[#191D23]">Smooth Dolly-in</option>
                                 <option value=" Slow orbit around, " className="bg-[#191D23]">Slow Orbit</option>
                               </select>
 
-                              {/* 🔊 Sound FX Dropdown */}
+                              {/* ✨ NEW: Aspect Ratio Dropdown */}
+                              <select
+                                value=""
+                                onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
+                                className="text-[10px] font-bold text-[#f472b6] bg-[#191D23] border border-[#f472b6]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#f472b6]/60 hover:bg-[#f472b6]/10 transition-colors appearance-none shadow-sm"
+                              >
+                                <option value="" disabled hidden>📐 Aspect Ratio...</option>
+                                <option value=" --ar 16:9 " className="bg-[#191D23]">16:9 Widescreen (YouTube)</option>
+                                <option value=" --ar 9:16 " className="bg-[#191D23]">9:16 Vertical (TikTok/Reels)</option>
+                                <option value=" --ar 1:1 " className="bg-[#191D23]">1:1 Square (Instagram)</option>
+                                <option value=" --ar 4:3 " className="bg-[#191D23]">4:3 Standard</option>
+                                <option value=" --ar 3:4 " className="bg-[#191D23]">3:4 Portrait</option>
+                                <option value=" --ar 21:9 " className="bg-[#191D23]">21:9 Ultrawide Cinematic</option>
+                              </select>
+
                               <select
                                 value=""
                                 onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
@@ -1179,7 +1477,6 @@ export function StorytellingSetup({
                                 <option value=" [whoosh transition] " className="bg-[#191D23]">Whoosh Transition</option>
                               </select>
 
-                              {/* 🌌 Physics & Environment Dropdown */}
                               <select
                                 value=""
                                 onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
@@ -1193,28 +1490,26 @@ export function StorytellingSetup({
                                 <option value=" Reversed time, objects moving backwards perfectly. " className="bg-[#191D23]">Reversed Time</option>
                               </select>
 
-                              {/* ⏱️ Timing / Multi-Shot Dropdown (Kling 3.0 Specific) */}
-                              {isKling && (
+                              {(isKling || isSeedance2) && (
                                 <select
                                   value=""
                                   onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
                                   className="text-[10px] font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#FFB300]/60 hover:bg-[#FFB300]/10 transition-colors appearance-none shadow-sm"
-                                  title="Use for Kling 3.0 Multi-Shot sequences"
+                                  title="Use for Multi-Shot narrative sequences"
                                 >
                                   <option value="" disabled hidden>⏱️ Timing...</option>
                                   <option value=" At the 4th second, " className="bg-[#191D23]">At 4 Seconds</option>
                                   <option value=" At the 8th second, " className="bg-[#191D23]">At 8 Seconds</option>
-                                  <option value=" \n\nShot 2: " className="bg-[#191D23]">Shot 2 (Cut)</option>
-                                  <option value=" \n\nShot 3: " className="bg-[#191D23]">Shot 3 (Cut)</option>
+                                  <option value=" \n\nCut to Shot 2: " className="bg-[#191D23]">Cut to Shot 2</option>
+                                  <option value=" \n\nCut to Shot 3: " className="bg-[#191D23]">Cut to Shot 3</option>
                                 </select>
                               )}
 
-                              {/* ✨ 💬 Dialogue Button (TTS ONLY) */}
                               <button
                                 onClick={() => {
-                                  const dialogueFormat = isKling
-                                    ? '\nMedium close-up shot. Character Name (confident, English): "Type exact dialogue here" '
-                                    : ' Medium close-up shot. The character says "Type exact dialogue here" ';
+                                  const dialogueFormat = (isKling || isSeedance2)
+                                    ? '\nCharacter Name (confident, English): "Type exact dialogue here" '
+                                    : ' The character says "Type exact dialogue here" ';
                                   updateScene(scene.id, "prompt", (scene.prompt || "") + dialogueFormat);
                                 }}
                                 className="inline-flex items-center text-[10px] font-bold px-3 py-2 rounded-lg transition-all shadow-sm text-[#DEDCDC] bg-[#191D23] hover:bg-[#57707A]/30 border border-[#57707A]/50 hover:border-[#DEDCDC]/50"
@@ -1225,7 +1520,6 @@ export function StorytellingSetup({
                             </div>
                           )}
 
-                          {/* DYNAMIC AUDIO UI (Stripped down to just TTS explanation) */}
                           {(() => {
                             return (
                               <div className="flex flex-col flex-1 bg-[#191D23]">
@@ -1234,7 +1528,7 @@ export function StorytellingSetup({
                                     <div className="flex items-start gap-3 bg-[#191D23] text-[#DEDCDC] text-[10px] font-bold px-4 py-3 rounded-xl border border-[#57707A]/40 shadow-inner">
                                       <Zap className="w-4 h-4 shrink-0 text-[#B3FF00] mt-0.5" />
                                       <span className="leading-relaxed text-[#989DAA]">
-                                        <strong className="text-[#B3FF00]">Native Text-To-Speech Active:</strong> Use the "TTS Dialogue" button above to inject spoken dialogue natively through the prompt. To lip-sync with an uploaded MP3, use the <strong>Upload</strong> tool on the dashboard.
+                                        <strong className="text-[#B3FF00]">Native Text-To-Speech Active:</strong> Use the "TTS Dialogue" button above to inject spoken dialogue natively through the prompt. To lip-sync with an uploaded MP3, use the <strong>Audio-to-Video</strong> tool on the dashboard.
                                       </span>
                                     </div>
                                   </div>
@@ -1250,7 +1544,6 @@ export function StorytellingSetup({
                             );
                           })()}
 
-                          {/* Video Generation Toolbar */}
                           {!scene.videoUrl && (
                             <div className="p-4 bg-[#191D23]/80 border-t border-[#57707A]/30 flex justify-between items-center shrink-0">
                               <span className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider pl-2">

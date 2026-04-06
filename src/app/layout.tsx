@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   title: "BlinkSpot — Create at the Speed of Light",
   description: "The first social media operating system for modern creators. One workspace, zero friction.",
   icons: {
-    icon: "/icon.png",
+    icon: "/bs.png",
   },
 };
 

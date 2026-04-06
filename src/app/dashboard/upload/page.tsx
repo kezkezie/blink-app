@@ -305,9 +305,9 @@ export default function YourContentPage() {
     if (!audioFile || !clientId) return alert("Please upload an audio file.");
     if (!mediaContext.trim()) return alert("Please write a prompt for the video generation.");
 
-    // Kling strict validation check
-    if (audioModel === 'kling-3.0/video' && !file) {
-      return alert("Kling 3.0 requires a Start Image to lip-sync with the audio. Please upload an image containing a clear face.");
+    // Strict validation check for models that REQUIRE an image for lipsync
+    if ((audioModel === 'kling-3.0/video' || audioModel === 'bytedance/seedance-2') && !file) {
+      return alert("This model requires a Start Image to lip-sync with the audio. Please upload an image containing a clear face.");
     }
 
     setIsProcessing(true);
@@ -319,7 +319,7 @@ export default function YourContentPage() {
       await supabase.storage.from("assets").upload(audioPath, audioFile);
       const audioPublicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
 
-      // 2. Upload Image (Optional for Pruna, Required for Kling)
+      // 2. Upload Image (Optional for Pruna, Required for Kling/Seedance)
       let imagePublicUrl = null;
       if (file) {
         const imgPath = `videos/${clientId}/pruna_image_${Date.now()}.${file.name.split(".").pop()}`;
@@ -327,7 +327,7 @@ export default function YourContentPage() {
         imagePublicUrl = supabase.storage.from("assets").getPublicUrl(imgPath).data.publicUrl;
       }
 
-      setLoadingText(`Initializing ${audioModel.includes('kling') ? 'Kling 3.0' : 'Pruna AI'} Engine...`);
+      setLoadingText(`Initializing ${audioModel.includes('kling') ? 'Kling 3.0' : audioModel.includes('seedance') ? 'Seedance 2' : 'Pruna AI'} Engine...`);
 
       // 3. Create Placeholder in Supabase
       const { data: dbData, error: dbError } = await supabase.from("content").insert({
@@ -685,12 +685,12 @@ export default function YourContentPage() {
                     <div className="flex items-center gap-2 mb-2 relative z-10">
                       <Zap className="w-4 h-4 text-[#00E5FF]" />
                       <h3 className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">
-                        {audioModel === "kling-3.0/video" ? "Kling 3.0 Engine" : "Pruna AI Engine"}
+                        {audioModel === "kling-3.0/video" ? "Kling 3.0 Engine" : audioModel === "bytedance/seedance-2" ? "Seedance 2 Engine" : "Pruna AI Engine"}
                       </h3>
                     </div>
                     <p className="text-[10px] text-[#989DAA] font-medium relative z-10 leading-relaxed">
-                      {audioModel === "kling-3.0/video"
-                        ? "Kling requires BOTH an audio file and a start image with a clear face to generate a lip-synced video."
+                      {(audioModel === "kling-3.0/video" || audioModel === "bytedance/seedance-2")
+                        ? "This model requires BOTH an audio file and a start image with a clear face to generate a lip-synced video."
                         : "Pruna converts your audio into a synced video. Upload an image for best results, or leave blank for pure AI generation."}
                     </p>
                   </div>
@@ -705,6 +705,7 @@ export default function YourContentPage() {
                         className="w-full text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-3 px-3 bg-[#191D23] text-[#DEDCDC] cursor-pointer focus:outline-none focus:border-[#00E5FF]/50 transition-colors appearance-none"
                       >
                         <option value="kling-3.0/video">Kling 3.0 (Cinematic Lipsync)</option>
+                        <option value="bytedance/seedance-2">Seedance 2 (Cinematic Lipsync)</option>
                         <option value="replicate:prunaai/p-video">Pruna P-Video (Fast Action Lipsync)</option>
                       </select>
                     </div>
@@ -736,9 +737,10 @@ export default function YourContentPage() {
 
                     {/* Image Upload Block */}
                     <div>
+                      {/* Inside the Image Upload Block */}
                       <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2 flex items-center gap-1">
                         3. Start Image
-                        {audioModel === 'kling-3.0/video' ? <span className="text-red-400">*Required for Kling</span> : <span className="text-[#57707A]">(Optional)</span>}
+                        {(audioModel === 'kling-3.0/video' || audioModel === 'bytedance/seedance-2') ? <span className="text-red-400">*Required for this model</span> : <span className="text-[#57707A]">(Optional)</span>}
                       </label>
 
                       {!preview ? (
@@ -747,10 +749,10 @@ export default function YourContentPage() {
                           onDrop={handleDropFile}
                           onClick={() => fileInputRef.current?.click()}
                           className={cn("h-16 border-2 border-dashed rounded-xl flex items-center justify-center cursor-pointer transition-colors shadow-inner",
-                            audioModel === 'kling-3.0/video' ? "border-red-400/30 bg-[#191D23] hover:bg-red-400/5" : "border-[#57707A]/40 bg-[#191D23] hover:bg-[#57707A]/20"
+                            (audioModel === 'kling-3.0/video' || audioModel === 'bytedance/seedance-2') ? "border-red-400/30 bg-[#191D23] hover:bg-red-400/5" : "border-[#57707A]/40 bg-[#191D23] hover:bg-[#57707A]/20"
                           )}
                         >
-                          <span className={cn("text-[10px] font-bold uppercase tracking-wider flex items-center gap-2", audioModel === 'kling-3.0/video' ? "text-red-400" : "text-[#57707A] hover:text-[#C5BAC4]")}><ImageIcon className="w-4 h-4" /> Drop Image File</span>
+                          <span className={cn("text-[10px] font-bold uppercase tracking-wider flex items-center gap-2", (audioModel === 'kling-3.0/video' || audioModel === 'bytedance/seedance-2') ? "text-red-400" : "text-[#57707A] hover:text-[#C5BAC4]")}><ImageIcon className="w-4 h-4" /> Drop Image File</span>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between bg-[#191D23] border border-[#57707A]/50 p-2.5 rounded-xl shadow-inner">
@@ -784,7 +786,7 @@ export default function YourContentPage() {
                   <div className="flex flex-col gap-3 mt-auto">
                     <Button
                       onClick={handleAudioToVideo}
-                      disabled={isProcessing || !audioFile || !mediaContext.trim() || (audioModel === 'kling-3.0/video' && !file)}
+                      disabled={isProcessing || !audioFile || !mediaContext.trim() || ((audioModel === 'kling-3.0/video' || audioModel === 'bytedance/seedance-2') && !file)}
                       className="w-full bg-gradient-to-r from-[#00E5FF] to-[#00B3CC] hover:from-[#00B3CC] hover:to-[#0099B3] text-[#191D23] h-12 rounded-xl shadow-lg shadow-[#00E5FF]/20 font-bold text-sm border-none disabled:opacity-50 disabled:grayscale transition-all duration-300"
                     >
                       {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Video className="mr-2 h-5 w-5" />} Generate Sync Video
