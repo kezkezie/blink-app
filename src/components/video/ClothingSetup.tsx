@@ -9,6 +9,8 @@ import type { VideoSetupProps } from "./types";
 interface ExtendedSetupProps extends VideoSetupProps {
     aspectRatio?: string;
     setAspectRatio?: (val: string) => void;
+    duration?: string;
+    setDuration?: (val: string) => void;
 }
 
 export function ClothingSetup({
@@ -25,6 +27,8 @@ export function ClothingSetup({
     setPrompt,
     aspectRatio = "9:16",
     setAspectRatio,
+    duration = "5",
+    setDuration,
     isSuggesting,
     handleAISuggest,
     activeModeConfig,
@@ -145,6 +149,19 @@ export function ClothingSetup({
                                 <option value="16:9">📐 16:9 (YouTube)</option>
                                 <option value="1:1">📐 1:1 (Square)</option>
                                 <option value="21:9">📐 21:9 (Cinematic)</option>
+                            </select>
+                        )}
+
+                        {/* Time Duration Dropdown */}
+                        {setDuration && (
+                            <select
+                                value={duration}
+                                onChange={(e) => setDuration(e.target.value)}
+                                className="text-xs font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-xl cursor-pointer hover:border-[#FFB300]/60 transition-colors appearance-none shadow-sm outline-none h-10"
+                            >
+                                <option value="5">⏱️ 5 Secs</option>
+                                <option value="10">⏱️ 10 Secs</option>
+                                <option value="15">⏱️ 15 Secs</option>
                             </select>
                         )}
                         <button
