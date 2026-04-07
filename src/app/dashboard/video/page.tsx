@@ -103,8 +103,9 @@ export default function VideoStudioPage() {
   const [bRollScenes, setBRollScenes] = useState<BRollScene[]>([]);
   const [selectedAiModel, setSelectedAiModel] = useState("auto");
 
-  // ✨ NEW STATE FOR UNIVERSAL ASPECT RATIO ✨
+  // ✨ NEW STATE FOR UNIVERSAL CONTROLS ✨
   const [aspectRatio, setAspectRatio] = useState("9:16");
+  const [duration, setDuration] = useState("5");
 
   // STATE FOR BRAND ALIGNMENT
   const [strictBrandAlignment, setStrictBrandAlignment] = useState(true);
@@ -329,9 +330,6 @@ export default function VideoStudioPage() {
     };
 
     try {
-      // ==========================================================
-      // ROUTE A: STORYTELLING
-      // ==========================================================
       if (selectedMode === "storytelling") {
         let lastRecordId = null;
 
@@ -389,9 +387,9 @@ export default function VideoStudioPage() {
             brand_name: businessInfo.name,
             brand_info: businessInfo.desc,
             ai_model_override: targetModel,
-            duration: scene.duration || "5",
+            duration: scene.duration || duration, // Scene override or Master default
             strict_brand_alignment: strictBrandAlignment,
-            aspect_ratio: aspectRatio, // ✨ Universal Injection
+            aspect_ratio: aspectRatio, // ✨ Clean Injection
           });
         }
         setGeneratingPostId(lastRecordId);
@@ -399,12 +397,8 @@ export default function VideoStudioPage() {
         return;
       }
 
-      // ==========================================================
-      // ROUTE B: SINGLE VIDEO
-      // ==========================================================
       let primaryUrl = null;
       let secondaryUrl = null;
-
       let targetModel = selectedAiModel;
 
       if (primaryFile) {
@@ -494,7 +488,8 @@ export default function VideoStudioPage() {
         brand_info: businessInfo.desc,
         ai_model_override: targetModel,
         strict_brand_alignment: strictBrandAlignment,
-        aspect_ratio: aspectRatio, // ✨ Universal Injection
+        aspect_ratio: aspectRatio, // ✨ Clean Injection
+        duration: duration,         // ✨ Clean Injection
       });
 
       setStep(3);
@@ -509,9 +504,8 @@ export default function VideoStudioPage() {
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6 pb-20">
-      {/* ── HERO BANNER: Dark bento panel + subtle lime glow ── */}
+      {/* ── HERO BANNER ── */}
       <div className="relative bg-[#2A2F38] rounded-2xl p-8 border border-[#57707A]/40 shadow-xl overflow-hidden">
-        {/* Subtle lime glow */}
         <div className="absolute top-0 right-0 w-72 h-72 bg-[#C5BAC4]/5 blur-[100px] rounded-full pointer-events-none" />
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-3">
@@ -573,7 +567,8 @@ export default function VideoStudioPage() {
                         setPrimaryFile(null);
                         setPrompt("");
                         setBRollScenes([]);
-                        setAspectRatio(mode.id === "ugc" ? "9:16" : "16:9"); // Dynamic Defaults
+                        // Dynamic Defaults based on selection
+                        setAspectRatio(mode.id === "ugc" ? "9:16" : "16:9");
                       }}
                       className={cn(
                         "relative p-5 rounded-xl border cursor-pointer transition-all duration-200 hover:-translate-y-0.5",
@@ -631,7 +626,7 @@ export default function VideoStudioPage() {
               </div>
 
               {(() => {
-                // ✨ ADDED ASPECT RATIO TO SHARED PROPS ✨
+                // ✨ Wiring the state to children ✨
                 const sharedProps = {
                   primaryFile,
                   setPrimaryFile,
@@ -651,6 +646,8 @@ export default function VideoStudioPage() {
                   activeModeConfig,
                   aspectRatio,
                   setAspectRatio,
+                  duration,
+                  setDuration
                 };
                 switch (selectedMode) {
                   case "ugc":
@@ -680,14 +677,12 @@ export default function VideoStudioPage() {
                 }
               })()}
 
-              {/* ── STEP 2 FOOTER: Brand alignment + AI engine + Generate CTA ── */}
               <div className="space-y-4 pt-4 border-t border-[#57707A]/30">
-                {/* Brand Alignment Toggle */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-[#2A2F38] p-4 rounded-xl border border-[#57707A]/30 gap-4">
                   <div>
                     <p className="text-sm font-bold text-[#DEDCDC]">Strict Brand Alignment</p>
                     <p className="text-xs text-[#DEDCDC]/40 max-w-lg mt-1">
-                      When active, the AI ensures the video strictly aligns with your saved brand profile ({businessInfo.name || "your brand"}). Turn off for creative freedom.
+                      When active, the AI ensures the video strictly aligns with your saved brand profile.
                     </p>
                   </div>
                   <Switch
@@ -698,7 +693,6 @@ export default function VideoStudioPage() {
 
                 {selectedMode !== "storytelling" && (
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    {/* Master AI Engine Picker */}
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-bold text-[#DEDCDC]/40 uppercase tracking-wider whitespace-nowrap">
                         Master AI Engine
@@ -726,7 +720,6 @@ export default function VideoStudioPage() {
                       </div>
                     </div>
 
-                    {/* Generate Button */}
                     <Button
                       onClick={handleGenerate}
                       disabled={
@@ -734,7 +727,7 @@ export default function VideoStudioPage() {
                         (selectedMode === "storytelling" && bRollScenes.length === 0) ||
                         (selectedMode !== "storytelling" && !!activeModeConfig.primaryLabel && !primaryFile && !primaryPreview)
                       }
-                      className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0"
                     >
                       {isGenerating ? (
                         <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing...</>
@@ -788,7 +781,7 @@ export default function VideoStudioPage() {
                       Our cinematic AI engine is currently animating your scene pixel by pixel.
                     </p>
                     <div className="mt-4 p-4 bg-[#191D23]/60 rounded-lg border border-[#57707A]/30 text-sm text-[#DEDCDC]/50">
-                      ⏱️ High-fidelity video generation typically takes <b className="text-[#DEDCDC]/70">5 to 15 minutes</b> depending on server load. You can leave this tab open and grab a coffee!
+                      ⏱️ High-fidelity video generation typically takes <b className="text-[#DEDCDC]/70">5 to 15 minutes</b> depending on server load.
                     </div>
                   </div>
                 </div>

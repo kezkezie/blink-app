@@ -117,17 +117,46 @@ export async function POST(req: Request) {
 
         const finalCaption = `${content.caption || ""} \n\n${content.hashtags || ""}`.trim();
 
-        // 5. ✨ FIX: Match Media Payload to Documentation strictly
-        const mediaPayload = imageUrls.map((url: string) => {
-            return { url: url };
-        });
+        // ==========================================
+        // 5. ✨ FIX: THE 2-STEP MEDIA UPLOAD PROCESS
+        // ==========================================
+        const mediaIds: string[] = [];
 
-        // 🚀 THE POSTFORME MAGIC
+        for (const url of imageUrls) {
+            console.log(`Uploading media URL to PostForMe: ${url}`);
+            const uploadRes = await fetch("https://api.postforme.dev/v1/media/upload/url", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({ url: url }),
+            });
+
+            if (!uploadRes.ok) {
+                const errText = await uploadRes.text();
+                console.error("PostForMe Media Upload Error:", errText);
+                throw new Error(`Failed to process media with PostForMe. Ensure the URL is public.`);
+            }
+
+            const uploadData = await uploadRes.json();
+            if (uploadData.id) {
+                mediaIds.push(uploadData.id);
+            }
+        }
+
+        if (mediaIds.length === 0) {
+            throw new Error("No valid media IDs were returned by PostForMe.");
+        }
+
+        // ==========================================
+        // 6. 🚀 THE FINAL POST PAYLOAD
+        // ==========================================
         const postPayload: any = {
-            media: mediaPayload,
+            media: mediaIds, // ✨ FIX: Array of string IDs (e.g., ['media-id-123'])
             caption: finalCaption,
-            // ✨ FIX: Match Accounts Payload strictly (Array of strings, using key 'social_accounts')
-            social_accounts: accounts.map((acc: any) => acc.postforme_account_id)
+            social_accounts: accounts.map((acc: any) => acc.postforme_account_id),
+            post_type: "media" // Added for safety as per documentation
         };
 
         if (scheduledAt) {
@@ -141,9 +170,9 @@ export async function POST(req: Request) {
             postPayload.scheduled_at = dateObj.toISOString();
         }
 
-        console.log("Sending Payload to PostForMe:", JSON.stringify(postPayload, null, 2));
+        console.log("Sending Final Payload to PostForMe:", JSON.stringify(postPayload, null, 2));
 
-        // 6. Send to PostForMe.dev API
+        // 7. Send to PostForMe.dev API
         const response = await fetch("https://api.postforme.dev/v1/social-posts", {
             method: "POST",
             headers: {
@@ -170,7 +199,7 @@ export async function POST(req: Request) {
             );
         }
 
-        // 7. Update the post status in Supabase
+        // 8. Update the post status in Supabase
         await supabaseAdmin
             .from("content")
             .update({
