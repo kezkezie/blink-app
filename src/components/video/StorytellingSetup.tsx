@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, Music, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Layers, MonitorPlay, LayoutGrid, Send, Globe, ChevronRight, Zap, Play } from "lucide-react";
-import { PublishModal } from "@/components/publishing/PublishModal";
+import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Zap } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -341,6 +340,7 @@ type StoryboardScene = any & {
   referenceVideoPreview?: string | null;
 };
 
+// ✨ We extend the props locally to safely accept the universal Aspect Ratio
 export interface StorytellingSetupProps extends VideoSetupProps {
   bRollConcept: string;
   setBRollConcept: (val: string) => void;
@@ -350,9 +350,12 @@ export interface StorytellingSetupProps extends VideoSetupProps {
   addEmptyScene: () => void;
   updateScene: (id: string, field: string, value: any) => void;
   removeScene: (id: string) => void;
+  aspectRatio?: string;
+  setAspectRatio?: (val: string) => void;
 }
 
 const VISUAL_STYLES = [
+  { id: "none", label: "None (Follow Prompt Directly)" },
   { id: "cinematic", label: "Cinematic Realism" },
   { id: "3d_animation", label: "3D Animation (Pixar/Disney)" },
   { id: "anime", label: "2D Anime / Manga" },
@@ -371,6 +374,8 @@ export function StorytellingSetup({
   addEmptyScene,
   updateScene,
   removeScene,
+  aspectRatio = "16:9",
+  setAspectRatio,
   isSuggesting,
 }: StorytellingSetupProps) {
   const { clientId } = useClient();
@@ -400,7 +405,7 @@ export function StorytellingSetup({
         primaryPreview: null,
         secondaryFile: null,
         secondaryPreview: null,
-        seedanceImages: [null], // Start with 1 slot
+        seedanceImages: [null],
         seedancePreviews: [null],
         referenceVideoFile: null,
         referenceVideoPreview: null,
@@ -420,7 +425,6 @@ export function StorytellingSetup({
     if (actors.length > 0) localStorage.setItem('blink_saved_actors', JSON.stringify(actors));
   }, [actors]);
 
-  // ✨ Added seedanceIndex to properly track exactly which slot is loading
   const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number } | null>(null);
   const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number } | null>(null);
   const [suggestingPromptIndex, setSuggestingPromptIndex] = useState<number | null>(null);
@@ -591,7 +595,6 @@ export function StorytellingSetup({
   };
 
 
-  // ✨ IMAGE GENERATION: Strict Character Lock injection
   const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string, seedanceIndex: number = 0) => {
     const scene = bRollScenes[slotIndex];
     const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
@@ -626,7 +629,6 @@ export function StorytellingSetup({
 
       if (genData.url) {
         if (isSeedance2) {
-          // ✨ THE FIX: Safely and immutably update the array
           setBRollScenes(currentScenes => {
             const newScenes = [...currentScenes];
             const oldScene = newScenes[slotIndex];
@@ -691,7 +693,6 @@ export function StorytellingSetup({
 
       if (isSeedance2) {
         const previews = ensureArray(bRollScenes[i].seedancePreviews || [null]);
-        // ✨ THE FIX: Loop through ALL slots in the tray to generate them if empty
         for (let sIdx = 0; sIdx < previews.length; sIdx++) {
           if (!previews[sIdx] && currentPrompts[i]) {
             await handleGenerateSlot(i, 'primary', currentPrompts[i], sIdx);
@@ -789,7 +790,7 @@ export function StorytellingSetup({
         referenceVideoUrl: finalReferenceVideoUrl,
         scene_data: {
           visual_prompt: scene.prompt?.trim() || bRollConcept,
-          video_mode: scene.mode, // Passed just in case legacy models need it, but mostly ignored by Seedance
+          video_mode: scene.mode,
           duration: scene.duration || "5",
           prunaDraft: scene.prunaDraft || false,
           referenceVideoUrl: finalReferenceVideoUrl,
@@ -1080,7 +1081,7 @@ export function StorytellingSetup({
         onDeleteActor={(id) => { setActors(actors.filter(a => a.id !== id)); if (selectedActorA === id) setSelectedActorA(""); }}
         selectedActorA={selectedActorA}
         setSelectedActorA={setSelectedActorA}
-        callN8n={callN8n}
+        callN8n={callN8n as any}
         clientId={clientId}
         onPreviewActor={setPreviewModalImg}
       />
@@ -1230,7 +1231,6 @@ export function StorytellingSetup({
 
                           <div className={cn("grid gap-4", seedancePreviews.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
                             {seedancePreviews.map((preview: string | null, sIdx: number) => (
-                              // ✨ ADDED: A flex-col wrapper so the toolbar sits underneath each slot perfectly
                               <div key={sIdx} className="flex flex-col gap-1">
                                 <div className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex flex-col items-center justify-center transition-all group/upload shadow-inner">
                                   <div className="absolute top-2 left-2 z-20 bg-[#C5BAC4] text-[#191D23] px-2 py-1 text-[10px] font-black rounded uppercase shadow-lg border border-[#191D23]/20">@Image{sIdx + 1}</div>
@@ -1267,7 +1267,6 @@ export function StorytellingSetup({
                                   />
                                 </div>
 
-                                {/* ✨ ADDED: Toolbar for every Seedance slot */}
                                 <div className="flex gap-2 shrink-0 mt-1">
                                   {preview ? (
                                     <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary', sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
@@ -1429,7 +1428,7 @@ export function StorytellingSetup({
                             </div>
                           )}
 
-                          {/* ✨ QUICK INJECT PROMPT HELPERS */}
+                          {/* ✨ DYNAMIC INJECTION TOOLBAR (NO ASPECT RATIO HERE) */}
                           {!scene.videoUrl && (
                             <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 bg-[#2A2F38] border-b border-[#57707A]/30 shrink-0">
                               <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider mr-1">Inject:</span>
@@ -1447,21 +1446,6 @@ export function StorytellingSetup({
                                 <option value=" Extreme macro close-up, " className="bg-[#191D23]">Macro Close-up</option>
                                 <option value=" Smooth dolly-in, " className="bg-[#191D23]">Smooth Dolly-in</option>
                                 <option value=" Slow orbit around, " className="bg-[#191D23]">Slow Orbit</option>
-                              </select>
-
-                              {/* ✨ NEW: Aspect Ratio Dropdown */}
-                              <select
-                                value=""
-                                onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
-                                className="text-[10px] font-bold text-[#f472b6] bg-[#191D23] border border-[#f472b6]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#f472b6]/60 hover:bg-[#f472b6]/10 transition-colors appearance-none shadow-sm"
-                              >
-                                <option value="" disabled hidden>📐 Aspect Ratio...</option>
-                                <option value=" --ar 16:9 " className="bg-[#191D23]">16:9 Widescreen (YouTube)</option>
-                                <option value=" --ar 9:16 " className="bg-[#191D23]">9:16 Vertical (TikTok/Reels)</option>
-                                <option value=" --ar 1:1 " className="bg-[#191D23]">1:1 Square (Instagram)</option>
-                                <option value=" --ar 4:3 " className="bg-[#191D23]">4:3 Standard</option>
-                                <option value=" --ar 3:4 " className="bg-[#191D23]">3:4 Portrait</option>
-                                <option value=" --ar 21:9 " className="bg-[#191D23]">21:9 Ultrawide Cinematic</option>
                               </select>
 
                               <select
@@ -1580,7 +1564,25 @@ export function StorytellingSetup({
 
         {/* CARD 1: MASTER DIRECTOR */}
         <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative overflow-hidden">
-          <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide mb-5 pb-4 border-b border-[#57707A]/20"><Settings2 className="w-4 h-4 text-[#C5BAC4]" /> Master Director</h3>
+
+          {/* ✨ MOVED ASPECT RATIO DROPDOWN HERE ✨ */}
+          <div className="flex items-center justify-between mb-5 pb-4 border-b border-[#57707A]/20">
+            <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide"><Settings2 className="w-4 h-4 text-[#C5BAC4]" /> Master Director</h3>
+
+            {setAspectRatio && (
+              <select
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value)}
+                className="text-xs font-bold text-[#f472b6] bg-[#191D23] border border-[#f472b6]/30 px-3 py-1.5 rounded-xl cursor-pointer hover:border-[#f472b6]/60 transition-colors appearance-none shadow-sm outline-none"
+                title="Universal Aspect Ratio for all scenes"
+              >
+                <option value="16:9">📐 16:9</option>
+                <option value="9:16">📐 9:16</option>
+                <option value="1:1">📐 1:1</option>
+                <option value="21:9">📐 21:9</option>
+              </select>
+            )}
+          </div>
 
           <div className="flex flex-col gap-4 mb-2">
             <div className="relative">

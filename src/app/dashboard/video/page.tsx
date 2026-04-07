@@ -103,7 +103,10 @@ export default function VideoStudioPage() {
   const [bRollScenes, setBRollScenes] = useState<BRollScene[]>([]);
   const [selectedAiModel, setSelectedAiModel] = useState("auto");
 
-  // ✨ NEW STATE FOR BRAND ALIGNMENT ✨
+  // ✨ NEW STATE FOR UNIVERSAL ASPECT RATIO ✨
+  const [aspectRatio, setAspectRatio] = useState("9:16");
+
+  // STATE FOR BRAND ALIGNMENT
   const [strictBrandAlignment, setStrictBrandAlignment] = useState(true);
 
   const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
@@ -358,7 +361,6 @@ export default function VideoStudioPage() {
             sUrl = scene.secondaryPreview;
           }
 
-          // ✨ THE FIX: Check if specific scene has an override, otherwise use master dropdown
           let targetModel = scene.aiModel && scene.aiModel !== "auto" ? scene.aiModel : selectedAiModel;
 
           const { data: clipRecord, error: dbError } = await supabase
@@ -386,9 +388,10 @@ export default function VideoStudioPage() {
             is_sequence: false,
             brand_name: businessInfo.name,
             brand_info: businessInfo.desc,
-            ai_model_override: targetModel, // Passes "auto" or the specific engine!
+            ai_model_override: targetModel,
             duration: scene.duration || "5",
             strict_brand_alignment: strictBrandAlignment,
+            aspect_ratio: aspectRatio, // ✨ Universal Injection
           });
         }
         setGeneratingPostId(lastRecordId);
@@ -402,7 +405,6 @@ export default function VideoStudioPage() {
       let primaryUrl = null;
       let secondaryUrl = null;
 
-      // Master selector passes through to our super-smart n8n router
       let targetModel = selectedAiModel;
 
       if (primaryFile) {
@@ -492,6 +494,7 @@ export default function VideoStudioPage() {
         brand_info: businessInfo.desc,
         ai_model_override: targetModel,
         strict_brand_alignment: strictBrandAlignment,
+        aspect_ratio: aspectRatio, // ✨ Universal Injection
       });
 
       setStep(3);
@@ -570,6 +573,7 @@ export default function VideoStudioPage() {
                         setPrimaryFile(null);
                         setPrompt("");
                         setBRollScenes([]);
+                        setAspectRatio(mode.id === "ugc" ? "9:16" : "16:9"); // Dynamic Defaults
                       }}
                       className={cn(
                         "relative p-5 rounded-xl border cursor-pointer transition-all duration-200 hover:-translate-y-0.5",
@@ -627,6 +631,7 @@ export default function VideoStudioPage() {
               </div>
 
               {(() => {
+                // ✨ ADDED ASPECT RATIO TO SHARED PROPS ✨
                 const sharedProps = {
                   primaryFile,
                   setPrimaryFile,
@@ -644,6 +649,8 @@ export default function VideoStudioPage() {
                   isSuggesting,
                   handleAISuggest,
                   activeModeConfig,
+                  aspectRatio,
+                  setAspectRatio,
                 };
                 switch (selectedMode) {
                   case "ugc":
@@ -701,9 +708,9 @@ export default function VideoStudioPage() {
                           { value: "auto", label: "🌟 Auto" },
                           { value: "replicate:prunaai/p-video", label: "⚡ Pruna AI (Fast)" },
                           { value: "replicate:openai/sora-2", label: "Sora 2 (Replicate)" },
-                          { value: "bytedance/seedance-1.5-pro", label: "Seedance 1.5" },
-                          { value: "grok-imagine/text-to-video", label: "Grok (Uncensored)" },
                           { value: "kling-3.0/video", label: "Kling 3.0" },
+                          { value: "bytedance/seedance-2", label: "Seedance 2 (Cinematic)" },
+                          { value: "bytedance/seedance-2-fast", label: "Seedance 2 (Fast)" },
                         ].map((engine) => (
                           <button
                             key={engine.value}
