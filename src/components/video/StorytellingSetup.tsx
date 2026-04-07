@@ -345,7 +345,7 @@ export interface StorytellingSetupProps extends VideoSetupProps {
   bRollConcept: string;
   setBRollConcept: (val: string) => void;
   bRollScenes: StoryboardScene[];
-  setBRollScenes: (scenes: StoryboardScene[]) => void;
+  setBRollScenes: (scenes: StoryboardScene[] | ((prev: StoryboardScene[]) => StoryboardScene[])) => void;
   handleGenerateScenes: () => void;
   addEmptyScene: () => void;
   updateScene: (id: string, field: string, value: any) => void;
