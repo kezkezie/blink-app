@@ -30,7 +30,7 @@ export interface VideoSetupProps {
   setPrimaryFile: (file: File | null) => void;
   primaryPreview: string | null;
   setPrimaryPreview: (url: string | null) => void;
-  primaryInputRef: RefObject<HTMLInputElement | null>; // ✨ FIXED: Added | null
+  primaryInputRef: RefObject<HTMLInputElement | null>;
   handleFileSelect: (
     e: ChangeEvent<HTMLInputElement>,
     type: "primary" | "secondary"
@@ -40,10 +40,16 @@ export interface VideoSetupProps {
   setSecondaryFile: (file: File | null) => void;
   secondaryPreview: string | null;
   setSecondaryPreview: (url: string | null) => void;
-  secondaryInputRef: RefObject<HTMLInputElement | null>; // ✨ FIXED: Added | null
+  secondaryInputRef: RefObject<HTMLInputElement | null>;
 
   prompt: string;
   setPrompt: (val: string) => void;
+
+  // ✨ ADDED THESE FOR THE UNIVERSAL CONTROLS ✨
+  aspectRatio?: string;
+  setAspectRatio?: (val: string) => void;
+  duration?: string;
+  setDuration?: (val: string) => void;
 
   isSuggesting: boolean;
   handleAISuggest: () => void;
@@ -64,6 +70,6 @@ export interface StorytellingSetupProps extends VideoSetupProps {
   setBRollScenes: React.Dispatch<React.SetStateAction<BRollScene[]>>;
   handleGenerateScenes: () => void;
   addEmptyScene: () => void;
-  updateScene: (id: string, field: keyof BRollScene, value: string) => void;
+  updateScene: (id: string, field: keyof BRollScene, value: any) => void; // Changed value to any for flexible updates
   removeScene: (id: string) => void;
 }
