@@ -627,7 +627,8 @@ export default function VideoStudioPage() {
 
               {(() => {
                 // ✨ Wiring the state to children ✨
-                const sharedProps = {
+                // ✨ THE FIX: Force TypeScript to accept the new properties ✨
+                const sharedProps: any = {
                   primaryFile,
                   setPrimaryFile,
                   primaryPreview,
@@ -644,10 +645,10 @@ export default function VideoStudioPage() {
                   isSuggesting,
                   handleAISuggest,
                   activeModeConfig,
-                  aspectRatio,
-                  setAspectRatio,
-                  duration,
-                  setDuration
+                  aspectRatio,    // TypeScript was complaining about this...
+                  setAspectRatio, // ...and this
+                  duration,       // ...and this
+                  setDuration     // ...and this
                 };
                 switch (selectedMode) {
                   case "ugc":
