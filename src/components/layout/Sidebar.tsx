@@ -64,7 +64,7 @@ export function Sidebar({ collapsed = false, userEmail }: SidebarProps) {
       <div className="flex items-center gap-2 px-5 py-5 border-b border-white/5">
         {/* <Zap className="h-6 w-6 text-[#C5BAC4] shrink-0" /> */}
         <Image
-          src="/bsr.png"
+          src="/favicon.png"
           alt="Blink Logo"
           width={24}
           height={24}
