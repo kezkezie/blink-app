@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
+import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ IMPORT BRAND STORE
 import type { Content, ContentStatus, Platform } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -113,6 +114,8 @@ export function CalendarView({
   onLoadMoreUnscheduled,
 }: CalendarViewProps) {
   const { clientId } = useClient();
+  const { activeBrand } = useBrandStore(); // ✨ GET ACTIVE BRAND
+
   const [autoScheduling, setAutoScheduling] = useState(false);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
@@ -122,18 +125,19 @@ export function CalendarView({
   const [platformModalOpen, setPlatformModalOpen] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
 
-  // ✨ The new Omni-Publishing State for the Modal
   const [publishSettings, setPublishSettings] = useState<PublishSettings>({});
   const [savingPlatforms, setSavingPlatforms] = useState(false);
   const [editingPostIsVideo, setEditingPostIsVideo] = useState(false);
 
   useEffect(() => {
     async function fetchPlatforms() {
-      if (!clientId) return;
+      if (!clientId || !activeBrand) return;
+
+      // ✨ FETCH PLATFORMS FOR ACTIVE BRAND ONLY
       const { data } = await supabase
         .from("social_accounts")
         .select("platform")
-        .eq("client_id", clientId)
+        .eq("brand_id", activeBrand.id)
         .eq("is_active", true);
 
       if (data) {
@@ -141,7 +145,7 @@ export function CalendarView({
       }
     }
     fetchPlatforms();
-  }, [clientId]);
+  }, [clientId, activeBrand?.id]);
 
   // --- Calendar Date Math ---
   const year = currentMonth.getFullYear();

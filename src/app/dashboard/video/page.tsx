@@ -20,11 +20,12 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow } from "@/lib/workflows";
+import { useBrandStore } from "@/app/store/useBrandStore";
+import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 
 import { VideoEditorUI } from "@/components/layout/VideoEditorUI";
 
@@ -106,9 +107,6 @@ export default function VideoStudioPage() {
   // ✨ NEW STATE FOR UNIVERSAL CONTROLS ✨
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [duration, setDuration] = useState("5");
-
-  // STATE FOR BRAND ALIGNMENT
-  const [strictBrandAlignment, setStrictBrandAlignment] = useState(true);
 
   const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
@@ -319,6 +317,15 @@ export default function VideoStudioPage() {
     setIsGenerating(true);
     setGenerationError(null);
 
+    // ✨ Derive brand alignment dynamically from the global store
+    const { activeBrand } = useBrandStore.getState();
+    const strictBrandAlignment = activeBrand !== null;
+    const brandName = activeBrand?.brand_name || businessInfo.name;
+
+    // ✨ Wire TopBar loading indicator
+    const { addTask, removeTask } = useWorkflowStore.getState();
+    const taskId = `vid-gen-${Date.now()}`;
+
     const base64ToBlob = (base64: string, mimeType: string) => {
       const byteCharacters = atob(base64.split(',')[1]);
       const byteNumbers = new Array(byteCharacters.length);
@@ -330,6 +337,8 @@ export default function VideoStudioPage() {
     };
 
     try {
+      addTask(taskId, "Generating Video");
+
       if (selectedMode === "storytelling") {
         let lastRecordId = null;
 
@@ -384,7 +393,7 @@ export default function VideoStudioPage() {
             secondary_image_url: sUrl,
             user_prompt: scene.prompt,
             is_sequence: false,
-            brand_name: businessInfo.name,
+            brand_name: brandName,
             brand_info: businessInfo.desc,
             ai_model_override: targetModel,
             duration: scene.duration || duration, // Scene override or Master default
@@ -484,7 +493,7 @@ export default function VideoStudioPage() {
         secondary_image_url: secondaryUrl,
         user_prompt: prompt,
         is_sequence: false,
-        brand_name: businessInfo.name,
+        brand_name: brandName,
         brand_info: businessInfo.desc,
         ai_model_override: targetModel,
         strict_brand_alignment: strictBrandAlignment,
@@ -498,6 +507,7 @@ export default function VideoStudioPage() {
       setGenerationError(err.message || JSON.stringify(err));
       setStep(3);
     } finally {
+      removeTask(taskId);
       if (selectedMode !== "storytelling") setIsGenerating(false);
     }
   }
@@ -679,67 +689,54 @@ export default function VideoStudioPage() {
               })()}
 
               <div className="space-y-4 pt-4 border-t border-[#57707A]/30">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-[#2A2F38] p-4 rounded-xl border border-[#57707A]/30 gap-4">
-                  <div>
-                    <p className="text-sm font-bold text-[#DEDCDC]">Strict Brand Alignment</p>
-                    <p className="text-xs text-[#DEDCDC]/40 max-w-lg mt-1">
-                      When active, the AI ensures the video strictly aligns with your saved brand profile.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={strictBrandAlignment}
-                    onCheckedChange={setStrictBrandAlignment}
-                  />
-                </div>
-
                 {selectedMode !== "storytelling" && (
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <label className="text-xs font-bold text-[#DEDCDC]/40 uppercase tracking-wider whitespace-nowrap">
-                        Master AI Engine
-                      </label>
-                      <div className="flex flex-wrap rounded-lg border border-[#57707A]/40 bg-[#191D23]/60 p-0.5 gap-0.5">
-                        {[
-                          { value: "auto", label: "🌟 Auto" },
-                          { value: "replicate:prunaai/p-video", label: "⚡ Pruna AI (Fast)" },
-                          { value: "replicate:openai/sora-2", label: "Sora 2 (Replicate)" },
-                          { value: "kling-3.0/video", label: "Kling 3.0" },
-                          { value: "bytedance/seedance-2", label: "Seedance 2 (Cinematic)" },
-                          { value: "bytedance/seedance-2-fast", label: "Seedance 2 (Fast)" },
-                        ].map((engine) => (
-                          <button
-                            key={engine.value}
-                            onClick={() => setSelectedAiModel(engine.value)}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
-                              ? "bg-[#57707A] text-[#DEDCDC] shadow-sm ring-1 ring-[#C5BAC4]/30"
-                              : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#57707A]/30"
-                              }`}
-                          >
-                            {engine.label}
-                          </button>
-                        ))}
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-bold text-[#DEDCDC]/40 uppercase tracking-wider whitespace-nowrap">
+                      Master AI Engine
+                    </label>
+                    <div className="flex flex-wrap rounded-lg border border-[#57707A]/40 bg-[#191D23]/60 p-0.5 gap-0.5">
+                      {[
+                        { value: "auto", label: "🌟 Auto" },
+                        { value: "replicate:prunaai/p-video", label: "⚡ Pruna AI (Fast)" },
+                        { value: "replicate:openai/sora-2", label: "Sora 2 (Replicate)" },
+                        { value: "kling-3.0/video", label: "Kling 3.0" },
+                        { value: "bytedance/seedance-2", label: "Seedance 2 (Cinematic)" },
+                        { value: "bytedance/seedance-2-fast", label: "Seedance 2 (Fast)" },
+                      ].map((engine) => (
+                        <button
+                          key={engine.value}
+                          onClick={() => setSelectedAiModel(engine.value)}
+                          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
+                            ? "bg-[#57707A] text-[#DEDCDC] shadow-sm ring-1 ring-[#C5BAC4]/30"
+                            : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#57707A]/30"
+                            }`}
+                        >
+                          {engine.label}
+                        </button>
+                      ))}
                     </div>
-
-                    <Button
-                      onClick={handleGenerate}
-                      disabled={
-                        isGenerating ||
-                        (selectedMode === "storytelling" && bRollScenes.length === 0) ||
-                        (selectedMode !== "storytelling" && !!activeModeConfig.primaryLabel && !primaryFile && !primaryPreview)
-                      }
-                      className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0"
-                    >
-                      {isGenerating ? (
-                        <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing...</>
-                      ) : (
-                        <><Film className="mr-2 h-5 w-5" />{" "}
-                          {selectedMode === "storytelling" ? "Generate Sequence" : "Generate AI Video"}
-                        </>
-                      )}
-                    </Button>
                   </div>
                 )}
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={
+                      isGenerating ||
+                      (selectedMode === "storytelling" && bRollScenes.length === 0) ||
+                      (selectedMode !== "storytelling" && !!activeModeConfig.primaryLabel && !primaryFile && !primaryPreview)
+                    }
+                    className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 px-8 text-base shadow-lg w-full sm:w-auto shrink-0"
+                  >
+                    {isGenerating ? (
+                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Queuing...</>
+                    ) : (
+                      <><Film className="mr-2 h-5 w-5" />{" "}
+                        {selectedMode === "storytelling" ? "Generate Sequence" : "Generate AI Video"}
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

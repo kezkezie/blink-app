@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useBrandStore } from "@/app/store/useBrandStore";
 import {
   Loader2,
   Save,
@@ -19,6 +20,7 @@ import {
   Smartphone,
   User,
   RefreshCw,
+  Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,12 +86,13 @@ interface SocialAccount {
 
 type MainTab = "account" | "ai-rules";
 
-// ✨ Separated the main logic so we can wrap it in Suspense for Vercel
 function SettingsContent() {
   const { clientId } = useClient();
-  const router = useRouter();
   const searchParams = useSearchParams();
 
+  const { activeBrand } = useBrandStore();
+
+  const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingAccount, setSavingAccount] = useState(false);
   const [savingAI, setSavingAI] = useState(false);
@@ -104,7 +107,7 @@ function SettingsContent() {
 
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [activeAuthUrl, setActiveAuthUrl] = useState<string | null>(null);
-  const [activePlatform, setActivePlatform] = useState<string | null>(null); // ✨ Added to track which platform is in the modal
+  const [activePlatform, setActivePlatform] = useState<string | null>(null);
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<{
@@ -117,13 +120,19 @@ function SettingsContent() {
   const [socials, setSocials] = useState<SocialAccount[]>([]);
   const [hasAutoSynced, setHasAutoSynced] = useState(false);
 
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const loadData = useCallback(async () => {
     if (!clientId) return;
+
     const { data } = await supabase
       .from("clients")
       .select("*")
       .eq("id", clientId)
       .single();
+
     if (data) {
       setAccountInfo({
         contact_name: data.contact_name || "",
@@ -137,19 +146,24 @@ function SettingsContent() {
         });
     }
 
-    const socialsRes = await supabase
-      .from("social_accounts")
-      .select("*")
-      .eq("client_id", clientId)
-      .order("connected_at", { ascending: true });
+    // ✨ MULTI-BRAND FIX: Fetch only the social accounts tied to the active workspace!
+    if (activeBrand) {
+      const socialsRes = await supabase
+        .from("social_accounts")
+        .select("*")
+        .eq("brand_id", activeBrand.id)
+        .order("connected_at", { ascending: true });
 
-    if (socialsRes.data) setSocials(socialsRes.data as SocialAccount[]);
+      if (socialsRes.data) setSocials(socialsRes.data as SocialAccount[]);
+    } else {
+      setSocials([]);
+    }
+
     setLoading(false);
-  }, [clientId]);
+  }, [clientId, activeBrand?.id]);
 
-  // ✨ Bulletproof Manual Sync Function
   const handleManualSync = useCallback(async () => {
-    if (!clientId) return;
+    if (!clientId || !activeBrand) return;
     setSyncing(true);
     setConnectionMessage({ type: "info", text: "Syncing connected accounts..." });
 
@@ -163,23 +177,23 @@ function SettingsContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to sync accounts");
 
-      // ✨ Safe DB Save: Avoids Supabase 'onConflict' constraint crashes
       if (data.accounts && data.accounts.length > 0) {
-        // First, get what we already have in the DB
         const { data: existing } = await supabase
           .from('social_accounts')
           .select('id, platform')
-          .eq('client_id', clientId);
+          .eq('brand_id', activeBrand.id);
 
-        // Loop through accounts from PostForMe and save them securely
         for (const acc of data.accounts) {
           const exists = existing?.find(e => e.platform === acc.platform);
           if (exists) {
-            // Update existing account
             await supabase.from('social_accounts').update(acc).eq('id', exists.id);
           } else {
-            // Insert new account
-            const { error: insertErr } = await supabase.from('social_accounts').insert([acc]);
+            // ✨ MULTI-BRAND FIX: Insert the account linked to BOTH the client and the brand
+            const { error: insertErr } = await supabase.from('social_accounts').insert([{
+              ...acc,
+              client_id: clientId,
+              brand_id: activeBrand.id
+            }]);
             if (insertErr) {
               console.error("Insert error:", insertErr);
               throw new Error(insertErr.message);
@@ -187,7 +201,6 @@ function SettingsContent() {
           }
         }
       } else {
-        // If data.accounts is empty, PostForMe didn't send back anything for this client
         throw new Error("No accounts found in PostForMe for this client ID.");
       }
 
@@ -200,24 +213,21 @@ function SettingsContent() {
     } finally {
       setSyncing(false);
     }
-  }, [clientId, loadData]);
+  }, [clientId, activeBrand, loadData]);
 
-  // Load data on mount
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Auto-Sync: Catches the redirect from PostForMe after OAuth
   useEffect(() => {
-    if (!clientId || hasAutoSynced) return;
+    if (!clientId || hasAutoSynced || !activeBrand) return;
 
     if (searchParams.get("success") === "account_connected") {
       setHasAutoSynced(true);
       handleManualSync();
-      // Clean up the URL so refreshing doesn't re-trigger
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [clientId, searchParams, hasAutoSynced, handleManualSync]);
+  }, [clientId, activeBrand, searchParams, hasAutoSynced, handleManualSync]);
 
   const connectPlatform = useCallback(
     async (platform: string) => {
@@ -234,7 +244,7 @@ function SettingsContent() {
         if (!res.ok) throw new Error(data.error || "Failed to generate auth URL");
 
         setActiveAuthUrl(data.url);
-        setActivePlatform(platform); // ✨ Set the active platform for the modal
+        setActivePlatform(platform);
         setConnectModalOpen(true);
       } catch (err) {
         setConnectionMessage({
@@ -315,7 +325,7 @@ function SettingsContent() {
     }
   }
 
-  if (loading)
+  if (!isMounted || loading)
     return (
       <div className="flex items-center justify-center py-32">
         <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
@@ -324,6 +334,22 @@ function SettingsContent() {
 
   return (
     <div className="space-y-6 max-w-3xl pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+      {/* ✨ BRAND WORKSPACE INDICATOR */}
+      <div className="bg-[#2A2F38] border border-[#C5BAC4]/30 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+        {activeBrand ? (
+          <>
+            <Briefcase className="h-5 w-5 text-[#C5BAC4]" />
+            <h3 className="text-sm font-bold text-[#DEDCDC]">Viewing Integrations for: <span className="text-white bg-[#191D23] px-2 py-1 rounded ml-1">{activeBrand.brand_name || "Unnamed Workspace"}</span></h3>
+          </>
+        ) : (
+          <>
+            <AlertCircle className="h-5 w-5 text-amber-400" />
+            <h3 className="text-sm font-bold text-amber-400">No Workspace Selected. Please select a workspace.</h3>
+          </>
+        )}
+      </div>
+
       {/* ── TAB SWITCHER ── */}
       <div className="flex items-center gap-1 p-1.5 rounded-xl bg-[#191D23] border border-[#57707A]/30 overflow-x-auto shadow-inner">
         <button
@@ -384,9 +410,9 @@ function SettingsContent() {
           <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 space-y-6 shadow-lg">
             <div className="border-b border-[#57707A]/20 pb-4">
               <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
-                User Profile
+                Master Account Info
               </h3>
-              <p className="text-sm text-[#989DAA] mt-1">Manage your personal contact details.</p>
+              <p className="text-sm text-[#989DAA] mt-1">This email is used for billing and system notifications across all your brands.</p>
             </div>
             <div className="space-y-5">
               <div>
@@ -407,7 +433,7 @@ function SettingsContent() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-[#57707A] uppercase tracking-wider mb-2">
-                  Email Address
+                  Billing Email
                 </label>
                 <Input
                   value={accountInfo.contact_email}
@@ -456,14 +482,25 @@ function SettingsContent() {
           </div>
 
           {/* SOCIAL CONNECTIONS SECTION */}
-          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 space-y-6 shadow-lg">
+          <div className={cn("rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 space-y-6 shadow-lg relative", !activeBrand && "opacity-60 pointer-events-none")}>
+
+            {/* ✨ DISABLED OVERLAY IF NO BRAND SELECTED */}
+            {!activeBrand && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#191D23]/50 backdrop-blur-[2px] rounded-2xl">
+                <div className="bg-[#2A2F38] border border-[#57707A]/50 px-6 py-3 rounded-xl shadow-xl flex items-center gap-3">
+                  <Briefcase className="h-5 w-5 text-[#C5BAC4]" />
+                  <p className="text-sm font-bold text-[#DEDCDC]">Please select a Workspace to connect socials.</p>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between border-b border-[#57707A]/20 pb-4">
               <div>
                 <h3 className="text-lg font-bold text-[#DEDCDC] font-display">
-                  Social Connections
+                  Workspace Integrations
                 </h3>
                 <p className="text-sm text-[#989DAA] mt-1">
-                  Link the social media accounts you want Blink to post to.
+                  Link the social media accounts you want <b className="text-white">{activeBrand?.brand_name || "this workspace"}</b> to post to.
                 </p>
               </div>
               <Button
@@ -601,61 +638,23 @@ function SettingsContent() {
         </div>
       )}
 
+      {/* ✨ AI RULES TAB (COMING SOON) */}
       {mainTab === "ai-rules" && (
         <div className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex items-center gap-1 p-1.5 rounded-xl bg-[#191D23] border border-[#57707A]/30">
-            <button
-              onClick={() => setAiTab("dm")}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex-1 justify-center whitespace-nowrap",
-                aiTab === "dm"
-                  ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
-                  : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
-              )}
-            >
-              <MessageSquare className="h-4 w-4" /> DM Auto-Reply
-            </button>
-            <button
-              onClick={() => setAiTab("comments")}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex-1 justify-center whitespace-nowrap",
-                aiTab === "comments"
-                  ? "bg-[#2A2F38] text-[#DEDCDC] shadow-sm border border-[#57707A]/50"
-                  : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10 border border-transparent"
-              )}
-            >
-              <MessageCircle className="h-4 w-4" /> Comment Auto-Reply
-            </button>
-          </div>
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-10 text-center shadow-lg flex flex-col items-center justify-center min-h-[400px] relative overflow-hidden">
+            {/* Subtle background element */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-[#C5BAC4]/5 blur-[80px] rounded-full pointer-events-none" />
 
-          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-10 text-center shadow-lg flex flex-col items-center justify-center">
-            <div className="h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-full flex items-center justify-center mb-6 shadow-inner">
-              <Bot className="h-10 w-10 text-[#57707A]" />
-            </div>
-            <h3 className="text-lg font-bold text-[#DEDCDC] font-display mb-2">AI Auto-Reply Configuration</h3>
-            <p className="text-sm text-[#989DAA] max-w-sm">
-              Define the boundaries and custom topics for your AI assistant. UI goes here.
-            </p>
-            <div className="mt-6 bg-[#C5BAC4]/5 border border-[#C5BAC4]/20 rounded-xl p-4 max-w-md">
-              <p className="text-xs font-medium text-[#C5BAC4] leading-relaxed">
-                💡 Make sure to configure your Brand Voice in the Brand Identity tab first so your assistant sounds like you!
+            <div className="relative z-10 flex flex-col items-center">
+              <div className="h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                <Bot className="h-10 w-10 text-[#57707A]" />
+              </div>
+              <span className="text-[10px] font-bold text-[#191D23] uppercase tracking-widest bg-[#C5BAC4] px-3 py-1 rounded-full mb-4">Coming Soon</span>
+              <h3 className="text-2xl font-bold text-[#DEDCDC] font-display mb-3">AI Auto-Reply Configuration</h3>
+              <p className="text-[#989DAA] max-w-md leading-relaxed">
+                Soon, you'll be able to configure your AI assistant to automatically reply to DMs and comments using your brand's unique voice and safety boundaries.
               </p>
             </div>
-          </div>
-
-          <div className="flex justify-end pt-2 border-t border-[#57707A]/30">
-            <Button
-              onClick={handleSaveAI}
-              disabled={savingAI}
-              className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold gap-2 h-11 px-8 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all"
-            >
-              {savingAI ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}{" "}
-              Save AI Rules
-            </Button>
           </div>
         </div>
       )}
@@ -682,7 +681,7 @@ function SettingsContent() {
           <div className="p-6 bg-[#191D23]/50">
             {activeAuthUrl ? (
               <div className="flex flex-col space-y-5">
-                {/* ✨ NEW: Strict Meta Connection Instructions */}
+                {/* ✨ Strict Meta Connection Instructions */}
                 {(activePlatform === 'instagram' || activePlatform === 'facebook') && (
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-left space-y-2.5 shadow-inner animate-in fade-in">
                     <h4 className="text-sm font-bold text-amber-400 flex items-center gap-2">

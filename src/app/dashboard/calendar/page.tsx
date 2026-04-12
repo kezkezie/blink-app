@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { Loader2, CheckCircle, AlertCircle, X } from "lucide-react";
+import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ IMPORT BRAND STORE
+import { Loader2, CheckCircle, AlertCircle, X, Briefcase } from "lucide-react";
 import { CalendarView } from "@/components/content/CalendarView";
 import type { Content } from "@/types/database";
 import { cn } from "@/lib/utils";
@@ -12,7 +13,6 @@ const UNSCHEDULED_LIMIT = 20;
 
 const HIDDEN_CONTENT_TYPES = ["sequence_clip", "generated_audio"];
 
-// ✨ UPGRADED: Now seamlessly translates raw arrays from the modal into Omni-Objects
 const parsePublishSettings = (data: any): any => {
   if (!data) return {};
 
@@ -21,7 +21,6 @@ const parsePublishSettings = (data: any): any => {
     try { parsed = JSON.parse(data); } catch { return {}; }
   }
 
-  // If the modal passed a legacy array (e.g. ['tiktok']), translate it instantly:
   if (Array.isArray(parsed)) {
     const newSettings: any = {};
     parsed.forEach(platform => {
@@ -42,6 +41,9 @@ const isAnyPlatformEnabled = (settings: any) => {
 
 export default function CalendarPage() {
   const { clientId } = useClient();
+  const { activeBrand } = useBrandStore(); // ✨ GET ACTIVE BRAND
+
+  const [isMounted, setIsMounted] = useState(false);
   const [content, setContent] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -56,20 +58,30 @@ export default function CalendarPage() {
   const [hasMoreUnscheduled, setHasMoreUnscheduled] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const fetchContent = useCallback(async () => {
-    if (!clientId) return;
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
+  const fetchContent = useCallback(async () => {
+    if (!clientId || !activeBrand) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    // ✨ FETCH ONLY CONTENT FOR THIS BRAND
     const { data: scheduled } = await supabase
       .from("content")
       .select("*")
-      .eq("client_id", clientId)
+      .eq("brand_id", activeBrand.id)
       .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
       .not("scheduled_at", "is", null);
 
     const { data: unscheduled } = await supabase
       .from("content")
       .select("*")
-      .eq("client_id", clientId)
+      .eq("brand_id", activeBrand.id)
       .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
       .is("scheduled_at", null)
       .order("created_at", { ascending: false })
@@ -80,20 +92,21 @@ export default function CalendarPage() {
       setHasMoreUnscheduled(unscheduled.length === unscheduledOffset);
     }
     setLoading(false);
-  }, [clientId, unscheduledOffset]);
+  }, [clientId, activeBrand?.id, unscheduledOffset]);
 
   useEffect(() => {
     fetchContent();
   }, [fetchContent]);
 
   const handleLoadMore = async () => {
+    if (!activeBrand) return;
     setIsLoadingMore(true);
     const newOffset = unscheduledOffset + UNSCHEDULED_LIMIT;
 
     const { data: moreUnscheduled } = await supabase
       .from("content")
       .select("*")
-      .eq("client_id", clientId)
+      .eq("brand_id", activeBrand.id) // ✨ MULTI-BRAND
       .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
       .is("scheduled_at", null)
       .order("created_at", { ascending: false })
@@ -110,10 +123,8 @@ export default function CalendarPage() {
   };
 
   const handleUpdateContent = async (updatedItem: Content) => {
-    // ✨ 1. Intercept and translate whatever the modal sent into the new Object format
     const publishSettings = parsePublishSettings((updatedItem as any).target_platforms);
 
-    // Replace the raw array with the standardized object locally
     const standardizedItem = {
       ...updatedItem,
       target_platforms: publishSettings
@@ -125,7 +136,6 @@ export default function CalendarPage() {
 
     if ((standardizedItem as any).scheduled_at) {
 
-      // Now the check will pass successfully!
       if (!isAnyPlatformEnabled(publishSettings)) {
         setMessage({
           type: "error",
@@ -137,8 +147,6 @@ export default function CalendarPage() {
       setMessage({ type: "info", text: "Syncing schedule with social platforms..." });
 
       try {
-        // ✨ 2. Force sync the translated Object format back to Supabase
-        // This ensures the database matches the new backend format, even if the modal only saved an array.
         await supabase
           .from("content")
           .update({ target_platforms: publishSettings } as any)
@@ -186,7 +194,6 @@ export default function CalendarPage() {
             continue;
           }
 
-          // Force sync bulk items too
           await supabase
             .from("content")
             .update({ target_platforms: publishSettings } as any)
@@ -228,10 +235,25 @@ export default function CalendarPage() {
     }
   };
 
-  if (loading) {
+  if (!isMounted || loading) {
     return (
-      <div className="flex justify-center py-32">
+      <div className="flex items-center justify-center py-32">
         <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
+      </div>
+    );
+  }
+
+  // ✨ NO BRAND EMPTY STATE
+  if (!activeBrand) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">
+        <div className="mx-auto h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-2xl flex items-center justify-center mb-6 shadow-xl">
+          <Briefcase className="h-10 w-10 text-[#57707A]" />
+        </div>
+        <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">No Workspace Selected</h2>
+        <p className="text-[#989DAA] mt-3 max-w-md mx-auto leading-relaxed mb-8">
+          You are currently operating in an unbranded session. Select an existing brand from the top navigation bar to view its content calendar.
+        </p>
       </div>
     );
   }

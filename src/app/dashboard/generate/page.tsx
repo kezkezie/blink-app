@@ -5,7 +5,6 @@ import { useDropzone } from "react-dropzone";
 import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Palette, Layers, Download, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
+import { useBrandStore } from "@/app/store/useBrandStore";
+import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 
 // --- Configuration ---
 const IMAGE_MODES = [
@@ -49,7 +50,6 @@ export default function ImageStudioPage() {
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
-  const [strictBrandAlignment, setStrictBrandAlignment] = useState(true);
   const [numImages, setNumImages] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedResults, setGeneratedResults] = useState<GeneratedResult[]>([]);
@@ -61,8 +61,8 @@ export default function ImageStudioPage() {
   const [selectedResult, setSelectedResult] = useState<GeneratedResult | null>(null);
   const [refinementTab, setRefinementTab] = useState<"fresh" | "retouch">("fresh");
   const [modalPrompt, setModalPrompt] = useState("");
-  const [retouchPrompt, setRetouchPrompt] = useState(""); // ✨ New state for magic retouch instructions
-  const [isRefining, setIsRefining] = useState(false); // ✨ Loading state for modal buttons
+  const [retouchPrompt, setRetouchPrompt] = useState("");
+  const [isRefining, setIsRefining] = useState(false);
 
   const activeConfig = IMAGE_MODES.find(m => m.id === selectedMode)!;
 
@@ -103,7 +103,7 @@ export default function ImageStudioPage() {
         body: JSON.stringify({
           prompt: prompt,
           brandContext: brandContext,
-          useBrand: strictBrandAlignment,
+          useBrand: useBrandStore.getState().activeBrand !== null,
           mode: selectedMode,
           style: activeStyleObj
         }),
@@ -160,7 +160,13 @@ export default function ImageStudioPage() {
 
     setIsGenerating(true);
 
+    const { activeBrand } = useBrandStore.getState();
+    const strictBrandAlignment = activeBrand !== null;
+    const { addTask, removeTask } = useWorkflowStore.getState();
+    const taskId = `img-gen-${Date.now()}`;
+
     try {
+      addTask(taskId, "Generating Image");
       const uploadedUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -172,7 +178,6 @@ export default function ImageStudioPage() {
       }
 
       const activeStyleObj = MARKETING_STYLES.find(s => s.id === selectedStyle);
-      // ✨ FIX: This is the full prompt that actually goes to the AI
       const finalPrompt = `${prompt}. ${activeStyleObj?.promptAddon || ""}`;
 
       const response = await triggerWorkflow("blink-generate-images", {
@@ -203,7 +208,7 @@ export default function ImageStudioPage() {
           .insert({
             client_id: clientId,
             content_type: "post_image",
-            caption: finalPrompt, // Save the FULL prompt so it shows up in the modal
+            caption: finalPrompt,
             status: "draft",
             image_urls: [url],
             ai_model: 'nano-banana-studio'
@@ -213,7 +218,6 @@ export default function ImageStudioPage() {
 
         if (error) console.error("Failed to save to grid:", error);
         if (contentRecord) {
-          // ✨ Ensure we pass the finalPrompt here so the modal opens with it!
           newResults.push({ id: contentRecord.id, url, prompt: finalPrompt, mode: selectedMode });
         }
       }
@@ -224,6 +228,7 @@ export default function ImageStudioPage() {
       console.error(error);
       alert(`Generation failed: ${error.message || "Unknown error"}`);
     } finally {
+      removeTask(taskId);
       setIsGenerating(false);
     }
   };
@@ -232,7 +237,6 @@ export default function ImageStudioPage() {
   const handleRefine = async (type: "fresh" | "retouch") => {
     if (!selectedResult || !clientId) return;
 
-    // Ensure they typed something if retouching
     if (type === "retouch" && !retouchPrompt.trim()) {
       return alert("Please enter instructions on what you want to change.");
     }
@@ -240,19 +244,15 @@ export default function ImageStudioPage() {
     setIsRefining(true);
 
     try {
-      // 1. Determine n8n payload based on the tab
-      // If "fresh", we do a standard generation with the image as a reference.
-      // If "retouch", we hit your n8n's "edit" mode (qwen/image-edit).
       const wfMode = type === "fresh" ? "standard" : "edit";
       const wfPrompt = type === "fresh" ? modalPrompt : retouchPrompt;
 
-      // 2. Trigger n8n
       const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId,
         mode: wfMode,
         prompt: wfPrompt,
-        reference_image_urls: [selectedResult.url], // Passing the current image!
-        strict_brand_alignment: strictBrandAlignment,
+        reference_image_urls: [selectedResult.url],
+        strict_brand_alignment: useBrandStore.getState().activeBrand !== null,
         numImages: 1,
         is_sync: true
       });
@@ -263,7 +263,6 @@ export default function ImageStudioPage() {
 
       if (newUrls.length === 0) throw new Error("No images were returned.");
 
-      // 3. Save the new variation to the grid
       const url = newUrls[0];
       const { data: contentRecord } = await supabase
         .from("content")
@@ -282,7 +281,6 @@ export default function ImageStudioPage() {
         const newRes = { id: contentRecord.id, url, prompt: wfPrompt, mode: wfMode };
         setGeneratedResults(prev => [newRes, ...prev]);
 
-        // Auto-switch the modal to the newly generated image!
         setSelectedResult(newRes);
         setModalPrompt(newRes.prompt);
         setRetouchPrompt("");
@@ -298,13 +296,13 @@ export default function ImageStudioPage() {
 
   const openModal = (result: GeneratedResult) => {
     setSelectedResult(result);
-    setModalPrompt(result.prompt); // Pre-fill the Fresh Take box with the full prompt
-    setRetouchPrompt(""); // Clear the instruction box for Magic Retouch
+    setModalPrompt(result.prompt);
+    setRetouchPrompt("");
   };
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 pb-20 animate-in fade-in duration-500 relative">
-      {/* ── HERO BANNER: Dark bento panel + subtle dusty rose glow ── */}
+      {/* ── HERO BANNER ── */}
       <div className="relative bg-[#2A2F38] rounded-2xl p-8 border border-[#57707A]/40 shadow-xl overflow-hidden">
         <div className="absolute top-0 left-0 w-96 h-96 bg-[#C5BAC4]/10 blur-[120px] rounded-full pointer-events-none -translate-x-1/2 -translate-y-1/2" />
         <div className="relative z-10">
@@ -321,7 +319,6 @@ export default function ImageStudioPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
         {/* LEFT COLUMN: Controls */}
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-5 shadow-lg space-y-4">
@@ -351,37 +348,20 @@ export default function ImageStudioPage() {
             </div>
           </div>
 
-          <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-5 shadow-lg space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2">
-                  <Palette className="w-4 h-4 text-[#C5BAC4]" /> Strict Brand Alignment
-                </h3>
-                <p className="text-[10px] text-[#989DAA] mt-0.5">
-                  {strictBrandAlignment
-                    ? `Applying ${brandContext?.name || 'brand'} style guides.`
-                    : "Ignoring brand guides for creative freedom."}
-                </p>
+          {selectedMode === "standard" && (
+            <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-5 shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-[#DEDCDC]">Batch Size</h3>
+                <span className="text-xs font-bold text-[#191D23] bg-[#C5BAC4] px-2 py-0.5 rounded shadow-sm">{numImages} Images</span>
               </div>
-              <Switch checked={strictBrandAlignment} onCheckedChange={setStrictBrandAlignment} />
+              <Slider value={[numImages]} onValueChange={(v) => setNumImages(v[0])} min={1} max={10} step={1} className="py-1" />
             </div>
-
-            {selectedMode === "standard" && (
-              <div className="pt-4 border-t border-[#57707A]/30 mt-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-[#DEDCDC]">Batch Size</h3>
-                  <span className="text-xs font-bold text-[#191D23] bg-[#C5BAC4] px-2 py-0.5 rounded shadow-sm">{numImages} Images</span>
-                </div>
-                <Slider value={[numImages]} onValueChange={(v) => setNumImages(v[0])} min={1} max={10} step={1} className="py-1" />
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {/* RIGHT COLUMN: Canvas & Generation */}
         <div className="lg:col-span-8 flex flex-col gap-6">
           <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-6 shadow-lg flex-1 flex flex-col space-y-6 relative overflow-hidden">
-            {/* Subtle corner glow */}
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#B3FF00]/5 blur-[60px] rounded-full pointer-events-none" />
 
             <div className="space-y-2 relative z-10">
@@ -616,7 +596,7 @@ export default function ImageStudioPage() {
 
                 {/* Footer Actions */}
                 <div className="p-5 border-t border-[#57707A]/30 flex gap-3 bg-[#191D23]/40 shrink-0">
-                  <Button variant="outline" className="flex-1 h-11 rounded-xl text-[#DEDCDC] font-bold bg-[#2A2F38] border-[#57707A]/50 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] transition-colors" onClick={() => window.open(selectedResult.url, '_blank')}>
+                  <Button variant="outline" className="flex-1 h-11 rounded-xl text-[#DEDCDC] font-bold bg-[#2A2F38] border-[#57707A]/50 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] transition-colors" onClick={() => window.open(selectedResult?.url, '_blank')}>
                     <Download className="w-4 h-4 mr-2 text-[#C5BAC4]" /> Save
                   </Button>
                   <Button variant="outline" className="flex-1 h-11 rounded-xl text-[#DEDCDC] font-bold bg-[#2A2F38] border-[#57707A]/50 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] transition-colors" onClick={() => alert('Share link copied to clipboard! (Coming soon)')}>
@@ -629,7 +609,7 @@ export default function ImageStudioPage() {
               <div className="flex-1 bg-[#0A0A0A] relative group overflow-hidden order-1 md:order-2 min-h-[45%] md:min-h-0 md:rounded-r-2xl flex items-center justify-center">
                 <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none"></div>
                 <img
-                  src={selectedResult.url}
+                  src={selectedResult?.url}
                   className="max-w-full max-h-full object-contain relative z-10 drop-shadow-2xl"
                   alt="Selected result"
                 />
@@ -638,7 +618,7 @@ export default function ImageStudioPage() {
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-8 pt-24 text-white opacity-0 group-hover:opacity-100 transition-opacity delay-100 pointer-events-none z-20">
                   <div className="max-w-3xl mx-auto">
                     <p className="text-[10px] font-bold uppercase tracking-widest mb-2 text-[#C5BAC4] flex items-center gap-2"><Sparkles className="w-3 h-3" /> Original Prompt</p>
-                    <p className="text-sm leading-relaxed line-clamp-4 text-[#DEDCDC] font-medium bg-black/40 p-4 rounded-xl border border-white/10 backdrop-blur-sm">{selectedResult.prompt}</p>
+                    <p className="text-sm leading-relaxed line-clamp-4 text-[#DEDCDC] font-medium bg-black/40 p-4 rounded-xl border border-white/10 backdrop-blur-sm">{selectedResult?.prompt}</p>
                   </div>
                 </div>
 
@@ -651,6 +631,6 @@ export default function ImageStudioPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }
