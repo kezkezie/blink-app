@@ -15,6 +15,7 @@ import {
   UploadCloud,
   Palette,
   CalendarDays,
+  CreditCard,
   Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ const navItems = [
   { label: "Image Studio", href: "/dashboard/generate", icon: Sparkles }, // Renamed
   { label: "Video Studio", href: "/dashboard/video", icon: Video }, // ✨ NEW
   { label: "Brand Identity", href: "/dashboard/brand", icon: Palette },
+  { label: "Billing", href: "/dashboard/billing", icon: CreditCard },
   // { label: "Approvals", href: "/dashboard/approvals", icon: CheckCircle },
   // { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },

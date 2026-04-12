@@ -98,15 +98,16 @@ export default function GetStartedPage() {
 
   // --- Step 2: Business State ---
   const [contactName, setContactName] = useState("");
+  const [brandName, setBrandName] = useState(""); // ✨ New State for Brand Name
   const [companyName, setCompanyName] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
-  const [socialMediaUrls, setSocialMediaUrls] = useState(""); // ✨ New State
+  const [socialMediaUrls, setSocialMediaUrls] = useState("");
   const [industry, setIndustry] = useState("");
   const [phone, setPhone] = useState("");
   const [description, setDescription] = useState("");
 
   // --- Step 3: Visual Identity ---
-  const [visualStyleGuide, setVisualStyleGuide] = useState(""); // ✨ New State
+  const [visualStyleGuide, setVisualStyleGuide] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#2563EB");
   const [secondaryColor, setSecondaryColor] = useState("#585954");
   const [accentColor, setAccentColor] = useState("#10B981");
@@ -121,7 +122,7 @@ export default function GetStartedPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   // --- Step 4: Brand Vibe & Assets ---
-  const [brandVoice, setBrandVoice] = useState(""); // ✨ New State
+  const [brandVoice, setBrandVoice] = useState("");
   const [toneKeywords, setToneKeywords] = useState<string[]>([]);
   const [assetFiles, setAssetFiles] = useState<File[]>([]);
   const [assetPreviews, setAssetPreviews] = useState<string[]>([]);
@@ -133,15 +134,11 @@ export default function GetStartedPage() {
       } = await supabase.auth.getSession();
 
       if (session?.user) {
-        // ✨ FIX: If an existing user logs in with Google, they'll land here. 
-        // Check if they already completed onboarding and route them away.
         if (session.user.user_metadata?.onboarding_completed === true) {
           router.replace("/dashboard");
           return;
         }
 
-        // ✨ FIX: If they haven't completed onboarding, automatically 
-        // skip Step 1 and drop them right into the Brand Identity forms!
         setUserId(session.user.id);
         setEmail(session.user.email || "");
         setStep(2);
@@ -155,12 +152,11 @@ export default function GetStartedPage() {
 
   async function handleGoogleSignUp() {
     try {
-      // Force the app to use our backend route that sets the cookies
       const res = await fetch("/api/auth/google", { method: "POST" });
       const data = await res.json();
 
       if (data.url) {
-        window.location.href = data.url; // Redirect to Google
+        window.location.href = data.url;
       } else {
         alert(data.error || "Failed to initiate Google login");
       }
@@ -339,8 +335,10 @@ export default function GetStartedPage() {
         .eq("client_id", currentClientId)
         .maybeSingle();
 
+      // ✨ Include brand_name in payload
       const brandPayload: any = {
         client_id: currentClientId,
+        brand_name: brandName || companyName, // Fallback to company name if empty
         visual_style_guide: visualStyleGuide,
         brand_voice: brandVoice,
         primary_color: primaryColor,
@@ -357,20 +355,26 @@ export default function GetStartedPage() {
       if (finalAssetUrls.length > 0)
         brandPayload.uploaded_assets = finalAssetUrls;
 
+      let targetBrandId = null;
+
       if (existingBrand) {
+        targetBrandId = existingBrand.id;
         const { error: brandError } = await supabase
           .from("brand_profiles")
           .update(brandPayload)
           .eq("id", existingBrand.id);
         if (brandError) throw new Error(`Brand Error: ${brandError.message}`);
       } else {
-        const { error: brandError } = await supabase
+        const { data: newBrand, error: brandError } = await supabase
           .from("brand_profiles")
           .insert({
             ...brandPayload,
             uploaded_assets: finalAssetUrls,
-          });
+          })
+          .select("id")
+          .single();
         if (brandError) throw new Error(`Brand Error: ${brandError.message}`);
+        if (newBrand) targetBrandId = newBrand.id;
       }
 
       // 5. Unlock Middleware
@@ -381,6 +385,7 @@ export default function GetStartedPage() {
       try {
         triggerWorkflow("blink-brand-extract-001", {
           client_id: currentClientId,
+          brand_id: targetBrandId, // Pass the new brand ID to the webhook
         }).catch((e) => {
           console.log("Silent workflow error:", e);
         });
@@ -446,23 +451,13 @@ export default function GetStartedPage() {
           {/* STEP 1: Sign Up */}
           {step === 1 && (
             <div>
-              {/* <Button
-                type="button"
-                variant="outline"
-                onClick={handleGoogleSignUp}
-                className="w-full h-12 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white hover:border-[#C5BAC4]/50 mb-8 font-bold shadow-sm rounded-xl transition-all"
-              >
-                <GoogleIcon className="mr-3 h-5 w-5" />
-                Sign up with Google
-              </Button> */}
-
               <div className="relative mb-8">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-[#57707A]/30" />
                 </div>
                 <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest">
                   <span className="bg-[#2A2F38] px-4 text-[#57707A]">
-                    Or continue with email
+                    Continue with email
                   </span>
                 </div>
               </div>
@@ -531,6 +526,29 @@ export default function GetStartedPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-bold text-[#C5BAC4] uppercase tracking-wider mb-2">
+                    Workspace / Brand Name <span className="text-red-400">*</span>
+                  </label>
+                  <Input
+                    required
+                    value={brandName}
+                    onChange={(e) => setBrandName(e.target.value)}
+                    placeholder="e.g. Lup Space"
+                    className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
+                    Company Legal Name
+                  </label>
+                  <Input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="e.g. Lup Space LLC"
+                    className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
+                  />
+                </div>
                 <div>
                   <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                     Your Name <span className="text-red-400">*</span>
@@ -543,33 +561,6 @@ export default function GetStartedPage() {
                     className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
-                    Phone{" "}
-                    <span className="text-[#57707A] opacity-70 font-normal">
-                      (Optional)
-                    </span>
-                  </label>
-                  <Input
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+254 700 000 000"
-                    className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
-                  Company Name <span className="text-red-400">*</span>
-                </label>
-                <Input
-                  required
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="e.g. Lup Space"
-                  className="h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner"
-                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -631,7 +622,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={() => setStep(3)}
-                disabled={!companyName || !contactName || !description}
+                disabled={!brandName || !contactName || !description}
                 className="w-full h-12 bg-[#C5BAC4] hover:bg-white text-[#191D23] mt-4 shadow-lg shadow-[#C5BAC4]/10 font-bold rounded-xl transition-all"
               >
                 Next Step <ArrowRight className="ml-2 h-4 w-4" />

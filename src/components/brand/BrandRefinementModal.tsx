@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, Loader2, Brain, Wand2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
+import { useBrandStore } from "@/app/store/useBrandStore";
 import { triggerWorkflow } from "@/lib/workflows";
 
 interface BrandRefinementModalProps {
@@ -26,25 +27,28 @@ export function BrandRefinementModal({
   onOpenChange,
 }: BrandRefinementModalProps) {
   const { clientId } = useClient();
+  const { activeBrand } = useBrandStore();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [visualGuide, setVisualGuide] = useState("");
 
-  // Fetch existing guide on open
+  // Fetch the active brand's visual style guide on open
   useEffect(() => {
     async function fetchGuide() {
-      if (open && clientId) {
+      if (open && activeBrand) {
         setFetching(true);
         try {
           const { data, error } = await supabase
             .from("brand_profiles")
             .select("visual_style_guide")
-            .eq("client_id", clientId)
+            .eq("id", activeBrand.id)
             .single();
 
           if (!error && data?.visual_style_guide) {
             setVisualGuide(data.visual_style_guide);
+          } else {
+            setVisualGuide("");
           }
         } catch (err) {
           console.error("Error fetching guide:", err);
@@ -54,18 +58,18 @@ export function BrandRefinementModal({
       }
     }
     fetchGuide();
-  }, [open, clientId]);
+  }, [open, activeBrand?.id]);
 
   async function handleSuggest() {
-    if (!clientId) return;
+    if (!clientId || !activeBrand) return;
     setSuggesting(true);
     try {
-      const response = await triggerWorkflow("blink-suggest-visual", {
+      const response = await triggerWorkflow("blink-enhance-brand", {
         client_id: clientId,
+        brand_id: activeBrand.id,
       });
 
       if (response && response.suggestion) {
-        // ✨ FIXED: Added 'as string' to satisfy TypeScript
         setVisualGuide(response.suggestion as string);
       } else {
         alert("Received an empty suggestion from the AI.");
@@ -81,13 +85,13 @@ export function BrandRefinementModal({
   }
 
   async function handleSave() {
-    if (!clientId) return;
+    if (!activeBrand) return;
     setLoading(true);
     try {
       const { error } = await supabase
         .from("brand_profiles")
         .update({ visual_style_guide: visualGuide.trim() || null })
-        .eq("client_id", clientId);
+        .eq("id", activeBrand.id);
 
       if (error) throw error;
 

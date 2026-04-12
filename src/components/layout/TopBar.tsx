@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; // ✨ Imported useRouter for sign out
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { Bell, Brain, Loader2, Sparkles, Wand2, Search, Briefcase, ChevronDown, Check } from "lucide-react";
+import { Bell, Brain, Loader2, Sparkles, Wand2, Search, Briefcase, ChevronDown, Check, Zap } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,21 +26,24 @@ interface TopBarProps {
 
 export function TopBar({ pageTitle }: TopBarProps) {
   const { clientId } = useClient();
+  const router = useRouter(); // ✨ Added router
   const [brandModalOpen, setBrandModalOpen] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(true); // ✨ Added notification state
+
+  // ✨ Added state to hold the real user profile
+  const [userProfile, setUserProfile] = useState<{ name: string; email: string } | null>(null);
 
   const { activeTasks } = useWorkflowStore();
   const isGenerating = activeTasks.some(t => t.label.includes("Image") || t.label.includes("Video"));
   const isExtracting = activeTasks.some(t => t.label.includes("DNA") || t.label.includes("Extract"));
   const isAnalyzing = activeTasks.some(t => t.label.includes("Analyz") || t.label.includes("Media"));
 
-  // ✨ Extracted setAvailableBrands so the TopBar can update the global list
   const { activeBrand, availableBrands, setActiveBrand, setAvailableBrands } = useBrandStore();
 
-  // ✨ GLOBAL BRAND FETCHING
-  // This ensures your brands are loaded on EVERY page (Settings, Grid, etc.)
   useEffect(() => {
     if (!clientId) return;
 
+    // 1. FETCH BRANDS
     supabase
       .from("brand_profiles")
       .select("id, brand_name, logo_url")
@@ -47,15 +51,36 @@ export function TopBar({ pageTitle }: TopBarProps) {
       .then(({ data }) => {
         if (data) {
           setAvailableBrands(data);
-
-          // Auto-select the first brand if none is active
           const currentActive = useBrandStore.getState().activeBrand;
           if (!currentActive && data.length > 0) {
             setActiveBrand(data[0]);
           }
         }
       });
+
+    // ✨ 2. FETCH USER PROFILE
+    supabase
+      .from("clients")
+      .select("contact_name, contact_email")
+      .eq("id", clientId)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setUserProfile({
+            name: data.contact_name || "User",
+            email: data.contact_email || "",
+          });
+        }
+      });
   }, [clientId, setAvailableBrands, setActiveBrand]);
+
+  // ✨ Handle Sign Out
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    // Clear Zustand stores if needed, then redirect
+    useBrandStore.setState({ activeBrand: null, availableBrands: [] });
+    router.push("/login");
+  };
 
   return (
     <>
@@ -97,7 +122,7 @@ export function TopBar({ pageTitle }: TopBarProps) {
         {/* Right Actions */}
         <div className="flex-1 flex items-center justify-end gap-4">
 
-          {/* ✨ MULTI-BRAND WORKSPACE SWITCHER ✨ */}
+          {/* MULTI-BRAND WORKSPACE SWITCHER */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="h-9 gap-2 bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#191D23] hover:text-white transition-all shadow-md">
@@ -116,7 +141,6 @@ export function TopBar({ pageTitle }: TopBarProps) {
               <DropdownMenuLabel className="text-xs text-[#989DAA] uppercase tracking-wider font-bold">Your Brands</DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-[#57707A]/30" />
 
-              {/* ✨ NEW: NO BRAND OPTION ✨ */}
               <DropdownMenuItem
                 onClick={() => setActiveBrand(null)}
                 className="flex items-center gap-3 cursor-pointer focus:bg-[#191D23] focus:text-[#DEDCDC] py-2"
@@ -130,7 +154,6 @@ export function TopBar({ pageTitle }: TopBarProps) {
 
               <DropdownMenuSeparator className="bg-[#57707A]/30" />
 
-              {/* LIST OF SAVED BRANDS */}
               {availableBrands.length > 0 ? (
                 availableBrands.map((brand) => (
                   <DropdownMenuItem
@@ -166,34 +189,64 @@ export function TopBar({ pageTitle }: TopBarProps) {
             <span className="hidden lg:inline uppercase tracking-wider">Refine AI Brain</span>
           </button>
 
-          {/* Notification Bell */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative text-[#57707A] hover:text-[#C5BAC4] hover:bg-[#2A2F38] transition-colors"
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-[#B3FF00] border-2 border-[#191D23] shadow-[0_0_8px_rgba(179,255,0,0.8)]" />
-          </Button>
+          {/* ✨ FUNCTIONAL NOTIFICATION BELL ✨ */}
+          <DropdownMenu onOpenChange={(open) => { if (open) setHasUnreadNotifications(false); }}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative text-[#57707A] hover:text-[#C5BAC4] hover:bg-[#2A2F38] transition-colors"
+              >
+                <Bell className="h-5 w-5" />
+                {hasUnreadNotifications && (
+                  <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-[#B3FF00] border-2 border-[#191D23] shadow-[0_0_8px_rgba(179,255,0,0.8)] animate-pulse" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-xl p-2 rounded-xl">
+              <div className="px-3 py-2 border-b border-[#57707A]/30 mb-2">
+                <h4 className="font-bold text-[#DEDCDC]">What's New</h4>
+              </div>
+              <div className="space-y-1">
+                <div className="flex gap-3 p-2 hover:bg-[#191D23] rounded-lg transition-colors cursor-pointer">
+                  <div className="mt-0.5 bg-[#B3FF00]/10 p-2 rounded-md text-[#B3FF00] h-fit"><Briefcase className="h-4 w-4" /></div>
+                  <div>
+                    <p className="text-sm font-bold text-[#DEDCDC]">Multi-Brand Workspaces</p>
+                    <p className="text-xs text-[#989DAA] mt-1 leading-relaxed">You can now create and manage multiple brands from a single account! Switch workspaces using the top menu.</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 p-2 hover:bg-[#191D23] rounded-lg transition-colors cursor-pointer">
+                  <div className="mt-0.5 bg-[#C5BAC4]/10 p-2 rounded-md text-[#C5BAC4] h-fit"><Sparkles className="h-4 w-4" /></div>
+                  <div>
+                    <p className="text-sm font-bold text-[#DEDCDC]">Nano Banana 2 is Live</p>
+                    <p className="text-xs text-[#989DAA] mt-1 leading-relaxed">Our new flagship image engine is now the default in the Image Studio for standard generation.</p>
+                  </div>
+                </div>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-          {/* User Avatar Dropdown */}
+          {/* ✨ DYNAMIC USER AVATAR DROPDOWN ✨ */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-9 w-9 rounded-full p-0 ring-2 ring-transparent hover:ring-[#C5BAC4]/50 transition-all">
                 <Avatar className="h-9 w-9">
-                  <AvatarFallback className="bg-[#2A2F38] text-[#C5BAC4] border border-[#57707A]/50 text-sm font-bold font-display">
-                    K
+                  <AvatarFallback className="bg-[#2A2F38] text-[#C5BAC4] border border-[#57707A]/50 text-sm font-bold font-display uppercase">
+                    {userProfile?.name?.charAt(0) || "U"}
                   </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48 bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-xl">
-              <div className="px-2 py-1.5">
-                <p className="text-sm font-bold text-[#DEDCDC]">Kez</p>
-                <p className="text-xs text-[#989DAA] font-medium">Admin</p>
+            <DropdownMenuContent align="end" className="w-56 bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-xl rounded-xl">
+              <div className="px-3 py-2.5">
+                <p className="text-sm font-bold text-[#DEDCDC] truncate">{userProfile?.name || "Loading..."}</p>
+                <p className="text-xs text-[#989DAA] font-medium truncate mt-0.5">{userProfile?.email || ""}</p>
               </div>
               <DropdownMenuSeparator className="bg-[#57707A]/30" />
-              <DropdownMenuItem className="text-red-400 focus:bg-red-500/10 focus:text-red-300 font-bold cursor-pointer">
+              <DropdownMenuItem
+                onClick={handleSignOut}
+                className="text-red-400 focus:bg-red-500/10 focus:text-red-300 font-bold cursor-pointer py-2.5"
+              >
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>

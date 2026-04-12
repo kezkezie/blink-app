@@ -156,8 +156,9 @@ export default function BrandIdentityPage() {
   // Workspace creation limits per plan tier
   const PLAN_BRAND_LIMITS: Record<string, number> = {
     starter: 1,
-    pro: 5,
-    agency: 20,
+    pro: 3,
+    agency: Infinity,
+    admin: Infinity,
     enterprise: Infinity,
     custom: Infinity,
   };
