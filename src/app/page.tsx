@@ -465,7 +465,10 @@ export default function App() {
           <div className="flex gap-12 text-sm text-[#989DAA] font-bold tracking-wide">
             <a href="#" className="hover:text-[#DEDCDC] transition-colors">Twitter</a>
             <a href="#" className="hover:text-[#DEDCDC] transition-colors">Instagram</a>
-            <a href="#" className="hover:text-[#DEDCDC] transition-colors">Privacy</a>
+            <a href="#" className="hover:text-[#DEDCDC] transition-colors">Privacy Policy</a>
+            <a href="#" className="hover:text-[#DEDCDC] transition-colors">Terms and Conditions</a>
+            <a href="#" className="hover:text-[#DEDCDC] transition-colors">Cookie Policy</a>
+            <a href="#" className="hover:text-[#DEDCDC] transition-colors">Acceptable Use Policy</a>
           </div>
           <p className="text-sm text-[#57707A] font-medium">© 2026 Blink AI. Crafted with intent.</p>
         </div>

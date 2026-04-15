@@ -3,45 +3,78 @@ export interface WorkflowResponse {
   [key: string]: unknown;
 }
 
+/** Default timeout for workflow calls (ms). */
+const DEFAULT_TIMEOUT_MS = 120_000; // 2 minutes
+
 export async function triggerWorkflow(
   path: string,
-  body: object
+  body: object,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<WorkflowResponse> {
-  // Hits our new Next.js proxy to bypass CORS restrictions
-  const res = await fetch(`/api/workflows?path=${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!res.ok) {
-    throw new Error(`Workflow "${path}" failed with status ${res.status}`);
+  try {
+    const res = await fetch(`/api/workflows?path=${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Workflow "${path}" failed with status ${res.status}`);
+    }
+
+    return await res.json();
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(
+        `Workflow "${path}" timed out after ${timeoutMs / 1000}s. Please try again.`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  return res.json();
 }
 
 export async function triggerWorkflowWithFile(
   path: string,
   fields: Record<string, string>,
   file: File,
-  fileFieldName = "reference_image"
+  fileFieldName = "reference_image",
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<WorkflowResponse> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   const formData = new FormData();
   Object.entries(fields).forEach(([k, v]) => formData.append(k, v));
   formData.append(fileFieldName, file);
 
-  // Hits our new Next.js proxy with the image file attached
-  const res = await fetch(`/api/workflows?path=${path}`, {
-    method: "POST",
-    body: formData,
-  });
+  try {
+    const res = await fetch(`/api/workflows?path=${path}`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
 
-  if (!res.ok) {
-    throw new Error(`Workflow "${path}" failed with status ${res.status}`);
+    if (!res.ok) {
+      throw new Error(`Workflow "${path}" failed with status ${res.status}`);
+    }
+
+    return await res.json();
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(
+        `Workflow "${path}" timed out after ${timeoutMs / 1000}s. Please try again.`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  return res.json();
 }
 
 export async function generateImagesForPosts(

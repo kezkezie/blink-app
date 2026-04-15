@@ -434,6 +434,9 @@ export default function VideoStudioPage() {
           : `A highly realistic fashion editorial photo of a model wearing the clothing. ${prompt}`;
 
         try {
+          const mergeController = new AbortController();
+          const mergeTimer = setTimeout(() => mergeController.abort(), 60_000);
+
           const mergeRes = await fetch("/api/video/nano-banana", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -442,8 +445,11 @@ export default function VideoStudioPage() {
               prompt: mergePrompt,
               refImage: primaryUrl,
               styleRefImage: secondaryUrl
-            })
+            }),
+            signal: mergeController.signal,
           });
+
+          clearTimeout(mergeTimer);
 
           const mergeData = await mergeRes.json();
 
