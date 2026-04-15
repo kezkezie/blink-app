@@ -6,36 +6,39 @@ export interface WorkflowResponse {
 /** Default timeout for workflow calls (ms). */
 const DEFAULT_TIMEOUT_MS = 120_000; // 2 minutes
 
-export async function triggerWorkflow(
-  path: string,
-  body: object,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
-): Promise<WorkflowResponse> {
+// Inside src/lib/workflows.ts
+
+export async function triggerWorkflow(path: string, payload: any) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // ✨ FIX: Increased from 120000 (2 mins) to 300000 (5 mins)
+  const timeoutId = setTimeout(() => controller.abort(), 300000);
 
   try {
-    const res = await fetch(`/api/workflows?path=${path}`, {
+    const response = await fetch(`/api/workflows?path=${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal, // This is what enforces the timeout
     });
 
-    if (!res.ok) {
-      throw new Error(`Workflow "${path}" failed with status ${res.status}`);
+    clearTimeout(timeoutId); // Clear the timeout if it succeeds early
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    return await res.json();
-  } catch (err: unknown) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error(
-        `Workflow "${path}" timed out after ${timeoutMs / 1000}s. Please try again.`
-      );
+    return await response.json();
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+
+    // This is the exact error you saw!
+    if (error.name === 'AbortError') {
+      throw new Error(`Workflow "${path}" timed out after 300s. Please try again.`);
     }
-    throw err;
-  } finally {
-    clearTimeout(timer);
+    throw error;
   }
 }
 
