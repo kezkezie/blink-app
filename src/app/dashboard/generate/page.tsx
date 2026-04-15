@@ -192,6 +192,15 @@ export default function ImageStudioPage() {
         is_sync: true
       });
 
+      // ✨ NEW: Explicitly catch the billing or generation error from n8n
+      if (response && response.success === false) {
+        const message =
+          typeof response.message === "string"
+            ? response.message
+            : "An AI generation error occurred.";
+        throw new Error(message);
+      }
+
       let newUrls: string[] = [];
       if (response && Array.isArray(response.imageUrls)) {
         newUrls = response.imageUrls as string[];
