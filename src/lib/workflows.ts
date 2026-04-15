@@ -6,13 +6,12 @@ export interface WorkflowResponse {
 /** Default timeout for workflow calls (ms). */
 const DEFAULT_TIMEOUT_MS = 120_000; // 2 minutes
 
-// Inside src/lib/workflows.ts
 
 export async function triggerWorkflow(path: string, payload: any) {
   const controller = new AbortController();
 
   // ✨ FIX: Increased from 120000 (2 mins) to 300000 (5 mins)
-  const timeoutId = setTimeout(() => controller.abort(), 300000);
+  const timeoutId = setTimeout(() => controller.abort(), 800000);
 
   try {
     const response = await fetch(`/api/workflows?path=${path}`, {
