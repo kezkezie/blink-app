@@ -104,13 +104,15 @@ export default function VideoStudioPage() {
   const [bRollScenes, setBRollScenes] = useState<BRollScene[]>([]);
   const [selectedAiModel, setSelectedAiModel] = useState("auto");
 
-  // ✨ NEW STATE FOR UNIVERSAL CONTROLS ✨
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [duration, setDuration] = useState("5");
 
   const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // ✨ STEP 3: Add Live Progress State
+  const [progressText, setProgressText] = useState("Initializing AI Engine...");
 
   const primaryInputRef = useRef<HTMLInputElement | null>(null);
   const secondaryInputRef = useRef<HTMLInputElement | null>(null);
@@ -156,6 +158,11 @@ export default function VideoStudioPage() {
           filter: `id=eq.${generatingPostId}`,
         },
         (payload) => {
+          // ✨ STEP 3: Catch Live Progress Updates
+          if (payload.new.generation_status_text) {
+            setProgressText(payload.new.generation_status_text);
+          }
+
           if (payload.new.status === "failed") {
             setGenerationError(payload.new.error_message || "The AI engine failed to process this request.");
           }
@@ -173,6 +180,12 @@ export default function VideoStudioPage() {
         .select("*")
         .eq("id", generatingPostId)
         .single();
+
+      // Also catch it in the polling fallback just in case WebSockets fail
+      if (data?.generation_status_text) {
+        setProgressText(data.generation_status_text);
+      }
+
       if (data?.status === "failed") {
         setGenerationError(data.error_message || "The AI engine failed to process this request.");
         clearInterval(pollInterval);
@@ -316,13 +329,12 @@ export default function VideoStudioPage() {
 
     setIsGenerating(true);
     setGenerationError(null);
+    setProgressText("Uploading assets and queuing task...");
 
-    // ✨ Derive brand alignment dynamically from the global store
     const { activeBrand } = useBrandStore.getState();
     const strictBrandAlignment = activeBrand !== null;
     const brandName = activeBrand?.brand_name || businessInfo.name;
 
-    // ✨ Wire TopBar loading indicator
     const { addTask, removeTask } = useWorkflowStore.getState();
     const taskId = `vid-gen-${Date.now()}`;
 
@@ -378,6 +390,7 @@ export default function VideoStudioPage() {
               caption: `🎬 AI Scene ${i + 1}: ${scene.mode}`,
               status: "draft",
               ai_model: targetModel,
+              generation_status_text: "Initializing Scene..."
             })
             .select()
             .single();
@@ -396,9 +409,9 @@ export default function VideoStudioPage() {
             brand_name: brandName,
             brand_info: businessInfo.desc,
             ai_model_override: targetModel,
-            duration: scene.duration || duration, // Scene override or Master default
+            duration: scene.duration || duration,
             strict_brand_alignment: strictBrandAlignment,
-            aspect_ratio: aspectRatio, // ✨ Clean Injection
+            aspect_ratio: aspectRatio,
           });
         }
         setGeneratingPostId(lastRecordId);
@@ -436,6 +449,8 @@ export default function VideoStudioPage() {
         try {
           const mergeController = new AbortController();
           const mergeTimer = setTimeout(() => mergeController.abort(), 60_000);
+
+          setProgressText("Pre-processing elements using Vision AI...");
 
           const mergeRes = await fetch("/api/video/nano-banana", {
             method: "POST",
@@ -484,6 +499,7 @@ export default function VideoStudioPage() {
           caption: `🎬 AI Draft: ${activeModeConfig.title}`,
           status: "draft",
           ai_model: targetModel,
+          generation_status_text: "Initializing AI Engine..."
         })
         .select()
         .single();
@@ -503,8 +519,8 @@ export default function VideoStudioPage() {
         brand_info: businessInfo.desc,
         ai_model_override: targetModel,
         strict_brand_alignment: strictBrandAlignment,
-        aspect_ratio: aspectRatio, // ✨ Clean Injection
-        duration: duration,         // ✨ Clean Injection
+        aspect_ratio: aspectRatio,
+        duration: duration,
       });
 
       setStep(3);
@@ -583,7 +599,6 @@ export default function VideoStudioPage() {
                         setPrimaryFile(null);
                         setPrompt("");
                         setBRollScenes([]);
-                        // Dynamic Defaults based on selection
                         setAspectRatio(mode.id === "ugc" ? "9:16" : "16:9");
                       }}
                       className={cn(
@@ -642,8 +657,6 @@ export default function VideoStudioPage() {
               </div>
 
               {(() => {
-                // ✨ Wiring the state to children ✨
-                // ✨ THE FIX: Force TypeScript to accept the new properties ✨
                 const sharedProps: any = {
                   primaryFile,
                   setPrimaryFile,
@@ -661,10 +674,10 @@ export default function VideoStudioPage() {
                   isSuggesting,
                   handleAISuggest,
                   activeModeConfig,
-                  aspectRatio,    // TypeScript was complaining about this...
-                  setAspectRatio, // ...and this
-                  duration,       // ...and this
-                  setDuration     // ...and this
+                  aspectRatio,
+                  setAspectRatio,
+                  duration,
+                  setDuration
                 };
                 switch (selectedMode) {
                   case "ugc":
@@ -780,9 +793,12 @@ export default function VideoStudioPage() {
                     <Loader2 className="h-10 w-10 animate-spin" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">Rendering Your AI Video... 🎬</h2>
+                    {/* ✨ STEP 3: Display the Live Progress Text */}
+                    <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">
+                      {progressText}
+                    </h2>
                     <p className="text-[#DEDCDC]/40 mt-3 max-w-md mx-auto leading-relaxed text-sm">
-                      Our cinematic AI engine is currently animating your scene pixel by pixel.
+                      Please do not close this window. Our cinematic AI engine is currently animating your scene pixel by pixel.
                     </p>
                     <div className="mt-4 p-4 bg-[#191D23]/60 rounded-lg border border-[#57707A]/30 text-sm text-[#DEDCDC]/50">
                       ⏱️ High-fidelity video generation typically takes <b className="text-[#DEDCDC]/70">5 to 15 minutes</b> depending on server load.
