@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image"; // ✨ IMPORT NEXT/IMAGE
 import {
   ChevronLeft,
   ChevronRight,
@@ -37,7 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ IMPORT BRAND STORE
+import { useBrandStore } from "@/app/store/useBrandStore";
 import type { Content, ContentStatus, Platform } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -114,7 +115,7 @@ export function CalendarView({
   onLoadMoreUnscheduled,
 }: CalendarViewProps) {
   const { clientId } = useClient();
-  const { activeBrand } = useBrandStore(); // ✨ GET ACTIVE BRAND
+  const { activeBrand } = useBrandStore();
 
   const [autoScheduling, setAutoScheduling] = useState(false);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -133,7 +134,6 @@ export function CalendarView({
     async function fetchPlatforms() {
       if (!clientId || !activeBrand) return;
 
-      // ✨ FETCH PLATFORMS FOR ACTIVE BRAND ONLY
       const { data } = await supabase
         .from("social_accounts")
         .select("platform")
@@ -312,8 +312,12 @@ export function CalendarView({
   const openPlatformModal = (post: Content) => {
     setEditingPostId(post.id);
 
-    const displayImage = parseArray(post.image_urls)[0];
-    const isVideo = displayImage && (post.content_type === "video" || post.content_type === "reel" || displayImage.includes(".mp4") || displayImage.includes(".mov"));
+    // ✨ FIX: Add (post as any) to bypass the missing TypeScript definition
+    const images = parseArray(post.image_urls);
+    const videos = parseArray((post as any).video_urls);
+    const displayMedia = images[0] || videos[0];
+
+    const isVideo = displayMedia && (post.content_type === "video" || post.content_type === "reel" || displayMedia.includes(".mp4") || displayMedia.includes(".mov") || videos.length > 0);
     setEditingPostIsVideo(!!isVideo);
 
     setPublishSettings(parsePublishSettings((post as any).target_platforms));
@@ -578,13 +582,19 @@ export function CalendarView({
               ) : (
                 <>
                   {unscheduledPosts.map((post) => {
-                    const displayImage = parseArray(post.image_urls)[0];
+                    // ✨ FIX: Add (post as any) to bypass the missing TypeScript definition
+                    const images = parseArray(post.image_urls);
+                    const videos = parseArray((post as any).video_urls);
+                    const displayMedia = images[0] || videos[0];
+
                     const isVideo =
-                      displayImage &&
+                      displayMedia &&
                       (post.content_type === "video" ||
                         post.content_type === "reel" ||
-                        displayImage.includes(".mp4") ||
-                        displayImage.includes(".mov"));
+                        displayMedia.includes(".mp4") ||
+                        displayMedia.includes(".mov") ||
+                        videos.length > 0);
+
                     const isDragging = draggedItemId === post.id;
 
                     return (
@@ -604,19 +614,22 @@ export function CalendarView({
                           <div className="text-[#57707A] hover:text-[#C5BAC4] pt-1 transition-colors">
                             <GripVertical className="h-4 w-4" />
                           </div>
-                          {displayImage ? (
+                          {displayMedia ? (
                             isVideo ? (
                               <video
-                                src={`${displayImage}#t=0.1`}
+                                src={`${displayMedia}#t=0.1`}
                                 className="h-12 w-12 rounded-lg object-cover shrink-0 bg-black"
                                 muted
                                 playsInline
                                 preload="metadata"
                               />
                             ) : (
-                              <img
-                                src={displayImage}
+                              // ✨ SWAPPED IMG FOR NEXT/IMAGE
+                              <Image
+                                src={displayMedia}
                                 alt="thumbnail"
+                                width={48}
+                                height={48}
                                 className="h-12 w-12 rounded-lg object-cover shrink-0"
                               />
                             )
@@ -695,13 +708,19 @@ export function CalendarView({
                 </div>
               ) : (
                 selectedDayPosts.map((post) => {
-                  const displayImage = parseArray(post.image_urls)[0];
+                  // ✨ FIX: Add (post as any) to bypass the missing TypeScript definition
+                  const images = parseArray(post.image_urls);
+                  const videos = parseArray((post as any).video_urls);
+                  const displayMedia = images[0] || videos[0];
+
                   const isVideo =
-                    displayImage &&
+                    displayMedia &&
                     (post.content_type === "video" ||
                       post.content_type === "reel" ||
-                      displayImage.includes(".mp4") ||
-                      displayImage.includes(".mov"));
+                      displayMedia.includes(".mp4") ||
+                      displayMedia.includes(".mov") ||
+                      videos.length > 0);
+
                   const timeVal = formatTimeForInput(
                     (post as any).scheduled_at
                   );
@@ -727,19 +746,22 @@ export function CalendarView({
                         <div className="cursor-grab active:cursor-grabbing text-[#57707A] group-hover:text-[#C5BAC4] transition-colors pt-1">
                           <GripVertical className="h-4 w-4" />
                         </div>
-                        {displayImage ? (
+                        {displayMedia ? (
                           isVideo ? (
                             <video
-                              src={`${displayImage}#t=0.1`}
+                              src={`${displayMedia}#t=0.1`}
                               className="h-10 w-10 rounded-lg object-cover shrink-0 bg-black"
                               muted
                               playsInline
                               preload="metadata"
                             />
                           ) : (
-                            <img
-                              src={displayImage}
+                            // ✨ SWAPPED IMG FOR NEXT/IMAGE
+                            <Image
+                              src={displayMedia}
                               alt="thumbnail"
+                              width={40}
+                              height={40}
                               className="h-10 w-10 rounded-lg object-cover shrink-0"
                             />
                           )

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // ✨ Imported useRouter for sign out
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { Bell, Brain, Loader2, Sparkles, Wand2, Search, Briefcase, ChevronDown, Check, Zap } from "lucide-react";
+import { Bell, Brain, Loader2, Sparkles, Wand2, Search, Briefcase, ChevronDown, Check, Plus } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,7 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { BrandRefinementModal } from "@/components/brand/BrandRefinementModal";
+import { BrandCreationModal } from "@/components/brand/info"; // ✨ IMPORT NEW CREATION MODAL
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { cn } from "@/lib/utils";
@@ -26,11 +27,13 @@ interface TopBarProps {
 
 export function TopBar({ pageTitle }: TopBarProps) {
   const { clientId } = useClient();
-  const router = useRouter(); // ✨ Added router
-  const [brandModalOpen, setBrandModalOpen] = useState(false);
-  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(true); // ✨ Added notification state
+  const router = useRouter();
 
-  // ✨ Added state to hold the real user profile
+  // Modal States
+  const [brandRefinementModalOpen, setBrandRefinementModalOpen] = useState(false);
+  const [brandCreationModalOpen, setBrandCreationModalOpen] = useState(false); // ✨ NEW MODAL STATE
+
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(true);
   const [userProfile, setUserProfile] = useState<{ name: string; email: string } | null>(null);
 
   const { activeTasks } = useWorkflowStore();
@@ -40,10 +43,8 @@ export function TopBar({ pageTitle }: TopBarProps) {
 
   const { activeBrand, availableBrands, setActiveBrand, setAvailableBrands } = useBrandStore();
 
-  useEffect(() => {
+  const fetchBrands = () => {
     if (!clientId) return;
-
-    // 1. FETCH BRANDS
     supabase
       .from("brand_profiles")
       .select("id, brand_name, logo_url")
@@ -52,13 +53,18 @@ export function TopBar({ pageTitle }: TopBarProps) {
         if (data) {
           setAvailableBrands(data);
           const currentActive = useBrandStore.getState().activeBrand;
+          // If no active brand, or if a new brand was just created, update active
           if (!currentActive && data.length > 0) {
             setActiveBrand(data[0]);
           }
         }
       });
+  };
 
-    // ✨ 2. FETCH USER PROFILE
+  useEffect(() => {
+    fetchBrands();
+
+    if (!clientId) return;
     supabase
       .from("clients")
       .select("contact_name, contact_email")
@@ -74,10 +80,8 @@ export function TopBar({ pageTitle }: TopBarProps) {
       });
   }, [clientId, setAvailableBrands, setActiveBrand]);
 
-  // ✨ Handle Sign Out
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    // Clear Zustand stores if needed, then redirect
     useBrandStore.setState({ activeBrand: null, availableBrands: [] });
     router.push("/login");
   };
@@ -141,6 +145,19 @@ export function TopBar({ pageTitle }: TopBarProps) {
               <DropdownMenuLabel className="text-xs text-[#989DAA] uppercase tracking-wider font-bold">Your Brands</DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-[#57707A]/30" />
 
+              {/* ✨ NEW ADD BRAND BUTTON ✨ */}
+              <DropdownMenuItem
+                onClick={() => setBrandCreationModalOpen(true)}
+                className="flex items-center gap-3 cursor-pointer focus:bg-[#C5BAC4]/10 focus:text-[#C5BAC4] py-2 text-[#C5BAC4] font-bold"
+              >
+                <div className="h-6 w-6 rounded-md bg-[#C5BAC4]/10 border border-[#C5BAC4]/30 flex items-center justify-center shrink-0">
+                  <Plus className="h-4 w-4" />
+                </div>
+                <span className="truncate text-sm">Add New Brand</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator className="bg-[#57707A]/30" />
+
               <DropdownMenuItem
                 onClick={() => setActiveBrand(null)}
                 className="flex items-center gap-3 cursor-pointer focus:bg-[#191D23] focus:text-[#DEDCDC] py-2"
@@ -182,14 +199,14 @@ export function TopBar({ pageTitle }: TopBarProps) {
 
           {/* Refine AI Brain Button */}
           <button
-            onClick={() => setBrandModalOpen(true)}
+            onClick={() => setBrandRefinementModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#191D23] bg-[#C5BAC4] hover:bg-white rounded-lg transition-all shadow-md shadow-[#C5BAC4]/10"
           >
             <Brain className="h-4 w-4" />
             <span className="hidden lg:inline uppercase tracking-wider">Refine AI Brain</span>
           </button>
 
-          {/* ✨ FUNCTIONAL NOTIFICATION BELL ✨ */}
+          {/* FUNCTIONAL NOTIFICATION BELL */}
           <DropdownMenu onOpenChange={(open) => { if (open) setHasUnreadNotifications(false); }}>
             <DropdownMenuTrigger asChild>
               <Button
@@ -226,7 +243,7 @@ export function TopBar({ pageTitle }: TopBarProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* ✨ DYNAMIC USER AVATAR DROPDOWN ✨ */}
+          {/* DYNAMIC USER AVATAR DROPDOWN */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-9 w-9 rounded-full p-0 ring-2 ring-transparent hover:ring-[#C5BAC4]/50 transition-all">
@@ -255,8 +272,17 @@ export function TopBar({ pageTitle }: TopBarProps) {
       </header>
 
       <BrandRefinementModal
-        open={brandModalOpen}
-        onOpenChange={setBrandModalOpen}
+        open={brandRefinementModalOpen}
+        onOpenChange={setBrandRefinementModalOpen}
+      />
+
+      {/* ✨ MOUNT THE CREATION MODAL ✨ */}
+      <BrandCreationModal
+        isOpen={brandCreationModalOpen}
+        onClose={() => setBrandCreationModalOpen(false)}
+        onSuccess={() => {
+          fetchBrands(); // Refresh the list when a new brand is added
+        }}
       />
     </>
   );
