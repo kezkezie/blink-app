@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Video,
   X,
+  Briefcase // ✨ Added Briefcase for empty state
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -82,6 +83,7 @@ const VIDEO_MODES = [
 export default function VideoStudioPage() {
   const router = useRouter();
   const { clientId: hookClientId } = useClient();
+  const { activeBrand } = useBrandStore(); // ✨ Hooked into activeBrand to force re-renders
 
   const [activeTab, setActiveTab] = useState<"studio" | "editor">("studio");
   const [step, setStep] = useState(1);
@@ -233,7 +235,7 @@ export default function VideoStudioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: selectedMode,
-          companyName: businessInfo.name,
+          companyName: activeBrand?.brand_name || businessInfo.name, // Use active brand name if available
           industry: businessInfo.industry,
           description: businessInfo.desc,
           userConcept: prompt,
@@ -257,7 +259,7 @@ export default function VideoStudioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           concept: bRollConcept,
-          brandName: businessInfo.name,
+          brandName: activeBrand?.brand_name || businessInfo.name, // Use active brand name if available
           industry: businessInfo.industry,
         }),
       });
@@ -326,14 +328,17 @@ export default function VideoStudioPage() {
       alert("User session not found. Please refresh the page and try again.");
       return;
     }
+    if (!activeBrand) {
+      alert("Please select a brand workspace first.");
+      return;
+    }
 
     setIsGenerating(true);
     setGenerationError(null);
     setProgressText("Uploading assets and queuing task...");
 
-    const { activeBrand } = useBrandStore.getState();
-    const strictBrandAlignment = activeBrand !== null;
-    const brandName = activeBrand?.brand_name || businessInfo.name;
+    const strictBrandAlignment = true; // Active brand is explicitly set
+    const brandName = activeBrand.brand_name || businessInfo.name;
 
     const { addTask, removeTask } = useWorkflowStore.getState();
     const taskId = `vid-gen-${Date.now()}`;
@@ -382,10 +387,12 @@ export default function VideoStudioPage() {
 
           let targetModel = scene.aiModel && scene.aiModel !== "auto" ? scene.aiModel : selectedAiModel;
 
+          // ✨ FIXED: Added brand_id to database insert
           const { data: clipRecord, error: dbError } = await supabase
             .from("content")
             .insert({
               client_id: safeClientId,
+              brand_id: activeBrand.id,
               content_type: "sequence_clip",
               caption: `🎬 AI Scene ${i + 1}: ${scene.mode}`,
               status: "draft",
@@ -398,8 +405,10 @@ export default function VideoStudioPage() {
           if (dbError) throw new Error(`Database Insert Failed: ${dbError.message}`);
           lastRecordId = clipRecord.id;
 
+          // ✨ FIXED: Passing brand_id to workflow
           await triggerWorkflow("blink-generate-video-v1", {
             client_id: safeClientId,
+            brand_id: activeBrand.id,
             post_id: clipRecord.id,
             video_mode: scene.mode,
             primary_image_url: pUrl,
@@ -491,10 +500,12 @@ export default function VideoStudioPage() {
         }
       }
 
+      // ✨ FIXED: Added brand_id to database insert
       const { data: contentRecord, error: dbError } = await supabase
         .from("content")
         .insert({
           client_id: safeClientId,
+          brand_id: activeBrand.id,
           content_type: "reel",
           caption: `🎬 AI Draft: ${activeModeConfig.title}`,
           status: "draft",
@@ -507,8 +518,10 @@ export default function VideoStudioPage() {
       if (dbError) throw new Error(`Database Insert Failed: ${dbError.message}`);
       setGeneratingPostId(contentRecord.id);
 
+      // ✨ FIXED: Passing brand_id to workflow
       await triggerWorkflow("blink-generate-video-v1", {
         client_id: safeClientId,
+        brand_id: activeBrand.id,
         post_id: contentRecord.id,
         video_mode: selectedMode,
         primary_image_url: primaryUrl,
@@ -532,6 +545,21 @@ export default function VideoStudioPage() {
       removeTask(taskId);
       if (selectedMode !== "storytelling") setIsGenerating(false);
     }
+  }
+
+  // ✨ NEW: "No Brand" fallback state
+  if (!activeBrand) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">
+        <div className="mx-auto h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-2xl flex items-center justify-center mb-6 shadow-xl">
+          <Briefcase className="h-10 w-10 text-[#57707A]" />
+        </div>
+        <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">No Workspace Selected</h2>
+        <p className="text-[#989DAA] mt-3 max-w-md mx-auto leading-relaxed mb-8">
+          Please select or create a brand from the top navigation bar to access the Video Studio.
+        </p>
+      </div>
+    );
   }
 
   return (

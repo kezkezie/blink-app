@@ -4,15 +4,17 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { ContentCard } from "@/components/content/ContentCard";
-import { Loader2, Trash2, CheckSquare, Film, Clapperboard } from "lucide-react";
+import { Loader2, Trash2, CheckSquare, Film, Clapperboard, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Content } from "@/types/database";
+import { useBrandStore } from "@/app/store/useBrandStore";
 
 export default function ContentPage() {
   const { clientId } = useClient();
   const [content, setContent] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
+  const { activeBrand } = useBrandStore();
 
   const [activeTab, setActiveTab] = useState<"finished" | "sequences">("finished");
 
@@ -20,16 +22,20 @@ export default function ContentPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   async function fetchContent() {
-    if (!clientId) return;
+    // ✨ FIXED: Check for both clientId and activeBrand to prevent bleeding
+    if (!clientId || !activeBrand) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
     let query = supabase
       .from("content")
       .select("*")
-      .eq("client_id", clientId)
+      .eq("brand_id", activeBrand.id) // ✨ FIXED: Isolate query entirely by Brand ID
       .order("created_at", { ascending: false });
 
-    // ✨ FIXED: Now correctly routing the official tags to their proper tabs
     if (activeTab === "finished") {
       // Hide raw clips, story sequences, and audio files from the main feed
       query = query
@@ -49,7 +55,8 @@ export default function ContentPage() {
   useEffect(() => {
     fetchContent();
     setSelectedIds(new Set());
-  }, [clientId, activeTab]);
+    // ✨ FIXED: Added activeBrand?.id so the UI instantly updates on Dropdown change
+  }, [clientId, activeBrand?.id, activeTab]);
 
   const toggleSelect = (id: string) => {
     const newSet = new Set(selectedIds);
@@ -82,6 +89,21 @@ export default function ContentPage() {
       setIsDeleting(false);
     }
   };
+
+  // ✨ NEW: "No Brand" fallback state
+  if (!activeBrand && !loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">
+        <div className="mx-auto h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-2xl flex items-center justify-center mb-6 shadow-xl">
+          <Briefcase className="h-10 w-10 text-[#57707A]" />
+        </div>
+        <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">No Workspace Selected</h2>
+        <p className="text-[#989DAA] mt-3 max-w-md mx-auto leading-relaxed mb-8">
+          Please select or create a brand from the top navigation bar to view its content library.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in duration-500">

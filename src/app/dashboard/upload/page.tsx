@@ -19,12 +19,14 @@ import {
   Music,
   Zap,
   CheckCircle,
+  Briefcase // ✨ Added Briefcase for empty state
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
+import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ IMPORT BRAND STORE
 import { cn } from "@/lib/utils";
 
 type ToolMode = "brush" | "eraser" | "arrow";
@@ -33,6 +35,7 @@ type ActiveTab = "caption" | "animate" | "motion_transfer" | "audio_to_video";
 export default function YourContentPage() {
   const router = useRouter();
   const { clientId } = useClient();
+  const { activeBrand } = useBrandStore(); // ✨ Get active brand
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refVideoInputRef = useRef<HTMLInputElement>(null);
@@ -255,19 +258,21 @@ export default function YourContentPage() {
 
   // --- REGULAR CAPTION ANALYSIS ---
   const handleAnalyze = async () => {
-    if (!file || !clientId) return;
+    if (!file || !clientId || !activeBrand) return;
     setIsProcessing(true);
     try {
       setLoadingText("Uploading media securely...");
       const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `uploads/${clientId}/${fileName}`;
+      // ✨ Isolate Storage
+      const filePath = `uploads/${activeBrand.id}/${fileName}`;
 
       await supabase.storage.from("assets").upload(filePath, file);
       const publicUrl = supabase.storage.from("assets").getPublicUrl(filePath).data.publicUrl;
 
       setLoadingText("Fetching Brand DNA...");
-      const { data: brand } = await supabase.from("brand_profiles").select("brand_voice, dos, donts").eq("client_id", clientId).single();
+      // ✨ Isolate Context Fetching
+      const { data: brand } = await supabase.from("brand_profiles").select("brand_voice, dos, donts").eq("id", activeBrand.id).single();
 
       setLoadingText("AI is writing the perfect caption...");
       const aiRes = await fetch("/api/content/analyze", {
@@ -282,6 +287,7 @@ export default function YourContentPage() {
       setLoadingText("Saving to drafts...");
       const { error: dbError } = await supabase.from("content").insert({
         client_id: clientId,
+        brand_id: activeBrand.id, // ✨ Isolate DB Row
         content_type: file.type.startsWith("video") ? "video" : "post_image",
         image_urls: [publicUrl],
         caption: aiData.caption_long || aiData.caption || "",
@@ -302,10 +308,10 @@ export default function YourContentPage() {
 
   // --- AUDIO TO VIDEO ANIMATION TRIGGER ---
   const handleAudioToVideo = async () => {
+    if (!activeBrand) return alert("Please select a workspace.");
     if (!audioFile || !clientId) return alert("Please upload an audio file.");
     if (!mediaContext.trim()) return alert("Please write a prompt for the video generation.");
 
-    // Strict validation check for models that REQUIRE an image for lipsync
     if ((audioModel === 'kling-3.0/video' || audioModel === 'bytedance/seedance-2') && !file) {
       return alert("This model requires a Start Image to lip-sync with the audio. Please upload an image containing a clear face.");
     }
@@ -314,24 +320,24 @@ export default function YourContentPage() {
     setLoadingText("Uploading Assets...");
 
     try {
-      // 1. Upload Audio
-      const audioPath = `videos/${clientId}/pruna_audio_${Date.now()}.${audioFile.name.split(".").pop()}`;
+      // ✨ Isolate Storage
+      const audioPath = `videos/${activeBrand.id}/pruna_audio_${Date.now()}.${audioFile.name.split(".").pop()}`;
       await supabase.storage.from("assets").upload(audioPath, audioFile);
       const audioPublicUrl = supabase.storage.from("assets").getPublicUrl(audioPath).data.publicUrl;
 
-      // 2. Upload Image (Optional for Pruna, Required for Kling/Seedance)
       let imagePublicUrl = null;
       if (file) {
-        const imgPath = `videos/${clientId}/pruna_image_${Date.now()}.${file.name.split(".").pop()}`;
+        // ✨ Isolate Storage
+        const imgPath = `videos/${activeBrand.id}/pruna_image_${Date.now()}.${file.name.split(".").pop()}`;
         await supabase.storage.from("assets").upload(imgPath, file);
         imagePublicUrl = supabase.storage.from("assets").getPublicUrl(imgPath).data.publicUrl;
       }
 
       setLoadingText(`Initializing ${audioModel.includes('kling') ? 'Kling 3.0' : audioModel.includes('seedance') ? 'Seedance 2' : 'Pruna AI'} Engine...`);
 
-      // 3. Create Placeholder in Supabase
       const { data: dbData, error: dbError } = await supabase.from("content").insert({
         client_id: clientId,
+        brand_id: activeBrand.id, // ✨ Isolate DB Row
         content_type: "sequence_clip",
         caption: `🎵 Audio Reactive Video`,
         status: "draft",
@@ -341,7 +347,6 @@ export default function YourContentPage() {
 
       if (dbError) throw dbError;
 
-      // 4. Send to n8n
       const n8nRes = await fetch("/api/video/nano-banana", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -349,6 +354,7 @@ export default function YourContentPage() {
           mode: "scene_video_generator",
           post_id: dbData.id,
           client_id: clientId,
+          brand_id: activeBrand.id, // ✨ Tell n8n which workspace
           primary_image_url: imagePublicUrl,
           user_prompt: mediaContext,
           duration: "10",
@@ -377,7 +383,7 @@ export default function YourContentPage() {
 
   // --- MOTION BRUSH ANIMATION TRIGGER (V2) ---
   const handleMotionBrush = async () => {
-    if (!file || !clientId || !maskCanvasRef.current) return;
+    if (!file || !clientId || !maskCanvasRef.current || !activeBrand) return;
 
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = maskCanvasRef.current.width;
@@ -416,17 +422,19 @@ export default function YourContentPage() {
     setLoadingText("Sending Motion Instructions to AI...");
 
     try {
-      const origPath = `videos/${clientId}/motion_orig_${Date.now()}.jpg`;
+      // ✨ Isolate Storage
+      const origPath = `videos/${activeBrand.id}/motion_orig_${Date.now()}.jpg`;
       await supabase.storage.from("assets").upload(origPath, file);
       const origUrl = supabase.storage.from("assets").getPublicUrl(origPath).data.publicUrl;
 
       const maskBlob = await fetch(maskDataUrl).then(r => r.blob());
-      const maskPath = `videos/${clientId}/motion_mask_${Date.now()}.png`;
+      const maskPath = `videos/${activeBrand.id}/motion_mask_${Date.now()}.png`;
       await supabase.storage.from("assets").upload(maskPath, maskBlob);
       const maskUrl = supabase.storage.from("assets").getPublicUrl(maskPath).data.publicUrl;
 
       const { data: dbData, error: dbError } = await supabase.from("content").insert({
         client_id: clientId,
+        brand_id: activeBrand.id, // ✨ Isolate DB Row
         content_type: "sequence_clip",
         caption: `🎬 Animated Motion Video`,
         status: "draft",
@@ -443,6 +451,7 @@ export default function YourContentPage() {
           mode: "scene_video_generator",
           post_id: dbData.id,
           client_id: clientId,
+          brand_id: activeBrand.id, // ✨ Tell n8n which workspace
           primary_image_url: origUrl,
           motion_mask_url: maskUrl,
           motion_direction: direction,
@@ -464,17 +473,18 @@ export default function YourContentPage() {
 
   // --- MOTION TRANSFER ANIMATION TRIGGER (V2) ---
   const handleMotionTransfer = async () => {
-    if (!file || !referenceVideoFile || !clientId) return;
+    if (!file || !referenceVideoFile || !clientId || !activeBrand) return;
 
     setIsProcessing(true);
     setLoadingText("Uploading Base Image & Driving Video...");
 
     try {
-      const imgPath = `videos/${clientId}/pose_base_${Date.now()}.${file.name.split(".").pop()}`;
+      // ✨ Isolate Storage
+      const imgPath = `videos/${activeBrand.id}/pose_base_${Date.now()}.${file.name.split(".").pop()}`;
       await supabase.storage.from("assets").upload(imgPath, file);
       const imgUrl = supabase.storage.from("assets").getPublicUrl(imgPath).data.publicUrl;
 
-      const vidPath = `videos/${clientId}/pose_drive_${Date.now()}.${referenceVideoFile.name.split(".").pop()}`;
+      const vidPath = `videos/${activeBrand.id}/pose_drive_${Date.now()}.${referenceVideoFile.name.split(".").pop()}`;
       await supabase.storage.from("assets").upload(vidPath, referenceVideoFile);
       const vidUrl = supabase.storage.from("assets").getPublicUrl(vidPath).data.publicUrl;
 
@@ -482,6 +492,7 @@ export default function YourContentPage() {
 
       const { data: dbData, error: dbError } = await supabase.from("content").insert({
         client_id: clientId,
+        brand_id: activeBrand.id, // ✨ Isolate DB Row
         content_type: "sequence_clip",
         caption: `🕺 Motion Transfer Video`,
         status: "draft",
@@ -498,6 +509,7 @@ export default function YourContentPage() {
           mode: "scene_video_generator",
           post_id: dbData.id,
           client_id: clientId,
+          brand_id: activeBrand.id, // ✨ Tell n8n which workspace
           primary_image_url: imgUrl,
           reference_video_url: vidUrl,
           user_prompt: mediaContext || "Make the character follow the exact movements of the reference video.",
@@ -527,6 +539,21 @@ export default function YourContentPage() {
     setAudioFile(null);
     setAudioPreviewUrl(null);
   };
+
+  // ✨ NO BRAND FALLBACK UI
+  if (!activeBrand) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">
+        <div className="mx-auto h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-2xl flex items-center justify-center mb-6 shadow-xl">
+          <Briefcase className="h-10 w-10 text-[#57707A]" />
+        </div>
+        <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">No Workspace Selected</h2>
+        <p className="text-[#989DAA] mt-3 max-w-md mx-auto leading-relaxed mb-8">
+          Please select or create a brand from the top navigation bar to use the Content Studio.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 pt-8 pb-20">

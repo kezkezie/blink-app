@@ -171,7 +171,8 @@ function SettingsContent() {
       const res = await fetch("/api/social-accounts/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId }),
+        // ✨ FIXED: Pass brandId to backend so it knows which workspace this belongs to
+        body: JSON.stringify({ clientId, brandId: activeBrand.id }),
       });
 
       const data = await res.json();
@@ -237,7 +238,8 @@ function SettingsContent() {
         const res = await fetch("/api/social-accounts/auth-url", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ platform, clientId }),
+          // ✨ FIXED: Explicitly tell backend which brand we are connecting to
+          body: JSON.stringify({ platform, clientId, brandId: activeBrand?.id }),
         });
 
         const data = await res.json();
@@ -255,7 +257,7 @@ function SettingsContent() {
         setConnectingPlatform(null);
       }
     },
-    [clientId]
+    [clientId, activeBrand?.id]
   );
 
   const disconnectPlatform = useCallback(async (accountId: string) => {

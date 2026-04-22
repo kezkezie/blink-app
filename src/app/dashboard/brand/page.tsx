@@ -24,7 +24,7 @@ const parseArray = (data: any): any[] => {
 };
 
 interface BrandProfileData {
-  brand_name: string; // ✨ Added brand name
+  brand_name: string;
   logo_url: string | null;
   primary_color: string;
   secondary_color: string;
@@ -94,7 +94,7 @@ export default function BrandIdentityPage() {
     try {
       const [clientRes, brandRes] = await Promise.all([
         supabase.from("clients").select("*").eq("id", clientId).single(),
-        supabase.from("brand_profiles").select("*").eq("id", activeBrand.id).single(),
+        supabase.from("brand_profiles").select("*").eq("id", activeBrand.id).single(), // ✨ Safely isolated
       ]);
 
       if (brandRes.error) {
@@ -104,7 +104,6 @@ export default function BrandIdentityPage() {
       }
 
       if (clientRes.data) {
-        // Capture the user's plan tier for workspace-creation gating
         setPlanTier(clientRes.data.plan_tier || "starter");
 
         let desc = ""; let socials = "";
@@ -153,7 +152,6 @@ export default function BrandIdentityPage() {
 
   useEffect(() => { loadBrandData(); }, [loadBrandData]);
 
-  // Workspace creation limits per plan tier
   const PLAN_BRAND_LIMITS: Record<string, number> = {
     starter: 1,
     pro: 3,
@@ -164,7 +162,6 @@ export default function BrandIdentityPage() {
   };
 
   async function handleCreateNewBrand() {
-    // Pricing tier gate: check if the user has hit their limit
     const limit = PLAN_BRAND_LIMITS[planTier] ?? 1;
     if (availableBrands.length >= limit) {
       setConnectionMessage({
@@ -202,8 +199,9 @@ export default function BrandIdentityPage() {
       const dosArray = brandProfile.dos.split("\n").map((k) => k.trim()).filter(Boolean);
       const dontsArray = brandProfile.donts.split("\n").map((k) => k.trim()).filter(Boolean);
 
+      // ✨ Safely updates ONLY the active brand profile
       await supabase.from("brand_profiles").update({
-        brand_name: brandProfile.brand_name, // ✨ Save updated name
+        brand_name: brandProfile.brand_name,
         logo_url: brandProfile.logo_url,
         primary_color: brandProfile.primary_color,
         secondary_color: brandProfile.secondary_color,
@@ -220,12 +218,12 @@ export default function BrandIdentityPage() {
         donts: dontsArray,
       }).eq("id", activeBrand.id);
 
+      // (Note: Clients table data is intentionally global/shared across the account)
       await supabase.from("clients").update({
         company_name: businessInfo.company_name, website_url: businessInfo.website_url, industry: businessInfo.industry,
         onboarding_notes: JSON.stringify({ description: businessInfo.description, social_urls: businessInfo.social_urls }),
       }).eq("id", clientId);
 
-      // ✨ Instantly update the Global UI state
       const updatedBrand = { ...activeBrand, brand_name: brandProfile.brand_name, logo_url: brandProfile.logo_url };
       setActiveBrand(updatedBrand);
       setAvailableBrands(availableBrands.map(b => b.id === updatedBrand.id ? updatedBrand : b));
@@ -246,6 +244,7 @@ export default function BrandIdentityPage() {
     setConnectionMessage({ type: "success", text: "AI is scraping your links! We'll notify you soon." });
     try {
       await supabase.from("clients").update({ website_url: businessInfo.website_url }).eq("id", clientId);
+      // ✨ Passes the exact brand_id to n8n
       await triggerWorkflow("blink-brand-extract-001", { client_id: clientId, brand_id: activeBrand.id });
       setTimeout(() => { setExtractingDNA(false); loadBrandData(); }, 15000);
     } catch (err) { setExtractingDNA(false); }
@@ -264,15 +263,25 @@ export default function BrandIdentityPage() {
   }
 
   async function handleUploadImage(e: React.ChangeEvent<HTMLInputElement>, type: "logo" | "asset") {
-    const file = e.target.files?.[0]; if (!file || !clientId) return;
+    const file = e.target.files?.[0];
+    if (!file || !clientId || !activeBrand) return;
+
     if (type === "logo") setUploadingLogo(true); else setUploadingAsset(true);
+
     try {
-      const path = `onboarding/${Date.now()}-${file.name}`;
+      // ✨ FIXED: Saves strictly into a folder for this specific brand_id to prevent bleeding
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const path = `brands/${activeBrand.id}/${type}_${Date.now()}-${cleanFileName}`;
+
       await supabase.storage.from("assets").upload(path, file);
       const { data } = supabase.storage.from("assets").getPublicUrl(path);
+
       if (type === "logo") setBrandProfile((prev) => ({ ...prev, logo_url: data.publicUrl }));
       else setBrandProfile((prev) => ({ ...prev, uploaded_assets: [...prev.uploaded_assets, data.publicUrl] }));
-    } finally { setUploadingLogo(false); setUploadingAsset(false); }
+    } finally {
+      setUploadingLogo(false);
+      setUploadingAsset(false);
+    }
   }
 
   function removeAsset(url: string) { setBrandProfile(p => ({ ...p, uploaded_assets: p.uploaded_assets.filter(u => u !== url) })); }
@@ -280,6 +289,7 @@ export default function BrandIdentityPage() {
 
   if (!isMounted || loading) return <div className="flex items-center justify-center py-32"><Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" /></div>;
 
+  // ✨ NO BRAND FALLBACK
   if (!activeBrand) {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">
@@ -333,7 +343,6 @@ export default function BrandIdentityPage() {
           <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-8 shadow-lg">
             <div className="border-b border-[#57707A]/20 pb-4 mb-6"><h3 className="text-lg font-bold text-[#DEDCDC] font-display">The Basics</h3></div>
             <div className="space-y-5">
-              {/* ✨ BRAND NAME INPUT ✨ */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-[#C5BAC4] uppercase tracking-wider mb-2">Brand Name</label>
@@ -365,7 +374,7 @@ export default function BrandIdentityPage() {
         </div>
       )}
 
-      {/* TAB 2 & 3 - Restore Visual and Voice Sections here based on original code structure */}
+      {/* TAB 2: VISUAL */}
       {activeTab === "visual" && (
         <div className="space-y-6 animate-in slide-in-from-left-4 duration-300">
           <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-8 shadow-lg">
@@ -429,6 +438,7 @@ export default function BrandIdentityPage() {
         </div>
       )}
 
+      {/* TAB 3: VOICE */}
       {activeTab === "voice" && (
         <div className="space-y-6 animate-in slide-in-from-left-4 duration-300">
           <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-8 shadow-lg">

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ IMPORT BRAND STORE
+import { useBrandStore } from "@/app/store/useBrandStore";
 import { Loader2, CheckCircle, AlertCircle, X, Briefcase } from "lucide-react";
 import { CalendarView } from "@/components/content/CalendarView";
 import type { Content } from "@/types/database";
@@ -41,7 +41,7 @@ const isAnyPlatformEnabled = (settings: any) => {
 
 export default function CalendarPage() {
   const { clientId } = useClient();
-  const { activeBrand } = useBrandStore(); // ✨ GET ACTIVE BRAND
+  const { activeBrand } = useBrandStore();
 
   const [isMounted, setIsMounted] = useState(false);
   const [content, setContent] = useState<Content[]>([]);
@@ -70,7 +70,7 @@ export default function CalendarPage() {
 
     setLoading(true);
 
-    // ✨ FETCH ONLY CONTENT FOR THIS BRAND
+    // ✨ ISOLATED TO ACTIVE BRAND
     const { data: scheduled } = await supabase
       .from("content")
       .select("*")
@@ -106,7 +106,7 @@ export default function CalendarPage() {
     const { data: moreUnscheduled } = await supabase
       .from("content")
       .select("*")
-      .eq("brand_id", activeBrand.id) // ✨ MULTI-BRAND
+      .eq("brand_id", activeBrand.id)
       .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
       .is("scheduled_at", null)
       .order("created_at", { ascending: false })

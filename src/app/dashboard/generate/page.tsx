@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Palette, Layers, Download, Share2 } from "lucide-react";
+import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Palette, Layers, Download, Share2, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
@@ -43,6 +43,7 @@ interface GeneratedResult {
 
 export default function ImageStudioPage() {
   const { clientId } = useClient();
+  const { activeBrand } = useBrandStore(); // ✨ Hooked into activeBrand to force re-renders
 
   // --- State: Core ---
   const [selectedMode, setSelectedMode] = useState("standard");
@@ -66,13 +67,18 @@ export default function ImageStudioPage() {
 
   const activeConfig = IMAGE_MODES.find(m => m.id === selectedMode)!;
 
-  // --- Load Brand Context on Mount ---
+  // --- Load Brand Context on Mount & Brand Switch ---
   useEffect(() => {
-    if (!clientId) return;
+    if (!clientId || !activeBrand) {
+      setBrandContext(null);
+      return;
+    }
+
     async function loadContext() {
       const [clientRes, brandRes] = await Promise.all([
         supabase.from("clients").select("company_name, industry").eq("id", clientId).single(),
-        supabase.from("brand_profiles").select("image_style, brand_voice, logo_url").eq("client_id", clientId).eq("is_active", true).maybeSingle(),
+        // ✨ FIXED: Now specifically targets activeBrand.id instead of just client_id
+        supabase.from("brand_profiles").select("image_style, brand_voice, logo_url").eq("id", activeBrand!.id).maybeSingle(),
       ]);
 
       setBrandContext({
@@ -84,7 +90,7 @@ export default function ImageStudioPage() {
       });
     }
     loadContext();
-  }, [clientId]);
+  }, [clientId, activeBrand?.id]);
 
 
   // --- AI Prompt Helper ---
@@ -103,7 +109,7 @@ export default function ImageStudioPage() {
         body: JSON.stringify({
           prompt: prompt,
           brandContext: brandContext,
-          useBrand: useBrandStore.getState().activeBrand !== null,
+          useBrand: activeBrand !== null,
           mode: selectedMode,
           style: activeStyleObj
         }),
@@ -155,13 +161,14 @@ export default function ImageStudioPage() {
   // --- Main Generation Logic ---
   const handleGenerate = async () => {
     if (!clientId) return alert("Session lost. Please refresh.");
+    if (!activeBrand) return alert("Please select a brand workspace first."); // ✨ SAFETY CHECK
+
     if (activeConfig.requiresUpload && files.length === 0) return alert("Please upload the required images.");
     if ((selectedMode === "grid" || selectedMode === "organic_blend") && files.length < 2) return alert("This mode requires at least 2 images.");
 
     setIsGenerating(true);
 
-    const { activeBrand } = useBrandStore.getState();
-    const strictBrandAlignment = activeBrand !== null;
+    const strictBrandAlignment = true; // Implicit since we enforce activeBrand
     const { addTask, removeTask } = useWorkflowStore.getState();
     const taskId = `img-gen-${Date.now()}`;
 
@@ -182,6 +189,7 @@ export default function ImageStudioPage() {
 
       const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId,
+        brand_id: activeBrand.id, // ✨ FIXED: Pass brand_id to n8n
         mode: selectedMode,
         prompt: finalPrompt,
         reference_image_urls: uploadedUrls,
@@ -192,7 +200,6 @@ export default function ImageStudioPage() {
         is_sync: true
       });
 
-      // ✨ NEW: Explicitly catch the billing or generation error from n8n
       if (response && response.success === false) {
         const message =
           typeof response.message === "string"
@@ -212,10 +219,12 @@ export default function ImageStudioPage() {
 
       const newResults: GeneratedResult[] = [];
       for (const url of newUrls) {
+        // ✨ FIXED: Save with brand_id
         const { data: contentRecord, error } = await supabase
           .from("content")
           .insert({
             client_id: clientId,
+            brand_id: activeBrand.id, // Ensure it's tagged to the active workspace
             content_type: "post_image",
             caption: finalPrompt,
             status: "draft",
@@ -245,6 +254,7 @@ export default function ImageStudioPage() {
   // --- Refinement Logic (Modal Buttons) ---
   const handleRefine = async (type: "fresh" | "retouch") => {
     if (!selectedResult || !clientId) return;
+    if (!activeBrand) return alert("Please select a brand workspace first."); // ✨ SAFETY CHECK
 
     if (type === "retouch" && !retouchPrompt.trim()) {
       return alert("Please enter instructions on what you want to change.");
@@ -258,10 +268,11 @@ export default function ImageStudioPage() {
 
       const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId,
+        brand_id: activeBrand.id, // ✨ FIXED: Pass brand_id to n8n
         mode: wfMode,
         prompt: wfPrompt,
         reference_image_urls: [selectedResult.url],
-        strict_brand_alignment: useBrandStore.getState().activeBrand !== null,
+        strict_brand_alignment: true,
         numImages: 1,
         is_sync: true
       });
@@ -273,10 +284,12 @@ export default function ImageStudioPage() {
       if (newUrls.length === 0) throw new Error("No images were returned.");
 
       const url = newUrls[0];
+      // ✨ FIXED: Save with brand_id
       const { data: contentRecord } = await supabase
         .from("content")
         .insert({
           client_id: clientId,
+          brand_id: activeBrand.id,
           content_type: "post_image",
           caption: wfPrompt,
           status: "draft",
@@ -308,6 +321,21 @@ export default function ImageStudioPage() {
     setModalPrompt(result.prompt);
     setRetouchPrompt("");
   };
+
+  // ✨ NEW: "No Brand" fallback state
+  if (!activeBrand) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">
+        <div className="mx-auto h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-2xl flex items-center justify-center mb-6 shadow-xl">
+          <Briefcase className="h-10 w-10 text-[#57707A]" />
+        </div>
+        <h2 className="text-2xl font-bold text-[#DEDCDC] font-display">No Workspace Selected</h2>
+        <p className="text-[#989DAA] mt-3 max-w-md mx-auto leading-relaxed mb-8">
+          Please select or create a brand from the top navigation bar to access the Image Studio.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 pb-20 animate-in fade-in duration-500 relative">
