@@ -93,8 +93,8 @@ export default function BrandIdentityPage() {
 
     try {
       const [clientRes, brandRes] = await Promise.all([
-        supabase.from("clients").select("*").eq("id", clientId).single(),
-        supabase.from("brand_profiles").select("*").eq("id", activeBrand.id).single(), // ✨ Safely isolated
+        supabase.from("clients").select("plan_tier").eq("id", clientId).single(),
+        supabase.from("brand_profiles").select("*").eq("id", activeBrand.id).single(),
       ]);
 
       if (brandRes.error) {
@@ -105,24 +105,18 @@ export default function BrandIdentityPage() {
 
       if (clientRes.data) {
         setPlanTier(clientRes.data.plan_tier || "starter");
-
-        let desc = ""; let socials = "";
-        if (clientRes.data.onboarding_notes) {
-          try {
-            const notes = JSON.parse(clientRes.data.onboarding_notes);
-            desc = notes.description || ""; socials = notes.social_urls || "";
-          } catch (e) { desc = clientRes.data.onboarding_notes; }
-        }
-        setBusinessInfo({
-          company_name: clientRes.data.company_name || "",
-          website_url: clientRes.data.website_url || "",
-          industry: clientRes.data.industry || "",
-          description: desc,
-          social_urls: socials,
-        });
       }
 
       if (brandRes.data) {
+        // ✨ FIXED: Now securely fetching Business Info from brand_profiles!
+        setBusinessInfo({
+          company_name: brandRes.data.company_name || "",
+          website_url: brandRes.data.website_url || "",
+          industry: brandRes.data.industry || "",
+          description: brandRes.data.description || "",
+          social_urls: brandRes.data.social_urls || "",
+        });
+
         setBrandProfile({
           brand_name: brandRes.data.brand_name || "",
           logo_url: brandRes.data.logo_url || null,
@@ -199,9 +193,14 @@ export default function BrandIdentityPage() {
       const dosArray = brandProfile.dos.split("\n").map((k) => k.trim()).filter(Boolean);
       const dontsArray = brandProfile.donts.split("\n").map((k) => k.trim()).filter(Boolean);
 
-      // ✨ Safely updates ONLY the active brand profile
+      // ✨ FIXED: Saves ALL data, including business info, directly to brand_profiles
       await supabase.from("brand_profiles").update({
         brand_name: brandProfile.brand_name,
+        company_name: businessInfo.company_name, // Extracted business field
+        industry: businessInfo.industry,         // Extracted business field
+        description: businessInfo.description,   // Extracted business field
+        website_url: businessInfo.website_url,   // Extracted business field
+        social_urls: businessInfo.social_urls,   // Extracted business field
         logo_url: brandProfile.logo_url,
         primary_color: brandProfile.primary_color,
         secondary_color: brandProfile.secondary_color,
@@ -218,11 +217,7 @@ export default function BrandIdentityPage() {
         donts: dontsArray,
       }).eq("id", activeBrand.id);
 
-      // (Note: Clients table data is intentionally global/shared across the account)
-      await supabase.from("clients").update({
-        company_name: businessInfo.company_name, website_url: businessInfo.website_url, industry: businessInfo.industry,
-        onboarding_notes: JSON.stringify({ description: businessInfo.description, social_urls: businessInfo.social_urls }),
-      }).eq("id", clientId);
+      // 🗑️ REMOVED the supabase.from("clients") update here to stop the bleeding.
 
       const updatedBrand = { ...activeBrand, brand_name: brandProfile.brand_name, logo_url: brandProfile.logo_url };
       setActiveBrand(updatedBrand);
@@ -243,9 +238,7 @@ export default function BrandIdentityPage() {
     setExtractingDNA(true);
     setConnectionMessage({ type: "success", text: "AI is scraping your links! We'll notify you soon." });
     try {
-      await supabase.from("clients").update({ website_url: businessInfo.website_url }).eq("id", clientId);
-      // ✨ Passes the exact brand_id to n8n
-      await triggerWorkflow("blink-brand-extract-001", { client_id: clientId, brand_id: activeBrand.id });
+      await triggerWorkflow("blink-brand-extract-001", { client_id: clientId, brand_id: activeBrand.id, website_url: businessInfo.website_url });
       setTimeout(() => { setExtractingDNA(false); loadBrandData(); }, 15000);
     } catch (err) { setExtractingDNA(false); }
   }
@@ -269,7 +262,6 @@ export default function BrandIdentityPage() {
     if (type === "logo") setUploadingLogo(true); else setUploadingAsset(true);
 
     try {
-      // ✨ FIXED: Saves strictly into a folder for this specific brand_id to prevent bleeding
       const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
       const path = `brands/${activeBrand.id}/${type}_${Date.now()}-${cleanFileName}`;
 
@@ -289,7 +281,6 @@ export default function BrandIdentityPage() {
 
   if (!isMounted || loading) return <div className="flex items-center justify-center py-32"><Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" /></div>;
 
-  // ✨ NO BRAND FALLBACK
   if (!activeBrand) {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">
