@@ -6,35 +6,65 @@ const N8N_VIDEO_GENERATOR_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/blin
 const N8N_MOTION_BRUSH_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/blink-motion-brush-v1";
 const N8N_MOTION_TRANSFER_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/blink-motion-transfer-v1";
 
-// ✨ NEW: Dedicated Webhooks for the JSON Image Studio
+// Dedicated Webhooks for the JSON Image Studio
 const N8N_XRAY_IMAGE_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/blink-xray-image-v1";
 const N8N_JSON_EDIT_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/blink-json-edit-v1";
+
+// Long-running video modes that should fire-and-forget (5-15 min AI tasks).
+// n8n will PATCH the Supabase row when done. Frontend listens via supabase.channel().
+const FIRE_AND_FORGET_VIDEO_MODES = new Set([
+  'standard',         // default video generation
+  'motion_brush',
+  'motion_transfer',
+]);
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
     let targetUrl = N8N_GENERATOR_URL;
+    let isLongRunning = false;
 
     if (body.mode === 'director') {
       targetUrl = N8N_DIRECTOR_URL;
     } else if (body.mode === 'scene_video_generator') {
 
-      // 🚦 THE TRAFFIC COP
       if (body.video_mode === 'motion_brush') {
         targetUrl = N8N_MOTION_BRUSH_URL;
       } else if (body.video_mode === 'motion_transfer') {
         targetUrl = N8N_MOTION_TRANSFER_URL;
       } else if (body.video_mode === 'xray_image') {
-        targetUrl = N8N_XRAY_IMAGE_URL; // Routes to the Vision Analyzer
+        targetUrl = N8N_XRAY_IMAGE_URL;
       } else if (body.video_mode === 'json_image_edit') {
-        targetUrl = N8N_JSON_EDIT_URL; // Routes to the Image Renderer
+        targetUrl = N8N_JSON_EDIT_URL;
       } else {
         targetUrl = N8N_VIDEO_GENERATOR_URL;
       }
 
+      // Determine if this is a long-running mode
+      const videoMode = body.video_mode || 'standard';
+      if (FIRE_AND_FORGET_VIDEO_MODES.has(videoMode)) {
+        isLongRunning = true;
+      }
     }
 
+    // ─── FIRE-AND-FORGET for long-running AI video generation ───
+    // Sends the webhook to n8n but does NOT wait for the response.
+    // n8n will PATCH the Supabase row (status + video_url) when it finishes.
+    if (isLongRunning) {
+      fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).catch((err) => console.error("Fire-and-forget n8n error:", err));
+
+      return NextResponse.json({
+        success: true,
+        message: "Generation started. You'll be notified when it's ready.",
+      });
+    }
+
+    // ─── AWAIT for fast operations (director prompts, xray, json edits, image gen) ───
     const n8nRes = await fetch(targetUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

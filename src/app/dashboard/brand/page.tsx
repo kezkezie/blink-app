@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
+import { saveBrandProfile, createQuickBrand } from "@/app/actions/brand";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import {
   Loader2, Save, CheckCircle, Plus, X, Trash2, AlertCircle,
@@ -171,13 +172,11 @@ export default function BrandIdentityPage() {
     if (!name || !name.trim()) return;
     setIsCreatingBrand(true);
     try {
-      const { data, error } = await supabase.from("brand_profiles").insert({
-        client_id: clientId, brand_name: name.trim(), primary_color: "#2563EB", secondary_color: "#F59E0B", accent_color: "#10B981"
-      }).select("id, brand_name, logo_url").single();
-      if (error) throw error;
-      if (data) {
-        setAvailableBrands([...availableBrands, data]);
-        setActiveBrand(data);
+      const result = await createQuickBrand(clientId!, name.trim());
+      if (result.error) throw new Error(result.error);
+      if (result.brand) {
+        setAvailableBrands([...availableBrands, result.brand]);
+        setActiveBrand(result.brand);
         setConnectionMessage({ type: "success", text: `${name.trim()} workspace created!` });
       }
     } catch (err) {
@@ -193,14 +192,14 @@ export default function BrandIdentityPage() {
       const dosArray = brandProfile.dos.split("\n").map((k) => k.trim()).filter(Boolean);
       const dontsArray = brandProfile.donts.split("\n").map((k) => k.trim()).filter(Boolean);
 
-      // ✨ FIXED: Saves ALL data, including business info, directly to brand_profiles
-      await supabase.from("brand_profiles").update({
+      // Server Action: saves ALL data to brand_profiles via supabaseAdmin
+      const result = await saveBrandProfile(activeBrand.id, {
         brand_name: brandProfile.brand_name,
-        company_name: businessInfo.company_name, // Extracted business field
-        industry: businessInfo.industry,         // Extracted business field
-        description: businessInfo.description,   // Extracted business field
-        website_url: businessInfo.website_url,   // Extracted business field
-        social_urls: businessInfo.social_urls,   // Extracted business field
+        company_name: businessInfo.company_name,
+        industry: businessInfo.industry,
+        description: businessInfo.description,
+        website_url: businessInfo.website_url,
+        social_urls: businessInfo.social_urls,
         logo_url: brandProfile.logo_url,
         primary_color: brandProfile.primary_color,
         secondary_color: brandProfile.secondary_color,
@@ -215,9 +214,9 @@ export default function BrandIdentityPage() {
         vocabulary_notes: brandProfile.vocabulary_notes,
         dos: dosArray,
         donts: dontsArray,
-      }).eq("id", activeBrand.id);
+      });
 
-      // 🗑️ REMOVED the supabase.from("clients") update here to stop the bleeding.
+      if (result.error) throw new Error(result.error);
 
       const updatedBrand = { ...activeBrand, brand_name: brandProfile.brand_name, logo_url: brandProfile.logo_url };
       setActiveBrand(updatedBrand);

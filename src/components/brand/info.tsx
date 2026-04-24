@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
+import { createBrandWorkspace } from "@/app/actions/brand";
 import {
     Loader2,
     ArrowRight,
@@ -141,8 +142,8 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
         setSaving(true);
 
         try {
-            // 1. Upload Logo
-            let finalLogoUrl = null;
+            // 1. Upload Logo (stays client-side — File objects can't serialize to server actions)
+            let finalLogoUrl: string | null = null;
             if (logoFile) {
                 const fileExt = logoFile.name.split(".").pop();
                 const filePath = `brands/${userId}/logo_${Date.now()}.${fileExt}`;
@@ -153,8 +154,8 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
                 }
             }
 
-            // 2. Upload Assets
-            let finalAssetUrls: string[] = [];
+            // 2. Upload Assets (stays client-side)
+            const finalAssetUrls: string[] = [];
             for (const file of assetFiles) {
                 const fileExt = file.name.split(".").pop();
                 const filePath = `brands/${userId}/asset_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -165,64 +166,36 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
                 }
             }
 
-            // 3. Ensure Client Record Exists (ONLY creates, never updates to prevent bleed)
-            let currentClientId = null;
-            const { data: existingClient } = await supabase.from("clients").select("id").eq("user_id", userId).maybeSingle();
+            // 3. Server Action: Create client + brand_profile in one shot
+            const result = await createBrandWorkspace({
+                userId,
+                contactName,
+                brandName,
+                companyName: companyName || brandName,
+                industry,
+                description,
+                websiteUrl,
+                socialUrls,
+                visualStyleGuide,
+                primaryColor,
+                secondaryColor,
+                accentColor,
+                additionalColor,
+                primaryFont: primaryFont || null,
+                brandVoice,
+                toneKeywords,
+                logoUrl: finalLogoUrl,
+                uploadedAssets: finalAssetUrls,
+            });
 
-            if (existingClient) {
-                currentClientId = existingClient.id;
-                // ✨ DELETED: No longer updating the master clients table!
-            } else {
-                const { data: newClient, error: clientError } = await supabase.from("clients")
-                    .insert({
-                        user_id: userId,
-                        contact_name: contactName,
-                        company_name: "Master Account",
-                        contact_email: "user@brand.com",
-                        plan_tier: "starter"
-                    })
-                    .select("id").single();
-                if (clientError) throw clientError;
-                currentClientId = newClient.id;
-            }
+            if (result.error) throw new Error(result.error);
 
-            // 4. Create Brand Profile (Now holds ALL the business info safely isolated!)
-            const brandPayload: any = {
-                client_id: currentClientId,
-                brand_name: brandName,
-                company_name: companyName || brandName, // ✨ ISOLATED
-                industry: industry,                     // ✨ ISOLATED
-                description: description,               // ✨ ISOLATED
-                website_url: websiteUrl,                // ✨ ISOLATED
-                social_urls: socialUrls,                // ✨ ISOLATED
-                visual_style_guide: visualStyleGuide,
-                brand_voice: brandVoice,
-                primary_color: primaryColor,
-                secondary_color: secondaryColor,
-                accent_color: accentColor,
-                additional_colors: [additionalColor],
-                primary_font: primaryFont || null,
-                tone_keywords: toneKeywords,
-                is_active: true,
-            };
-
-            if (finalLogoUrl) brandPayload.logo_url = finalLogoUrl;
-            if (finalAssetUrls.length > 0) brandPayload.uploaded_assets = finalAssetUrls;
-
-            const { data: newBrand, error: brandError } = await supabase
-                .from("brand_profiles")
-                .insert(brandPayload)
-                .select("id")
-                .single();
-
-            if (brandError) throw brandError;
-
-            // 5. Trigger n8n Background Workflow
+            // 4. Fire-and-forget: Trigger n8n Brand DNA extraction (async webhook — no await on result)
             try {
                 triggerWorkflow("blink-brand-extract-001", {
-                    client_id: currentClientId,
-                    brand_id: newBrand.id,
-                    website_url: websiteUrl
+                    client_id: result.clientId,
+                    brand_id: result.brandId,
+                    website_url: websiteUrl,
                 });
             } catch (err) {
                 console.error("Workflow trigger issue ignored.");

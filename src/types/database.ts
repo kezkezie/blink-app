@@ -123,6 +123,12 @@ export interface Client {
 export interface BrandProfile {
   id: string;
   client_id: string;
+  brand_name: string;
+  company_name: string | null;
+  industry: string | null;
+  description: string | null;
+  website_url: string | null;
+  social_urls: string | null;
   source: BrandSource;
   logo_url: string | null;
   primary_color: string | null;
@@ -133,6 +139,7 @@ export interface BrandProfile {
   secondary_font: string | null;
   font_weights: string[];
   image_style: string | null;
+  visual_style_guide: string | null;
   composition_notes: string | null;
   logo_usage_rules: string | null;
   brand_voice: string | null;
@@ -319,7 +326,7 @@ export interface Database {
       };
       brand_profiles: {
         Row: BrandProfile;
-        Insert: Partial<BrandProfile> & Pick<BrandProfile, "client_id">;
+        Insert: Partial<BrandProfile> & Pick<BrandProfile, "client_id" | "brand_name">;
         Update: Partial<BrandProfile>;
       };
       products: {
@@ -384,5 +391,7 @@ export interface Database {
         Update: Partial<WorkflowRun>;
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
 }
