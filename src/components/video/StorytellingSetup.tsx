@@ -727,7 +727,8 @@ export function StorytellingSetup({
       try { currentPrompts = await generateScript(); } catch (e) { setIsGeneratingAllImages(false); return; }
     }
 
-    // Process sequentially to avoid overwhelming the DNS resolver
+    // ✨ THIS IS THE SECRET TO PREVENTING SERVER CRASHES
+    // We process them sequentially (one by one) to keep CPU usage low
     for (let i = 0; i < bRollScenes.length; i++) {
       const isSeedance2 = bRollScenes[i].aiModel === 'bytedance/seedance-2' || bRollScenes[i].aiModel === 'bytedance/seedance-2-fast';
 
@@ -735,7 +736,7 @@ export function StorytellingSetup({
         const previews = ensureArray(bRollScenes[i].seedancePreviews || [null]);
         for (let sIdx = 0; sIdx < previews.length; sIdx++) {
           if (!previews[sIdx] && currentPrompts[i]) {
-            // AWAIT each call so they execute one by one
+            // AWAIT pauses the loop until this specific image is finished
             await handleGenerateSlot(i, 'primary', currentPrompts[i], sIdx);
           }
         }
