@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // 🐛 DEBUG LOG: This will show up in your Next.js terminal so you can verify client_id is there!
+    // 🐛 DEBUG LOG
     console.log(`[API Proxy] Routing mode '${body.mode}' to n8n. Payload contains client_id:`, !!body.client_id || !!body.clientId);
 
     let targetUrl = N8N_GENERATOR_URL;
@@ -32,28 +32,28 @@ export async function POST(req: Request) {
       targetUrl = N8N_DIRECTOR_URL;
     } else if (body.mode === 'scene_video_generator') {
 
-      if (body.video_mode === 'motion_brush') {
+      // ✨ THE BUG FIX: Extract video_mode safely, checking inside scene_data if necessary
+      const videoMode = body.video_mode || (body.scene_data && body.scene_data.video_mode) || 'standard';
+
+      if (videoMode === 'motion_brush') {
         targetUrl = N8N_MOTION_BRUSH_URL;
-      } else if (body.video_mode === 'motion_transfer') {
+      } else if (videoMode === 'motion_transfer') {
         targetUrl = N8N_MOTION_TRANSFER_URL;
-      } else if (body.video_mode === 'xray_image') {
+      } else if (videoMode === 'xray_image') {
         targetUrl = N8N_XRAY_IMAGE_URL;
-      } else if (body.video_mode === 'json_image_edit') {
+      } else if (videoMode === 'json_image_edit') {
         targetUrl = N8N_JSON_EDIT_URL;
       } else {
         targetUrl = N8N_VIDEO_GENERATOR_URL;
       }
 
       // Determine if this is a long-running mode
-      const videoMode = body.video_mode || 'standard';
       if (FIRE_AND_FORGET_VIDEO_MODES.has(videoMode)) {
         isLongRunning = true;
       }
     }
 
     // ─── FIRE-AND-FORGET for long-running AI video generation ───
-    // Sends the webhook to n8n but does NOT wait for the response.
-    // n8n will PATCH the Supabase row (status + video_url) when it finishes.
     if (isLongRunning) {
       fetch(targetUrl, {
         method: "POST",
