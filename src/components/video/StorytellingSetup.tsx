@@ -521,29 +521,27 @@ export function StorytellingSetup({
     setIsWritingScript(true);
     let generatedPrompts: string[] = [];
     try {
-      // 1. Remove the hardcoded length constraint so the AI can write as many scenes as needed
+      // 1. Tell the AI we expect it to intelligently route the settings
       const directorData = await callN8n('director', {
         clientId: clientId,
-        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into a dynamic, cohesive sequence of scenes. For each scene, you MUST write the "image_prompt" in a highly descriptive narrative script format. Example: "Outdoor terrace of a European villa... a young woman sits opposite a man. The camera zooms in, the woman smiles and says, 'These trees will turn yellow...' The man lowers his head and says, 'But they'll be green again.'" Include exact spoken dialogue in quotes!`,
+        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into a dynamic sequence of scenes. For each scene, write the "image_prompt". ALSO, intelligently select the best 'aiModel' ('bytedance/seedance-2', 'kling-3.0/video', 'replicate:openai/sora-2', or 'replicate:prunaai/p-video'), a 'duration' (5, 10, or 15), and whether to 'useEndFrame' (true/false) based on the specific action required.`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         sceneConfigs: bRollScenes.map(scene => ({ aiModel: scene.aiModel })),
       });
 
       const scenesData = directorData.scenes || [];
-
-      // ✨ 2. DYNAMIC SCENE INJECTION ✨
-      // If the AI gives us more scenes (e.g., 8) than we have UI boxes (e.g., 4), 
-      // dynamically build the missing boxes before we map the data!
       let currentScenes = [...bRollScenes];
 
+      // 2. Spawn missing UI boxes if the AI wrote more scenes than we have
       if (scenesData.length > currentScenes.length) {
         const scenesToAdd = scenesData.length - currentScenes.length;
         for (let i = 0; i < scenesToAdd; i++) {
+          const aiData = scenesData[currentScenes.length + i] || {};
           currentScenes.push({
             id: crypto.randomUUID(),
-            scene_number: currentScenes.length + 1,
-            aiModel: "auto",
-            useEndFrame: false,
+            scene_number: currentScenes.length + i + 1,
+            aiModel: aiData.aiModel || "auto",
+            useEndFrame: aiData.useEndFrame || false,
             primaryFile: null,
             primaryPreview: null,
             secondaryFile: null,
@@ -554,17 +552,26 @@ export function StorytellingSetup({
             referenceVideoPreview: null,
             prompt: "",
             videoUrl: null,
-            isGeneratingVideo: false
+            isGeneratingVideo: false,
+            duration: String(aiData.duration || "5")
           });
         }
       }
 
-      // 3. Now safely inject the AI prompts into the expanded UI boxes
+      // 3. Inject the AI's intelligent settings into the dropdowns!
       const updatedScenes = currentScenes.map((scene, i) => {
-        const newVisualPrompt = scenesData[i]?.video_prompt || scenesData[i]?.image_prompt || "";
-        // Only overwrite if the user hasn't manually typed something in that specific box
+        const aiData = scenesData[i] || {};
+        const newVisualPrompt = aiData.video_prompt || aiData.image_prompt || "";
         const finalPrompt = scene.prompt?.trim() || newVisualPrompt;
-        return { ...scene, prompt: finalPrompt };
+
+        return {
+          ...scene,
+          prompt: finalPrompt,
+          // If the AI gave us a model/duration/toggle, use it. Otherwise keep the current UI state.
+          aiModel: aiData.aiModel ? aiData.aiModel : scene.aiModel,
+          duration: aiData.duration ? String(aiData.duration) : scene.duration,
+          useEndFrame: aiData.useEndFrame !== undefined ? aiData.useEndFrame : scene.useEndFrame
+        };
       });
 
       setBRollScenes(updatedScenes);
