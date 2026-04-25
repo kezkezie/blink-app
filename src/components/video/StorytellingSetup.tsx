@@ -44,6 +44,9 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
   const [angles, setAngles] = useState<(File | null)[]>(Array(6).fill(null));
   const [previews, setPreviews] = useState<(string | null)[]>(Array(6).fill(null));
 
+  const [selectedStyle, setSelectedStyle] = useState("cinematic");
+  const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
+
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
@@ -387,6 +390,8 @@ export function StorytellingSetup({
   const [isCharacterLockModalOpen, setIsCharacterLockModalOpen] = useState(false);
   const [selectedActorA, setSelectedActorA] = useState<string>("");
 
+  const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
+
   useEffect(() => {
     const savedActors = localStorage.getItem('blink_saved_actors');
     if (savedActors) {
@@ -521,18 +526,17 @@ export function StorytellingSetup({
     setIsWritingScript(true);
     let generatedPrompts: string[] = [];
     try {
-      // 1. Tell the AI we expect it to intelligently route the settings
       const directorData = await callN8n('director', {
         clientId: clientId,
-        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into a dynamic sequence of scenes. For each scene, write the "image_prompt". ALSO, intelligently select the best 'aiModel' ('bytedance/seedance-2', 'kling-3.0/video', 'replicate:openai/sora-2', or 'replicate:prunaai/p-video'), a 'duration' (5, 10, or 15), and whether to 'useEndFrame' (true/false) based on the specific action required.`,
+        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into a dynamic sequence of scenes. For each scene, write the "image_prompt" and "video_prompt". ALSO, intelligently select the best 'aiModel' ('bytedance/seedance-2', 'kling-3.0/video', 'replicate:openai/sora-2', or 'replicate:prunaai/p-video'), a 'duration' (5, 10, or 15), and whether to 'useEndFrame' (true/false) based on the specific action required.`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         sceneConfigs: bRollScenes.map(scene => ({ aiModel: scene.aiModel })),
+        consistencyMode: modelConsistency // ✨ PASS PREFERENCE TO AI
       });
 
       const scenesData = directorData.scenes || [];
       let currentScenes = [...bRollScenes];
 
-      // 2. Spawn missing UI boxes if the AI wrote more scenes than we have
       if (scenesData.length > currentScenes.length) {
         const scenesToAdd = scenesData.length - currentScenes.length;
         for (let i = 0; i < scenesToAdd; i++) {
@@ -540,8 +544,9 @@ export function StorytellingSetup({
           currentScenes.push({
             id: crypto.randomUUID(),
             scene_number: currentScenes.length + i + 1,
-            aiModel: aiData.aiModel || "auto",
-            useEndFrame: aiData.useEndFrame || false,
+            // ✨ FIX: Safely catch snake_case or camelCase keys from the AI
+            aiModel: aiData.aiModel || aiData.ai_model || "auto",
+            useEndFrame: aiData.useEndFrame !== undefined ? aiData.useEndFrame : (aiData.use_end_frame !== undefined ? aiData.use_end_frame : false),
             primaryFile: null,
             primaryPreview: null,
             secondaryFile: null,
@@ -558,7 +563,6 @@ export function StorytellingSetup({
         }
       }
 
-      // 3. Inject the AI's intelligent settings into the dropdowns!
       const updatedScenes = currentScenes.map((scene, i) => {
         const aiData = scenesData[i] || {};
         const newVisualPrompt = aiData.video_prompt || aiData.image_prompt || "";
@@ -567,10 +571,10 @@ export function StorytellingSetup({
         return {
           ...scene,
           prompt: finalPrompt,
-          // If the AI gave us a model/duration/toggle, use it. Otherwise keep the current UI state.
-          aiModel: aiData.aiModel ? aiData.aiModel : scene.aiModel,
+          // ✨ FIX: Safely catch snake_case or camelCase keys from the AI
+          aiModel: aiData.aiModel || aiData.ai_model ? (aiData.aiModel || aiData.ai_model) : scene.aiModel,
           duration: aiData.duration ? String(aiData.duration) : scene.duration,
-          useEndFrame: aiData.useEndFrame !== undefined ? aiData.useEndFrame : scene.useEndFrame
+          useEndFrame: aiData.useEndFrame !== undefined ? aiData.useEndFrame : (aiData.use_end_frame !== undefined ? aiData.use_end_frame : scene.useEndFrame)
         };
       });
 
@@ -1626,6 +1630,22 @@ export function StorytellingSetup({
             <div className="relative">
               <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Master Story Concept</label>
               <Textarea value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder="Describe the full story flow AND dialogue..." className="flex-1 w-full resize-none h-40 text-sm p-4 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar" />
+            </div>
+
+            {/* ✨ NEW MODEL CONSISTENCY TOGGLE ✨ */}
+            <div className="flex items-center justify-between bg-[#191D23] p-3 rounded-xl border border-[#57707A]/30 shadow-inner">
+              <div>
+                <p className="text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider">AI Model Selection</p>
+                <p className="text-[9px] text-[#57707A] font-medium mt-0.5">Let AI pick dynamically per scene, or lock one model for consistency.</p>
+              </div>
+              <div className="flex gap-1 bg-[#2A2F38] p-1 rounded-lg border border-[#57707A]/40">
+                <button onClick={() => setModelConsistency("dynamic")} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-md transition-all", modelConsistency === "dynamic" ? "bg-[#B3FF00] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>
+                  Dynamic
+                </button>
+                <button onClick={() => setModelConsistency("consistent")} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-md transition-all", modelConsistency === "consistent" ? "bg-[#C5BAC4] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>
+                  Consistent
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col gap-3 mt-1">
