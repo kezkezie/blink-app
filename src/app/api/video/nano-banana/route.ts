@@ -22,6 +22,9 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
+    // 🐛 DEBUG LOG: This will show up in your Next.js terminal so you can verify client_id is there!
+    console.log(`[API Proxy] Routing mode '${body.mode}' to n8n. Payload contains client_id:`, !!body.client_id || !!body.clientId);
+
     let targetUrl = N8N_GENERATOR_URL;
     let isLongRunning = false;
 
@@ -86,7 +89,7 @@ export async function POST(req: Request) {
     }
 
     if (!n8nRes.ok) {
-      throw new Error(data.message || `n8n responded with status ${n8nRes.status}`);
+      throw new Error(data.message || data.error || `n8n responded with status ${n8nRes.status}`);
     }
 
     return NextResponse.json(data);

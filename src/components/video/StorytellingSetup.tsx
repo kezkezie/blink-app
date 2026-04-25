@@ -151,7 +151,7 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
     setIsGeneratingAI(true);
     try {
       const augmentedPrompt = `${CHARACTER_SHEET_INJECTION} ${aiPrompt}`;
-      const genData = await callN8n('generator', { prompt: augmentedPrompt });
+      const genData = await callN8n('generator', { prompt: augmentedPrompt, client_id: clientId });
 
       if (!genData.url) throw new Error("AI did not return an image URL.");
 
@@ -651,7 +651,8 @@ export function StorytellingSetup({
         refImage: styleRefUrl || previousUrl || null,
         styleRefImage: styleRefUrl || null,
         previousFrameImage: previousUrl,
-        characterRefA: characterSheetUrlA
+        characterRefA: characterSheetUrlA,
+        client_id: clientId
       });
 
       if (genData.url) {
@@ -715,6 +716,7 @@ export function StorytellingSetup({
       try { currentPrompts = await generateScript(); } catch (e) { setIsGeneratingAllImages(false); return; }
     }
 
+    // Process sequentially to avoid overwhelming the DNS resolver
     for (let i = 0; i < bRollScenes.length; i++) {
       const isSeedance2 = bRollScenes[i].aiModel === 'bytedance/seedance-2' || bRollScenes[i].aiModel === 'bytedance/seedance-2-fast';
 
@@ -722,6 +724,7 @@ export function StorytellingSetup({
         const previews = ensureArray(bRollScenes[i].seedancePreviews || [null]);
         for (let sIdx = 0; sIdx < previews.length; sIdx++) {
           if (!previews[sIdx] && currentPrompts[i]) {
+            // AWAIT each call so they execute one by one
             await handleGenerateSlot(i, 'primary', currentPrompts[i], sIdx);
           }
         }
@@ -734,6 +737,7 @@ export function StorytellingSetup({
         }
       }
     }
+
     setIsGeneratingAllImages(false);
   };
 
