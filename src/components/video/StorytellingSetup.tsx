@@ -853,35 +853,74 @@ export function StorytellingSetup({
 
       let attempts = 0;
       const maxAttempts = 180;
-      let foundVideoUrl = null;
+      let foundVideoUrl: string | null = null;
+      const sceneId = scene.id;
+
+      console.log(`[Video Poll] Starting poll for scene ${slotIndex + 1}, postId: ${postId}`);
 
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 5000));
         attempts++;
-        const { data } = await supabase.from('content').select('*').eq('id', postId).single();
+        const { data, error: pollError } = await supabase.from('content').select('*').eq('id', postId).single();
+
+        if (pollError) {
+          console.warn(`[Video Poll] Attempt ${attempts}: Supabase query error:`, pollError.message);
+          continue;
+        }
+
         if (data) {
-          if (data.status === 'failed') throw new Error("n8n Video Engine reported a failure. Check your n8n logs.");
-          let urls = [];
-          if (Array.isArray(data.video_urls) && data.video_urls.length > 0) urls = data.video_urls;
-          else if (typeof data.video_urls === 'string') { try { urls = JSON.parse(data.video_urls); } catch (e) { urls = [data.video_urls]; } }
+          console.log(`[Video Poll] Attempt ${attempts}: status="${data.status}", video_urls=${JSON.stringify(data.video_urls)}, image_urls=${JSON.stringify(data.image_urls)}`);
+
+          if (data.status === 'failed') {
+            throw new Error(data.error_message || "n8n Video Engine reported a failure. Check your n8n logs.");
+          }
+
+          // Collect URLs from both video_urls and image_urls columns
+          let urls: string[] = [];
+          if (Array.isArray(data.video_urls) && data.video_urls.length > 0) {
+            urls = data.video_urls;
+          } else if (typeof data.video_urls === 'string' && data.video_urls.trim()) {
+            try { urls = JSON.parse(data.video_urls); } catch (e) { urls = [data.video_urls]; }
+          }
 
           if (urls.length === 0) {
-            if (Array.isArray(data.image_urls)) urls = data.image_urls;
-            else if (typeof data.image_urls === 'string') { try { urls = JSON.parse(data.image_urls); } catch (e) { urls = [data.image_urls]; } }
+            if (Array.isArray(data.image_urls) && data.image_urls.length > 0) {
+              urls = data.image_urls;
+            } else if (typeof data.image_urls === 'string' && data.image_urls.trim()) {
+              try { urls = JSON.parse(data.image_urls); } catch (e) { urls = [data.image_urls]; }
+            }
           }
-          const mp4Url = urls.find((u: string) => typeof u === 'string' && u.includes('.mp4'));
-          if (mp4Url) { foundVideoUrl = mp4Url; break; }
+
+          // Accept any valid URL string (not just .mp4 — Cloudinary URLs may not end in .mp4)
+          const videoUrl = urls.find((u: string) => typeof u === 'string' && u.startsWith('http'));
+          if (videoUrl) {
+            console.log(`[Video Poll] ✅ Found video URL for scene ${slotIndex + 1}:`, videoUrl);
+            foundVideoUrl = videoUrl;
+            break;
+          }
         }
       }
 
-      if (foundVideoUrl) updateScene(scene.id, "videoUrl", foundVideoUrl);
-      else throw new Error("Video generation timed out after 15 minutes.");
+      if (foundVideoUrl) {
+        console.log(`[Video Poll] Applying video URL to scene state: ${foundVideoUrl}`);
+        // Use setBRollScenes directly with deep clone to guarantee React detects the change
+        const urlToSet = foundVideoUrl;
+        setBRollScenes(prev => prev.map(s =>
+          s.id === sceneId ? { ...s, videoUrl: urlToSet, isGeneratingVideo: false } : s
+        ));
+        return; // skip the finally block's redundant isGeneratingVideo update
+      } else {
+        throw new Error("Video generation timed out after 15 minutes.");
+      }
 
     } catch (err: any) {
-      console.error(`Failed to generate video for scene ${slotIndex + 1}:`, err);
+      console.error(`[Video Poll] ❌ Failed for scene ${slotIndex + 1}:`, err);
       alert(`Failed to retrieve video: ${err.message}`);
     } finally {
-      updateScene(scene.id, "isGeneratingVideo", false);
+      // Use setBRollScenes directly to ensure React sees the isGeneratingVideo: false change
+      setBRollScenes(prev => prev.map(s =>
+        s.id === scene.id ? { ...s, isGeneratingVideo: false } : s
+      ));
     }
   };
 
@@ -1299,14 +1338,15 @@ export function StorytellingSetup({
                                   ) : (
                                     <label htmlFor={`seedance-${scene.id}-${sIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors">
                                       <ImageIcon className="h-6 w-6 mb-1.5" />
-                                      <p className="text-[9px] font-bold uppercase tracking-wider">Drop Image</p>
+                                      <p className="text-[9px] font-bold uppercase tracking-wider">Drop or Click</p>
                                     </label>
                                   )}
                                   <input id={`seedance-${scene.id}-${sIdx}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "primary", sIdx)} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
                                   <div
-                                    className="absolute inset-0 z-10 w-full h-full opacity-0"
+                                    className="absolute inset-0 z-10 w-full h-full opacity-0 cursor-pointer"
                                     onDragOver={handleDragOver}
                                     onDrop={(e) => handleDrop(e, scene.id, "primary", sIdx)}
+                                    onClick={() => { const el = document.getElementById(`seedance-${scene.id}-${sIdx}`); if (el) el.click(); }}
                                   />
                                 </div>
 
