@@ -46,7 +46,6 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 
   const [selectedStyle, setSelectedStyle] = useState("cinematic");
   const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
-
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
@@ -391,6 +390,7 @@ export function StorytellingSetup({
   const [selectedActorA, setSelectedActorA] = useState<string>("");
 
   const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
+  const [localAspectRatio, setLocalAspectRatio] = useState("16:9");
 
   useEffect(() => {
     const savedActors = localStorage.getItem('blink_saved_actors');
@@ -423,7 +423,32 @@ export function StorytellingSetup({
   }, []);
 
   useEffect(() => {
-    if (bRollScenes.length > 0) localStorage.setItem('blink_storyboard_scenes', JSON.stringify(bRollScenes));
+    if (bRollScenes.length > 0) {
+      try {
+        // ✨ THE FIX: Create a "lightweight" copy of the scenes to save.
+        // We strip out the heavy Base64 previews and File objects to prevent QuotaExceeded errors.
+        const lightScenesToSave = bRollScenes.map(scene => ({
+          ...scene,
+          // Clear out heavy Base64 strings from manual uploads
+          primaryPreview: scene.primaryPreview?.startsWith('data:') ? null : scene.primaryPreview,
+          secondaryPreview: scene.secondaryPreview?.startsWith('data:') ? null : scene.secondaryPreview,
+          seedancePreviews: Array.isArray(scene.seedancePreviews)
+            ? scene.seedancePreviews.map((p: string | null) => p?.startsWith('data:') ? null : p)
+            : [null],
+          referenceVideoPreview: scene.referenceVideoPreview?.startsWith('blob:') || scene.referenceVideoPreview?.startsWith('data:') ? null : scene.referenceVideoPreview,
+
+          // Never try to stringify File objects
+          primaryFile: null,
+          secondaryFile: null,
+          seedanceImages: [null],
+          referenceVideoFile: null
+        }));
+
+        localStorage.setItem('blink_storyboard_scenes', JSON.stringify(lightScenesToSave));
+      } catch (e) {
+        console.error("Failed to save scenes to localStorage. It might still be too large:", e);
+      }
+    }
   }, [bRollScenes]);
 
   useEffect(() => {
@@ -830,6 +855,7 @@ export function StorytellingSetup({
         post_id: postId,
         client_id: clientId,
         ai_model_override: scene.aiModel || "auto",
+        aspect_ratio: scene.aspectRatio || "16:9",
         referenceVideoUrl: finalReferenceVideoUrl,
         scene_data: {
           visual_prompt: scene.prompt?.trim() || bRollConcept,
@@ -895,23 +921,18 @@ export function StorytellingSetup({
         throw new Error("Video generation timed out after 15 minutes.");
       }
 
-      // ✨ THE BULLETPROOF STATE UPDATE ✨
-      // We use setBRollScenes directly with a functional update (prevScenes => ...) 
-      // This guarantees React uses the live state, entirely immune to stale closures!
-      setBRollScenes(prevScenes => prevScenes.map(s =>
-        s.id === scene.id
-          ? { ...s, videoUrl: foundVideoUrl, isGeneratingVideo: false }
-          : s
-      ));
+      // 1. Update the URL first
+      updateScene(scene.id, "videoUrl", foundVideoUrl);
+
+      // 2. Give React 50ms to flush the state batch before turning off the loader
+      setTimeout(() => {
+        updateScene(scene.id, "isGeneratingVideo", false);
+      }, 50);
 
     } catch (err: any) {
       console.error(`Failed to generate video for scene ${slotIndex + 1}:`, err);
       alert(`Failed to retrieve video: ${err.message}`);
-
-      // Safely turn off the loading spinner on failure
-      setBRollScenes(prevScenes => prevScenes.map(s =>
-        s.id === scene.id ? { ...s, isGeneratingVideo: false } : s
-      ));
+      updateScene(scene.id, "isGeneratingVideo", false);
     }
     // No finally block — success and failure are handled cleanly above!
   };
@@ -1215,6 +1236,18 @@ export function StorytellingSetup({
                   </div>
                   <div className="flex items-center gap-3">
 
+                    {/* ✨ RESTORED PER-SCENE ASPECT RATIO */}
+                    <select
+                      value={scene.aspectRatio || "16:9"}
+                      onChange={(e) => updateScene(scene.id, "aspectRatio", e.target.value)}
+                      className="text-[10px] font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2.5 px-3 bg-[#2A2F38] text-[#f472b6] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#f472b6]/50 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
+                    >
+                      <option value="16:9" className="bg-[#191D23]">📐 16:9</option>
+                      <option value="9:16" className="bg-[#191D23]">📐 9:16</option>
+                      <option value="1:1" className="bg-[#191D23]">📐 1:1</option>
+                      <option value="21:9" className="bg-[#191D23]">📐 21:9</option>
+                    </select>
+
                     <select
                       value={scene.duration || "5"}
                       onChange={(e) => updateScene(scene.id, "duration", e.target.value)}
@@ -1328,15 +1361,19 @@ export function StorytellingSetup({
                                         <button type="button" onClick={() => clearSlot(scene.id, 'primary', sIdx)} className="p-2 bg-[#191D23] border border-[#57707A]/50 hover:bg-red-500 hover:border-red-400 text-white rounded-lg shadow-lg opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Trash2 className="h-4 w-4" /></button>
                                       </div></>
                                   ) : (
-                                    <label
-                                      htmlFor={`seedance-${scene.id}-${sIdx}`}
+                                    <div
                                       className="absolute inset-0 z-20 flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors bg-transparent"
                                       onDragOver={handleDragOver}
                                       onDrop={(e) => handleDrop(e, scene.id, "primary", sIdx)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const fileInput = document.getElementById(`seedance-${scene.id}-${sIdx}`);
+                                        if (fileInput) fileInput.click();
+                                      }}
                                     >
                                       <ImageIcon className="h-6 w-6 mb-1.5 pointer-events-none" />
                                       <p className="text-[9px] font-bold uppercase tracking-wider pointer-events-none">Drop or Click</p>
-                                    </label>
+                                    </div>
                                   )}
                                   <input
                                     id={`seedance-${scene.id}-${sIdx}`}
@@ -1483,7 +1520,7 @@ export function StorytellingSetup({
 
                           {scene.videoUrl ? (
                             <div className="w-full flex-1 bg-[#0F1115] relative shrink-0 border-b border-[#57707A]/30 flex items-center justify-center">
-                              <video src={scene.videoUrl} controls className="w-full h-full max-h-[300px] object-contain" playsInline />
+                              <video key={scene.videoUrl} src={scene.videoUrl} controls className="w-full h-full max-h-[300px] object-contain" playsInline />
                             </div>
                           ) : (
                             <div className="flex flex-col flex-1 relative">
@@ -1642,27 +1679,24 @@ export function StorytellingSetup({
 
       {/* ── RIGHT PANE: DIRECTOR & PREVIEW ── */}
       <div className="w-full xl:w-[400px] shrink-0 xl:sticky xl:top-6 flex flex-col gap-6 z-20">
-
         {/* CARD 1: MASTER DIRECTOR */}
         <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative overflow-hidden">
 
-          {/* ✨ MOVED ASPECT RATIO DROPDOWN HERE ✨ */}
+          {/* ✨ RESTORED ASPECT RATIO DROPDOWN ✨ */}
           <div className="flex items-center justify-between mb-5 pb-4 border-b border-[#57707A]/20">
             <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide"><Settings2 className="w-4 h-4 text-[#C5BAC4]" /> Master Director</h3>
 
-            {setAspectRatio && (
-              <select
-                value={aspectRatio}
-                onChange={(e) => setAspectRatio(e.target.value)}
-                className="text-xs font-bold text-[#f472b6] bg-[#191D23] border border-[#f472b6]/30 px-3 py-1.5 rounded-xl cursor-pointer hover:border-[#f472b6]/60 transition-colors appearance-none shadow-sm outline-none"
-                title="Universal Aspect Ratio for all scenes"
-              >
-                <option value="16:9">📐 16:9</option>
-                <option value="9:16">📐 9:16</option>
-                <option value="1:1">📐 1:1</option>
-                <option value="21:9">📐 21:9</option>
-              </select>
-            )}
+            {/* <select
+              value={localAspectRatio}
+              onChange={(e) => setLocalAspectRatio(e.target.value)}
+              className="text-xs font-bold text-[#f472b6] bg-[#191D23] border border-[#f472b6]/30 px-3 py-1.5 rounded-xl cursor-pointer hover:border-[#f472b6]/60 transition-colors appearance-none shadow-sm outline-none"
+              title="Universal Aspect Ratio for all scenes"
+            >
+              <option value="16:9">📐 16:9</option>
+              <option value="9:16">📐 9:16</option>
+              <option value="1:1">📐 1:1</option>
+              <option value="21:9">📐 21:9</option>
+            </select> */}
           </div>
 
           <div className="flex flex-col gap-4 mb-2">
@@ -1671,11 +1705,11 @@ export function StorytellingSetup({
               <Textarea value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder="Describe the full story flow AND dialogue..." className="flex-1 w-full resize-none h-40 text-sm p-4 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar" />
             </div>
 
-            {/* ✨ NEW MODEL CONSISTENCY TOGGLE ✨ */}
+            {/* ✨ RESTORED MODEL CONSISTENCY TOGGLE ✨ */}
             <div className="flex items-center justify-between bg-[#191D23] p-3 rounded-xl border border-[#57707A]/30 shadow-inner">
               <div>
                 <p className="text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider">AI Model Selection</p>
-                <p className="text-[9px] text-[#57707A] font-medium mt-0.5">Let AI pick dynamically per scene, or lock one model for consistency.</p>
+                <p className="text-[9px] text-[#57707A] font-medium mt-0.5">Let AI pick dynamically per scene, or lock one model.</p>
               </div>
               <div className="flex gap-1 bg-[#2A2F38] p-1 rounded-lg border border-[#57707A]/40">
                 <button onClick={() => setModelConsistency("dynamic")} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-md transition-all", modelConsistency === "dynamic" ? "bg-[#B3FF00] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>
