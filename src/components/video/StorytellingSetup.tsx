@@ -852,76 +852,68 @@ export function StorytellingSetup({
       });
 
       let attempts = 0;
-      const maxAttempts = 180;
-      let foundVideoUrl: string | null = null;
-      const sceneId = scene.id;
-
-      console.log(`[Video Poll] Starting poll for scene ${slotIndex + 1}, postId: ${postId}`);
+      const maxAttempts = 180; // 15 minutes
+      let foundVideoUrl = null;
 
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 5000));
         attempts++;
-        const { data, error: pollError } = await supabase.from('content').select('*').eq('id', postId).single();
 
-        if (pollError) {
-          console.warn(`[Video Poll] Attempt ${attempts}: Supabase query error:`, pollError.message);
-          continue;
+        console.log(`[Scene ${slotIndex + 1}] Polling attempt ${attempts}...`);
+
+        const { data, error } = await supabase.from('content').select('*').eq('id', postId).single();
+
+        if (error) {
+          console.error(`[Scene ${slotIndex + 1}] Supabase error:`, error);
+          continue; // Ignore network blips and keep trying
         }
 
         if (data) {
-          console.log(`[Video Poll] Attempt ${attempts}: status="${data.status}", video_urls=${JSON.stringify(data.video_urls)}, image_urls=${JSON.stringify(data.image_urls)}`);
-
           if (data.status === 'failed') {
-            throw new Error(data.error_message || "n8n Video Engine reported a failure. Check your n8n logs.");
+            throw new Error(data.error_message || "n8n Video Engine reported a failure.");
           }
 
-          // Collect URLs from both video_urls and image_urls columns
           let urls: string[] = [];
           if (Array.isArray(data.video_urls) && data.video_urls.length > 0) {
             urls = data.video_urls;
-          } else if (typeof data.video_urls === 'string' && data.video_urls.trim()) {
+          } else if (typeof data.video_urls === 'string') {
             try { urls = JSON.parse(data.video_urls); } catch (e) { urls = [data.video_urls]; }
           }
 
-          if (urls.length === 0) {
-            if (Array.isArray(data.image_urls) && data.image_urls.length > 0) {
-              urls = data.image_urls;
-            } else if (typeof data.image_urls === 'string' && data.image_urls.trim()) {
-              try { urls = JSON.parse(data.image_urls); } catch (e) { urls = [data.image_urls]; }
-            }
-          }
+          // Safely find the first valid HTTP URL
+          const validUrl = urls.find((u: string) => typeof u === 'string' && u.startsWith('http'));
 
-          // Accept any valid URL string (not just .mp4 — Cloudinary URLs may not end in .mp4)
-          const videoUrl = urls.find((u: string) => typeof u === 'string' && u.startsWith('http'));
-          if (videoUrl) {
-            console.log(`[Video Poll] ✅ Found video URL for scene ${slotIndex + 1}:`, videoUrl);
-            foundVideoUrl = videoUrl;
-            break;
+          if (validUrl) {
+            console.log(`[Scene ${slotIndex + 1}] SUCCESS! Video found:`, validUrl);
+            foundVideoUrl = validUrl;
+            break; // Exit the loop!
           }
         }
       }
 
-      if (foundVideoUrl) {
-        console.log(`[Video Poll] Applying video URL to scene state: ${foundVideoUrl}`);
-        // Use setBRollScenes directly with deep clone to guarantee React detects the change
-        const urlToSet = foundVideoUrl;
-        setBRollScenes(prev => prev.map(s =>
-          s.id === sceneId ? { ...s, videoUrl: urlToSet, isGeneratingVideo: false } : s
-        ));
-        return; // skip the finally block's redundant isGeneratingVideo update
-      } else {
+      if (!foundVideoUrl) {
         throw new Error("Video generation timed out after 15 minutes.");
       }
 
+      // ✨ THE BULLETPROOF STATE UPDATE ✨
+      // We use setBRollScenes directly with a functional update (prevScenes => ...) 
+      // This guarantees React uses the live state, entirely immune to stale closures!
+      setBRollScenes(prevScenes => prevScenes.map(s =>
+        s.id === scene.id
+          ? { ...s, videoUrl: foundVideoUrl, isGeneratingVideo: false }
+          : s
+      ));
+
     } catch (err: any) {
-      console.error(`[Video Poll] ❌ Failed for scene ${slotIndex + 1}:`, err);
+      console.error(`Failed to generate video for scene ${slotIndex + 1}:`, err);
       alert(`Failed to retrieve video: ${err.message}`);
-    } finally {
-      // Use setBRollScenes directly to ensure React sees the isGeneratingVideo: false change
-      setBRollScenes(prev => prev.map(s =>
+
+      // Safely turn off the loading spinner on failure
+      setBRollScenes(prevScenes => prevScenes.map(s =>
         s.id === scene.id ? { ...s, isGeneratingVideo: false } : s
       ));
     }
+    // No finally block — success and failure are handled cleanly above!
   };
 
   const handleGenerateSceneVideos = async () => {
@@ -1048,7 +1040,7 @@ export function StorytellingSetup({
     reader.readAsDataURL(file);
   };
 
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, sceneId: string, type: "primary" | "secondary", seedanceIndex?: number) => {
+  const handleDrop = async (e: React.DragEvent<HTMLElement>, sceneId: string, type: "primary" | "secondary", seedanceIndex?: number) => {
     e.preventDefault(); e.stopPropagation();
     updateScene(sceneId, "videoUrl", null);
 
@@ -1131,7 +1123,7 @@ export function StorytellingSetup({
     }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "copy";
@@ -1336,17 +1328,23 @@ export function StorytellingSetup({
                                         <button type="button" onClick={() => clearSlot(scene.id, 'primary', sIdx)} className="p-2 bg-[#191D23] border border-[#57707A]/50 hover:bg-red-500 hover:border-red-400 text-white rounded-lg shadow-lg opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Trash2 className="h-4 w-4" /></button>
                                       </div></>
                                   ) : (
-                                    <label htmlFor={`seedance-${scene.id}-${sIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors">
-                                      <ImageIcon className="h-6 w-6 mb-1.5" />
-                                      <p className="text-[9px] font-bold uppercase tracking-wider">Drop or Click</p>
+                                    <label
+                                      htmlFor={`seedance-${scene.id}-${sIdx}`}
+                                      className="absolute inset-0 z-20 flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors bg-transparent"
+                                      onDragOver={handleDragOver}
+                                      onDrop={(e) => handleDrop(e, scene.id, "primary", sIdx)}
+                                    >
+                                      <ImageIcon className="h-6 w-6 mb-1.5 pointer-events-none" />
+                                      <p className="text-[9px] font-bold uppercase tracking-wider pointer-events-none">Drop or Click</p>
                                     </label>
                                   )}
-                                  <input id={`seedance-${scene.id}-${sIdx}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleSceneFile(e, scene.id, "primary", sIdx)} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
-                                  <div
-                                    className="absolute inset-0 z-10 w-full h-full opacity-0 cursor-pointer"
-                                    onDragOver={handleDragOver}
-                                    onDrop={(e) => handleDrop(e, scene.id, "primary", sIdx)}
-                                    onClick={() => { const el = document.getElementById(`seedance-${scene.id}-${sIdx}`); if (el) el.click(); }}
+                                  <input
+                                    id={`seedance-${scene.id}-${sIdx}`}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => handleSceneFile(e, scene.id, "primary", sIdx)}
+                                    onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
                                   />
                                 </div>
 
