@@ -390,6 +390,7 @@ export function StorytellingSetup({
   const [selectedActorA, setSelectedActorA] = useState<string>("");
 
   const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
+  const [aiEnhance, setAiEnhance] = useState(true);
   const [localAspectRatio, setLocalAspectRatio] = useState("16:9");
 
   useEffect(() => {
@@ -859,6 +860,7 @@ export function StorytellingSetup({
         referenceVideoUrl: finalReferenceVideoUrl,
         scene_data: {
           visual_prompt: scene.prompt?.trim() || bRollConcept,
+          ai_enhance: aiEnhance,
           video_mode: scene.mode,
           duration: scene.duration || "5",
           prunaDraft: scene.prunaDraft || false,
@@ -1703,6 +1705,18 @@ export function StorytellingSetup({
             <div className="relative">
               <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Master Story Concept</label>
               <Textarea value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder="Describe the full story flow AND dialogue..." className="flex-1 w-full resize-none h-40 text-sm p-4 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar" />
+            </div>
+
+            {/* ✨ NEW: AI PROMPT ENHANCEMENT TOGGLE */}
+            <div className="flex items-center justify-between bg-[#191D23] p-3 rounded-xl border border-[#57707A]/30 shadow-inner mt-2">
+              <div>
+                <p className="text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider">✨ AI Prompt Helper</p>
+                <p className="text-[9px] text-[#57707A] font-medium mt-0.5">ON: AI rewrites prompt. OFF: Pro raw mode.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked={aiEnhance} onChange={(e) => setAiEnhance(e.target.checked)} className="sr-only peer" />
+                <div className="w-9 h-5 bg-[#2A2F38] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#57707A] peer-checked:after:bg-[#B3FF00] after:border after:rounded-full after:h-4 after:w-4 after:transition-all border border-[#57707A]/50"></div>
+              </label>
             </div>
 
             {/* ✨ RESTORED MODEL CONSISTENCY TOGGLE ✨ */}
