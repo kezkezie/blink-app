@@ -13,6 +13,7 @@ import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ Added to isolate libraries by brand
 
 interface MediaAsset {
   id: string;
@@ -55,6 +56,7 @@ interface TextLayer {
 
 export function VideoEditorUI() {
   const { clientId } = useClient();
+  const { activeBrand } = useBrandStore(); // ✨ Fetch active brand
   const router = useRouter();
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -77,7 +79,7 @@ export function VideoEditorUI() {
 
   const [isMagnetEnabled, setIsMagnetEnabled] = useState(true);
 
-  // ✨ REPLACED isScrubbingRef with proper React State for tracking the playhead handle
+  // ✨ Proper React State for tracking the playhead handle dragging
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [isScrubbingUI, setIsScrubbingUI] = useState(false);
 
@@ -106,15 +108,16 @@ export function VideoEditorUI() {
   const trimRef = useRef<{ id: string; type: "video" | "audio" | "text"; edge: "start" | "end"; startMouseX: number; initTrim: number; initTimeline: number; } | null>(null);
   const clipDragRef = useRef<{ id: string; type: "video" | "audio" | "text"; startMouseX: number; initTimelineStart: number; } | null>(null);
 
-
   async function loadDatabaseContent(limit: number, filterType: "library" | "sequence" | "audio") {
-    if (!clientId) return;
+    // ✨ FIX: Require activeBrand so libraries are isolated to the specific brand
+    if (!clientId || !activeBrand) return;
     setIsLoadingDB(true);
 
     let query = supabase
       .from("content")
       .select("*")
       .eq("client_id", clientId)
+      .eq("brand_id", activeBrand.id) // ✨ Isolate query to current brand
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -175,8 +178,9 @@ export function VideoEditorUI() {
   }
 
   useEffect(() => {
+    // ✨ FIX: Depend on activeBrand.id so switching brands forces a fresh fetch
     loadDatabaseContent(assetPageLimit, assetFilter);
-  }, [clientId, assetPageLimit, assetFilter]);
+  }, [clientId, activeBrand?.id, assetPageLimit, assetFilter]);
 
   const handleFilterSwitch = (mode: "library" | "sequence" | "audio") => {
     setAssetFilter(mode);
@@ -443,6 +447,7 @@ export function VideoEditorUI() {
 
       const { error } = await supabase.from('content').insert({
         client_id: clientId,
+        brand_id: activeBrand?.id, // ✨ Also attach the brand here for organization
         content_type: 'reel',
         caption: '🎬 Final Edited Commercial',
         status: 'draft',
@@ -561,9 +566,7 @@ export function VideoEditorUI() {
 
     const rect = timelineRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft;
-    // We remove the magic 128 here, we just use the raw relative clickX
-    // Need to account for the left sidebar offset if timelineRef includes it.
-    // Assuming timelineRef is JUST the scrolling track area:
+    // Calculate raw X within the timeline container
     if (clickX >= 0) {
       setGlobalTime(clickX / PIXELS_PER_SECOND);
       setIsDraggingPlayhead(true);
