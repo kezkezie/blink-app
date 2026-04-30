@@ -77,7 +77,8 @@ export function VideoEditorUI() {
 
   const [isMagnetEnabled, setIsMagnetEnabled] = useState(true);
 
-  const isScrubbingRef = useRef(false);
+  // ✨ REPLACED isScrubbingRef with proper React State for tracking the playhead handle
+  const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [isScrubbingUI, setIsScrubbingUI] = useState(false);
 
   const PIXELS_PER_SECOND = 10 * zoom;
@@ -95,7 +96,6 @@ export function VideoEditorUI() {
   const audioTrackCount = Math.max(1, ...audioClips.map(c => (c.trackRow || 0) + 1));
 
   const videoRefs = useRef<{ [id: string]: HTMLVideoElement | null }>({});
-  // ✨ FIX: Allow HTMLVideoElement to be used for audio tracks so MP4s play perfectly
   const audioRefs = useRef<{ [id: string]: HTMLVideoElement | HTMLAudioElement | null }>({});
 
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -105,6 +105,7 @@ export function VideoEditorUI() {
   const dragTextRef = useRef<{ id: string; startX: number; startY: number; initX: number; initY: number; } | null>(null);
   const trimRef = useRef<{ id: string; type: "video" | "audio" | "text"; edge: "start" | "end"; startMouseX: number; initTrim: number; initTimeline: number; } | null>(null);
   const clipDragRef = useRef<{ id: string; type: "video" | "audio" | "text"; startMouseX: number; initTimelineStart: number; } | null>(null);
+
 
   async function loadDatabaseContent(limit: number, filterType: "library" | "sequence" | "audio") {
     if (!clientId) return;
@@ -350,8 +351,6 @@ export function VideoEditorUI() {
 
         if (audioClips.length === 1) {
           const clip = audioClips[0];
-
-          // ✨ FIX: Extract real extension so FFmpeg doesn't corrupt MP4 audio containers
           const extMatch = clip.url.match(/\.([a-zA-Z0-9]+)(?:[\?#]|$)/);
           const rawExt = extMatch ? extMatch[1].toLowerCase() : 'mp3';
           const safeExt = ['mp4', 'mp3', 'wav', 'mov', 'webm', 'aac'].includes(rawExt) ? rawExt : 'mp3';
@@ -370,8 +369,6 @@ export function VideoEditorUI() {
           let audioMixStr = "";
           for (let i = 0; i < audioClips.length; i++) {
             const clip = audioClips[i];
-
-            // ✨ FIX: Extract real extension
             const extMatch = clip.url.match(/\.([a-zA-Z0-9]+)(?:[\?#]|$)/);
             const rawExt = extMatch ? extMatch[1].toLowerCase() : 'mp3';
             const safeExt = ['mp4', 'mp3', 'wav', 'mov', 'webm', 'aac'].includes(rawExt) ? rawExt : 'mp3';
@@ -548,16 +545,30 @@ export function VideoEditorUI() {
   const updateVideoClip = (id: string, updates: Partial<TrackClip>) => setVideoClips(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   const updateAudioClip = (id: string, updates: Partial<TrackClip>) => setAudioClips(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
 
+  // ✨ FIX: Start playhead dragging
+  function handlePlayheadMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingPlayhead(true);
+    setIsScrubbingUI(true);
+    setIsPlaying(false);
+  }
+
+  // ✨ FIX: Handle clicking empty timeline space to jump
   function handleTimelineMouseDown(e: React.MouseEvent) {
     if (!timelineRef.current) return;
-    isScrubbingRef.current = true;
-    setIsScrubbingUI(true);
     setIsPlaying(false);
 
     const rect = timelineRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft;
-    const exactDropX = clickX - 128;
-    if (exactDropX >= 0) setGlobalTime(exactDropX / PIXELS_PER_SECOND);
+    // We remove the magic 128 here, we just use the raw relative clickX
+    // Need to account for the left sidebar offset if timelineRef includes it.
+    // Assuming timelineRef is JUST the scrolling track area:
+    if (clickX >= 0) {
+      setGlobalTime(clickX / PIXELS_PER_SECOND);
+      setIsDraggingPlayhead(true);
+      setIsScrubbingUI(true);
+    }
   }
 
   function onTrimMouseDown(e: React.MouseEvent, id: string, type: "video" | "audio" | "text", edge: "start" | "end") {
@@ -576,8 +587,23 @@ export function VideoEditorUI() {
     setSelectedElement({ id, type });
   }
 
+  // ✨ REWRITTEN MOUSE TRACKING FOR PERFECT PLAYHEAD DRAGGING
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
+      // 1. Handle Playhead Dragging
+      if (isDraggingPlayhead && timelineRef.current) {
+        const rect = timelineRef.current.getBoundingClientRect();
+        // Calculate raw X within the timeline container
+        let rawX = e.clientX - rect.left;
+        // Clamp it to the visible window so it doesn't break
+        rawX = Math.max(0, Math.min(rawX, rect.width));
+        // Add scroll position to get true timeline position
+        const absoluteX = rawX + timelineRef.current.scrollLeft;
+
+        setGlobalTime(absoluteX / PIXELS_PER_SECOND);
+      }
+
+      // 2. Handle Text Overlay Dragging on Canvas
       if (dragTextRef.current && canvasRef.current) {
         const currentDrag = dragTextRef.current;
         const rect = canvasRef.current.getBoundingClientRect();
@@ -588,6 +614,7 @@ export function VideoEditorUI() {
         setTextLayers((prev) => prev.map((l) => l.id === currentDrag.id ? { ...l, x: newX, y: newY } : l));
       }
 
+      // 3. Handle Clip Trimming
       if (trimRef.current) {
         const { id, type, edge, startMouseX, initTrim, initTimeline } = trimRef.current;
         const deltaSeconds = (e.clientX - startMouseX) / PIXELS_PER_SECOND;
@@ -607,6 +634,7 @@ export function VideoEditorUI() {
         }));
       }
 
+      // 4. Handle Clip Dragging
       if (clipDragRef.current) {
         const { id, type, startMouseX, initTimelineStart } = clipDragRef.current;
         const deltaSeconds = (e.clientX - startMouseX) / PIXELS_PER_SECOND;
@@ -649,31 +677,25 @@ export function VideoEditorUI() {
           return { ...clip, timelineStart: newTimelineStart };
         }));
       }
-
-      if (isScrubbingRef.current) {
-        if (!timelineRef.current) return;
-        const rect = timelineRef.current.getBoundingClientRect();
-        const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft;
-        const exactDropX = clickX - 128;
-        if (exactDropX >= 0) setGlobalTime(exactDropX / PIXELS_PER_SECOND);
-      }
     }
 
     function onMouseUp() {
+      setIsDraggingPlayhead(false);
+      setIsScrubbingUI(false);
       dragTextRef.current = null;
       trimRef.current = null;
       clipDragRef.current = null;
-
-      if (isScrubbingRef.current) {
-        isScrubbingRef.current = false;
-        setIsScrubbingUI(false);
-      }
     }
 
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-    return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
-  }, [PIXELS_PER_SECOND, isMagnetEnabled, videoClips, audioClips, textLayers]);
+
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [PIXELS_PER_SECOND, isMagnetEnabled, videoClips, audioClips, textLayers, isDraggingPlayhead]);
+
 
   function addTextLayer() {
     const id = crypto.randomUUID();

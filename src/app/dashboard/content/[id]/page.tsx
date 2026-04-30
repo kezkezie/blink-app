@@ -154,6 +154,48 @@ export default function ContentDetailPage({
   const refInputRef = useRef<HTMLInputElement>(null);
 
   const [isHelpLoading, setIsHelpLoading] = useState(false);
+  // ✨ AI Caption State
+  const [generatingCaption, setGeneratingCaption] = useState<"long" | "short" | null>(null);
+
+  // ✨ AI Caption Generator Function
+  // ✨ AI Caption Generator Function
+  async function handleGenerateCaption(length: "long" | "short") {
+    if (!content) return;
+    setGeneratingCaption(length);
+    try {
+      const res = await fetch("/api/content/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: clientId, // ✨ SEND THE CLIENT ID FOR BILLING
+          contentId: content.id,
+          imageUrl: parseArray(content.image_urls)[0] || null,
+          lengthPreference: length,
+          brandContext: brandContext
+        }),
+      });
+
+      const data = await res.json();
+
+      // ✨ IF THEY RUN OUT OF CREDITS, THIS CATCHES THE 402 ERROR
+      if (!res.ok) throw new Error(data.error || "Failed to generate caption");
+
+      // ✨ FIXED: Correctly map "caption_long" from the backend!
+      if (length === "long") {
+        setCaption(data.caption_long || "");
+      } else {
+        setCaptionShort(data.caption_short || "");
+      }
+
+      if (data.hashtags) setHashtags(data.hashtags);
+      if (data.call_to_action) setCallToAction(data.call_to_action);
+
+    } catch (err: any) {
+      alert(`Caption generation failed: ${err.message}`);
+    } finally {
+      setGeneratingCaption(null);
+    }
+  }
 
   useEffect(() => {
     async function fetchData() {
@@ -812,7 +854,19 @@ export default function ContentDetailPage({
             </div>
 
             <div className="pt-5 border-t border-[#57707A]/20 relative z-10">
-              <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 mt-2">Caption (Long)</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Caption (Long)</label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleGenerateCaption('long')}
+                  disabled={generatingCaption !== null}
+                  className="h-7 px-3 text-[10px] font-bold bg-transparent border-[#57707A]/50 text-[#C5BAC4] hover:bg-[#C5BAC4]/10 hover:border-[#C5BAC4]/50 hover:text-white transition-colors rounded-lg shadow-sm"
+                >
+                  {generatingCaption === 'long' ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Wand2 className="w-3 h-3 mr-1.5" />}
+                  AI Write Long
+                </Button>
+              </div>
               <Textarea
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
@@ -820,15 +874,29 @@ export default function ContentDetailPage({
                 className="resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar"
               />
             </div>
-            <div className="relative z-10">
-              <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">Caption (Short)</label>
+
+            <div className="relative z-10 mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Caption (Short)</label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleGenerateCaption('short')}
+                  disabled={generatingCaption !== null}
+                  className="h-7 px-3 text-[10px] font-bold bg-transparent border-[#57707A]/50 text-[#C5BAC4] hover:bg-[#C5BAC4]/10 hover:border-[#C5BAC4]/50 hover:text-white transition-colors rounded-lg shadow-sm"
+                >
+                  {generatingCaption === 'short' ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Wand2 className="w-3 h-3 mr-1.5" />}
+                  AI Write Short
+                </Button>
+              </div>
               <Input
                 value={captionShort}
                 onChange={(e) => setCaptionShort(e.target.value)}
                 className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-11 shadow-inner"
               />
             </div>
-            <div className="relative z-10">
+
+            <div className="relative z-10 mt-4">
               <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">Hashtags</label>
               <Input
                 value={hashtags}
@@ -836,6 +904,7 @@ export default function ContentDetailPage({
                 className="bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl h-11 shadow-inner"
               />
             </div>
+
             <div className="pt-4 relative z-10">
               <Button onClick={handleSave} disabled={saving} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold gap-2 h-11 px-6 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Changes

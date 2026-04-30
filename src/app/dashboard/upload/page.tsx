@@ -257,28 +257,35 @@ export default function YourContentPage() {
   };
 
   // --- REGULAR CAPTION ANALYSIS ---
-  const handleAnalyze = async () => {
+  // ✨ Add the length parameter here
+  const handleAnalyze = async (length: "long" | "short") => {
     if (!file || !clientId || !activeBrand) return;
     setIsProcessing(true);
     try {
       setLoadingText("Uploading media securely...");
       const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      // ✨ Isolate Storage
       const filePath = `uploads/${activeBrand.id}/${fileName}`;
 
       await supabase.storage.from("assets").upload(filePath, file);
       const publicUrl = supabase.storage.from("assets").getPublicUrl(filePath).data.publicUrl;
 
       setLoadingText("Fetching Brand DNA...");
-      // ✨ Isolate Context Fetching
       const { data: brand } = await supabase.from("brand_profiles").select("brand_voice, dos, donts").eq("id", activeBrand.id).single();
 
       setLoadingText("AI is writing the perfect caption...");
       const aiRes = await fetch("/api/content/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mediaUrl: publicUrl, mediaType: file.type, brandVoice: brand?.brand_voice, dos: brand?.dos, donts: brand?.donts, context: mediaContext }),
+        body: JSON.stringify({
+          mediaUrl: publicUrl,
+          mediaType: file.type,
+          brandVoice: brand?.brand_voice,
+          dos: brand?.dos,
+          donts: brand?.donts,
+          context: mediaContext,
+          lengthPreference: length // ✨ Pass the length selection to the API!
+        }),
       });
 
       const aiData = await aiRes.json();
@@ -287,10 +294,11 @@ export default function YourContentPage() {
       setLoadingText("Saving to drafts...");
       const { error: dbError } = await supabase.from("content").insert({
         client_id: clientId,
-        brand_id: activeBrand.id, // ✨ Isolate DB Row
+        brand_id: activeBrand.id,
         content_type: file.type.startsWith("video") ? "video" : "post_image",
         image_urls: [publicUrl],
-        caption: aiData.caption_long || aiData.caption || "",
+        // ✨ Map the response based on what they clicked
+        caption: length === "short" ? aiData.caption_short : aiData.caption_long,
         caption_short: aiData.caption_short || "",
         hashtags: aiData.hashtags || "",
         call_to_action: aiData.call_to_action || "",
@@ -694,9 +702,15 @@ export default function YourContentPage() {
                     <p className="text-[10px] text-[#57707A] mt-2 font-bold">Providing context helps the AI write much better captions.</p>
                   </div>
                   <div className="flex flex-col gap-3">
-                    <Button onClick={handleAnalyze} disabled={isProcessing} className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 font-bold transition-all">
-                      {isProcessing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ScrollText className="mr-2 h-5 w-5" />} Write Caption
-                    </Button>
+                    {/* ✨ The Two New Buttons */}
+                    <div className="flex gap-2">
+                      <Button onClick={() => handleAnalyze('long')} disabled={isProcessing} className="flex-1 bg-[#C5BAC4] hover:bg-white text-[#191D23] h-11 rounded-xl shadow-lg shadow-[#C5BAC4]/10 font-bold transition-all">
+                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScrollText className="h-4 w-4 mr-1.5" />} Write Long
+                      </Button>
+                      <Button onClick={() => handleAnalyze('short')} disabled={isProcessing} className="flex-1 bg-[#B3FF00] hover:bg-white text-[#191D23] h-11 rounded-xl shadow-lg shadow-[#B3FF00]/10 font-bold transition-all border-none">
+                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4 mr-1.5" />} Write Short
+                      </Button>
+                    </div>
                     <Button variant="ghost" disabled={isProcessing} onClick={handleCancel} className="w-full text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold transition-colors">
                       Cancel
                     </Button>

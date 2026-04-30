@@ -64,7 +64,7 @@ export function BrandRefinementModal({
     if (!clientId || !activeBrand) return;
     setSuggesting(true);
     try {
-      const response = await triggerWorkflow("blink-enhance-brand", {
+      const response = await triggerWorkflow("blink-suggest-visual", {
         client_id: clientId,
         brand_id: activeBrand.id,
       });
