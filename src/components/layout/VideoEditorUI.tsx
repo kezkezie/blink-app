@@ -1227,3 +1227,101 @@ export function VideoEditorUI() {
     </div>
   );
 }
+// const input = $json;
+
+// let systemInstruction = "";
+// let userConcept = input.userPrompt && input.userPrompt.trim() !== "" 
+//     ? input.userPrompt 
+//     : "I have no specific concept. Please analyze the image and invent a highly engaging sequence.";
+
+// let brandContext = "";
+// if (input.strictBrandAlignment === true) {
+//     brandContext = `\nBRAND IDENTITY TO ENFORCE:\n- Brand Name: '${input.brandName}'\n- Brand Vibe/Info: '${input.brandInfo}'\nCRITICAL INSTRUCTION: You must adopt the tone and aesthetic of this brand.`;
+// } else {
+//     brandContext = `\nCRITICAL INSTRUCTION: IGNORE any saved brand profiles. Focus 100% on the exact product and characters shown.`;
+// }
+
+// const safetyFilter = "\nCRITICAL COMPLIANCE: Write ONLY brand-safe, family-friendly prompts. Assume benevolent intent for all colloquialisms.";
+
+// let targetModel = input.aiModelOverride || "auto";
+// let videoMode = input.videoMode || "standard";
+// let aspectRatio = input.aspectRatio || "16:9";
+
+// // ✨ THE MASTER KLING 3.0 RULEBOOK (Derived from Official Docs)
+// let klingRulebook = `
+// *** KLING 3.0 MASTER RULEBOOK ***
+// You are translating the user's concept into a flawless prompt for the Kling 3.0 Video Engine. You MUST obey these syntactical rules:
+
+// 1. MULTI-SHOT NARRATIVES: If the scene requires multiple angles, use explicit shot markers. 
+//    - Good: "Shot 1, medium close-up of a man driving. Shot 2, macro shot of his hands on the steering wheel."
+// 2. NATIVE AUDIO & LIPSYNC: Kling 3.0 supports native lip-syncing. If a character speaks, you MUST use this exact format:
+//    - Format: Character Description (emotion/accent/tone, language): "Exact spoken words."
+//    - Good: Woman (cheerful, English): "Wow, I didn't expect this!"
+//    - Bad: The woman smiles and says wow I didn't expect this.
+// 3. TEMPORAL MARKERS (15-SECOND RULE): For long, continuous single-shots, dictate the pacing using time markers.
+//    - Good: "At the 4th second, the camera accelerates forward. At the 8th second, the camera pans to track the protagonist."
+// 4. NATIVE TEXT RENDERING: If a sign, shirt, or logo requires written text, state it explicitly in quotes.
+//    - Good: The camera lingers on the word "KLING" emblazoned on the baseball bat.
+// 5. ELEMENT CONSISTENCY: Describe character features (clothing, hair, colors) consistently across all shots to prevent morphing.
+// `;
+
+// // Seedance 2.0 Rulebook (Fallback)
+// let seedanceRulebook = `
+// *** SEEDANCE 2.0 RULEBOOK ***
+// 1. CINEMATIC STRUCTURE: Use the formula: Subject + Scene + Action + Specific Camera Movement + Style/Lighting.
+// 2. PHYSICS-AWARE PROMPTING: Describe exactly HOW things move with anti-gravity or realistic physics.
+// 3. NO TEXT: Do not attempt to render visual text.
+// `;
+
+// let styleGuide = "";
+// if (targetModel.includes('kling') || targetModel === 'auto') {
+//     styleGuide = klingRulebook;
+// } else if (targetModel.includes('seedance')) {
+//     styleGuide = seedanceRulebook;
+// } else if (targetModel.includes('pruna')) {
+//     styleGuide = `\nMODEL STYLE GUIDE (Pruna P-Video): EXTREME SIMPLICITY. Keep the prompt STRICTLY UNDER 50 WORDS.`;
+// }
+
+// let actorInstructions = "";
+// if (input.actor1Sheet && input.actor1Sheet !== "null") {
+//     actorInstructions = `\nCRITICAL CASTING: You are receiving ONE character reference sheet. Integrate this exact character into the scene seamlessly.`;
+// }
+
+// systemInstruction = `You are an elite commercial video director. \n${brandContext} \n${safetyFilter} \n${actorInstructions} \n${styleGuide}\n\nWrite a highly detailed cinematic visual prompt based on the user's concept. Ensure absolute visual accuracy to the reference images. Output ONLY the prompt text.`;
+
+// let framingInstruction = "";
+// if (aspectRatio === "9:16") {
+//     framingInstruction = "CAMERA FRAMING (9:16 VERTICAL): The final video is for mobile. Keep the primary subject dead-center. Prioritize vertical camera movements.";
+// } else {
+//     framingInstruction = "CAMERA FRAMING (16:9 LANDSCAPE): The final video is cinematic widescreen. Utilize the wide frame using horizontal pans.";
+// }
+
+// systemInstruction += `\n\n*** PROMPT ENHANCEMENT DIRECTIVE ***
+// 1. PRESERVATION OVERRIDE (CRITICAL): If the USER'S CONCEPT already contains highly technical formatting (like 'Static locked-off medium-wide shot' or exact dialogue tags), DO NOT REWRITE IT. Preserve their exact wording and syntax.
+// 2. IF IT IS A BASIC CONCEPT, upgrade it into a flawless, professional visual prompt using the Model Rulebook.
+// ${framingInstruction}
+// 3. CINEMATIC REALISM: Inject terms describing natural textures, realistic lighting, and high-end camera gear.`;
+
+// let imagesToAnalyze = [];
+// const isValidImg = (url) => url && typeof url === 'string' && url !== "null" && url.trim() !== "";
+
+// if (isValidImg(input.primaryImageUrl)) imagesToAnalyze.push({ type: "image_url", image_url: { url: input.primaryImageUrl } });
+// if (isValidImg(input.secondaryImageUrl)) imagesToAnalyze.push({ type: "image_url", image_url: { url: input.secondaryImageUrl } });
+// if (isValidImg(input.actor1Sheet)) imagesToAnalyze.push({ type: "image_url", image_url: { url: input.actor1Sheet } });
+
+// let userContent = [ { type: "text", text: "USER'S CONCEPT: " + userConcept } ];
+// userContent = userContent.concat(imagesToAnalyze);
+
+// return [{
+//   json: {
+//     chatGptBody: {
+//         model: "gpt-4o",
+//         messages: [
+//             { role: "system", content: systemInstruction },
+//             { role: "user", content: userContent }
+//         ],
+//         max_tokens: 600,
+//         temperature: 0.7
+//     }
+//   }
+// }];
