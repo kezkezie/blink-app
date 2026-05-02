@@ -22,7 +22,6 @@ export default function ContentPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   async function fetchContent() {
-    // ✨ FIXED: Check for both clientId and activeBrand to prevent bleeding
     if (!clientId || !activeBrand) {
       setLoading(false);
       return;
@@ -33,18 +32,25 @@ export default function ContentPage() {
     let query = supabase
       .from("content")
       .select("*")
-      .eq("brand_id", activeBrand.id) // ✨ FIXED: Isolate query entirely by Brand ID
+      .eq("brand_id", activeBrand.id)
       .order("created_at", { ascending: false });
 
     if (activeTab === "finished") {
-      // Hide raw clips, story sequences, and audio files from the main feed
+      // ✨ Hide all variations of raw/sequence clips from the main feed
       query = query
         .neq("content_type", "raw_clip")
         .neq("content_type", "sequence_clip")
+        .neq("content_type", "story_sequence")
+        .neq("content_type", "storyboard")
         .neq("content_type", "generated_audio");
     } else if (activeTab === "sequences") {
-      // ONLY fetch the sequence building blocks for this tab
-      query = query.eq("content_type", "sequence_clip");
+      // ✨ FIXED: Use .in() to catch multiple variations of sequence naming!
+      query = query.in("content_type", [
+        "sequence_clip",
+        "story_sequence",
+        "storyboard",
+        "story"
+      ]);
     }
 
     const { data } = await query;
@@ -55,7 +61,6 @@ export default function ContentPage() {
   useEffect(() => {
     fetchContent();
     setSelectedIds(new Set());
-    // ✨ FIXED: Added activeBrand?.id so the UI instantly updates on Dropdown change
   }, [clientId, activeBrand?.id, activeTab]);
 
   const toggleSelect = (id: string) => {
@@ -90,7 +95,6 @@ export default function ContentPage() {
     }
   };
 
-  // ✨ NEW: "No Brand" fallback state
   if (!activeBrand && !loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">

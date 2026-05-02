@@ -855,6 +855,7 @@ export function StorytellingSetup({
       await callN8n('scene_video_generator', {
         post_id: postId,
         client_id: clientId,
+        content_type: "sequence_clip", // ✨ THIS IS THE MISSING LINK
         ai_model_override: scene.aiModel || "auto",
         aspect_ratio: scene.aspectRatio || "16:9",
         referenceVideoUrl: finalReferenceVideoUrl,
