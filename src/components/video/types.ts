@@ -51,6 +51,10 @@ export interface VideoSetupProps {
   duration?: string;
   setDuration?: (val: string) => void;
 
+  // ✨ AI PROMPT HELPER TOGGLE ✨
+  aiEnhance?: boolean;
+  setAiEnhance?: (val: boolean) => void;
+
   isSuggesting: boolean;
   handleAISuggest: () => void;
 

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
 import { saveBrandProfile, createQuickBrand } from "@/app/actions/brand";
 import { useBrandStore } from "@/app/store/useBrandStore";
+import { getLimitForTier } from "@/lib/limits"; // ✨ NEW LIMITS UTILITY
 import {
   Loader2, Save, CheckCircle, Plus, X, Trash2, AlertCircle,
   Wand2, Sparkles, Palette, Briefcase, Megaphone,
@@ -109,7 +110,6 @@ export default function BrandIdentityPage() {
       }
 
       if (brandRes.data) {
-        // ✨ FIXED: Now securely fetching Business Info from brand_profiles!
         setBusinessInfo({
           company_name: brandRes.data.company_name || "",
           website_url: brandRes.data.website_url || "",
@@ -147,17 +147,10 @@ export default function BrandIdentityPage() {
 
   useEffect(() => { loadBrandData(); }, [loadBrandData]);
 
-  const PLAN_BRAND_LIMITS: Record<string, number> = {
-    starter: 1,
-    pro: 3,
-    agency: Infinity,
-    admin: Infinity,
-    enterprise: Infinity,
-    custom: Infinity,
-  };
-
   async function handleCreateNewBrand() {
-    const limit = PLAN_BRAND_LIMITS[planTier] ?? 1;
+    // ✨ Fetch the dynamic limits based on the user's plan tier
+    const limit = getLimitForTier(planTier).maxBrands;
+
     if (availableBrands.length >= limit) {
       setConnectionMessage({
         type: "error",
@@ -192,7 +185,6 @@ export default function BrandIdentityPage() {
       const dosArray = brandProfile.dos.split("\n").map((k) => k.trim()).filter(Boolean);
       const dontsArray = brandProfile.donts.split("\n").map((k) => k.trim()).filter(Boolean);
 
-      // Server Action: saves ALL data to brand_profiles via supabaseAdmin
       const result = await saveBrandProfile(activeBrand.id, {
         brand_name: brandProfile.brand_name,
         company_name: businessInfo.company_name,

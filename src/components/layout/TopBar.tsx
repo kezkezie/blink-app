@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { Bell, Brain, Loader2, Sparkles, Wand2, Search, Briefcase, ChevronDown, Check, Plus } from "lucide-react";
+import { Bell, Brain, Loader2, Sparkles, Wand2, Search, Briefcase, ChevronDown, Check, Plus, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,6 +84,37 @@ export function TopBar({ pageTitle }: TopBarProps) {
     await supabase.auth.signOut();
     useBrandStore.setState({ activeBrand: null, availableBrands: [] });
     router.push("/login");
+  };
+
+  // ✨ NEW: Delete Brand Function
+  const handleDeleteBrand = async (brandId: string, brandName: string, e: React.MouseEvent) => {
+    // Prevent the dropdown menu from clicking/closing automatically
+    e.preventDefault();
+    e.stopPropagation();
+
+    const isConfirmed = window.confirm(`Are you sure you want to permanently delete the workspace "${brandName || 'Unnamed'}"?`);
+    if (!isConfirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from("brand_profiles")
+        .delete()
+        .eq("id", brandId);
+
+      if (error) throw error;
+
+      // Update Local State
+      const updatedBrands = availableBrands.filter((b) => b.id !== brandId);
+      setAvailableBrands(updatedBrands);
+
+      // If they deleted the brand they were currently looking at, switch them
+      if (activeBrand?.id === brandId) {
+        setActiveBrand(updatedBrands.length > 0 ? updatedBrands[0] : null);
+      }
+    } catch (err) {
+      console.error("Failed to delete workspace:", err);
+      alert("Failed to delete workspace. Please try again.");
+    }
   };
 
   return (
@@ -176,7 +207,7 @@ export function TopBar({ pageTitle }: TopBarProps) {
                   <DropdownMenuItem
                     key={brand.id}
                     onClick={() => setActiveBrand(brand)}
-                    className="flex items-center gap-3 cursor-pointer focus:bg-[#191D23] focus:text-[#DEDCDC] py-2"
+                    className="flex items-center gap-3 cursor-pointer focus:bg-[#191D23] focus:text-[#DEDCDC] py-2 group relative pr-10"
                   >
                     <div className="h-6 w-6 rounded-md bg-[#191D23] border border-[#57707A]/50 flex items-center justify-center overflow-hidden shrink-0">
                       {brand.logo_url ? (
@@ -185,8 +216,25 @@ export function TopBar({ pageTitle }: TopBarProps) {
                         <Briefcase className="h-3 w-3 text-[#57707A]" />
                       )}
                     </div>
-                    <span className="truncate font-medium text-sm">{brand.brand_name || "Unnamed Workspace"}</span>
-                    {activeBrand?.id === brand.id && <Check className="h-4 w-4 ml-auto text-[#B3FF00]" />}
+
+                    <span className="truncate font-medium text-sm">
+                      {brand.brand_name || "Unnamed Workspace"}
+                    </span>
+
+                    {/* Checkmark (hides when hovering to make room for trash) */}
+                    {activeBrand?.id === brand.id && (
+                      <Check className="h-4 w-4 ml-auto text-[#B3FF00] group-hover:opacity-0 transition-opacity" />
+                    )}
+
+                    {/* ✨ DELETE BUTTON (Shows on Hover) ✨ */}
+                    <div
+                      onClick={(e) => handleDeleteBrand(brand.id, brand.brand_name, e)}
+                      className="absolute right-2 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 text-[#57707A] hover:text-red-400 rounded-md transition-all z-10"
+                      title="Delete Workspace"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </div>
+
                   </DropdownMenuItem>
                 ))
               ) : (

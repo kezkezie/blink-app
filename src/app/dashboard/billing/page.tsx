@@ -1,26 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { CheckCircle2, Zap, Briefcase, Film, HardDrive, Sparkles } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CheckCircle2, Zap, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useClient } from "@/hooks/useClient";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 const TIERS = [
-    {
-        name: "Free",
-        price: "0",
-        description: "Perfect for testing the waters and exploring the AI.",
-        features: [
-            "1 Brand Workspace",
-            "5 Posts per month",
-            "100 AI Credits",
-            "7-day Asset Storage",
-            "Standard Image Gen",
-        ],
-        buttonText: "Current Plan",
-        popular: false,
-    },
     {
         name: "Starter",
         price: "25",
@@ -30,7 +17,8 @@ const TIERS = [
             "30 Posts per month",
             "1,500 AI Credits",
             "30-day Asset Storage",
-            "Kling 3.0 Video Engine",
+            "Image & Video AI Generation",
+            "Refine AI Brain",
         ],
         buttonText: "Upgrade to Starter",
         popular: false,
@@ -44,7 +32,8 @@ const TIERS = [
             "60 Posts per month",
             "3,000 AI Credits",
             "60-day Asset Storage",
-            "Priority GPU Rendering",
+            "Image & Video AI Generation",
+            "Refine AI Brain",
         ],
         buttonText: "Upgrade to Pro",
         popular: true,
@@ -58,7 +47,8 @@ const TIERS = [
             "200 Posts per month",
             "6,000 AI Credits",
             "364-day Asset Storage",
-            "Custom AI Brain Training",
+            "Image & Video AI Generation",
+            "Refine AI Brain",
         ],
         buttonText: "Upgrade to Agency",
         popular: false,
@@ -67,17 +57,44 @@ const TIERS = [
 
 export default function BillingPage() {
     const { clientId } = useClient();
-    const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
     const [loadingTier, setLoadingTier] = useState<string | null>(null);
+    const [loadingPack, setLoadingPack] = useState(false);
+    const [currentPlan, setCurrentPlan] = useState<string | null>(null);
+
+    // ✨ Fetch the user's current plan on mount
+    useEffect(() => {
+        async function fetchUserPlan() {
+            if (!clientId) return;
+            const { data } = await supabase
+                .from('clients')
+                .select('plan_tier')
+                .eq('id', clientId)
+                .single();
+
+            if (data?.plan_tier) {
+                setCurrentPlan(data.plan_tier.toLowerCase());
+            } else {
+                setCurrentPlan('starter'); // Fallback
+            }
+        }
+        fetchUserPlan();
+    }, [clientId]);
 
     const handleUpgrade = async (tierName: string) => {
-        if (tierName === "Free") return;
-
         setLoadingTier(tierName);
-        // TODO: Stripe Checkout Integration goes here
+        // TODO: Stripe Subscription Checkout Integration goes here
         setTimeout(() => {
-            alert(`Stripe Checkout for ${tierName} would open here!`);
+            alert(`Stripe Checkout for the ${tierName} Plan would open here!`);
             setLoadingTier(null);
+        }, 1500);
+    };
+
+    const handleBuyCreditPack = async () => {
+        setLoadingPack(true);
+        // TODO: Stripe One-Time Payment Checkout Integration goes here
+        setTimeout(() => {
+            alert(`Stripe Checkout for $5 Credit Pack would open here!`);
+            setLoadingPack(false);
         }, 1500);
     };
 
@@ -92,57 +109,32 @@ export default function BillingPage() {
                 <p className="text-[#989DAA] max-w-2xl mx-auto text-sm md:text-base">
                     Unlock the full power of the AI Director, expand your brand workspaces, and scale your social media automation.
                 </p>
-
-                {/* BILLING TOGGLE */}
-                <div className="flex items-center justify-center mt-8">
-                    <div className="bg-[#2A2F38] p-1 rounded-xl border border-[#57707A]/30 inline-flex">
-                        <button
-                            onClick={() => setBillingCycle("monthly")}
-                            className={cn(
-                                "px-6 py-2 rounded-lg text-sm font-bold transition-all",
-                                billingCycle === "monthly"
-                                    ? "bg-[#191D23] text-[#DEDCDC] shadow-sm"
-                                    : "text-[#57707A] hover:text-[#989DAA]"
-                            )}
-                        >
-                            Monthly
-                        </button>
-                        <button
-                            onClick={() => setBillingCycle("yearly")}
-                            className={cn(
-                                "px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2",
-                                billingCycle === "yearly"
-                                    ? "bg-[#191D23] text-[#DEDCDC] shadow-sm"
-                                    : "text-[#57707A] hover:text-[#989DAA]"
-                            )}
-                        >
-                            Yearly <span className="text-[10px] bg-[#B3FF00]/20 text-[#B3FF00] px-2 py-0.5 rounded-full">Save 20%</span>
-                        </button>
-                    </div>
-                </div>
             </div>
 
             {/* PRICING CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-8 max-w-5xl mx-auto">
                 {TIERS.map((tier) => {
                     const isPopular = tier.popular;
-                    const displayPrice = billingCycle === "yearly" && tier.price !== "0"
-                        ? Math.floor(parseInt(tier.price) * 0.8)
-                        : tier.price;
+                    const isCurrentPlan = currentPlan === tier.name.toLowerCase();
 
                     return (
                         <div
                             key={tier.name}
                             className={cn(
                                 "relative flex flex-col bg-[#2A2F38] rounded-3xl border transition-all duration-300 hover:-translate-y-1 shadow-xl overflow-hidden",
-                                isPopular ? "border-[#C5BAC4] shadow-[0_10px_40px_rgba(197,186,196,0.1)]" : "border-[#57707A]/30 hover:border-[#57707A]/60"
+                                isCurrentPlan ? "border-[#B3FF00] shadow-[0_0_30px_rgba(179,255,0,0.1)]" :
+                                    isPopular ? "border-[#C5BAC4] shadow-[0_10px_40px_rgba(197,186,196,0.1)]" : "border-[#57707A]/30 hover:border-[#57707A]/60"
                             )}
                         >
-                            {isPopular && (
+                            {isCurrentPlan ? (
+                                <div className="bg-[#B3FF00] text-[#191D23] text-[10px] font-bold uppercase tracking-wider text-center py-1.5 shadow-sm">
+                                    Current Plan
+                                </div>
+                            ) : isPopular ? (
                                 <div className="bg-[#C5BAC4] text-[#191D23] text-[10px] font-bold uppercase tracking-wider text-center py-1.5 shadow-sm">
                                     Most Popular
                                 </div>
-                            )}
+                            ) : null}
 
                             <div className="p-6 md:p-8 flex-1 flex flex-col">
                                 <div className="mb-6">
@@ -153,19 +145,16 @@ export default function BillingPage() {
                                 <div className="mb-8">
                                     <div className="flex items-baseline gap-1">
                                         <span className="text-2xl font-bold text-[#57707A]">$</span>
-                                        <span className="text-5xl font-bold text-[#DEDCDC] tracking-tight">{displayPrice}</span>
+                                        <span className="text-5xl font-bold text-[#DEDCDC] tracking-tight">{tier.price}</span>
                                         <span className="text-sm text-[#57707A] font-medium">/mo</span>
                                     </div>
-                                    {billingCycle === "yearly" && tier.price !== "0" && (
-                                        <p className="text-[10px] text-[#B3FF00] font-bold mt-2 uppercase tracking-wide">Billed annually</p>
-                                    )}
                                 </div>
 
                                 <ul className="space-y-4 mb-8 flex-1">
                                     {tier.features.map((feature, i) => (
                                         <li key={i} className="flex items-start gap-3">
                                             <div className="mt-0.5 w-4 h-4 rounded-full bg-[#191D23] border border-[#57707A]/50 flex items-center justify-center shrink-0">
-                                                <CheckCircle2 className={cn("w-3 h-3", isPopular ? "text-[#C5BAC4]" : "text-[#57707A]")} />
+                                                <CheckCircle2 className={cn("w-3 h-3", isCurrentPlan ? "text-[#B3FF00]" : isPopular ? "text-[#C5BAC4]" : "text-[#57707A]")} />
                                             </div>
                                             <span className="text-sm text-[#DEDCDC]/80 font-medium">{feature}</span>
                                         </li>
@@ -174,19 +163,21 @@ export default function BillingPage() {
 
                                 <Button
                                     onClick={() => handleUpgrade(tier.name)}
-                                    disabled={tier.name === "Free" || loadingTier !== null}
-                                    variant={isPopular ? "default" : "outline"}
+                                    disabled={loadingTier !== null || isCurrentPlan || currentPlan === null}
+                                    variant={isCurrentPlan ? "outline" : isPopular ? "default" : "outline"}
                                     className={cn(
                                         "w-full h-12 rounded-xl font-bold transition-all",
-                                        isPopular
-                                            ? "bg-[#C5BAC4] hover:bg-white text-[#191D23] shadow-lg shadow-[#C5BAC4]/20 border-none"
-                                            : "bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white"
+                                        isCurrentPlan
+                                            ? "bg-[#B3FF00]/10 border-[#B3FF00]/50 text-[#B3FF00] cursor-default opacity-100"
+                                            : isPopular
+                                                ? "bg-[#C5BAC4] hover:bg-white text-[#191D23] shadow-lg shadow-[#C5BAC4]/20 border-none"
+                                                : "bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white"
                                     )}
                                 >
                                     {loadingTier === tier.name ? (
                                         <Sparkles className="w-4 h-4 mr-2 animate-pulse" />
                                     ) : null}
-                                    {tier.buttonText}
+                                    {isCurrentPlan ? "Active Plan" : tier.buttonText}
                                 </Button>
                             </div>
                         </div>
@@ -194,19 +185,25 @@ export default function BillingPage() {
                 })}
             </div>
 
-            {/* QUICK STATS / REMINDER */}
-            <div className="mt-12 bg-[#191D23] border border-[#57707A]/30 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner">
+            {/* QUICK STATS / ONE-TIME CREDIT PACK */}
+            <div className="mt-12 max-w-5xl mx-auto bg-[#191D23] border border-[#57707A]/30 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-[#2A2F38] border border-[#57707A]/40 flex items-center justify-center shadow-sm">
+                    <div className="w-12 h-12 rounded-full bg-[#2A2F38] border border-[#57707A]/40 flex items-center justify-center shadow-sm shrink-0">
                         <Zap className="w-6 h-6 text-[#B3FF00]" />
                     </div>
                     <div>
-                        <h4 className="text-[#DEDCDC] font-bold font-display">Need more credits?</h4>
-                        <p className="text-xs text-[#989DAA]">You can always purchase one-time credit packs from your dashboard.</p>
+                        <h4 className="text-[#DEDCDC] font-bold font-display text-lg">Need more credits?</h4>
+                        <p className="text-sm text-[#989DAA] mt-1">
+                            Running low on AI power? Instantly add <strong className="text-[#DEDCDC]">5,000 Credits</strong> to your workspace for just <strong className="text-[#B3FF00]">$5.00</strong>.
+                        </p>
                     </div>
                 </div>
-                <Button variant="outline" className="border-[#B3FF00]/30 text-[#B3FF00] hover:bg-[#B3FF00]/10 bg-transparent rounded-xl font-bold h-10 px-6">
-                    Buy Credit Pack
+                <Button
+                    onClick={handleBuyCreditPack}
+                    disabled={loadingPack}
+                    className="border-none bg-[#B3FF00]/10 text-[#B3FF00] hover:bg-[#B3FF00]/20 rounded-xl font-bold h-12 px-8 whitespace-nowrap transition-colors"
+                >
+                    {loadingPack ? "Processing..." : "Buy for $5.00"}
                 </Button>
             </div>
 

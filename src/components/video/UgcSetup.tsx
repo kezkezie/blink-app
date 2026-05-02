@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Upload, X, UserCircle, Sparkles, Loader2, Info, FolderOpen, MessageSquare } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
 import type { VideoSetupProps } from "./types";
@@ -32,8 +33,13 @@ export function UgcSetup({
     isSuggesting,
     handleAISuggest,
     activeModeConfig,
+    aiEnhance: aiEnhanceProp,
+    setAiEnhance: setAiEnhanceProp,
 }: ExtendedSetupProps) {
     const [libraryTarget, setLibraryTarget] = useState<"primary" | "secondary" | null>(null);
+    const [aiEnhanceLocal, setAiEnhanceLocal] = useState(true);
+    const aiEnhance = aiEnhanceProp ?? aiEnhanceLocal;
+    const setAiEnhance = setAiEnhanceProp ?? setAiEnhanceLocal;
 
     const handleLibrarySelect = (url: string) => {
         if (libraryTarget === "primary") {
@@ -237,6 +243,23 @@ export function UgcSetup({
                             <MessageSquare className="w-3 h-3 mr-1.5 text-[#57707A]" /> TTS Dialogue
                         </button>
                     </div>
+                </div>
+
+                {/* ✨ AI PROMPT HELPER TOGGLE ✨ */}
+                <div className="flex items-center justify-between p-4 bg-[#191D23] rounded-xl border border-[#57707A]/30 mb-6 mt-4 shadow-inner">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display">
+                      <Sparkles className="h-4 w-4 text-[#C5BAC4]" /> AI Prompt Helper
+                    </h4>
+                    <p className="text-xs text-[#989DAA] mt-1 leading-relaxed">
+                      Let AI enhance your prompt for the engine, or turn OFF for raw manual control.
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={aiEnhance} 
+                    onCheckedChange={setAiEnhance} 
+                    className="data-[state=checked]:bg-[#C5BAC4] data-[state=unchecked]:bg-[#57707A]"
+                  />
                 </div>
             </div>
 
