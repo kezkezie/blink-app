@@ -121,9 +121,22 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
       if (!blob) throw new Error("Failed to create stitched image");
 
-      const path = `videos/${clientId}/actor_${Date.now()}.jpg`;
-      await supabase.storage.from("assets").upload(path, blob);
-      const publicUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      // ✨ CLOUDINARY DIRECT UPLOAD LOGIC ✨
+      const formData = new FormData();
+      formData.append("file", blob);
+      formData.append("upload_preset", "blinkspot_casts"); // 🚨 You must create this in Cloudinary!
+      formData.append("folder", "blinkspot/casts");
+
+      // Using your actual Cloudinary cloud name: dap8jijxa
+      const uploadRes = await fetch("https://api.cloudinary.com/v1_1/dap8jijxa/image/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error?.message || "Cloudinary upload failed");
+
+      const publicUrl = uploadData.secure_url;
 
       const newActor: ActorProfile = {
         id: crypto.randomUUID(),
@@ -1738,7 +1751,7 @@ export function StorytellingSetup({
 
             <div className="flex flex-col gap-3 mt-1">
               <Button onClick={handleWriteScript} disabled={isWritingScript || !bRollConcept.trim()} variant="outline" className="w-full border-[#57707A]/50 text-[#DEDCDC] hover:text-[#191D23] hover:border-[#C5BAC4] bg-[#191D23] hover:bg-[#C5BAC4] h-12 text-xs font-bold justify-center rounded-xl shadow-sm transition-all">
-                {isWritingScript ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ScrollText className="h-4 w-4 mr-2" />} Write Prompts &amp; Audio
+                {isWritingScript ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ScrollText className="h-4 w-4 mr-2" />} Write Scenes
               </Button>
             </div>
           </div>
@@ -1854,9 +1867,9 @@ export function StorytellingSetup({
                   </p>
                 )}
 
-                <Button onClick={() => { }} disabled={!allVideosGenerated} className={cn("w-full h-12 justify-center text-sm font-bold rounded-lg transition-all shadow-md border-none", allVideosGenerated ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23]" : "bg-[#191D23] text-[#57707A] cursor-not-allowed border border-[#57707A]/30")}>
+                {/* <Button onClick={() => { }} disabled={!allVideosGenerated} className={cn("w-full h-12 justify-center text-sm font-bold rounded-lg transition-all shadow-md border-none", allVideosGenerated ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23]" : "bg-[#191D23] text-[#57707A] cursor-not-allowed border border-[#57707A]/30")}>
                   2. Render Final Sequence
-                </Button>
+                </Button> */}
               </div>
             </div>
           </div>

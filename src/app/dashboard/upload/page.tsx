@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ IMPORT BRAND STORE
@@ -56,6 +57,7 @@ export default function YourContentPage() {
   const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
   const [audioModel, setAudioModel] = useState("kling-3.0/video");
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  const [aiEnhance, setAiEnhance] = useState(false);
 
   // UI States
   const [isProcessing, setIsProcessing] = useState(false);
@@ -278,13 +280,14 @@ export default function YourContentPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          clientId: clientId, // ✨ SEND THE CLIENT ID FOR BILLING
           mediaUrl: publicUrl,
           mediaType: file.type,
           brandVoice: brand?.brand_voice,
           dos: brand?.dos,
           donts: brand?.donts,
           context: mediaContext,
-          lengthPreference: length // ✨ Pass the length selection to the API!
+          lengthPreference: length
         }),
       });
 
@@ -369,6 +372,7 @@ export default function YourContentPage() {
           video_mode: "audio_to_video",
           ai_model_override: audioModel,
           scene_data: {
+            ai_enhance: aiEnhance,
             audio: {
               audio_url: audioPublicUrl
             }
@@ -821,6 +825,21 @@ export default function YourContentPage() {
                         disabled={isProcessing}
                       />
                       <p className="text-[9px] text-[#57707A] mt-2 font-medium">Describe the scene and the speaker. <strong className="text-red-400">Do not use quotes here</strong>—the uploaded audio file handles the speech!</p>
+
+                      {/* ✨ AI PROMPT HELPER TOGGLE ✨ */}
+                      <div className="flex items-center justify-between bg-[#191D23] p-3 rounded-xl border border-[#57707A]/30 shadow-inner mt-4">
+                        <div>
+                          <p className="text-[10px] font-bold text-[#00E5FF] uppercase tracking-wider flex items-center gap-1.5">
+                            <Sparkles className="w-3 h-3"/> AI Prompt Helper
+                          </p>
+                          <p className="text-[9px] text-[#57707A] font-medium mt-0.5">ON: AI rewrites prompt. OFF: Send exact text to engine.</p>
+                        </div>
+                        <Switch 
+                          checked={aiEnhance} 
+                          onCheckedChange={setAiEnhance} 
+                          className="data-[state=checked]:bg-[#00E5FF] data-[state=unchecked]:bg-[#57707A]"
+                        />
+                      </div>
                     </div>
                   </div>
 
