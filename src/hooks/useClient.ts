@@ -57,11 +57,14 @@ export function useClient(): UseClientResult {
                 }
 
                 if (!client) {
-                    // ✨ THE FIX: Auto-create the client row for new users!
+                    // ✨ THE FIX: Provide a default company_name to satisfy the database constraint!
+                    const defaultName = authUser.email ? `${authUser.email.split('@')[0]}'s Workspace` : 'My Workspace';
+
                     const { data: newClient, error: insertError } = await supabase
                         .from('clients')
                         .insert({
                             user_id: authUser.id,
+                            company_name: defaultName,
                             plan_tier: 'starter',
                             onboarding_status: 'active'
                         })
