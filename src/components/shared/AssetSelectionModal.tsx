@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
+import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ 1. Import brand store
 import { cn } from "@/lib/utils";
 
 interface AssetSelectionModalProps {
@@ -29,13 +30,16 @@ interface AssetRow {
 
 export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionModalProps) {
     const { clientId } = useClient();
+    const { activeBrand } = useBrandStore(); // ✨ 2. Get active brand
+
     const [assets, setAssets] = useState<AssetRow[]>([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState("");
 
     // Fetch assets when the modal opens
     useEffect(() => {
-        if (!open || !clientId) return;
+        // ✨ 3. Abort if no active brand
+        if (!open || !clientId || !activeBrand) return;
 
         let cancelled = false;
         async function fetchAssets() {
@@ -45,6 +49,7 @@ export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionM
                     .from("content")
                     .select("id, caption, image_urls, content_type, created_at")
                     .eq("client_id", clientId)
+                    .eq("brand_id", activeBrand!.id) // ✨ 4. Isolate by Brand!
                     .not("image_urls", "is", null)
                     .order("created_at", { ascending: false })
                     .limit(100);
@@ -63,7 +68,7 @@ export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionM
 
         fetchAssets();
         return () => { cancelled = true; };
-    }, [open, clientId]);
+    }, [open, clientId, activeBrand?.id]); // ✨ 5. Add activeBrand.id to dependency array
 
     // Flatten all image URLs from all content rows
     const allImages = useMemo(() => {
@@ -102,43 +107,44 @@ export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionM
 
     return (
         <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
-            <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <FolderOpen className="h-5 w-5 text-blue-600" />
+            {/* ✨ 6. Themed Modal Container */}
+            <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl custom-scrollbar">
+                <DialogHeader className="border-b border-[#57707A]/20 pb-4">
+                    <DialogTitle className="flex items-center gap-2 text-xl font-display text-[#DEDCDC]">
+                        <FolderOpen className="h-5 w-5 text-[#C5BAC4]" />
                         Select from Library
                     </DialogTitle>
-                    <DialogDescription>
+                    <DialogDescription className="text-[#989DAA] font-medium">
                         Choose an image from your uploaded assets.
                     </DialogDescription>
                 </DialogHeader>
 
                 {/* Search bar */}
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <div className="relative mt-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#57707A]" />
                     <input
                         type="text"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search by caption or type..."
-                        className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                        className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg transition-all shadow-inner bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus:outline-none focus:ring-2 focus:ring-[#C5BAC4]"
                     />
                 </div>
 
                 {/* Image grid */}
-                <div className="flex-1 overflow-y-auto min-h-0 -mx-1 px-1">
+                <div className="flex-1 overflow-y-auto min-h-[300px] -mx-1 px-1 custom-scrollbar mt-2">
                     {loading ? (
-                        <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
-                            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                        <div className="flex flex-col items-center justify-center py-16 text-[#989DAA] gap-3">
+                            <Loader2 className="h-8 w-8 animate-spin text-[#C5BAC4]" />
                             <span className="text-sm font-medium">Loading your library...</span>
                         </div>
                     ) : filtered.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+                        <div className="flex flex-col items-center justify-center py-16 text-[#57707A] gap-3">
                             <ImageIcon className="h-10 w-10 opacity-40" />
-                            <span className="text-sm font-medium">
+                            <span className="text-sm font-medium text-[#989DAA]">
                                 {search ? "No matching assets found" : "No assets in your library yet"}
                             </span>
-                            <span className="text-xs text-gray-300">
+                            <span className="text-xs text-[#57707A]">
                                 {search ? "Try a different search term" : "Upload assets to see them here"}
                             </span>
                         </div>
@@ -150,24 +156,23 @@ export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionM
                                     type="button"
                                     onClick={() => handleSelect(img.url)}
                                     className={cn(
-                                        "group relative aspect-square rounded-xl overflow-hidden border-2 border-transparent",
-                                        "hover:border-blue-500 hover:shadow-lg transition-all duration-200",
-                                        "focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                                        "group relative aspect-square bg-[#191D23] border border-[#57707A]/30 hover:border-[#C5BAC4]/60 hover:shadow-md transition-all rounded-xl overflow-hidden",
+                                        "focus:outline-none focus:ring-2 focus:ring-[#C5BAC4] focus:ring-offset-2 focus:ring-offset-[#2A2F38]"
                                     )}
                                 >
                                     <img
                                         src={img.url}
                                         alt={img.caption || "Asset"}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                        className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
                                     />
                                     {/* Hover overlay */}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end p-2">
-                                        <span className="text-[10px] font-bold text-white leading-tight line-clamp-2">
-                                            {img.caption || img.contentType}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-[#191D23]/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3">
+                                        <span className="text-[10px] font-bold text-[#DEDCDC] leading-tight line-clamp-2 drop-shadow-md">
+                                            {img.caption || img.contentType.replace("_", " ")}
                                         </span>
                                     </div>
                                     {/* Content type badge */}
-                                    <div className="absolute top-1.5 right-1.5 bg-black/50 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
+                                    <div className="absolute top-2 right-2 bg-[#191D23]/80 backdrop-blur-md border border-[#57707A]/50 text-[#C5BAC4] text-[9px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider shadow-lg">
                                         {img.contentType.replace("_", " ")}
                                     </div>
                                 </button>

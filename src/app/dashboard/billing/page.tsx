@@ -25,7 +25,7 @@ const TIERS = [
     },
     {
         name: "Pro",
-        price: "44",
+        price: "49",
         description: "For creators and multi-brand managers who need more power.",
         features: [
             "6 Brand Workspaces",

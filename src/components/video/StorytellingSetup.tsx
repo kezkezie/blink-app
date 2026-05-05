@@ -138,13 +138,16 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 
       const publicUrl = uploadData.secure_url;
 
-      const newActor: ActorProfile = {
-        id: crypto.randomUUID(),
-        name: actorName,
-        stitchedSheetUrl: publicUrl
-      };
+      const { data } = await supabase.from('assets').insert({
+        client_id: clientId,
+        asset_type: 'actor_profile',
+        file_url: publicUrl,
+        storage_provider: actorName
+      }).select('id').single();
 
-      onSaveActor(newActor);
+      if (data) {
+        onSaveActor({ id: data.id, name: actorName, stitchedSheetUrl: publicUrl });
+      }
       setIsCreating(false);
       setActorName("");
       setAngles(Array(6).fill(null));
@@ -170,13 +173,16 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 
       if (!genData.url) throw new Error("AI did not return an image URL.");
 
-      const newActor: ActorProfile = {
-        id: crypto.randomUUID(),
-        name: actorName,
-        stitchedSheetUrl: genData.url
-      };
+      const { data } = await supabase.from('assets').insert({
+        client_id: clientId,
+        asset_type: 'actor_profile',
+        file_url: genData.url,
+        storage_provider: actorName
+      }).select('id').single();
 
-      onSaveActor(newActor);
+      if (data) {
+        onSaveActor({ id: data.id, name: actorName, stitchedSheetUrl: genData.url });
+      }
       setIsCreating(false);
       setActorName("");
       setAiPrompt("");
@@ -407,10 +413,6 @@ export function StorytellingSetup({
   const [localAspectRatio, setLocalAspectRatio] = useState("16:9");
 
   useEffect(() => {
-    const savedActors = localStorage.getItem('blink_saved_actors');
-    if (savedActors) {
-      try { setActors(JSON.parse(savedActors)); } catch (e) { }
-    }
     const savedScenes = localStorage.getItem('blink_storyboard_scenes');
     if (savedScenes) {
       try { setBRollScenes(JSON.parse(savedScenes)); } catch (e) { }
@@ -435,6 +437,27 @@ export function StorytellingSetup({
       setBRollScenes(defaultScenes);
     }
   }, []);
+
+  // ✨ Fetch saved actors from Supabase on mount
+  useEffect(() => {
+    if (!clientId) return;
+    const fetchActors = async () => {
+      const { data } = await supabase
+        .from('assets')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('asset_type', 'actor_profile');
+
+      if (data) {
+        setActors(data.map(d => ({
+          id: d.id,
+          name: d.storage_provider || "Unknown Actor",
+          stitchedSheetUrl: d.file_url
+        })));
+      }
+    };
+    fetchActors();
+  }, [clientId]);
 
   useEffect(() => {
     if (bRollScenes.length > 0) {
@@ -465,9 +488,7 @@ export function StorytellingSetup({
     }
   }, [bRollScenes]);
 
-  useEffect(() => {
-    if (actors.length > 0) localStorage.setItem('blink_saved_actors', JSON.stringify(actors));
-  }, [actors]);
+
 
   const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number } | null>(null);
   const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number } | null>(null);
@@ -1189,7 +1210,7 @@ export function StorytellingSetup({
         onClose={() => setIsCastingOpen(false)}
         actors={actors}
         onSaveActor={(newActor) => setActors([...actors, newActor])}
-        onDeleteActor={(id) => { setActors(actors.filter(a => a.id !== id)); if (selectedActorA === id) setSelectedActorA(""); }}
+        onDeleteActor={async (id) => { setActors(actors.filter(a => a.id !== id)); if (selectedActorA === id) setSelectedActorA(""); await supabase.from('assets').delete().eq('id', id); }}
         selectedActorA={selectedActorA}
         setSelectedActorA={setSelectedActorA}
         callN8n={callN8n as any}

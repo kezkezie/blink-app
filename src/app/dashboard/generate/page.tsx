@@ -82,7 +82,8 @@ export default function ImageStudioPage() {
       ]);
 
       setBrandContext({
-        name: clientRes.data?.company_name,
+        // ✨ FIX: Prioritize the specific workspace brand name!
+        name: (activeBrand as any).name || (activeBrand as any).brand_name || clientRes.data?.company_name,
         industry: clientRes.data?.industry,
         imageStyle: brandRes.data?.image_style,
         brandVoice: brandRes.data?.brand_voice,
