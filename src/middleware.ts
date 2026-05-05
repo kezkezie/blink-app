@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 /**
  * Auth middleware: protects all /dashboard/* routes.
  * Redirects unauthenticated users to /login.
- * Redirects users who haven't completed onboarding to /onboarding.
+ * Client profile auto-creation is handled by useClient hook.
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -67,17 +67,6 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
     return response;
-  }
-
-  // Check if user has completed onboarding
-  if (pathname.startsWith("/dashboard")) {
-    const onboardingCompleted =
-      user.user_metadata?.onboarding_completed === true;
-
-    if (!onboardingCompleted) {
-      // ✅ FIXED: Redirect to /get-started instead of the dead /onboarding route
-      return NextResponse.redirect(new URL("/get-started", request.url));
-    }
   }
 
   return response;

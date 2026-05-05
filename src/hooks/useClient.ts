@@ -16,7 +16,7 @@ interface UseClientResult {
  * Replaces all hardcoded CLIENT_ID / TEST_CLIENT_ID constants.
  *
  * - If no session → redirect to /login
- * - If session but no client → redirect to /get-started
+ * - If session but no client → auto-creates the client row (starter tier)
  * - Otherwise → return { clientId, user }
  */
 export function useClient(): UseClientResult {
@@ -57,8 +57,30 @@ export function useClient(): UseClientResult {
                 }
 
                 if (!client) {
-                    // User is authenticated but has no client profile yet
-                    router.replace('/get-started')
+                    // ✨ THE FIX: Auto-create the client row for new users!
+                    const { data: newClient, error: insertError } = await supabase
+                        .from('clients')
+                        .insert({
+                            user_id: authUser.id,
+                            plan_tier: 'starter',
+                            onboarding_status: 'active'
+                        })
+                        .select('id')
+                        .single()
+
+                    if (insertError || !newClient) {
+                        console.error('Failed to auto-create client profile:', insertError)
+                        // Fallback to login if we can't create their profile
+                        router.replace('/login')
+                        return
+                    }
+
+                    // Update their auth metadata so they are officially onboarded
+                    await supabase.auth.updateUser({
+                        data: { onboarding_completed: true }
+                    })
+
+                    setClientId(newClient.id)
                     return
                 }
 
