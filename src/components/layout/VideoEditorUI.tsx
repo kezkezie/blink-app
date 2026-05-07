@@ -113,6 +113,9 @@ export function VideoEditorUI() {
     if (!clientId || !activeBrand) return;
     setIsLoadingDB(true);
 
+    // ✨ SYNCED with content/page.tsx — all known sequence type variations
+    const sequenceTypes = ["sequence_clip", "story_sequence", "storyboard", "story"];
+
     let query = supabase
       .from("content")
       .select("*")
@@ -122,11 +125,12 @@ export function VideoEditorUI() {
       .limit(limit);
 
     if (filterType === "sequence") {
-      query = query.eq("content_type", "sequence_clip");
+      query = query.in("content_type", sequenceTypes);
     } else if (filterType === "audio") {
       query = query.in("content_type", ["generated_audio", "audio", "music", "voiceover"]);
     } else {
-      query = query.not("content_type", "in", '("sequence_clip","generated_audio")');
+      // Library: exclude ALL sequence types + audio so they don't bleed into General
+      query = query.not("content_type", "in", `(${sequenceTypes.concat(["generated_audio"]).join(",")})`);
     }
 
     const { data, error } = await query;
@@ -155,10 +159,12 @@ export function VideoEditorUI() {
           const isAudioType = item.content_type === "generated_audio";
           const isAudio = isAudioUrl || isAudioType;
 
-          const isVid = url.includes(".mp4") || url.includes(".mov") || item.content_type === "sequence_clip" || item.content_type === "reel";
+          // ✨ SYNCED: Recognize all sequence types as video assets
+          const isSequenceType = sequenceTypes.includes(item.content_type);
+          const isVid = url.includes(".mp4") || url.includes(".mov") || isSequenceType || item.content_type === "reel";
 
           if (filterType === "audio" && !isAudio) return;
-          if (filterType === "library" && (isAudio || item.content_type === "sequence_clip")) return;
+          if (filterType === "library" && (isAudio || isSequenceType)) return;
 
           const mediaType = isAudio ? "audio" : isVid ? "video" : "image";
 

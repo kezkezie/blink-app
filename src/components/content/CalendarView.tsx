@@ -625,7 +625,7 @@ export function CalendarView({
                               />
                             ) : (
                               // ✨ SWAPPED IMG FOR NEXT/IMAGE
-                              <Image
+                              <img
                                 src={displayMedia}
                                 alt="thumbnail"
                                 width={48}
@@ -757,7 +757,7 @@ export function CalendarView({
                             />
                           ) : (
                             // ✨ SWAPPED IMG FOR NEXT/IMAGE
-                            <Image
+                            <img
                               src={displayMedia}
                               alt="thumbnail"
                               width={40}

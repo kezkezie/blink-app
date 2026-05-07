@@ -207,6 +207,8 @@ export interface Content {
   image_url: string | null;
   image_urls: string[];
   video_url: string | null;
+  video_urls: string[] | string | null;
+  reference_image_url: string | null;
   ai_prompt_used: string | null;
   image_prompt_used: string | null;
   ai_model: string | null;
