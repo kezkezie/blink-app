@@ -89,6 +89,7 @@ type MainTab = "account" | "ai-rules";
 function SettingsContent() {
   const { clientId } = useClient();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const { activeBrand } = useBrandStore();
 
@@ -285,6 +286,13 @@ function SettingsContent() {
   async function handleSaveAccount() {
     setSavingAccount(true);
     try {
+      // 1. Update Auth Metadata (This tells the TopBar to change the letter!)
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { full_name: accountInfo.contact_name }
+      });
+      if (authError) throw authError;
+
+      // 2. Update the Database
       await supabase
         .from("clients")
         .update({
@@ -293,6 +301,10 @@ function SettingsContent() {
           contact_phone: accountInfo.contact_phone,
         })
         .eq("id", clientId);
+
+      // 3. Force the page to refresh so the TopBar updates instantly
+      router.refresh();
+
       setConnectionMessage({
         type: "success",
         text: "Account settings saved!",
