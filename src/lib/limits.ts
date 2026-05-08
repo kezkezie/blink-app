@@ -1,44 +1,44 @@
-export type PlanTier = 'starter' | 'pro' | 'agency';
+export type PlanTier = 'free' | 'starter' | 'pro' | 'agency';
+export type BillingCycle = 'monthly' | 'weekly';
 
 export interface TierLimits {
     maxBrands: number;
-    maxPostsPerMonth: number;
+    maxPosts: number;       // ✨ Renamed from maxPostsPerMonth since it's now per cycle
     maxStorageDays: number;
     hasRefineBrain: boolean;
 }
 
-// Define concrete limits based on your TIERS data
-export const TIER_CAPS: Record<PlanTier, TierLimits> = {
+// Define concrete limits for both Monthly and Weekly cycles
+export const TIER_CAPS: Record<PlanTier, { monthly: TierLimits; weekly: TierLimits }> = {
+    free: {
+        monthly: { maxBrands: 1, maxPosts: 5, maxStorageDays: 7, hasRefineBrain: false },
+        weekly: { maxBrands: 1, maxPosts: 5, maxStorageDays: 7, hasRefineBrain: false },
+    },
     starter: {
-        maxBrands: 2,
-        maxPostsPerMonth: 30,
-        maxStorageDays: 30,
-        hasRefineBrain: true,
+        monthly: { maxBrands: 2, maxPosts: 30, maxStorageDays: 30, hasRefineBrain: true },
+        weekly: { maxBrands: 2, maxPosts: 7, maxStorageDays: 7, hasRefineBrain: true },
     },
     pro: {
-        maxBrands: 6,
-        maxPostsPerMonth: 60,
-        maxStorageDays: 60,
-        hasRefineBrain: true,
+        monthly: { maxBrands: 6, maxPosts: 60, maxStorageDays: 60, hasRefineBrain: true },
+        weekly: { maxBrands: 6, maxPosts: 15, maxStorageDays: 14, hasRefineBrain: true },
     },
     agency: {
-        maxBrands: 10,
-        maxPostsPerMonth: 200,
-        maxStorageDays: 364,
-        hasRefineBrain: true,
+        monthly: { maxBrands: 10, maxPosts: 200, maxStorageDays: 364, hasRefineBrain: true },
+        weekly: { maxBrands: 10, maxPosts: 50, maxStorageDays: 30, hasRefineBrain: true },
     }
 };
 
 // Helper utility for use in components
-export const getLimitForTier = (tier: string | null | undefined): TierLimits => {
-    // Normalize the incoming string, fallback to 'starter' if null/undefined
-    const normalizedTier = (tier?.toLowerCase() || 'starter') as PlanTier;
+// Defaults to 'free' tier and 'monthly' cycle if nothing is passed
+export const getLimitForTier = (tier: string | null | undefined, cycle: BillingCycle = 'monthly'): TierLimits => {
+    // Normalize the incoming string, fallback to 'free'
+    const normalizedTier = (tier?.toLowerCase() || 'free') as PlanTier;
 
-    // If the tier exists in our caps object, return it
+    // If the tier exists in our caps object, return the limits for the requested cycle
     if (TIER_CAPS[normalizedTier]) {
-        return TIER_CAPS[normalizedTier];
+        return TIER_CAPS[normalizedTier][cycle];
     }
 
-    // Default fallback (just in case 'enterprise' or 'custom' is in the DB)
-    return TIER_CAPS.starter;
+    // Default ultimate fallback
+    return TIER_CAPS.free.monthly;
 };
