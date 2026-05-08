@@ -6,7 +6,7 @@ export async function middleware(request: NextRequest) {
     request: { headers: request.headers },
   });
 
-  // 1. ALWAYS initialize Supabase first so it manages cookies properly
+  // 1. Initialize Supabase
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // 2. ALWAYS call getUser() to refresh the session and clear dead cookies
+  // 2. Refresh the session
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -51,31 +51,16 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next/") ||
     pathname.includes(".");
 
-  // 4. Redirect unauthenticated users trying to access protected routes
+  // 4. If logged OUT and trying to access the dashboard -> Kick to login
   if (!user && !isPublicPath && pathname.startsWith("/dashboard")) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 5. Intelligent Routing for Logged-In Users
+  // 5. If logged IN and trying to access login/signup pages -> Push to dashboard
   if (user) {
-    const onboardingCompleted = user.user_metadata?.onboarding_completed === true;
-
-    // Prevent logged-in users from seeing the login/signup screens
-    if (pathname === "/login" || pathname === "/signup") {
-      return NextResponse.redirect(
-        new URL(onboardingCompleted ? "/dashboard" : "/get-started", request.url)
-      );
-    }
-
-    // Prevent unfinished users from accessing the dashboard
-    if (pathname.startsWith("/dashboard") && !onboardingCompleted) {
-      return NextResponse.redirect(new URL("/get-started", request.url));
-    }
-
-    // Prevent finished users from going back to the onboarding wizard
-    if (pathname === "/get-started" && onboardingCompleted) {
+    if (pathname === "/login" || pathname === "/signup" || pathname === "/get-started") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
   }
@@ -85,7 +70,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Catch everything except static assets so cookie refreshing always fires
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
