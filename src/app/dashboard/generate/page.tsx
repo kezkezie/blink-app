@@ -406,11 +406,12 @@ export default function ImageStudioPage() {
               <label className="text-sm font-bold text-[#DEDCDC]">Visual Aesthetic</label>
               <select
                 value={selectedStyle}
+                style={{ colorScheme: 'dark' }}
                 onChange={(e) => setSelectedStyle(e.target.value)}
                 className="w-full p-3 bg-[#191D23] border border-[#57707A]/40 rounded-xl text-sm font-medium text-[#DEDCDC] focus:ring-2 ring-[#C5BAC4] outline-none cursor-pointer hover:bg-[#57707A]/20 transition-colors appearance-none"
               >
                 {MARKETING_STYLES.map(style => (
-                  <option key={style.id} value={style.id}>{style.label}</option>
+                  <option className="bg-[#2A2F38]" key={style.id} value={style.id}>{style.label}</option>
                 ))}
               </select>
             </div>

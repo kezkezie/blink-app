@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Loader2, Mail, Lock, Sparkles } from "lucide-react";
+import { Loader2, Mail, Lock, Sparkles, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -11,6 +11,9 @@ export default function GetStartedPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ✨ NEW: Added fullName state
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -30,7 +33,16 @@ export default function GetStartedPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    // 1. Sign up and pass the full_name into Supabase Auth metadata
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        }
+      }
+    });
 
     if (error) {
       alert(error.message);
@@ -39,6 +51,12 @@ export default function GetStartedPage() {
     }
 
     if (data.user) {
+      // 2. Forcefully update the clients table so contact_name and contact_email are never null!
+      await supabase.from('clients').update({
+        contact_name: fullName,
+        contact_email: email
+      }).eq('user_id', data.user.id);
+
       if (!data.session) {
         alert("Please check your email to verify your account.");
         setIsSubmitting(false);
@@ -79,6 +97,27 @@ export default function GetStartedPage() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-500 delay-300">
         <div className="bg-[#2A2F38] py-8 px-6 shadow-2xl sm:rounded-3xl sm:px-10 border border-[#57707A]/30">
           <form onSubmit={handleSignUp} className="space-y-5">
+
+            {/* ✨ NEW: Full Name Input Field */}
+            <div>
+              <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
+                Full Name
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <User className="h-4 w-4 text-[#57707A]" />
+                </div>
+                <Input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="pl-11 h-12 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner text-sm"
+                  placeholder="John Doe"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                 Email address
@@ -97,6 +136,7 @@ export default function GetStartedPage() {
                 />
               </div>
             </div>
+
             <div>
               <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2">
                 Password
@@ -116,6 +156,7 @@ export default function GetStartedPage() {
                 />
               </div>
             </div>
+
             <Button
               type="submit"
               disabled={isSubmitting}
