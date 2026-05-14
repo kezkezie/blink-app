@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, } from "react";
 import { useRouter } from "next/navigation";
+import { useClient } from "@/hooks/useClient";
 import {
     ScanSearch,
     Loader2,
@@ -47,6 +48,7 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
     const router = useRouter();
     const [imageUrl, setImageUrl] = useState<string | null>(initialImageUrl);
     const [schema, setSchema] = useState<SemanticSchema | null>(null);
+    const { clientId } = useClient(); // ✨ Get the active user's ID
 
     const [isExtracting, setIsExtracting] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -67,6 +69,7 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    client_id: clientId,
                     mode: "scene_video_generator",
                     video_mode: "xray_image",
                     primary_image_url: imageUrl
