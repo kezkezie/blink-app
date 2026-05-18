@@ -1,0 +1,117 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img "Blink Logo" [ref=e5]
+        - generic [ref=e6]: BlinkSpot
+      - navigation [ref=e7]:
+        - link "Dashboard" [ref=e8] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e9]
+          - generic [ref=e14]: Dashboard
+        - link "Content Grid" [ref=e15] [cursor=pointer]:
+          - /url: /dashboard/content
+          - img [ref=e16]
+          - generic [ref=e19]: Content Grid
+        - link "Calendar" [ref=e20] [cursor=pointer]:
+          - /url: /dashboard/calendar
+          - img [ref=e21]
+          - generic [ref=e23]: Calendar
+        - link "Upload" [ref=e24] [cursor=pointer]:
+          - /url: /dashboard/upload
+          - img [ref=e25]
+          - generic [ref=e28]: Upload
+        - link "Image Studio" [ref=e29] [cursor=pointer]:
+          - /url: /dashboard/generate
+          - img [ref=e30]
+          - generic [ref=e33]: Image Studio
+        - link "Video Studio" [ref=e34] [cursor=pointer]:
+          - /url: /dashboard/video
+          - img [ref=e35]
+          - generic [ref=e38]: Video Studio
+        - link "Brand Identity" [ref=e39] [cursor=pointer]:
+          - /url: /dashboard/brand
+          - img [ref=e40]
+          - generic [ref=e46]: Brand Identity
+        - link "Billing" [ref=e47] [cursor=pointer]:
+          - /url: /dashboard/billing
+          - img [ref=e48]
+          - generic [ref=e50]: Billing
+        - link "Settings" [ref=e51] [cursor=pointer]:
+          - /url: /dashboard/settings
+          - img [ref=e52]
+          - generic [ref=e55]: Settings
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - img [ref=e59]
+          - generic [ref=e62]: test-video-1778859826428@blinkspot.local
+        - button "Sign Out" [ref=e63]:
+          - img [ref=e64]
+          - generic [ref=e67]: Sign Out
+      - paragraph [ref=e69]: © 2026 Blink
+    - generic [ref=e70]:
+      - banner [ref=e71]:
+        - heading "Video Studio" [level=1] [ref=e73]
+        - generic [ref=e74]:
+          - button "Video QA Brand" [ref=e75]:
+            - img
+            - generic [ref=e76]: Video QA Brand
+            - img
+          - button "Refine AI Brain" [ref=e77]:
+            - img [ref=e78]
+            - generic [ref=e86]: Refine AI Brain
+          - button [ref=e87]:
+            - img
+          - button "V" [ref=e89]:
+            - generic [ref=e91]: V
+      - main [ref=e92]:
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - generic [ref=e96]:
+              - generic [ref=e97]:
+                - img [ref=e99]
+                - heading "AI Video Studio" [level=1] [ref=e101]
+              - paragraph [ref=e102]: Generate stunning commercial clips with AI, then polish them in the built-in editor.
+            - generic:
+              - img
+          - generic [ref=e103]:
+            - button "Generate Video" [ref=e104]:
+              - img [ref=e105]
+              - text: Generate Video
+            - button "Video Editor" [ref=e108]:
+              - img [ref=e109]
+              - text: Video Editor
+          - generic [ref=e113]:
+            - heading "Step 1 — Choose Video Style" [level=2] [ref=e114]
+            - generic [ref=e115]:
+              - generic [ref=e116] [cursor=pointer]:
+                - img [ref=e118]
+                - heading "UGC Product Review" [level=3] [ref=e122]
+                - paragraph [ref=e123]: AI influencer talks about your product.
+              - generic [ref=e124] [cursor=pointer]:
+                - img [ref=e126]
+                - img [ref=e130]
+                - heading "Cinematic Showcase" [level=3] [ref=e133]
+                - paragraph [ref=e134]: Dynamic camera pans around your product.
+              - generic [ref=e135] [cursor=pointer]:
+                - img [ref=e137]
+                - heading "AI Clothing Try-On" [level=3] [ref=e139]
+                - paragraph [ref=e140]: Put your garments on an AI model.
+              - generic [ref=e141] [cursor=pointer]:
+                - img [ref=e143]
+                - heading "Product Reveal" [level=3] [ref=e145]
+                - paragraph [ref=e146]: Dynamic 3D motion graphics for your product.
+              - generic [ref=e147] [cursor=pointer]:
+                - img [ref=e149]
+                - heading "Storytelling B-Roll" [level=3] [ref=e154]
+                - paragraph [ref=e155]: Multi-scene cinematic sequence for your brand.
+            - button "Next Step" [ref=e157]:
+              - text: Next Step
+              - img [ref=e158]
+  - button "Open Next.js Dev Tools" [ref=e165] [cursor=pointer]:
+    - img [ref=e166]
+  - alert [ref=e169]
+```

@@ -108,6 +108,7 @@ export default function VideoStudioPage() {
 
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [duration, setDuration] = useState("5");
+  const [aiEnhance, setAiEnhance] = useState(true);
 
   const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
@@ -534,6 +535,7 @@ export default function VideoStudioPage() {
         strict_brand_alignment: strictBrandAlignment,
         aspect_ratio: aspectRatio,
         duration: duration,
+        ai_enhance: aiEnhance,
       });
 
       setStep(3);
@@ -705,7 +707,9 @@ export default function VideoStudioPage() {
                   aspectRatio,
                   setAspectRatio,
                   duration,
-                  setDuration
+                  setDuration,
+                  aiEnhance,
+                  setAiEnhance,
                 };
                 switch (selectedMode) {
                   case "ugc":

@@ -42,14 +42,14 @@ export async function GET(request: NextRequest) {
         if (!clientRow) {
             return NextResponse.json({
                 client_id: null,
-                plan_tier: "starter",
+                plan_tier: "free",
                 balance: 0,
                 lifetime_earned: 0,
                 lifetime_spent: 0
             });
         }
 
-        const planTier = clientRow.plan_tier ?? "starter";
+        const planTier = clientRow.plan_tier ?? "free";
         const actualClientId = clientRow.id; // This is the '1279475a...' ID
 
         // --- Fetch credit balance using the actual client ID ---

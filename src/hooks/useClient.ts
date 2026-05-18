@@ -65,7 +65,9 @@ export function useClient(): UseClientResult {
                         .insert({
                             user_id: authUser.id,
                             company_name: defaultName,
-                            plan_tier: 'starter',
+                            contact_email: authUser.email || null,
+                            contact_name: authUser.user_metadata?.full_name || null,
+                            plan_tier: 'free',
                             onboarding_status: 'active'
                         })
                         .select('id')

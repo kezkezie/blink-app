@@ -77,14 +77,18 @@ export async function createBrandWorkspace(input: CreateBrandWorkspaceInput): Pr
   if (existingClient) {
     clientId = existingClient.id;
   } else {
+    // Fetch the auth user's email to satisfy the unique constraint on contact_email
+    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(input.userId);
+    const userEmail = authUser?.user?.email || null;
+
     const { data: newClient, error: clientError } = await supabaseAdmin
       .from("clients")
       .insert({
         user_id: input.userId,
         contact_name: input.contactName,
         company_name: "Master Account",
-        contact_email: "user@brand.com",
-        plan_tier: "starter" as const,
+        contact_email: userEmail,
+        plan_tier: "free" as const,
       })
       .select("id")
       .single();
