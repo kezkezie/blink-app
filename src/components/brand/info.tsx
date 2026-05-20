@@ -413,23 +413,23 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
                                 {/* ── Remaining form fields ── */}
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-bold text-[#C5BAC4] uppercase mb-2">Brand Name *</label>
-                                    <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="e.g. Acme Corp" className="bg-[#191D23] border-[#57707A]/40" />
+                                    <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="e.g. Acme Corp" disabled={isAutofilling} className="bg-[#191D23] border-[#57707A]/40 disabled:opacity-50 disabled:cursor-not-allowed" />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2">Company Name (Legal)</label>
-                                    <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="e.g. Acme Holdings LLC" className="bg-[#191D23] border-[#57707A]/40" />
+                                    <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="e.g. Acme Holdings LLC" disabled={isAutofilling} className="bg-[#191D23] border-[#57707A]/40 disabled:opacity-50 disabled:cursor-not-allowed" />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2">Industry Context</label>
-                                    <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="e.g. Software & Technology" className="bg-[#191D23] border-[#57707A]/40" />
+                                    <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="e.g. Software & Technology" disabled={isAutofilling} className="bg-[#191D23] border-[#57707A]/40 disabled:opacity-50 disabled:cursor-not-allowed" />
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2">Your Name *</label>
-                                    <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="e.g. John Doe" className="bg-[#191D23] border-[#57707A]/40" />
+                                    <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="e.g. John Doe" disabled={isAutofilling} className="bg-[#191D23] border-[#57707A]/40 disabled:opacity-50 disabled:cursor-not-allowed" />
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-bold text-[#DEDCDC] uppercase mb-2">What does this brand do? *</label>
-                                    <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Describe the products or services offered..." className="bg-[#191D23] border-[#57707A]/40 resize-none" />
+                                    <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Describe the products or services offered..." disabled={isAutofilling} className="bg-[#191D23] border-[#57707A]/40 resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
                                 </div>
                             </div>
 

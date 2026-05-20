@@ -1359,58 +1359,97 @@ export function StorytellingSetup({
                     {isSeedance2 ? (
                       <div className="flex-1 flex flex-col gap-5">
                         <div>
-                          <div className="flex items-center justify-between mb-3">
-                            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block">
-                              Visual Reference Tray <span className="text-[#57707A]/60 normal-case ml-1">(Optional)</span>
-                            </label>
-                            {seedancePreviews.length < 5 && (
-                              <button
-                                onClick={() => addSeedanceSlot(scene.id)}
-                                className="text-[9px] font-bold text-[#C5BAC4] hover:text-white flex items-center gap-1 bg-[#191D23] border border-[#57707A]/40 hover:border-[#C5BAC4]/50 px-2 py-1 rounded shadow-sm transition-all"
-                              >
-                                <Plus className="w-3 h-3" /> Add Image
-                              </button>
-                            )}
+                          {/* ── Seedance header with slot count and add button ── */}
+                          <div className="flex items-center justify-between mb-1">
+                            <div>
+                              <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block">
+                                Reference Images
+                              </label>
+                              <p className="text-[9px] text-[#57707A]/60 font-medium mt-0.5">
+                                Tag images in your prompt with <strong className="text-[#C5BAC4]">@Image1</strong>, <strong className="text-[#C5BAC4]">@Image2</strong>…
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                "text-[9px] font-bold px-2 py-1 rounded border",
+                                seedancePreviews.filter(Boolean).length > 0
+                                  ? "text-[#B3FF00] border-[#B3FF00]/30 bg-[#B3FF00]/10"
+                                  : "text-[#57707A] border-[#57707A]/30 bg-[#191D23]"
+                              )}>
+                                {seedancePreviews.filter(Boolean).length}/{seedancePreviews.length} filled
+                              </span>
+                              {seedancePreviews.length < 5 && (
+                                <button
+                                  onClick={() => addSeedanceSlot(scene.id)}
+                                  className="flex items-center gap-1.5 text-[10px] font-bold text-[#C5BAC4] hover:text-white bg-[#191D23] hover:bg-[#C5BAC4]/15 border border-[#C5BAC4]/30 hover:border-[#C5BAC4]/60 px-3 py-1.5 rounded-lg shadow-sm transition-all"
+                                >
+                                  <Plus className="w-3.5 h-3.5" /> Add Image
+                                </button>
+                              )}
+                            </div>
                           </div>
 
-                          <div className={cn("grid gap-4", seedancePreviews.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
+                          <div className={cn("grid gap-3 mt-3", seedancePreviews.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
                             {seedancePreviews.map((preview: string | null, sIdx: number) => (
-                              <div key={sIdx} className="flex flex-col gap-1">
-                                <div className="relative aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 flex flex-col items-center justify-center transition-all group/upload shadow-inner">
-                                  <div className="absolute top-2 left-2 z-20 bg-[#C5BAC4] text-[#191D23] px-2 py-1 text-[10px] font-black rounded uppercase shadow-lg border border-[#191D23]/20">@Image{sIdx + 1}</div>
+                              <div key={sIdx} className="flex flex-col gap-2">
 
+                                {/* Slot card */}
+                                <div className={cn(
+                                  "relative rounded-xl overflow-hidden bg-[#0F1115] border-2 flex flex-col items-center justify-center transition-all group/upload shadow-inner",
+                                  seedancePreviews.length === 1 ? "h-44" : "h-36",
+                                  preview
+                                    ? "border-[#C5BAC4]/40"
+                                    : "border-dashed border-[#57707A]/40 hover:border-[#C5BAC4]/60 hover:bg-[#C5BAC4]/5 cursor-pointer"
+                                )}>
+                                  {/* @ImageN badge — always visible */}
+                                  <div className="absolute top-2 left-2 z-20 bg-[#C5BAC4] text-[#191D23] px-2 py-0.5 text-[10px] font-black rounded-md uppercase shadow-lg tracking-wide">
+                                    @Image{sIdx + 1}
+                                  </div>
+
+                                  {/* Remove slot button (visible on hover, only when >1 slot) */}
                                   {seedancePreviews.length > 1 && (
                                     <button
                                       onClick={() => removeSeedanceSlot(scene.id, sIdx)}
-                                      className="absolute -top-2 -right-2 z-30 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover/upload:opacity-100 transition-opacity hover:scale-110 shadow-xl border-2 border-[#191D23]"
-                                      title="Remove this slot entirely"
+                                      aria-label={`Remove image slot ${sIdx + 1}`}
+                                      className="absolute top-2 right-2 z-30 p-1 bg-[#191D23]/80 text-[#57707A] hover:bg-red-500 hover:text-white rounded-md opacity-0 group-hover/upload:opacity-100 transition-all shadow-sm border border-[#57707A]/30 hover:border-red-400"
                                     >
                                       <X className="w-3.5 h-3.5" />
                                     </button>
                                   )}
 
                                   {generatingSlot?.index === index && generatingSlot.type === 'primary' && generatingSlot.seedanceIndex === sIdx ? (
-                                    <div className="flex flex-col items-center justify-center gap-3 bg-[#191D23]/90 w-full h-full backdrop-blur-sm"><Loader2 className="h-8 w-8 text-[#C5BAC4] animate-spin" /><span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating...</span></div>
+                                    <div className="flex flex-col items-center justify-center gap-2 w-full h-full bg-[#191D23]/90 backdrop-blur-sm">
+                                      <Loader2 className="h-7 w-7 text-[#C5BAC4] animate-spin" />
+                                      <span className="text-[9px] font-bold text-[#C5BAC4] uppercase tracking-wider">Generating…</span>
+                                    </div>
                                   ) : preview ? (
-                                    <><img src={preview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
-                                      <div className="absolute bottom-2 right-2 flex gap-2 z-20">
-                                        <button type="button" onClick={() => setPreviewModalImg(preview)} className="p-2 bg-[#191D23] border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#DEDCDC] rounded-lg shadow-lg opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Maximize2 className="h-4 w-4" /></button>
-                                        <button type="button" onClick={() => clearSlot(scene.id, 'primary', sIdx)} className="p-2 bg-[#191D23] border border-[#57707A]/50 hover:bg-red-500 hover:border-red-400 text-white rounded-lg shadow-lg opacity-0 group-hover/upload:opacity-100 transition-all scale-90 group-hover/upload:scale-100"><Trash2 className="h-4 w-4" /></button>
-                                      </div></>
+                                    <>
+                                      <img src={preview} className="w-full h-full object-cover pointer-events-none opacity-90 group-hover/upload:opacity-100 transition-opacity" />
+                                      <div className="absolute inset-0 bg-[#191D23]/0 group-hover/upload:bg-[#191D23]/40 transition-colors" />
+                                      <div className="absolute bottom-2 right-2 flex gap-1.5 z-20 opacity-0 group-hover/upload:opacity-100 transition-all">
+                                        <button type="button" onClick={() => setPreviewModalImg(preview)} aria-label="Preview image" className="p-1.5 bg-[#191D23] border border-[#57707A]/50 hover:border-[#DEDCDC] text-[#DEDCDC] rounded-lg shadow-md transition-all">
+                                          <Maximize2 className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button type="button" onClick={() => clearSlot(scene.id, 'primary', sIdx)} aria-label="Clear image" className="p-1.5 bg-[#191D23] border border-[#57707A]/50 hover:bg-red-500 hover:border-red-400 text-white rounded-lg shadow-md transition-all">
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </>
                                   ) : (
-                                    <div
-                                      className="absolute inset-0 z-20 flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors bg-transparent"
+                                    <label
+                                      htmlFor={`seedance-${scene.id}-${sIdx}`}
+                                      className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors gap-2"
                                       onDragOver={handleDragOver}
                                       onDrop={(e) => handleDrop(e, scene.id, "primary", sIdx)}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const fileInput = document.getElementById(`seedance-${scene.id}-${sIdx}`);
-                                        if (fileInput) fileInput.click();
-                                      }}
                                     >
-                                      <ImageIcon className="h-6 w-6 mb-1.5 pointer-events-none" />
-                                      <p className="text-[9px] font-bold uppercase tracking-wider pointer-events-none">Drop or Click</p>
-                                    </div>
+                                      <div className="w-10 h-10 rounded-xl bg-[#2A2F38] border border-[#57707A]/30 flex items-center justify-center">
+                                        <ImageIcon className="h-5 w-5" />
+                                      </div>
+                                      <div className="text-center">
+                                        <p className="text-[10px] font-bold uppercase tracking-wider">Drop or click to upload</p>
+                                        <p className="text-[9px] text-[#57707A]/60 mt-0.5">PNG, JPG, WebP</p>
+                                      </div>
+                                    </label>
                                   )}
                                   <input
                                     id={`seedance-${scene.id}-${sIdx}`}
@@ -1422,18 +1461,24 @@ export function StorytellingSetup({
                                   />
                                 </div>
 
-                                <div className="flex gap-2 shrink-0 mt-1">
+                                {/* Action buttons below each slot */}
+                                <div className="flex gap-1.5">
                                   {preview ? (
-                                    <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary', sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
+                                    <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary', sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] rounded-lg transition-colors px-2">
+                                      <Wand2 className="h-3 w-3 mr-1" /> Re-Gen
+                                    </Button>
                                   ) : (
-                                    <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary', scene.prompt, sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
+                                    <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary', scene.prompt, sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] rounded-lg transition-colors px-2">
+                                      <Wand2 className="h-3 w-3 mr-1" /> Generate
+                                    </Button>
                                   )}
-                                  <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary', seedanceIndex: sIdx })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
+                                  <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary', seedanceIndex: sIdx })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] rounded-lg transition-colors px-2">
+                                    <FolderOpen className="h-3 w-3 mr-1" /> Library
+                                  </Button>
                                 </div>
                               </div>
                             ))}
                           </div>
-                          <p className="text-[9px] text-[#57707A] mt-2 font-medium">Add up to 5 images and tag them using <strong className="text-[#C5BAC4]">@Image1</strong>, <strong className="text-[#C5BAC4]">@Image2</strong>, etc. in your prompt.</p>
                         </div>
 
                         <div className="mt-2">

@@ -891,8 +891,12 @@ export function CalendarView({
                 {connectedPlatforms.includes('tiktok') && (
                   <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.tiktok?.enabled ? "border-[#C5BAC4]/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                     <div
-                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
+                      role="checkbox"
+                      aria-checked={publishSettings.tiktok?.enabled || false}
+                      tabIndex={0}
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20 outline-none focus-visible:ring-2 focus-visible:ring-[#C5BAC4]/50 focus-visible:ring-inset"
                       onClick={() => togglePlatform('tiktok', 'post')}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePlatform('tiktok', 'post'); } }}
                     >
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-black border border-gray-800 text-white rounded-lg shadow-inner"><Music className="w-4 h-4" /></div>
@@ -925,8 +929,12 @@ export function CalendarView({
                 {connectedPlatforms.includes('instagram') && (
                   <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.instagram?.enabled ? "border-pink-500/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                     <div
-                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
+                      role="checkbox"
+                      aria-checked={publishSettings.instagram?.enabled || false}
+                      tabIndex={0}
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20 outline-none focus-visible:ring-2 focus-visible:ring-pink-500/50 focus-visible:ring-inset"
                       onClick={() => togglePlatform('instagram', editingPostIsVideo ? 'reel' : 'feed')}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePlatform('instagram', editingPostIsVideo ? 'reel' : 'feed'); } }}
                     >
                       <div className="flex items-center gap-3">
                         <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.instagram?.enabled ? "bg-gradient-to-tr from-yellow-500 via-pink-600 to-purple-600" : "bg-[#57707A]")}><Instagram className="w-4 h-4" /></div>
@@ -960,8 +968,12 @@ export function CalendarView({
                 {connectedPlatforms.includes('youtube') && (
                   <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.youtube?.enabled ? "border-red-500/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
                     <div
-                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20"
+                      role="checkbox"
+                      aria-checked={publishSettings.youtube?.enabled || false}
+                      tabIndex={0}
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20 outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:ring-inset"
                       onClick={() => togglePlatform('youtube', 'standard')}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePlatform('youtube', 'standard'); } }}
                     >
                       <div className="flex items-center gap-3">
                         <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.youtube?.enabled ? "bg-red-600" : "bg-[#57707A]")}><Youtube className="w-4 h-4" /></div>

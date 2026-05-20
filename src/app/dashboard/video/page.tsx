@@ -652,6 +652,9 @@ export default function VideoStudioPage() {
                   return (
                     <div
                       key={mode.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isSelected}
                       onClick={() => {
                         setSelectedMode(mode.id);
                         setPrimaryFile(null);
@@ -661,10 +664,22 @@ export default function VideoStudioPage() {
                         setAspectRatio(mode.id === "ugc" ? "9:16" : "16:9");
                         setStep(2);
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedMode(mode.id);
+                          setPrimaryFile(null);
+                          setPrimaryPreview(null);
+                          setPrompt("");
+                          setBRollScenes([]);
+                          setAspectRatio(mode.id === "ugc" ? "9:16" : "16:9");
+                          setStep(2);
+                        }
+                      }}
                       className={cn(
-                        "relative p-5 rounded-xl border cursor-pointer transition-all duration-200 hover:-translate-y-0.5",
+                        "relative p-5 rounded-xl border cursor-pointer transition-all duration-200 hover:-translate-y-0.5 outline-none focus-visible:ring-2 focus-visible:ring-[#C5BAC4]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#191D23]",
                         isSelected
-                          ? "border-[#C5BAC4]/50 bg-[#57707A] shadow-lg shadow-black/20"
+                          ? "border-[#C5BAC4]/50 bg-[#57707A] shadow-lg shadow-black/20 ring-2 ring-[#C5BAC4]/40 ring-offset-1 ring-offset-[#191D23]"
                           : "border-[#57707A]/30 bg-[#2A2F38] hover:bg-[#57707A]/50 hover:border-[#57707A]/60"
                       )}
                     >
