@@ -684,85 +684,80 @@ function SettingsContent() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] p-0 overflow-hidden">
-          <DialogHeader className="p-6 pb-0 border-b border-transparent">
-            <DialogTitle className="text-xl font-display text-[#DEDCDC]">Connect Account</DialogTitle>
-            <DialogDescription className="text-[#989DAA] mt-1.5">
-              Choose how you want to securely log in to {activePlatform ? <span className="capitalize text-white font-bold">{activePlatform}</span> : 'this platform'}.
+        <DialogContent className="w-[95vw] max-w-lg bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] p-0 overflow-hidden rounded-2xl">
+          <DialogHeader className="p-5 pb-0">
+            <DialogTitle className="text-lg font-display text-[#DEDCDC]">
+              Connect {activePlatform ? <span className="capitalize text-[#C5BAC4]">{activePlatform}</span> : 'Account'}
+            </DialogTitle>
+            <DialogDescription className="text-[#989DAA] mt-1 text-sm">
+              Tap the button below to securely log in on this device.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-6 bg-[#191D23]/50">
+          <div className="p-5 bg-[#191D23]/50 space-y-4">
             {activeAuthUrl ? (
-              <div className="flex flex-col space-y-5">
-                {/* ✨ Strict Meta Connection Instructions */}
+              <>
+                {/* Meta-specific warning */}
                 {(activePlatform === 'instagram' || activePlatform === 'facebook') && (
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-left space-y-2.5 shadow-inner animate-in fade-in">
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2 animate-in fade-in">
                     <h4 className="text-sm font-bold text-amber-400 flex items-center gap-2">
                       <AlertCircle className="h-4 w-4" /> Required for Meta Login
                     </h4>
                     <ul className="text-xs text-amber-500/80 list-disc pl-4 space-y-1.5 leading-relaxed font-medium">
-                      <li>Your Instagram must be a <b className="text-amber-400">Professional or Business</b> account.</li>
-                      <li>It must be explicitly linked to a <b className="text-amber-400">Facebook Page</b>.</li>
-                      <li>During login, you <b className="text-amber-400">must check the boxes</b> granting access to BOTH your Facebook Page and the connected Instagram account.</li>
+                      <li>Instagram must be a <b className="text-amber-400">Business or Creator</b> account.</li>
+                      <li>It must be linked to a <b className="text-amber-400">Facebook Page</b>.</li>
+                      <li>During login, <b className="text-amber-400">check all permission boxes</b> for both Facebook Page and Instagram.</li>
                     </ul>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex flex-col items-center justify-center space-y-4 p-6 rounded-xl border border-[#57707A]/40 bg-[#2A2F38] shadow-md text-center hover:border-[#C5BAC4]/50 transition-colors group">
-                    <div className="h-14 w-14 bg-[#191D23] border border-[#57707A]/40 text-[#C5BAC4] rounded-full flex items-center justify-center shadow-inner group-hover:bg-[#C5BAC4]/10 transition-colors">
-                      <ExternalLink className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#DEDCDC]">
-                        This Device
-                      </h4>
-                      <p className="text-xs text-[#989DAA] mt-1 px-2 leading-relaxed">
-                        Continue the secure login process in a new tab.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={() => (window.location.href = activeAuthUrl)}
-                      className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold shadow-lg"
-                    >
-                      Log In Here
-                    </Button>
-                  </div>
+                {/* Primary CTA — works on every device */}
+                <Button
+                  onClick={() => window.open(activeAuthUrl, '_blank', 'noopener,noreferrer')}
+                  className="w-full h-12 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold text-base shadow-lg rounded-xl"
+                >
+                  <ExternalLink className="h-5 w-5 mr-2" />
+                  Log In on This Device
+                </Button>
 
-                  <div className="flex flex-col items-center justify-center space-y-4 p-6 rounded-xl border border-[#57707A]/40 bg-[#2A2F38] shadow-md text-center">
-                    <div className="p-2 bg-white rounded-xl shadow-sm border border-white/20">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=0&data=${encodeURIComponent(
-                          activeAuthUrl
-                        )}`}
-                        alt="QR Code"
-                        className="h-28 w-28 object-contain rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#DEDCDC] flex items-center justify-center gap-1.5">
-                        <Smartphone className="h-4 w-4 text-[#57707A]" /> Use Phone
-                      </h4>
-                      <p className="text-xs text-[#989DAA] mt-1 leading-relaxed">
-                        Scan QR code to securely log in on your mobile device.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setConnectModalOpen(false);
-                        handleManualSync();
-                      }}
-                      className="text-[10px] text-[#C5BAC4] font-bold bg-[#191D23] border border-[#57707A]/40 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] px-4 py-2 rounded-full w-full transition-colors uppercase tracking-wider"
-                    >
-                      I finished logging in ↻
-                    </button>
+                {/* Copy link for tablets */}
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(activeAuthUrl);
+                      alert("Link copied! Paste it in your browser to connect.");
+                    } catch {
+                      prompt("Copy this link:", activeAuthUrl);
+                    }
+                  }}
+                  className="w-full h-9 text-xs font-bold text-[#57707A] hover:text-[#C5BAC4] bg-[#191D23]/50 border border-[#57707A]/30 hover:border-[#C5BAC4]/40 rounded-xl transition-colors"
+                >
+                  Copy link to open on another device
+                </button>
+
+                {/* QR code — only useful on desktop */}
+                <div className="hidden sm:flex flex-col items-center gap-3 pt-2 border-t border-[#57707A]/20">
+                  <p className="text-[10px] font-bold text-[#57707A] uppercase tracking-widest">Or scan from your phone</p>
+                  <div className="p-2 bg-white rounded-xl shadow-sm">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=0&data=${encodeURIComponent(activeAuthUrl)}`}
+                      alt="QR Code"
+                      className="h-24 w-24 object-contain rounded-md"
+                    />
                   </div>
                 </div>
-              </div>
+
+                {/* Sync after connect */}
+                <button
+                  onClick={() => { setConnectModalOpen(false); handleManualSync(); }}
+                  className="w-full text-[11px] text-[#C5BAC4] font-bold bg-transparent border border-[#57707A]/30 hover:border-[#C5BAC4]/50 px-4 py-2.5 rounded-xl transition-colors"
+                >
+                  I finished logging in — sync accounts ↻
+                </button>
+              </>
             ) : (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-[#C5BAC4]" />
               </div>
             )}
           </div>

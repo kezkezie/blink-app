@@ -21,6 +21,7 @@ export default function ContentPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deletingSingleId, setDeletingSingleId] = useState<string | null>(null);
 
   async function fetchContent() {
     if (!clientId || !activeBrand) {
@@ -96,6 +97,22 @@ export default function ContentPage() {
     }
   };
 
+  const handleSingleDelete = async (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Delete this post?")) return;
+    setDeletingSingleId(id);
+    try {
+      await supabase.from("content").delete().eq("id", id);
+      setContent((prev) => prev.filter((c) => c.id !== id));
+      setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    } catch (err) {
+      console.error("Failed to delete", err);
+    } finally {
+      setDeletingSingleId(null);
+    }
+  };
+
   if (!activeBrand && !loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in zoom-in duration-500">
@@ -140,7 +157,7 @@ export default function ContentPage() {
       </div>
 
       {/* ── SELECTION CONTROL BAR ── */}
-      <div className="flex items-center justify-between bg-[#2A2F38] p-4 rounded-xl border border-[#57707A]/40 shadow-lg sticky top-20 z-20 backdrop-blur-md bg-opacity-95">
+      <div className="flex items-center justify-between bg-[#2A2F38] p-3 md:p-4 rounded-xl border border-[#57707A]/40 shadow-lg sticky top-16 md:top-20 z-20 backdrop-blur-md bg-opacity-95">
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
@@ -212,18 +229,36 @@ export default function ContentPage() {
                     : "hover:shadow-xl hover:shadow-black/20 hover:-translate-y-1"
                 )}
               >
-                {/* Custom Checkbox overlay */}
-                <div
-                  onClick={() => toggleSelect(item.id)}
+                {/* Checkbox — always visible on mobile, hover-only on desktop */}
+                <button
+                  aria-label={isSelected ? "Deselect" : "Select"}
+                  onClick={(e) => { e.preventDefault(); toggleSelect(item.id); }}
                   className={cn(
-                    "absolute top-4 left-4 z-10 h-7 w-7 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all backdrop-blur-md shadow-sm",
+                    "absolute top-3 left-3 z-10 h-7 w-7 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all backdrop-blur-md shadow-sm",
                     isSelected
-                      ? "bg-red-500/90 border-red-400 text-white"
-                      : "bg-[#191D23]/60 border-[#DEDCDC]/40 hover:bg-[#57707A]/80 hover:border-[#DEDCDC] opacity-0 group-hover:opacity-100 text-transparent hover:text-white/50"
+                      ? "bg-red-500/90 border-red-400 text-white opacity-100"
+                      : "bg-[#191D23]/70 border-[#DEDCDC]/50 text-white/60 opacity-100 md:opacity-0 md:group-hover:opacity-100"
                   )}
                 >
                   <CheckSquare className="h-4 w-4" />
-                </div>
+                </button>
+
+                {/* Per-card delete — always visible on mobile, hover-only on desktop */}
+                <button
+                  aria-label="Delete post"
+                  onClick={(e) => handleSingleDelete(e, item.id)}
+                  disabled={deletingSingleId === item.id}
+                  className={cn(
+                    "absolute top-3 right-3 z-10 h-7 w-7 rounded-lg border flex items-center justify-center cursor-pointer transition-all backdrop-blur-md shadow-sm",
+                    "bg-[#191D23]/70 border-red-500/30 text-red-400 hover:bg-red-500/80 hover:border-red-400 hover:text-white",
+                    "opacity-100 md:opacity-0 md:group-hover:opacity-100",
+                    deletingSingleId === item.id && "opacity-60 cursor-not-allowed"
+                  )}
+                >
+                  {deletingSingleId === item.id
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Trash2 className="h-3.5 w-3.5" />}
+                </button>
 
                 <ContentCard content={item} />
               </div>
