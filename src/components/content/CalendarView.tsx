@@ -23,7 +23,8 @@ import {
   MonitorPlay,
   Music,
   Instagram,
-  Youtube
+  Youtube,
+  Images,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlatformIcon } from "@/components/shared/PlatformIcon";
@@ -56,7 +57,7 @@ interface CalendarViewProps {
 // ✨ Omni-Publishing State Types
 interface PlatformSettings {
   enabled: boolean;
-  format: 'post' | 'story' | 'short' | 'reel' | 'feed' | 'standard';
+  format: 'post' | 'story' | 'short' | 'reel' | 'feed' | 'standard' | 'carousel';
 }
 
 type PublishSettings = {
@@ -353,15 +354,37 @@ export function CalendarView({
     setSavingPlatforms(true);
     const postToUpdate = content.find((c) => c.id === editingPostId);
     if (postToUpdate) {
-      // Save the complex object directly to Supabase
-      const updatedItem = { ...postToUpdate, target_platforms: JSON.stringify(publishSettings) } as any;
+      const serializedSettings = JSON.stringify(publishSettings);
+
+      // Approve the post automatically when platforms are confirmed and a schedule date exists.
+      // This replaces the old manual approval gate.
+      const hasSchedule = !!(postToUpdate as any).scheduled_at;
+      const needsApproval =
+        hasSchedule &&
+        (postToUpdate.status === "draft" || postToUpdate.status === "pending_approval");
+
+      const updatePayload: Record<string, unknown> = {
+        target_platforms: serializedSettings,
+      };
+
+      if (needsApproval) {
+        updatePayload.status = "approved";
+        updatePayload.approved_at = new Date().toISOString();
+        updatePayload.approved_by = "owner";
+      }
 
       await supabase
         .from("content")
-        .update({ target_platforms: publishSettings } as any)
-        .eq("id", editingPostId);
+        .update(updatePayload)
+        .eq("id", editingPostId!);
 
-      onUpdateContent(updatedItem); // This will trigger the parent CalendarPage to check the schedule
+      const updatedItem = {
+        ...postToUpdate,
+        target_platforms: serializedSettings,
+        ...updatePayload,
+      } as any;
+
+      onUpdateContent(updatedItem);
     }
     setPlatformModalOpen(false);
     setSavingPlatforms(false);
@@ -881,17 +904,18 @@ export function CalendarView({
                     </div>
 
                     {publishSettings.tiktok?.enabled && (
-                      <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex gap-4 pl-14 animate-in slide-in-from-top-2">
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.tiktok?.format === 'post'} onChange={() => setPlatformFormat('tiktok', 'post')} className="text-[#C5BAC4] bg-[#191D23] border-[#57707A]/50 focus:ring-[#C5BAC4]" />
-                          <Smartphone className={cn("w-4 h-4", publishSettings.tiktok?.format === 'post' ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
-                          <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === 'post' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Normal Post</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.tiktok?.format === 'story'} onChange={() => setPlatformFormat('tiktok', 'story')} className="text-[#C5BAC4] bg-[#191D23] border-[#57707A]/50 focus:ring-[#C5BAC4]" />
-                          <CirclePlay className={cn("w-4 h-4", publishSettings.tiktok?.format === 'story' ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
-                          <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === 'story' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Story</span>
-                        </label>
+                      <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex flex-wrap gap-3 pl-14 animate-in slide-in-from-top-2">
+                        {([
+                          { val: 'post',     label: 'Normal Post', Icon: Smartphone },
+                          { val: 'story',    label: 'Story',       Icon: CirclePlay },
+                          { val: 'carousel', label: 'Carousel',    Icon: LayoutGrid },
+                        ] as const).map(({ val, label, Icon }) => (
+                          <label key={val} className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.tiktok?.format === val} onChange={() => setPlatformFormat('tiktok', val)} className="text-[#C5BAC4] bg-[#191D23] border-[#57707A]/50 focus:ring-[#C5BAC4]" />
+                            <Icon className={cn("w-4 h-4", publishSettings.tiktok?.format === val ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === val ? "text-[#DEDCDC]" : "text-[#989DAA]")}>{label}</span>
+                          </label>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -914,17 +938,19 @@ export function CalendarView({
                     </div>
 
                     {publishSettings.instagram?.enabled && (
-                      <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed'} onChange={() => setPlatformFormat('instagram', editingPostIsVideo ? 'reel' : 'feed')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
-                          <Smartphone className={cn("w-4 h-4", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
-                          <span className={cn("text-xs font-bold", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Feed / Reel</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                          <input type="radio" checked={publishSettings.instagram?.format === 'story'} onChange={() => setPlatformFormat('instagram', 'story')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
-                          <CirclePlay className={cn("w-4 h-4", publishSettings.instagram?.format === 'story' ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
-                          <span className={cn("text-xs font-bold", publishSettings.instagram?.format === 'story' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Story</span>
-                        </label>
+                      <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex flex-wrap gap-3 pl-14 animate-in slide-in-from-top-2">
+                        {([
+                          { val: 'feed',     label: 'Normal Post', Icon: LayoutGrid  },
+                          { val: 'reel',     label: 'Reel',        Icon: Smartphone  },
+                          { val: 'story',    label: 'Story',       Icon: CirclePlay  },
+                          { val: 'carousel', label: 'Carousel',    Icon: Images      },
+                        ] as const).map(({ val, label, Icon }) => (
+                          <label key={val} className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.instagram?.format === val} onChange={() => setPlatformFormat('instagram', val)} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
+                            <Icon className={cn("w-4 h-4", publishSettings.instagram?.format === val ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", publishSettings.instagram?.format === val ? "text-[#DEDCDC]" : "text-[#989DAA]")}>{label}</span>
+                          </label>
+                        ))}
                       </div>
                     )}
                   </div>

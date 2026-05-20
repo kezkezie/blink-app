@@ -40,12 +40,14 @@ import { useClient } from "@/hooks/useClient";
 const PFM_SUPPORTED_PLATFORMS = [
   "instagram",
   "tiktok",
+  "tiktok_business",
   "facebook",
   "twitter",
   "linkedin",
   "youtube",
   "pinterest",
   "threads",
+  "bluesky",
 ];
 
 const platformConfig: Record<
@@ -63,7 +65,9 @@ const platformConfig: Record<
   linkedin: { label: "LinkedIn", emoji: "💼", color: "bg-blue-700" },
   youtube: { label: "YouTube", emoji: "▶️", color: "bg-red-600" },
   pinterest: { label: "Pinterest", emoji: "📌", color: "bg-red-700" },
-  threads: { label: "Threads", emoji: "🔗", color: "bg-gray-800" },
+  threads:        { label: "Threads",        emoji: "🔗", color: "bg-gray-800" },
+  bluesky:        { label: "Bluesky",         emoji: "🦋", color: "bg-sky-500" },
+  tiktok_business:{ label: "TikTok Business", emoji: "🎵", color: "bg-black border border-gray-700" },
 };
 
 const defaultAutoReplyConfig = {

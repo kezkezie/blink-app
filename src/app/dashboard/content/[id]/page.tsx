@@ -26,7 +26,13 @@ import {
   MonitorPlay,
   Music,
   Youtube,
-  Instagram
+  Instagram,
+  Facebook,
+  Twitter,
+  Linkedin,
+  Pin,
+  AtSign,
+  Cloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -138,9 +144,7 @@ export default function ContentDetailPage({
   const [hashtags, setHashtags] = useState("");
   const [callToAction, setCallToAction] = useState("");
 
-  const [rejectOpen, setRejectOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [scheduleDate, setScheduleDate] = useState("");
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -344,40 +348,6 @@ export default function ContentDetailPage({
     }
   }
 
-  async function handleSendForApproval() {
-    if (!content) return;
-
-    if (!isAnyPlatformSelected) {
-      alert("Please select at least one platform to publish to before sending for approval.");
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await autoSaveEdits();
-
-      await triggerWorkflow("blink-send-approval", {
-        client_id: clientId!,
-        post_id: content.id,
-        caption: caption,
-        image_url: parseArray(content.image_urls)[0] || null,
-        publish_settings: publishSettings // Pass to n8n
-      });
-
-      await supabase
-        .from("content")
-        .update({ status: "pending_approval" } as Record<string, unknown>)
-        .eq("id", content.id);
-
-      setContent((prev) =>
-        prev ? { ...prev, status: "pending_approval" as ContentStatus } : null
-      );
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setActionLoading(false);
-    }
-  }
 
   async function handleApproveAndPublishNow() {
     if (!content) return;
@@ -432,45 +402,6 @@ export default function ContentDetailPage({
     }
   }
 
-  async function handleApproveAndSchedule() {
-    if (!content || !scheduleDate) return;
-
-    if (!isAnyPlatformSelected) {
-      alert("Please select at least one platform to publish to before scheduling.");
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await autoSaveEdits();
-
-      const scheduledTime = new Date(scheduleDate).toISOString();
-      const { error } = await supabase
-        .from("content")
-        .update({
-          status: "approved",
-          approved_at: new Date().toISOString(),
-          approved_by: "admin",
-          scheduled_at: scheduledTime,
-        } as Record<string, unknown>)
-        .eq("id", content.id);
-      if (error) throw error;
-      setContent((prev) =>
-        prev
-          ? {
-            ...prev,
-            status: "approved" as ContentStatus,
-            scheduled_at: scheduledTime as string,
-          }
-          : null
-      );
-      setScheduleDate("");
-    } catch (err) {
-      alert("Failed to schedule post.");
-    } finally {
-      setActionLoading(false);
-    }
-  }
 
   async function handleCancelSchedule() {
     if (!content) return;
@@ -847,7 +778,99 @@ export default function ContentDetailPage({
                     </div>
                   )}
 
-                  {/* Add logic for Facebook, X, LinkedIn if they exist in connectedPlatforms similarly */}
+                  {/* Facebook */}
+                  {connectedPlatforms.includes('facebook') && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.facebook?.enabled ? "border-blue-500/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}>
+                      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20" onClick={() => togglePlatform('facebook', isVideo ? 'reel' : 'post')}>
+                        <div className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.facebook?.enabled ? "bg-blue-600" : "bg-[#57707A]")}><Facebook className="w-4 h-4" /></div>
+                          <p className={cn("text-sm font-bold", publishSettings.facebook?.enabled ? "text-white" : "text-[#989DAA]")}>Facebook</p>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.facebook?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] text-blue-500 focus:ring-blue-500 pointer-events-none" />
+                      </div>
+                      {publishSettings.facebook?.enabled && (
+                        <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
+                          {[{ val: 'post', label: 'Post', Icon: LayoutGrid }, { val: 'reel', label: 'Reel', Icon: Smartphone }, { val: 'story', label: 'Story', Icon: CirclePlay }].map(({ val, label, Icon }) => (
+                            <label key={val} className="flex items-center gap-2 cursor-pointer group">
+                              <input type="radio" checked={publishSettings.facebook?.format === val} onChange={() => setPlatformFormat('facebook', val as any)} className="text-blue-500 bg-[#191D23] border-[#57707A]/50 focus:ring-blue-500" />
+                              <Icon className={cn("w-4 h-4", publishSettings.facebook?.format === val ? "text-blue-400" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                              <span className={cn("text-xs font-bold", publishSettings.facebook?.format === val ? "text-[#DEDCDC]" : "text-[#989DAA]")}>{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Twitter / X */}
+                  {(connectedPlatforms.includes('twitter') || connectedPlatforms.includes('x')) && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.twitter?.enabled ? "border-[#57707A]/80 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}
+                      onClick={() => togglePlatform('twitter', 'post')}>
+                      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20">
+                        <div className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded-lg text-white shadow-inner border border-gray-700", publishSettings.twitter?.enabled ? "bg-gray-900" : "bg-[#57707A]")}><Twitter className="w-4 h-4" /></div>
+                          <p className={cn("text-sm font-bold", publishSettings.twitter?.enabled ? "text-white" : "text-[#989DAA]")}>X (Twitter)</p>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.twitter?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* LinkedIn */}
+                  {connectedPlatforms.includes('linkedin') && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.linkedin?.enabled ? "border-blue-700/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}
+                      onClick={() => togglePlatform('linkedin', 'post')}>
+                      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20">
+                        <div className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.linkedin?.enabled ? "bg-blue-700" : "bg-[#57707A]")}><Linkedin className="w-4 h-4" /></div>
+                          <p className={cn("text-sm font-bold", publishSettings.linkedin?.enabled ? "text-white" : "text-[#989DAA]")}>LinkedIn</p>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.linkedin?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pinterest */}
+                  {connectedPlatforms.includes('pinterest') && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.pinterest?.enabled ? "border-red-700/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}
+                      onClick={() => togglePlatform('pinterest', 'post')}>
+                      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20">
+                        <div className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.pinterest?.enabled ? "bg-red-700" : "bg-[#57707A]")}><Pin className="w-4 h-4" /></div>
+                          <p className={cn("text-sm font-bold", publishSettings.pinterest?.enabled ? "text-white" : "text-[#989DAA]")}>Pinterest</p>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.pinterest?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Threads */}
+                  {connectedPlatforms.includes('threads') && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.threads?.enabled ? "border-gray-600/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}
+                      onClick={() => togglePlatform('threads', 'post')}>
+                      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20">
+                        <div className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.threads?.enabled ? "bg-gray-800" : "bg-[#57707A]")}><AtSign className="w-4 h-4" /></div>
+                          <p className={cn("text-sm font-bold", publishSettings.threads?.enabled ? "text-white" : "text-[#989DAA]")}>Threads</p>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.threads?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bluesky */}
+                  {connectedPlatforms.includes('bluesky') && (
+                    <div className={cn("border rounded-xl transition-all overflow-hidden", publishSettings.bluesky?.enabled ? "border-sky-500/50 shadow-md bg-[#191D23]/80" : "border-[#57707A]/30 bg-[#191D23]/40")}
+                      onClick={() => togglePlatform('bluesky', 'post')}>
+                      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-[#57707A]/20">
+                        <div className="flex items-center gap-3">
+                          <div className={cn("p-2 rounded-lg text-white shadow-inner", publishSettings.bluesky?.enabled ? "bg-sky-500" : "bg-[#57707A]")}><Cloud className="w-4 h-4" /></div>
+                          <p className={cn("text-sm font-bold", publishSettings.bluesky?.enabled ? "text-white" : "text-[#989DAA]")}>Bluesky</p>
+                        </div>
+                        <input type="checkbox" checked={publishSettings.bluesky?.enabled || false} readOnly className="w-5 h-5 rounded border-[#57707A]/50 bg-[#191D23] pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
 
                 </div>
               )}
@@ -931,7 +954,8 @@ export default function ContentDetailPage({
             )}
 
             <div className="space-y-3">
-              {content.status === "draft" && (
+              {/* ── Asset editing tools (draft / pending) ── */}
+              {(content.status === "draft" || content.status === "pending_approval") && (
                 <>
                   {!isVideo && (
                     <div className="flex gap-2">
@@ -941,14 +965,9 @@ export default function ContentDetailPage({
                         variant="outline"
                         className="flex-1 justify-center gap-2 bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 hover:text-white rounded-xl h-11 font-bold shadow-sm transition-colors"
                       >
-                        {generatingImage ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-4 w-4 text-[#C5BAC4]" />
-                        )}{" "}
+                        {generatingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-[#C5BAC4]" />}{" "}
                         {displayImage ? "Regen Image" : "Generate Image"}
                       </Button>
-
                       {displayImage && (
                         <Button
                           onClick={() => router.push(`/dashboard/content/${content.id}/edit`)}
@@ -961,127 +980,64 @@ export default function ContentDetailPage({
                     </div>
                   )}
                   <Button
-                    onClick={handleSendForApproval}
-                    disabled={actionLoading || !displayImage}
+                    onClick={handleApproveAndPublishNow}
+                    disabled={actionLoading || !isAnyPlatformSelected}
                     className="w-full justify-start gap-2 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all"
                   >
-                    {actionLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}{" "}
-                    Send for Approval
+                    {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}{" "}
+                    Publish Now
                   </Button>
+                  <p className="text-[10px] text-[#57707A] font-medium text-center">
+                    To schedule, drag this post to a date on the <a href="/dashboard/calendar" className="text-[#C5BAC4] font-bold hover:text-white">Calendar</a>.
+                  </p>
                 </>
               )}
 
-              {(content.status === "pending_approval" ||
-                content.status === "approved") && (
-                  <div className="space-y-4 pt-1">
-                    {content.status === "pending_approval" && (
-                      <div className="p-3 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold mb-2 shadow-inner">
-                        <Sparkles className="w-3.5 h-3.5 inline mr-1.5" />
-                        Post looks good? Choose how to proceed:
-                      </div>
-                    )}
-                    {content.status === "approved" &&
-                      (content as any).scheduled_at ? (
-                      <div className="p-5 border border-[#B3FF00]/30 rounded-xl bg-[#B3FF00]/5 shadow-inner space-y-4 animate-in fade-in">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-[#B3FF00] font-bold font-display">
-                            <CheckCircle className="h-5 w-5" />
-                            Ghost Poster Active 👻
-                          </div>
-                        </div>
-                        <p className="text-xs text-[#989DAA] font-medium leading-relaxed bg-[#191D23] p-3 rounded-lg border border-[#57707A]/30">
-                          This post is queued. The AI will automatically publish
-                          it on <br />
-                          <b className="text-[#DEDCDC] text-sm mt-1 inline-block">
-                            {new Date(
-                              (content as any).scheduled_at
-                            ).toLocaleString()}
-                          </b>
-                        </p>
-                        <div className="flex flex-col gap-2.5 pt-2">
-                          <Button
-                            onClick={handleApproveAndPublishNow}
-                            disabled={actionLoading}
-                            className="w-full text-sm font-bold h-11 gap-1.5 bg-[#191D23] text-[#B3FF00] border border-[#B3FF00]/30 hover:bg-[#B3FF00]/20 hover:border-[#B3FF00]/50 rounded-xl transition-colors"
-                          >
-                            {actionLoading ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Zap className="h-4 w-4" />
-                            )}{" "}
-                            Publish Now Instead
-                          </Button>
-                          <Button
-                            onClick={handleCancelSchedule}
-                            disabled={actionLoading}
-                            variant="outline"
-                            className="w-full text-xs font-bold h-10 gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 bg-transparent rounded-xl transition-colors"
-                          >
-                            <XCircle className="h-4 w-4" /> Cancel Schedule
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <Button
-                          onClick={handleApproveAndPublishNow}
-                          disabled={actionLoading}
-                          className="w-full justify-start gap-2 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all"
-                        >
-                          {actionLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Zap className="h-4 w-4" />
-                          )}{" "}
-                          {content.status === "pending_approval"
-                            ? "Approve & Publish Now"
-                            : "Publish Now"}
-                        </Button>
-                        <div className="p-4 border border-[#57707A]/30 rounded-xl bg-[#191D23]/50 shadow-inner inset-0 space-y-3">
-                          <label className="text-[10px] font-bold text-[#DEDCDC] uppercase tracking-wider flex items-center gap-1.5">
-                            <CalendarIcon className="h-3.5 w-3.5 text-[#B3FF00]" />{" "}
-                            {content.status === "pending_approval"
-                              ? "Approve & Schedule"
-                              : "Schedule Post"}
-                          </label>
-                          <Input
-                            type="datetime-local"
-                            value={scheduleDate}
-                            onChange={(e) => setScheduleDate(e.target.value)}
-                            className="w-full text-sm bg-[#191D23] border-[#57707A]/50 text-[#DEDCDC] focus:ring-[#B3FF00] rounded-lg color-scheme-dark"
-                            min={new Date().toISOString().slice(0, 16)}
-                          />
-                          <Button
-                            onClick={handleApproveAndSchedule}
-                            disabled={actionLoading || !scheduleDate}
-                            className="w-full justify-center gap-2 bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23] font-bold h-11 rounded-lg shadow-md border-none transition-all"
-                          >
-                            {actionLoading ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <CheckCircle className="h-4 w-4" />
-                            )}{" "}
-                            Schedule for later
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                    {content.status === "pending_approval" && (
-                      <Button
-                        onClick={() => setRejectOpen(true)}
-                        disabled={actionLoading}
-                        variant="outline"
-                        className="w-full justify-start gap-2 border border-red-500/30 text-red-400 bg-transparent hover:bg-red-500/10 hover:text-red-300 hover:border-red-500/50 mt-3 font-bold h-11 rounded-xl transition-colors"
-                      >
-                        <XCircle className="h-4 w-4" /> Reject & Request Edit
-                      </Button>
-                    )}
+              {/* ── Scheduled post controls ── */}
+              {content.status === "approved" && (content as any).scheduled_at && (
+                <div className="p-5 border border-[#B3FF00]/30 rounded-xl bg-[#B3FF00]/5 shadow-inner space-y-4 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-[#B3FF00] font-bold font-display">
+                    <CheckCircle className="h-5 w-5" />
+                    Ghost Poster Active 👻
                   </div>
-                )}
+                  <p className="text-xs text-[#989DAA] font-medium leading-relaxed bg-[#191D23] p-3 rounded-lg border border-[#57707A]/30">
+                    Queued to publish on<br />
+                    <b className="text-[#DEDCDC] text-sm mt-1 inline-block">
+                      {new Date((content as any).scheduled_at).toLocaleString()}
+                    </b>
+                  </p>
+                  <div className="flex flex-col gap-2.5 pt-2">
+                    <Button
+                      onClick={handleApproveAndPublishNow}
+                      disabled={actionLoading}
+                      className="w-full text-sm font-bold h-11 gap-1.5 bg-[#191D23] text-[#B3FF00] border border-[#B3FF00]/30 hover:bg-[#B3FF00]/20 hover:border-[#B3FF00]/50 rounded-xl transition-colors"
+                    >
+                      {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}{" "}
+                      Publish Now Instead
+                    </Button>
+                    <Button
+                      onClick={handleCancelSchedule}
+                      disabled={actionLoading}
+                      variant="outline"
+                      className="w-full text-xs font-bold h-10 gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 bg-transparent rounded-xl transition-colors"
+                    >
+                      <XCircle className="h-4 w-4" /> Cancel Schedule
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Approved but not yet scheduled ── */}
+              {content.status === "approved" && !(content as any).scheduled_at && (
+                <Button
+                  onClick={handleApproveAndPublishNow}
+                  disabled={actionLoading}
+                  className="w-full justify-start gap-2 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all"
+                >
+                  {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}{" "}
+                  Publish Now
+                </Button>
+              )}
 
               {content.status === "rejected" && (
                 <Button

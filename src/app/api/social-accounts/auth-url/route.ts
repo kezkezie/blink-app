@@ -28,28 +28,31 @@ export async function POST(req: Request) {
       );
     }
 
-    // Construct platform-specific required data based on the API docs
-    let platformData = undefined;
+    // Platform-specific configuration required by PostForMe API
+    let platformData: Record<string, any> | undefined = undefined;
 
     if (platform === "instagram") {
+      // Instagram auto-posting MUST use Facebook Login (Business/Creator account required)
       platformData = {
-        instagram: {
-          connection_type: "facebook", // "facebook" is strictly required for auto-posting & analytics
-        },
+        instagram: { connection_type: "facebook" },
+      };
+    } else if (platform === "facebook") {
+      // Facebook Pages connection — requires page-level permissions
+      platformData = {
+        facebook: { connection_type: "page" },
       };
     } else if (platform === "linkedin") {
+      // LinkedIn organization posting (company pages)
       platformData = {
-        linkedin: {
-          connection_type: "organization", // Required when using standard app credentials
-        },
+        linkedin: { connection_type: "organization" },
       };
     }
 
     // Build the final request payload
     const requestBody: any = {
       platform: platform,
-      external_id: clientId, // This links the social account to the user in your database
-      permissions: ["posts", "feeds"], // Requesting feeds so you can pull analytics later
+      external_id: clientId,
+      permissions: ["posts", "feeds"],
     };
 
     // Attach platform_data if it exists
