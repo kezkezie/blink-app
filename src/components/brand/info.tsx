@@ -15,6 +15,9 @@ import {
     Plus,
     Trash2,
     Smile,
+    Sparkles,
+    AlertCircle,
+    CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,6 +93,98 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
     const [toneKeywords, setToneKeywords] = useState<string[]>([]);
     const [assetFiles, setAssetFiles] = useState<File[]>([]);
     const [assetPreviews, setAssetPreviews] = useState<string[]>([]);
+
+    // AI Autofill state
+    const [isAutofilling, setIsAutofilling] = useState(false);
+    const [autofillStatus, setAutofillStatus] = useState<
+        | { type: "success"; filled: string[] }
+        | { type: "error"; message: string }
+        | null
+    >(null);
+
+    const canAutofill = websiteUrl.trim().length > 0 || socialUrls.trim().length > 0;
+
+    async function handleAutofill() {
+        if (!canAutofill || isAutofilling) return;
+        setIsAutofilling(true);
+        setAutofillStatus(null);
+
+        try {
+            const res = await fetch("/api/brand/autofill", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    website_url: websiteUrl.trim(),
+                    social_urls: socialUrls.trim(),
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                setAutofillStatus({ type: "error", message: data.error ?? "Autofill failed." });
+                return;
+            }
+
+            // Safe merge — only populate fields the user hasn't already typed into
+            const filled: string[] = [];
+
+            if (data.brandName && !brandName.trim()) {
+                setBrandName(data.brandName);
+                filled.push("Brand Name");
+            }
+            if (data.companyName && !companyName.trim()) {
+                setCompanyName(data.companyName);
+                filled.push("Company Name");
+            }
+            if (data.description && !description.trim()) {
+                setDescription(data.description);
+                filled.push("Description");
+            }
+            if (data.industry && !industry.trim()) {
+                setIndustry(data.industry);
+                filled.push("Industry");
+            }
+            if (data.brandVoice && !brandVoice.trim()) {
+                setBrandVoice(data.brandVoice);
+                filled.push("Brand Voice");
+            }
+            if (Array.isArray(data.toneKeywords) && data.toneKeywords.length > 0 && toneKeywords.length === 0) {
+                const cleaned = (data.toneKeywords as string[]).map((k) => k.toLowerCase().trim()).filter(Boolean);
+                setToneKeywords(cleaned);
+                filled.push("Tone Keywords");
+            }
+            // Colors — only set if still at default values (user hasn't customised)
+            if (data.primaryColor && primaryColor === "#2563EB") {
+                setPrimaryColor(data.primaryColor);
+                filled.push("Primary Color");
+            }
+            if (data.secondaryColor && secondaryColor === "#585954") {
+                setSecondaryColor(data.secondaryColor);
+                filled.push("Secondary Color");
+            }
+            if (data.accentColor && accentColor === "#10B981") {
+                setAccentColor(data.accentColor);
+                filled.push("Accent Color");
+            }
+            // Font — only set if nothing selected yet
+            if (data.primaryFont && !primaryFont) {
+                // Map to our POPULAR_FONTS list if it matches, otherwise keep the extracted name
+                const normalized = data.primaryFont.trim();
+                setPrimaryFont(normalized);
+                filled.push("Primary Font");
+            }
+
+            setAutofillStatus({
+                type: "success",
+                filled: filled.length > 0 ? filled : ["(all fields already filled)"],
+            });
+        } catch {
+            setAutofillStatus({ type: "error", message: "Network error. Please try again." });
+        } finally {
+            setIsAutofilling(false);
+        }
+    }
 
     useEffect(() => {
         if (isOpen) {
@@ -239,8 +334,83 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
                                 <h3 className="font-bold">Business Details</h3>
                             </div>
 
-                            {/* ✨ MATCHED EXACTLY TO THE BRAND SETTINGS PAGE */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                {/* ── URL fields first so Autofill is the very first action ── */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2">Website URL</label>
+                                    <Input
+                                        value={websiteUrl}
+                                        onChange={(e) => { setWebsiteUrl(e.target.value); setAutofillStatus(null); }}
+                                        placeholder="https://yourbrand.com"
+                                        className="bg-[#191D23] border-[#57707A]/40"
+                                        disabled={isAutofilling}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2">Social Media URLs</label>
+                                    <Textarea
+                                        value={socialUrls}
+                                        onChange={(e) => { setSocialUrls(e.target.value); setAutofillStatus(null); }}
+                                        rows={1}
+                                        placeholder="One per line: instagram.com/… twitter.com/…"
+                                        className="bg-[#191D23] border-[#57707A]/40 resize-none"
+                                        disabled={isAutofilling}
+                                    />
+                                </div>
+
+                                {/* ── AI Autofill Button ─────────────────────────────────────────── */}
+                                <div className="md:col-span-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleAutofill}
+                                        disabled={!canAutofill || isAutofilling}
+                                        className={cn(
+                                            "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 border",
+                                            canAutofill && !isAutofilling
+                                                ? "bg-[#C5BAC4]/10 border-[#C5BAC4]/50 text-[#C5BAC4] hover:bg-[#C5BAC4]/20 hover:border-[#C5BAC4] shadow-[0_0_12px_rgba(197,186,196,0.15)] hover:shadow-[0_0_20px_rgba(197,186,196,0.25)]"
+                                                : "bg-[#191D23] border-[#57707A]/20 text-[#57707A]/50 cursor-not-allowed"
+                                        )}
+                                    >
+                                        {isAutofilling ? (
+                                            <>
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                Analysing your brand presence...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className={cn("h-3.5 w-3.5", canAutofill && "animate-pulse")} />
+                                                ✨ Autofill via AI
+                                                {!canAutofill && <span className="ml-1 opacity-60">— add a URL above first</span>}
+                                            </>
+                                        )}
+                                    </button>
+
+                                    {/* Status feedback */}
+                                    {autofillStatus?.type === "success" && (
+                                        <div className="mt-2 flex items-start gap-2 text-[10px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-3 py-2">
+                                            <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                            <span>
+                                                Filled: <strong>{autofillStatus.filled.join(", ")}</strong>. Already-filled fields were preserved.
+                                            </span>
+                                        </div>
+                                    )}
+                                    {autofillStatus?.type === "error" && (
+                                        <div className="mt-2 flex items-start gap-2 text-[10px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
+                                            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                            <span>{autofillStatus.message}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* ── Divider between autofill zone and manual fields ── */}
+                                <div className="md:col-span-2 flex items-center gap-3 py-1">
+                                    <div className="flex-1 h-px bg-[#57707A]/20" />
+                                    <span className="text-[9px] font-bold text-[#57707A]/60 uppercase tracking-widest">Brand Details</span>
+                                    <div className="flex-1 h-px bg-[#57707A]/20" />
+                                </div>
+
+                                {/* ── Remaining form fields ── */}
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-bold text-[#C5BAC4] uppercase mb-2">Brand Name *</label>
                                     <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="e.g. Acme Corp" className="bg-[#191D23] border-[#57707A]/40" />
@@ -260,14 +430,6 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-bold text-[#DEDCDC] uppercase mb-2">What does this brand do? *</label>
                                     <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Describe the products or services offered..." className="bg-[#191D23] border-[#57707A]/40 resize-none" />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2">Website URL (Optional)</label>
-                                    <Input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="https://..." className="bg-[#191D23] border-[#57707A]/40" />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2">Social Media URLs</label>
-                                    <Textarea value={socialUrls} onChange={(e) => setSocialUrls(e.target.value)} rows={1} placeholder="One per line..." className="bg-[#191D23] border-[#57707A]/40 resize-none" />
                                 </div>
                             </div>
 

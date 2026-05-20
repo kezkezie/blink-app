@@ -23,6 +23,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SettingsShimmer } from "@/components/shared/PageShimmer";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -339,12 +340,7 @@ function SettingsContent() {
     }
   }
 
-  if (!isMounted || loading)
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
-      </div>
-    );
+  if (!isMounted || loading) return <SettingsShimmer />;
 
   return (
     <div className="space-y-6 max-w-3xl pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">

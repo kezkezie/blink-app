@@ -63,6 +63,7 @@ export default function YourContentPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingText, setLoadingText] = useState("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("caption");
+  const [duration, setDuration] = useState("10");
 
   // MOTION BRUSH STATES (V2)
   const [toolMode, setToolMode] = useState<ToolMode>("brush");
@@ -368,7 +369,7 @@ export default function YourContentPage() {
           brand_id: activeBrand.id, // ✨ Tell n8n which workspace
           primary_image_url: imagePublicUrl,
           user_prompt: mediaContext,
-          duration: "10",
+          duration: duration,
           video_mode: "audio_to_video",
           ai_model_override: audioModel,
           scene_data: {
@@ -468,7 +469,7 @@ export default function YourContentPage() {
           motion_mask_url: maskUrl,
           motion_direction: direction,
           user_prompt: mediaContext || "Cinematic animated motion.",
-          duration: "5",
+          duration: duration,
           video_mode: "motion_brush",
           ai_model_override: "kling-3.0/video"
         })
@@ -525,7 +526,7 @@ export default function YourContentPage() {
           primary_image_url: imgUrl,
           reference_video_url: vidUrl,
           user_prompt: mediaContext || "Make the character follow the exact movements of the reference video.",
-          duration: "10",
+          duration: duration,
           video_mode: "motion_transfer",
           ai_model_override: "kling-3.0/video"
         })
@@ -840,6 +841,29 @@ export default function YourContentPage() {
                           className="data-[state=checked]:bg-[#00E5FF] data-[state=unchecked]:bg-[#57707A]"
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">
+                      5. Duration
+                    </label>
+                    <div className="flex gap-1.5">
+                      {["5", "8", "10", "15"].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setDuration(s)}
+                          className={cn(
+                            "flex-1 py-2 text-xs font-bold rounded-xl border transition-colors",
+                            duration === s
+                              ? "bg-[#00E5FF]/10 border-[#00E5FF]/50 text-[#00E5FF]"
+                              : "bg-[#191D23] border-[#57707A]/40 text-[#57707A] hover:text-[#DEDCDC] hover:border-[#57707A]"
+                          )}
+                        >
+                          {s}s
+                        </button>
+                      ))}
                     </div>
                   </div>
 

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { ContentCard } from "@/components/content/ContentCard";
 import { Loader2, Trash2, CheckSquare, Film, Clapperboard, Briefcase } from "lucide-react";
+import { ContentGridShimmer } from "@/components/shared/PageShimmer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Content } from "@/types/database";
@@ -178,9 +179,7 @@ export default function ContentPage() {
 
       {/* ── CONTENT GRID ── */}
       {loading ? (
-        <div className="flex justify-center py-32">
-          <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
-        </div>
+        <ContentGridShimmer />
       ) : content.length === 0 ? (
         <div className="text-center py-32 bg-[#2A2F38] border border-[#57707A]/30 rounded-2xl shadow-inner flex flex-col items-center justify-center">
           <div className="h-16 w-16 bg-[#191D23] rounded-full flex items-center justify-center mb-4 border border-[#57707A]/30">

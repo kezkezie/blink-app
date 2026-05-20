@@ -10,6 +10,7 @@ import {
   Loader2, Save, CheckCircle, Plus, X, Trash2, AlertCircle,
   Wand2, Sparkles, Palette, Briefcase, Megaphone,
 } from "lucide-react";
+import { BrandShimmer } from "@/components/shared/PageShimmer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -270,7 +271,7 @@ export default function BrandIdentityPage() {
   function removeAsset(url: string) { setBrandProfile(p => ({ ...p, uploaded_assets: p.uploaded_assets.filter(u => u !== url) })); }
   function removeLogo() { setBrandProfile(p => ({ ...p, logo_url: null })); }
 
-  if (!isMounted || loading) return <div className="flex items-center justify-center py-32"><Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" /></div>;
+  if (!isMounted || loading) return <BrandShimmer />;
 
   if (!activeBrand) {
     return (

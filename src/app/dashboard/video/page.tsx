@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import {
   Film,
   Sparkles,
-  ArrowRight,
   Loader2,
   PlaySquare,
   UserCircle,
@@ -209,23 +208,52 @@ export default function VideoStudioPage() {
     };
   }, [generatingPostId]);
 
-  function handleFileSelect(
+  async function handleFileSelect(
     e: React.ChangeEvent<HTMLInputElement>,
     type: "primary" | "secondary"
   ) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // 1. Show instant local preview while Cloudinary upload runs in background
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (evt) => {
       if (type === "primary") {
-        setPrimaryFile(file);
-        setPrimaryPreview(e.target?.result as string);
+        setPrimaryFile(file); // kept as fallback if Cloudinary fails
+        setPrimaryPreview(evt.target?.result as string);
       } else {
         setSecondaryFile(file);
-        setSecondaryPreview(e.target?.result as string);
+        setSecondaryPreview(evt.target?.result as string);
       }
     };
     reader.readAsDataURL(file);
+
+    // 2. Upload directly to Cloudinary analyze_image folder (publicly accessible by GPT-4o)
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "blinkspot_casts");
+      formData.append("folder", "blinkspot/analyze_image");
+
+      const res = await fetch("https://api.cloudinary.com/v1_1/dap8jijxa/image/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "Cloudinary upload failed");
+
+      // 3. Replace temp data URL with permanent Cloudinary URL; clear File object
+      if (type === "primary") {
+        setPrimaryFile(null);
+        setPrimaryPreview(data.secure_url);
+      } else {
+        setSecondaryFile(null);
+        setSecondaryPreview(data.secure_url);
+      }
+    } catch (err) {
+      // Cloudinary upload failed — primaryFile still set so handleGenerate falls back to Supabase Storage
+      console.error("Reference image Cloudinary upload failed, falling back to Supabase Storage:", err);
+    }
   }
 
   async function handleAISuggest() {
@@ -627,9 +655,11 @@ export default function VideoStudioPage() {
                       onClick={() => {
                         setSelectedMode(mode.id);
                         setPrimaryFile(null);
+                        setPrimaryPreview(null);
                         setPrompt("");
                         setBRollScenes([]);
                         setAspectRatio(mode.id === "ugc" ? "9:16" : "16:9");
+                        setStep(2);
                       }}
                       className={cn(
                         "relative p-5 rounded-xl border cursor-pointer transition-all duration-200 hover:-translate-y-0.5",
@@ -660,14 +690,6 @@ export default function VideoStudioPage() {
                     </div>
                   );
                 })}
-              </div>
-              <div className="flex justify-end pt-4">
-                <button
-                  onClick={() => setStep(2)}
-                  className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[#C5BAC4] text-[#191D23] text-sm font-bold hover:bg-white transition-colors shadow-lg"
-                >
-                  Next Step <ArrowRight className="h-4 w-4" />
-                </button>
               </div>
             </div>
           )}

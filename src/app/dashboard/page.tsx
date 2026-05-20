@@ -11,8 +11,9 @@ import {
   ArrowRight,
   ImageIcon,
   Loader2,
-  Video, // ✨ NEW: Added Video icon for fallback
+  Video,
 } from "lucide-react";
+import { DashboardShimmer } from "@/components/shared/PageShimmer";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PlatformIcon } from "@/components/shared/PlatformIcon";
@@ -127,11 +128,7 @@ export default function DashboardPage() {
   }, [clientId]);
 
   if (loading || clientLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-[#C5BAC4]" />
-      </div>
-    );
+    return <DashboardShimmer />;
   }
 
   return (

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { Loader2, CheckCircle, AlertCircle, X, Briefcase } from "lucide-react";
+import { CalendarShimmer } from "@/components/shared/PageShimmer";
 import { CalendarView } from "@/components/content/CalendarView";
 import type { Content } from "@/types/database";
 import { cn } from "@/lib/utils";
@@ -236,11 +237,7 @@ export default function CalendarPage() {
   };
 
   if (!isMounted || loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4]" />
-      </div>
-    );
+    return <CalendarShimmer />;
   }
 
   // ✨ NO BRAND EMPTY STATE

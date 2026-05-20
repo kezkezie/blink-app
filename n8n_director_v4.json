@@ -1,0 +1,209 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-director-prompts",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ac0165c5-8d99-4885-8edf-2c33a404b3b8",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [1056, 2080],
+      "webhookId": "5d4b490c-8674-4d20-bec8-b123adfaf8bb"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hzkufspjozkgmloznkvp.supabase.co/rest/v1/rpc/deduct_credits",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "p_client_id", "value": "={{ String($('Webhook').first().json.body.client_id || $('Webhook').first().json.body.clientId || '00000000-0000-0000-0000-000000000000') }}" },
+            { "name": "p_amount", "value": "2" },
+            { "name": "p_operation", "value": "ai_director" },
+            { "name": "p_description", "value": "AI Director Script Generation" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5f02486a-e239-445f-94e3-f153a3694600",
+      "name": "Supabase: Deduct Credits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1296, 2080]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ String($json.success) }}",
+              "rightValue": "true",
+              "operator": { "type": "string", "operation": "equals", "name": "filter.operator.equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "36706375-183c-45fd-ae3e-426e60929520",
+      "name": "Has Enough Credits?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1536, 2080]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": false,\n  \"error\": \"Insufficient credits. Please upgrade your plan or purchase more credits.\"\n}",
+        "options": { "responseCode": 402 }
+      },
+      "id": "3346752a-486f-42d7-a659-54991bf980bd",
+      "name": "402 Payment Required",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1536, 2288]
+    },
+    {
+      "parameters": {},
+      "id": "60f1f106-5976-4044-8d04-047c76e3ef50",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [1056, 1744]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hzkufspjozkgmloznkvp.supabase.co/rest/v1/rpc/refund_credits",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "p_client_id", "value": "={{ $('Extract Error Context').first().json.clientId }}" },
+            { "name": "p_amount", "value": "2" },
+            { "name": "p_operation", "value": "refund" },
+            { "name": "p_description", "value": "Refund for failed AI Director Generation" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a9d9deb7-f0cf-403a-a5cb-e5c0ad9ed097",
+      "name": "Supabase: Refund Credits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1296, 1744]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "chatModel": "gpt-4o",
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are an elite commercial AI Video Director and Scriptwriter. Output a JSON object containing a 'scenes' array.\n\n=== 1. AI MODEL CAPABILITIES & IMAGE RULES ===\nIntelligently select the best 'aiModel' for EACH scene, and set 'useEndFrame' correctly:\n\n**bytedance/seedance-2** or **bytedance/seedance-2-fast**:\n- BEST FOR: Highly dynamic cinematic sequences, complex physics, intricate camera movements, multi-angle reference consistency, action sequences requiring realistic forces.\n- IMAGE RULE: Seedance uses sequential reference images, NOT an end frame.\n- ACTION: Set 'useEndFrame' to FALSE.\n\n**kling-3.0/video**:\n- BEST FOR: Native audio dialogue/lip-sync, multi-shot narratives, text rendering, logo reveals, start-to-end frame transitions, 15s narrative arcs.\n- IMAGE RULE: Highly capable of morphing a Start Frame into an End Frame.\n- ACTION: If the scene requires a clear visual transition (morphs into a logo, day→night, before/after reveal), set 'useEndFrame' to TRUE. Otherwise FALSE.\n\n**replicate:openai/sora-2**:\n- BEST FOR: Physical conviction, naturalistic human emotion, subtle character performance, text-only prompted scenes.\n- IMAGE RULE: Set 'useEndFrame' based on whether a visual transition is needed.\n\n**replicate:prunaai/p-video**:\n- BEST FOR: Fast UGC, short 5-10s social media bursts, talking head content, quick product demos.\n- IMAGE RULE: Start Frame ONLY.\n- ACTION: Set 'useEndFrame' to FALSE.\n\n=== 2. DIRECTING RULES ===\n1. CONSISTENCY MODE: If 'consistent' mode, pick ONE best model for the entire project. If 'dynamic', pick the best model per scene independently.\n2. DURATION: Choose 5, 10, or 15 seconds. Match complexity — 5s for single moments, 10s for action sequences, 15s for full narrative arcs.\n\n=== 3. MODEL-SPECIFIC VIDEO_PROMPT WRITING RULES ===\nThe 'video_prompt' MUST follow the EXACT writing conventions of the chosen model. Do not mix styles.\n\n--- KLING 3.0 WRITING CONVENTIONS ---\nKling 3.0 understands multi-shot notation, character dialogue, text preservation, and frame transitions.\n\n• SINGLE-SHOT (duration ≤ 8s): Describe subject + specific camera move + lighting mood + character action detail.\n  Example: \"Tracking medium shot. Woman in a white lab coat turns to face camera, holds a perfume bottle toward the light. Camera slowly dollies in. The bottle label remains sharp throughout. Warm golden-hour lighting, soft shadows.\"\n\n• MULTI-SHOT (duration ≥ 10s): Use explicit shot notation — Kling automatically cuts between them:\n  \"Shot 1, [camera size/angle] [subject action]. Shot 2, [new angle] [action continues]. Shot 3, [close-up/wide] [conclusion].\"\n  Example: \"Shot 1, wide establishing shot, a couple at a candlelit restaurant. Shot 2, medium shot of the woman smiling and raising her glass. Shot 3, close-up of the man leaning forward, expression warm and intent.\"\n\n• DIALOGUE/LIPSYNC: Format character speech with name, tone, and language tag:\n  \"Character (tone, language/accent): 'Exact dialogue here.'\"\n  Example: \"Woman (warm, surprised tone, English): 'I never expected this.' Man (low, calm tone, English): 'I've been planning it for weeks.'\"\n\n• TRANSITIONS (useEndFrame=true): Describe start state and what it transforms INTO:\n  \"A product bottle on marble. Camera orbits slowly. Background gradually dissolves from grey studio to sunlit Parisian window. End frame: product centered against warm Parisian light.\"\n\n• TEXT/LOGO: Explicitly state text must stay legible throughout.\n• Always specify: camera size (close-up/medium/wide), camera move (track/dolly/arc/crane), lighting mood.\n\n--- SEEDANCE 2 WRITING CONVENTIONS ---\nSeedance 2 excels with physics-aware language, professional cinematography terms, and structured cut notation.\n\n• SINGLE-SHOT (duration ≤ 8s): [Subject + scene atmosphere] + [action with physics detail] + [camera: TYPE + SPEED + TRAJECTORY] + [style/lighting/color grading]\n  Example: \"A glass perfume bottle on a reflective obsidian surface, studio key light casting a clean directional shadow. Camera executes a smooth 180-degree arc at eye level, completing the movement over 7 seconds. Minimalist white background, cinematic shallow depth of field, color grade: warm amber with deep blacks.\"\n\n• MULTI-SHOT (duration ≥ 10s): Use cut markers:\n  \"Shot 1: [subject + action + camera]. Cut to: Shot 2: [new angle + camera]. Cut to: Shot 3: [climax + camera].\"\n  Example: \"Shot 1: High-angle wide shot of a runner at the starting blocks, tension in their posture, camera locked off. Cut to: Low-angle tracking shot as the runner launches forward, camera tracking alongside at speed. Cut to: Extreme close-up of the runner's face, jaw set, eyes fierce, shallow depth of field.\"\n\n• PHYSICS LANGUAGE: Invoke real-world forces — do NOT write vague descriptions.\n  ✗ \"Fabric moves in wind\" → ✓ \"Silk fabric billows and ripples as wind catches the light material, floating before settling, heavier edges pulling downward under gravity.\"\n  ✗ \"Car turns sharply\" → ✓ \"Tires smoke as the car drifts 90 degrees, rear end sliding while front wheels maintain grip, weight shifting visibly to the outside.\"\n\n• CAMERA SPECIFICITY: Always state movement TYPE + SPEED + TRAJECTORY. Never write 'camera moves' or 'zooms in slightly.'\n  Use: \"slow dolly in over 6 seconds\" / \"smooth steadicam glide forward\" / \"handheld tracking with slight vertical bounce\" / \"360-degree orbit at medium distance\" / \"rack focus from foreground to background\"\n\n• END EVERY PROMPT WITH: style descriptors — \"cinematic high contrast, color grade: teal-and-orange, film grain, shallow depth of field.\"\n\n--- PRUNA P-VIDEO WRITING CONVENTIONS ---\nP-Video is optimized for short, fast, social-first content. Performs best with concise prompts under 40 words.\n\n• FORMAT: [Subject] [immediate action] [setting/energy/mood]\n• Use active present-tense language. NO complex camera directions. NO multi-shot notation. Describe WHAT IS HAPPENING.\n• Emphasize energy: \"bursts forward\", \"reacts expressively\", \"looks directly at camera\", \"grabs product excitedly\"\n  Example: \"Young woman in streetwear looks directly at camera, excitedly holds up a skincare product, natural daylight apartment, high-energy TikTok UGC feel.\"\n  Example: \"Man in gym clothes does rapid bicep curls, intense eye contact with camera, bright gym background, fast-cut social energy.\"\n\n--- SORA 2 WRITING CONVENTIONS ---\nSora 2 prioritizes physical conviction, emotional authenticity, and naturalistic performance.\n\n• Lead with atmosphere and environment, then action, then subtle emotional undercurrent.\n• Describe sensory details that imply physical reality: sound, texture, weight, light quality.\n• No multi-shot notation needed — Sora handles long continuous takes naturally.\n• Let emotion emerge from physical behavior, not direct statements.\n  Example: \"Morning mist clings to cobblestones in an empty alley at dawn. A woman in a dark coat walks slowly, hands buried in pockets, footsteps echoing against damp stone. She stops at a rain-streaked window, studies her reflection for a beat, then looks up with a quiet, unreadable expression. Natural grey overcast light, shallow depth of field, desaturated film tone.\"\n\n=== 4. JSON SCHEMA ===\nFor EACH scene in the array, output EXACTLY these fields:\n- 'image_prompt': Purely visual start-frame description. Begin with visual style. NO text, NO speech, NO quotes. Describe composition, lighting, subject appearance, color palette.\n- 'video_prompt': Written strictly using the model-specific conventions above for the chosen 'aiModel'.\n- 'aiModel': The exact model string.\n- 'duration': (number) — 5, 10, or 15.\n- 'useEndFrame': (boolean)."
+            },
+            {
+              "content": "====Master Concept: \"{{ $('Webhook').first().json.body.prompt }}\"\nVisual Style Required: {{ $('Webhook').first().json.body.style || 'none' }}\nConsistency Mode Requested: {{ $('Webhook').first().json.body.consistencyMode || 'dynamic' }}"
+            }
+          ]
+        },
+        "options": { "temperature": 0.7 },
+        "requestOptions": {}
+      },
+      "id": "8978b933-f13b-49e8-b676-480ab5de94c6",
+      "name": "GPT-4o Director",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.1,
+      "position": [1808, 2080],
+      "credentials": {
+        "openAiApi": {
+          "id": "d9RHYDdBoXBkdrB0",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let content = '';\nconst inputData = $input.first().json;\n\nif (inputData.message && inputData.message.content) { \n    content = inputData.message.content; \n} else if (inputData.content) { \n    content = inputData.content; \n} else if (inputData.choices && inputData.choices[0] && inputData.choices[0].message) { \n    content = inputData.choices[0].message.content; \n}\n\nlet cleanText = content.trim();\nconst bt = String.fromCharCode(96, 96, 96);\n\nif (cleanText.startsWith(bt)) {\n    let lines = cleanText.split('\\n');\n    lines.shift(); \n    if (lines[lines.length - 1].startsWith(bt)) {\n        lines.pop(); \n    }\n    cleanText = lines.join('\\n').trim();\n}\n\nlet result = { scenes: [] };\n\ntry {\n    let parsed = JSON.parse(cleanText);\n    if (Array.isArray(parsed)) {\n        result.scenes = parsed;\n    } else if (parsed.scenes) {\n        result.scenes = parsed.scenes;\n    } else {\n        result.scenes = [parsed];\n    }\n} catch (e) {\n    result.scenes = [ { image_prompt: cleanText, video_prompt: cleanText, aiModel: 'auto', duration: 5, useEndFrame: false } ];\n}\n\nreturn { \n    json: { \n        scenes: result.scenes \n    } \n};"
+      },
+      "id": "264fb571-4cc0-4e17-bf31-fc154b0b2ed6",
+      "name": "Parse Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2048, 2080]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ scenes: $json.scenes }) }}",
+        "options": {}
+      },
+      "id": "c0850dc3-c409-46c1-82cf-a65edcd2875d",
+      "name": "Respond to Frontend",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2288, 2080]
+    },
+    {
+      "parameters": {
+        "jsCode": "const errorData = $json;\n\nlet clientId = '00000000-0000-0000-0000-000000000000';\nlet postId   = null;\nlet amount   = 0;\nlet errorMsg = 'Unknown error';\n\ntry {\n  const runData =\n    errorData?.data?.resultData?.runData ||\n    errorData?.execution?.data?.resultData?.runData ||\n    {};\n\n  const parseNames = ['Parse Inputs & Calculate Cost', 'Parse Input', 'Parse Inputs'];\n  for (const name of parseNames) {\n    const nodeRuns = runData[name];\n    if (nodeRuns?.[0]?.data?.main?.[0]?.[0]?.json) {\n      const d = nodeRuns[0].data.main[0][0].json;\n      clientId = String(d.clientId || d.client_id || clientId);\n      postId   = d.postId   || d.post_id   || postId;\n      amount   = Number(d.totalCost || d.cost || d.amount || amount);\n      break;\n    }\n  }\n\n  if (clientId === '00000000-0000-0000-0000-000000000000') {\n    const webhookNames = Object.keys(runData).filter(n => n.toLowerCase().includes('webhook'));\n    for (const name of webhookNames) {\n      const nodeRuns = runData[name];\n      if (nodeRuns?.[0]?.data?.main?.[0]?.[0]?.json) {\n        const body = nodeRuns[0].data.main[0][0].json?.body || nodeRuns[0].data.main[0][0].json;\n        clientId = String(body.client_id || body.clientId || clientId);\n        postId   = postId || body.post_id || body.postId || null;\n        break;\n      }\n    }\n  }\n\n  errorMsg = errorData?.error?.message ||\n             errorData?.execution?.error?.message ||\n             errorData?.lastNodeExecuted || 'Unknown';\n} catch(e) { }\n\nreturn [{ json: {\n  clientId,\n  postId,\n  amount,\n  canRefund: clientId !== '00000000-0000-0000-0000-000000000000',\n  canMarkFailed: !!postId,\n  errorNode:    errorData?.lastNodeExecuted || errorData?.execution?.lastNodeExecuted || 'unknown',\n  errorMessage: errorMsg\n} }];"
+      },
+      "id": "e0cafaea-57d3-47f4-a907-1bffd51f0c46",
+      "name": "Extract Error Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1264, 1744]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Supabase: Deduct Credits", "type": "main", "index": 0 }]]
+    },
+    "Supabase: Deduct Credits": {
+      "main": [[{ "node": "Has Enough Credits?", "type": "main", "index": 0 }]]
+    },
+    "Has Enough Credits?": {
+      "main": [
+        [{ "node": "GPT-4o Director", "type": "main", "index": 0 }],
+        [{ "node": "402 Payment Required", "type": "main", "index": 0 }]
+      ]
+    },
+    "Error Trigger": {
+      "main": [[{ "node": "Extract Error Context", "type": "main", "index": 0 }]]
+    },
+    "GPT-4o Director": {
+      "main": [[{ "node": "Parse Output", "type": "main", "index": 0 }]]
+    },
+    "Parse Output": {
+      "main": [[{ "node": "Respond to Frontend", "type": "main", "index": 0 }]]
+    },
+    "Extract Error Context": {
+      "main": [[{ "node": "Supabase: Refund Credits", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "85ece96dcbe4edabefbeb3f4432571aae6240936bc8d8ab1ead3acd46c6718aa"
+  }
+}
