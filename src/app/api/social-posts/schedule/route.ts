@@ -1,31 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Maps our internal format values → PostForMe placement values.
-// Only Instagram, Facebook, and Threads support explicit placement.
-// TikTok, YouTube, LinkedIn, X, Pinterest, Bluesky — no placement parameter needed.
-const INSTAGRAM_PLACEMENT: Record<string, string> = {
-  reel:     "reels",
-  story:    "stories",
-  carousel: "timeline",  // carousel = multiple media on timeline
-  feed:     "timeline",
-  post:     "timeline",
-};
-
-const FACEBOOK_PLACEMENT: Record<string, string> = {
-  reel:     "reels",
-  story:    "stories",
-  carousel: "timeline",
-  post:     "timeline",
-};
-
-const THREADS_PLACEMENT: Record<string, string> = {
-  reel:     "reels",
-  story:    "reels",   // Threads has no "stories" — closest is reels
-  post:     "timeline",
-  feed:     "timeline",
-};
-
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -141,38 +116,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // 5. Build platform_configurations for platforms that support placement
-    const platformConfigurations: Record<string, { placement?: string }> = {};
-
-    for (const platform of activePlatforms) {
-      const format = publishSettings[platform]?.format || "post";
-
-      if (platform === "instagram" && INSTAGRAM_PLACEMENT[format]) {
-        platformConfigurations.instagram = { placement: INSTAGRAM_PLACEMENT[format] };
-      } else if (platform === "facebook" && FACEBOOK_PLACEMENT[format]) {
-        platformConfigurations.facebook = { placement: FACEBOOK_PLACEMENT[format] };
-      } else if (platform === "threads" && THREADS_PLACEMENT[format]) {
-        platformConfigurations.threads = { placement: THREADS_PLACEMENT[format] };
-      }
-      // TikTok, YouTube, LinkedIn, X, Pinterest, Bluesky need no placement config
-    }
-
-    // 6. Build the caption
+    // 5. Build the caption
     const finalCaption = [content.caption || "", content.hashtags || ""]
       .map((s) => s.trim())
       .filter(Boolean)
       .join("\n\n");
 
-    // 7. Build the PostForMe payload — single call, all accounts, direct media URLs
+    // 6. Build the PostForMe payload — matches the official docs exactly.
+    // platform_configurations (placement) is not supported on Quickstart Projects.
     const postPayload: Record<string, unknown> = {
       social_accounts: matchedAccounts.map((a) => a.postforme_account_id),
       caption: finalCaption,
       media: mediaUrls.map((url) => ({ url })),
     };
-
-    if (Object.keys(platformConfigurations).length > 0) {
-      postPayload.platform_configurations = platformConfigurations;
-    }
 
     // Validate and attach scheduled_at
     if (scheduledAt) {
