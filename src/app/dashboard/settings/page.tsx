@@ -9,15 +9,12 @@ import {
   Save,
   CheckCircle,
   ExternalLink,
-  MessageCircle,
   Bot,
-  MessageSquare,
   Plus,
   X,
   Trash2,
   AlertCircle,
   Share2 as Share2Icon,
-  Smartphone,
   User,
   RefreshCw,
   Briefcase,
@@ -25,8 +22,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { SettingsShimmer } from "@/components/shared/PageShimmer";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -36,19 +31,6 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
-
-const PFM_SUPPORTED_PLATFORMS = [
-  "instagram",
-  "tiktok",
-  "tiktok_business",
-  "facebook",
-  "twitter",
-  "linkedin",
-  "youtube",
-  "pinterest",
-  "threads",
-  "bluesky",
-];
 
 const platformConfig: Record<
   string,
@@ -68,17 +50,6 @@ const platformConfig: Record<
   threads:        { label: "Threads",        emoji: "🔗", color: "bg-gray-800" },
   bluesky:        { label: "Bluesky",         emoji: "🦋", color: "bg-sky-500" },
   tiktok_business:{ label: "TikTok Business", emoji: "🎵", color: "bg-black border border-gray-700" },
-};
-
-const defaultAutoReplyConfig = {
-  dm_enabled: false,
-  dm_allowed_topics: {},
-  dm_custom_topics: [],
-  dm_boundary_templates: [],
-  dm_tone: "friendly" as const,
-  comments_enabled: false,
-  comment_categories: {},
-  public_restrictions: {},
 };
 
 interface SocialAccount {
@@ -101,7 +72,6 @@ function SettingsContent() {
   const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingAccount, setSavingAccount] = useState(false);
-  const [savingAI, setSavingAI] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const [accountInfo, setAccountInfo] = useState({
@@ -109,7 +79,6 @@ function SettingsContent() {
     contact_email: "",
     contact_phone: "",
   });
-  const [aiConfig, setAiConfig] = useState(defaultAutoReplyConfig);
 
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [activeAuthUrl, setActiveAuthUrl] = useState<string | null>(null);
@@ -122,7 +91,6 @@ function SettingsContent() {
   } | null>(null);
 
   const [mainTab, setMainTab] = useState<MainTab>("account");
-  const [aiTab, setAiTab] = useState<"dm" | "comments">("dm");
   const [socials, setSocials] = useState<SocialAccount[]>([]);
   const [hasAutoSynced, setHasAutoSynced] = useState(false);
 
@@ -145,11 +113,6 @@ function SettingsContent() {
         contact_email: data.contact_email || "",
         contact_phone: data.contact_phone || "",
       });
-      if (data.auto_reply_config)
-        setAiConfig({
-          ...defaultAutoReplyConfig,
-          ...(data.auto_reply_config as any),
-        });
     }
 
     // ✨ MULTI-BRAND FIX: Fetch only the social accounts tied to the active workspace!
@@ -231,7 +194,21 @@ function SettingsContent() {
 
     if (searchParams.get("success") === "account_connected") {
       setHasAutoSynced(true);
-      handleManualSync();
+      const pfmSuccess = searchParams.get("isSuccess");
+      const pfmError = searchParams.get("error");
+
+      if (pfmSuccess === "false" || pfmError) {
+        const platform = searchParams.get("provider") || "account";
+        setConnectionMessage({
+          type: "error",
+          text: pfmError
+            ? `${platform} connection failed: ${decodeURIComponent(pfmError).replace(/\+/g, " ")}`
+            : `${platform} connection failed.`,
+        });
+      } else {
+        handleManualSync();
+      }
+
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [clientId, activeBrand, searchParams, hasAutoSynced, handleManualSync]);
@@ -322,25 +299,6 @@ function SettingsContent() {
       });
     } finally {
       setSavingAccount(false);
-    }
-  }
-
-  async function handleSaveAI() {
-    setSavingAI(true);
-    try {
-      await supabase
-        .from("clients")
-        .update({ auto_reply_config: aiConfig as Record<string, unknown> })
-        .eq("id", clientId);
-      setConnectionMessage({
-        type: "success",
-        text: "AI Rules saved successfully!",
-      });
-      setTimeout(() => setConnectionMessage(null), 3000);
-    } catch (err) {
-      setConnectionMessage({ type: "error", text: "Failed to save AI Rules" });
-    } finally {
-      setSavingAI(false);
     }
   }
 
@@ -699,44 +657,40 @@ function SettingsContent() {
               <>
                 {/* Meta-specific warning */}
                 {(activePlatform === 'instagram' || activePlatform === 'facebook') && (
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2 animate-in fade-in">
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-3 animate-in fade-in">
                     <h4 className="text-sm font-bold text-amber-400 flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4" /> Required for Meta Login
+                      <AlertCircle className="h-4 w-4" /> Before You Connect — Required Steps
                     </h4>
-                    <ul className="text-xs text-amber-500/80 list-disc pl-4 space-y-1.5 leading-relaxed font-medium">
-                      <li>Instagram must be a <b className="text-amber-400">Business or Creator</b> account.</li>
-                      <li>It must be linked to a <b className="text-amber-400">Facebook Page</b>.</li>
-                      <li>During login, <b className="text-amber-400">check all permission boxes</b> for both Facebook Page and Instagram.</li>
-                    </ul>
+                    {activePlatform === 'instagram' && (
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Instagram Requirements</p>
+                        <ol className="text-xs text-amber-500/80 list-decimal pl-4 space-y-2 leading-relaxed font-medium">
+                          <li>Your Instagram must be a <b className="text-amber-400">Business or Creator account</b>.<br /><span className="text-amber-500/60">Instagram → Settings → Account → Switch to Professional Account → choose Business or Creator.</span></li>
+                          <li>Your Instagram must be <b className="text-amber-400">linked to a Facebook Page</b>.<br /><span className="text-amber-500/60">Facebook → Settings → Linked Accounts → connect your Instagram.</span></li>
+                          <li>During login, <b className="text-amber-400">check all permission boxes</b> for both your Facebook Page and Instagram account.</li>
+                        </ol>
+                      </div>
+                    )}
+                    {activePlatform === 'facebook' && (
+                      <ol className="text-xs text-amber-500/80 list-decimal pl-4 space-y-2 leading-relaxed font-medium">
+                        <li>Log in with the Facebook account that <b className="text-amber-400">manages the Page</b> you want to post to.</li>
+                        <li>During login, <b className="text-amber-400">select the specific Page</b> and check all permission boxes.</li>
+                      </ol>
+                    )}
                   </div>
                 )}
 
-                {/* Primary CTA — works on every device */}
+                {/* Primary CTA — same-window redirect so auto-sync fires on return */}
                 <Button
-                  onClick={() => window.open(activeAuthUrl, '_blank', 'noopener,noreferrer')}
+                  onClick={() => { window.location.href = activeAuthUrl; }}
                   className="w-full h-12 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold text-base shadow-lg rounded-xl"
                 >
                   <ExternalLink className="h-5 w-5 mr-2" />
                   Log In on This Device
                 </Button>
 
-                {/* Copy link for tablets */}
-                <button
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(activeAuthUrl);
-                      alert("Link copied! Paste it in your browser to connect.");
-                    } catch {
-                      prompt("Copy this link:", activeAuthUrl);
-                    }
-                  }}
-                  className="w-full h-9 text-xs font-bold text-[#57707A] hover:text-[#C5BAC4] bg-[#191D23]/50 border border-[#57707A]/30 hover:border-[#C5BAC4]/40 rounded-xl transition-colors"
-                >
-                  Copy link to open on another device
-                </button>
-
-                {/* QR code — only useful on desktop */}
-                <div className="hidden sm:flex flex-col items-center gap-3 pt-2 border-t border-[#57707A]/20">
+                {/* QR code — scan from phone instead */}
+                <div className="flex flex-col items-center gap-3 pt-2 border-t border-[#57707A]/20">
                   <p className="text-[10px] font-bold text-[#57707A] uppercase tracking-widest">Or scan from your phone</p>
                   <div className="p-2 bg-white rounded-xl shadow-sm">
                     <img
@@ -746,14 +700,6 @@ function SettingsContent() {
                     />
                   </div>
                 </div>
-
-                {/* Sync after connect */}
-                <button
-                  onClick={() => { setConnectModalOpen(false); handleManualSync(); }}
-                  className="w-full text-[11px] text-[#C5BAC4] font-bold bg-transparent border border-[#57707A]/30 hover:border-[#C5BAC4]/50 px-4 py-2.5 rounded-xl transition-colors"
-                >
-                  I finished logging in — sync accounts ↻
-                </button>
               </>
             ) : (
               <div className="flex items-center justify-center py-12">

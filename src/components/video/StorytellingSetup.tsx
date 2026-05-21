@@ -1295,7 +1295,15 @@ export function StorytellingSetup({
                       {(isKling || isSeedance2 || scene.aiModel === 'replicate:openai/sora-2') && (
                         <option value="15" className="bg-[#191D23]">15 Secs</option>
                       )}
+                      {isKling && (
+                        <option value="300" className="bg-[#191D23]">5 Min ✦ Premium</option>
+                      )}
                     </select>
+                    {scene.duration === "300" && isKling && (
+                      <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-[#1E2329] border border-[#C5BAC4]/20 rounded-xl p-2.5 shadow-xl">
+                        <p className="text-[9px] text-[#989DAA] leading-relaxed">Long-form rendering takes up to tens of minutes. You can safely browse away — Content Grid updates live when complete.</p>
+                      </div>
+                    )}
 
                     {isPruna && (
                       <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#B3FF00]/30 rounded-xl hover:bg-[#B3FF00]/10 hover:border-[#B3FF00]/60 transition-all shadow-sm group/draft" title="4x Faster rendering for quick previews">

@@ -848,7 +848,7 @@ export default function YourContentPage() {
                     <label className="block text-[10px] font-bold text-[#989DAA] uppercase tracking-wider mb-2">
                       5. Duration
                     </label>
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-1.5 flex-wrap">
                       {["5", "8", "10", "15"].map((s) => (
                         <button
                           key={s}
@@ -864,7 +864,32 @@ export default function YourContentPage() {
                           {s}s
                         </button>
                       ))}
+                      <button
+                        type="button"
+                        onClick={() => audioModel === "kling-3.0/video" && setDuration("300")}
+                        disabled={audioModel !== "kling-3.0/video"}
+                        className={cn(
+                          "flex-1 py-2 text-xs font-bold rounded-xl border transition-colors",
+                          duration === "300"
+                            ? "bg-[#C5BAC4]/10 border-[#C5BAC4]/50 text-[#C5BAC4]"
+                            : audioModel === "kling-3.0/video"
+                              ? "bg-[#191D23] border-[#57707A]/40 text-[#57707A] hover:text-[#DEDCDC] hover:border-[#57707A]"
+                              : "bg-[#191D23] border-[#57707A]/20 text-[#57707A]/40 cursor-not-allowed"
+                        )}
+                        title={audioModel !== "kling-3.0/video" ? "5 min requires Kling 3.0 engine" : undefined}
+                      >
+                        5 min
+                      </button>
                     </div>
+                    {audioModel !== "kling-3.0/video" && (
+                      <p className="text-[9px] text-[#57707A] mt-1.5 font-medium">(5 min option requires Kling AI engine)</p>
+                    )}
+                    {duration === "300" && (
+                      <div className="mt-3 bg-[#C5BAC4]/5 border border-[#C5BAC4]/20 rounded-xl p-3 space-y-1">
+                        <p className="text-[10px] font-bold text-[#C5BAC4] uppercase tracking-wider">Long-Form Rendering</p>
+                        <p className="text-[10px] text-[#989DAA] leading-relaxed">Rendering long-form audio-to-video takes up to tens of minutes on upstream GPUs. You can safely browse away or close your browser — your tracking ID will update live in your Content Grid once complete.</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-3 mt-auto">

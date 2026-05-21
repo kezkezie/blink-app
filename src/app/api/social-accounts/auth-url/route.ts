@@ -28,36 +28,24 @@ export async function POST(req: Request) {
       );
     }
 
-    // Platform-specific configuration required by PostForMe API
-    let platformData: Record<string, any> | undefined = undefined;
-
+    // platform_data is required by PostForMe for Instagram, Facebook, and LinkedIn
+    const platformData: Record<string, any> = {};
     if (platform === "instagram") {
-      // Instagram auto-posting MUST use Facebook Login (Business/Creator account required)
-      platformData = {
-        instagram: { connection_type: "facebook" },
-      };
+      platformData.instagram = { connection_type: "facebook" };
     } else if (platform === "facebook") {
-      // Facebook Pages connection — requires page-level permissions
-      platformData = {
-        facebook: { connection_type: "page" },
-      };
+      platformData.facebook = { connection_type: "page" };
     } else if (platform === "linkedin") {
-      // LinkedIn organization posting (company pages)
-      platformData = {
-        linkedin: { connection_type: "organization" },
-      };
+      platformData.linkedin = { connection_type: "organization" };
     }
 
-    // Build the final request payload
     // redirect_url is set statically in the PostForMe dashboard (Quickstart Projects block runtime overrides)
-    const requestBody: any = {
+    const requestBody: Record<string, any> = {
       platform: platform,
       external_id: clientId,
       permissions: ["posts", "feeds"],
     };
 
-    // Attach platform_data if it exists
-    if (platformData) {
+    if (Object.keys(platformData).length > 0) {
       requestBody.platform_data = platformData;
     }
 
