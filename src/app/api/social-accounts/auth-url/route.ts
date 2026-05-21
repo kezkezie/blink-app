@@ -49,15 +49,11 @@ export async function POST(req: Request) {
     }
 
     // Build the final request payload
-    // Use redirect_url_override to guarantee www.blinkspot.io (non-www 307-redirects)
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.blinkspot.io";
-    const redirectBase = appUrl.replace("http://localhost:3000", "https://www.blinkspot.io");
-
+    // redirect_url is set statically in the PostForMe dashboard (Quickstart Projects block runtime overrides)
     const requestBody: any = {
       platform: platform,
       external_id: clientId,
       permissions: ["posts", "feeds"],
-      redirect_url_override: `${redirectBase}/dashboard/settings?success=account_connected`,
     };
 
     // Attach platform_data if it exists
