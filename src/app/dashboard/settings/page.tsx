@@ -58,6 +58,7 @@ interface SocialAccount {
   account_name: string | null;
   is_active: boolean;
   connected_at: string;
+  postforme_account_id: string | null;
 }
 
 type MainTab = "account" | "ai-rules";
@@ -243,10 +244,21 @@ function SettingsContent() {
     [clientId, activeBrand?.id]
   );
 
-  const disconnectPlatform = useCallback(async (accountId: string) => {
+  const disconnectPlatform = useCallback(async (accountId: string, postformeAccountId: string | null) => {
     setDisconnecting(accountId);
     setConnectionMessage(null);
     try {
+      // 1. Tell PostForMe to revoke the connection first (so reconnect gets a fresh account)
+      if (postformeAccountId) {
+        await fetch("/api/social-accounts/disconnect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId: postformeAccountId }),
+        });
+        // Non-fatal if PostForMe fails — still clean up Supabase
+      }
+
+      // 2. Delete from Supabase
       await supabase
         .from("social_accounts")
         .delete()
@@ -542,7 +554,7 @@ function SettingsContent() {
                             size="sm"
                             className="h-8 w-8 p-0 text-[#57707A] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                             disabled={disconnecting === account.id}
-                            onClick={() => disconnectPlatform(account.id)}
+                            onClick={() => disconnectPlatform(account.id, account.postforme_account_id)}
                             title="Disconnect Account"
                           >
                             {disconnecting === account.id ? (
