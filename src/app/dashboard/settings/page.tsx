@@ -248,29 +248,27 @@ function SettingsContent() {
     setDisconnecting(accountId);
     setConnectionMessage(null);
     try {
-      // 1. Tell PostForMe to revoke the connection first (so reconnect gets a fresh account)
-      if (postformeAccountId) {
-        await fetch("/api/social-accounts/disconnect", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountId: postformeAccountId }),
-        });
-        // Non-fatal if PostForMe fails — still clean up Supabase
+      // Server-side: revokes PostForMe + deletes Supabase row via admin client (bypasses RLS)
+      const res = await fetch("/api/social-accounts/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: postformeAccountId,
+          supabaseAccountId: accountId,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to disconnect account");
       }
-
-      // 2. Delete from Supabase
-      await supabase
-        .from("social_accounts")
-        .delete()
-        .eq("id", accountId);
 
       setSocials((prev) => prev.filter((s) => s.id !== accountId));
       setConnectionMessage({ type: "success", text: "Account disconnected." });
       setTimeout(() => setConnectionMessage(null), 3000);
-    } catch (err) {
+    } catch (err: any) {
       setConnectionMessage({
         type: "error",
-        text: "Failed to disconnect account",
+        text: err.message || "Failed to disconnect account",
       });
     } finally {
       setDisconnecting(null);
