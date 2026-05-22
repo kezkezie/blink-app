@@ -173,7 +173,8 @@ export async function POST(req: Request) {
         FORMAT_TO_POST_TYPE[publishSettings[p]?.format ?? "post"] ?? "media",
       ])
     );
-    console.log("[PostForMe] Resolved formats (Quickstart: all→media):", resolvedFormats);
+    console.log("[PostForMe] Resolved formats:", resolvedFormats);
+    console.log("[PostForMe] Account IDs being sent:", accountIds);
     console.log("[PostForMe] Publishing payload:", JSON.stringify(postPayload, null, 2));
 
     // 8. Fire the single PostForMe request
