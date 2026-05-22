@@ -12,7 +12,6 @@ import {
   CheckCircle,
   XCircle,
   Pencil,
-  Calendar as CalendarIcon,
   Upload,
   X,
   ZoomIn,
@@ -22,7 +21,6 @@ import {
   Palette,
   LayoutGrid,
   Smartphone,
-  CirclePlay,
   MonitorPlay,
   Music,
   Youtube,
@@ -702,11 +700,13 @@ export default function ContentDetailPage({
                             <Smartphone className={cn("w-4 h-4", publishSettings.tiktok?.format === 'post' ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
                             <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === 'post' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Normal Post</span>
                           </label>
+                          {/* TODO: Re-enable Story format once upgraded from PostForMe Quickstart API tier
                           <label className="flex items-center gap-2 cursor-pointer group">
                             <input type="radio" checked={publishSettings.tiktok?.format === 'story'} onChange={() => setPlatformFormat('tiktok', 'story')} className="text-[#C5BAC4] bg-[#191D23] border-[#57707A]/50 focus:ring-[#C5BAC4]" />
                             <CirclePlay className={cn("w-4 h-4", publishSettings.tiktok?.format === 'story' ? "text-[#C5BAC4]" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
                             <span className={cn("text-xs font-bold", publishSettings.tiktok?.format === 'story' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Story</span>
                           </label>
+                          */}
                         </div>
                       )}
                     </div>
@@ -731,15 +731,22 @@ export default function ContentDetailPage({
                       {publishSettings.instagram?.enabled && (
                         <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
                           <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="radio" checked={publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed'} onChange={() => setPlatformFormat('instagram', isVideo ? 'reel' : 'feed')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
-                            <Smartphone className={cn("w-4 h-4", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
-                            <span className={cn("text-xs font-bold", (publishSettings.instagram?.format === 'reel' || publishSettings.instagram?.format === 'feed') ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Feed / Reel</span>
+                            <input type="radio" checked={true} onChange={() => setPlatformFormat('instagram', 'feed')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
+                            <Smartphone className="w-4 h-4 text-pink-500" />
+                            <span className="text-xs font-bold text-[#DEDCDC]">Normal Post</span>
+                          </label>
+                          {/* TODO: Re-enable Reel and Story formats once upgraded from PostForMe Quickstart API tier
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={publishSettings.instagram?.format === 'reel'} onChange={() => setPlatformFormat('instagram', 'reel')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
+                            <Smartphone className={cn("w-4 h-4", publishSettings.instagram?.format === 'reel' ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
+                            <span className={cn("text-xs font-bold", publishSettings.instagram?.format === 'reel' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Reel</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer group">
                             <input type="radio" checked={publishSettings.instagram?.format === 'story'} onChange={() => setPlatformFormat('instagram', 'story')} className="text-pink-500 bg-[#191D23] border-[#57707A]/50 focus:ring-pink-500" />
                             <CirclePlay className={cn("w-4 h-4", publishSettings.instagram?.format === 'story' ? "text-pink-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
                             <span className={cn("text-xs font-bold", publishSettings.instagram?.format === 'story' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Story</span>
                           </label>
+                          */}
                         </div>
                       )}
                     </div>
@@ -764,15 +771,17 @@ export default function ContentDetailPage({
                       {publishSettings.youtube?.enabled && (
                         <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex gap-4 pl-14 animate-in slide-in-from-top-2">
                           <label className="flex items-center gap-2 cursor-pointer group">
-                            <input type="radio" checked={publishSettings.youtube?.format === 'standard'} onChange={() => setPlatformFormat('youtube', 'standard')} className="text-red-500 bg-[#191D23] border-[#57707A]/50 focus:ring-red-500" />
-                            <MonitorPlay className={cn("w-4 h-4", publishSettings.youtube?.format === 'standard' ? "text-red-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
-                            <span className={cn("text-xs font-bold", publishSettings.youtube?.format === 'standard' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>Standard Video</span>
+                            <input type="radio" checked={true} onChange={() => setPlatformFormat('youtube', 'standard')} className="text-red-500 bg-[#191D23] border-[#57707A]/50 focus:ring-red-500" />
+                            <MonitorPlay className="w-4 h-4 text-red-500" />
+                            <span className="text-xs font-bold text-[#DEDCDC]">Standard Video</span>
                           </label>
+                          {/* TODO: Re-enable YouTube Short once upgraded from PostForMe Quickstart API tier
                           <label className="flex items-center gap-2 cursor-pointer group">
                             <input type="radio" checked={publishSettings.youtube?.format === 'short'} onChange={() => setPlatformFormat('youtube', 'short')} className="text-red-500 bg-[#191D23] border-[#57707A]/50 focus:ring-red-500" />
                             <Smartphone className={cn("w-4 h-4", publishSettings.youtube?.format === 'short' ? "text-red-500" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
                             <span className={cn("text-xs font-bold", publishSettings.youtube?.format === 'short' ? "text-[#DEDCDC]" : "text-[#989DAA]")}>YouTube Short (9:16)</span>
                           </label>
+                          */}
                         </div>
                       )}
                     </div>
@@ -790,13 +799,15 @@ export default function ContentDetailPage({
                       </div>
                       {publishSettings.facebook?.enabled && (
                         <div className="bg-[#2A2F38]/50 p-3 border-t border-[#57707A]/30 flex flex-wrap gap-4 pl-14 animate-in slide-in-from-top-2">
-                          {[{ val: 'post', label: 'Post', Icon: LayoutGrid }, { val: 'reel', label: 'Reel', Icon: Smartphone }, { val: 'story', label: 'Story', Icon: CirclePlay }].map(({ val, label, Icon }) => (
-                            <label key={val} className="flex items-center gap-2 cursor-pointer group">
-                              <input type="radio" checked={publishSettings.facebook?.format === val} onChange={() => setPlatformFormat('facebook', val as any)} className="text-blue-500 bg-[#191D23] border-[#57707A]/50 focus:ring-blue-500" />
-                              <Icon className={cn("w-4 h-4", publishSettings.facebook?.format === val ? "text-blue-400" : "text-[#57707A] group-hover:text-[#DEDCDC]")} />
-                              <span className={cn("text-xs font-bold", publishSettings.facebook?.format === val ? "text-[#DEDCDC]" : "text-[#989DAA]")}>{label}</span>
-                            </label>
-                          ))}
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" checked={true} onChange={() => setPlatformFormat('facebook', 'post')} className="text-blue-500 bg-[#191D23] border-[#57707A]/50 focus:ring-blue-500" />
+                            <LayoutGrid className="w-4 h-4 text-blue-400" />
+                            <span className="text-xs font-bold text-[#DEDCDC]">Normal Post</span>
+                          </label>
+                          {/* TODO: Re-enable Reel + Story once upgraded from PostForMe Quickstart API tier
+                          { val: 'reel',  label: 'Reel',  Icon: Smartphone },
+                          { val: 'story', label: 'Story', Icon: CirclePlay },
+                          */}
                         </div>
                       )}
                     </div>

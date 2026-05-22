@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// FORMAT_TO_POST_TYPE maps user-selected format → PostForMe post type.
+// All formats currently resolve to "media" — Quickstart Projects block placement routing.
+// TODO: Uncomment format placement routing once we upgrade from PostForMe Quickstart API tier.
+const FORMAT_TO_POST_TYPE: Record<string, string> = {
+  post:     "media",
+  feed:     "media",
+  standard: "media",
+  // reel:     "reels",    // TODO: Uncomment when upgraded from Quickstart API tier
+  // story:    "stories",  // TODO: Uncomment when upgraded from Quickstart API tier
+  // short:    "short",    // TODO: Uncomment when upgraded from Quickstart API tier
+  // carousel: "carousel", // TODO: Uncomment when upgraded from Quickstart API tier
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -142,10 +155,14 @@ export async function POST(req: Request) {
       postPayload.scheduled_at = dateObj.toISOString();
     }
 
-    console.log(
-      "[PostForMe] Publishing payload:",
-      JSON.stringify(postPayload, null, 2)
+    const resolvedFormats = Object.fromEntries(
+      activePlatforms.map((p) => [
+        p,
+        FORMAT_TO_POST_TYPE[publishSettings[p]?.format ?? "post"] ?? "media",
+      ])
     );
+    console.log("[PostForMe] Resolved formats (Quickstart: all→media):", resolvedFormats);
+    console.log("[PostForMe] Publishing payload:", JSON.stringify(postPayload, null, 2));
 
     // 8. Fire the single PostForMe request
     const pfmRes = await fetch("https://api.postforme.dev/v1/social-posts", {
