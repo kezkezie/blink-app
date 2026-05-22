@@ -381,7 +381,10 @@ export default function ContentDetailPage({
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        const detail = data.pfmRaw ? `\n\nPostForMe raw: ${JSON.stringify(data.pfmRaw)}` : "";
+        throw new Error((data.error || "Publish failed") + detail);
+      }
 
       setContent((prev) =>
         prev

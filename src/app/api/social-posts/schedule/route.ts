@@ -129,16 +129,28 @@ export async function POST(req: Request) {
       );
     }
 
-    // 5. Build the caption
-    const finalCaption = [content.caption || "", content.hashtags || ""]
+    // Guard: strip any accounts with null/undefined postforme_account_id
+    const accountIds = matchedAccounts
+      .map((a) => a.postforme_account_id)
+      .filter(Boolean);
+
+    if (accountIds.length === 0) {
+      throw new Error(
+        "Connected accounts are missing PostForMe IDs. Open Settings and press Sync Accounts, then try again."
+      );
+    }
+
+    // 5. Build the caption — Instagram hard limit is 2200 chars
+    const rawCaption = [content.caption || "", content.hashtags || ""]
       .map((s) => s.trim())
       .filter(Boolean)
       .join("\n\n");
+    const finalCaption = rawCaption.substring(0, 2200);
 
     // 6. Build the PostForMe payload — matches the official docs exactly.
     // platform_configurations (placement) is not supported on Quickstart Projects.
     const postPayload: Record<string, unknown> = {
-      social_accounts: matchedAccounts.map((a) => a.postforme_account_id),
+      social_accounts: accountIds,
       caption: finalCaption,
       media: mediaUrls.map((url) => ({ url })),
     };
@@ -183,12 +195,11 @@ export async function POST(req: Request) {
     }
 
     if (!pfmRes.ok) {
-      console.error("[PostForMe] Error:", pfmData);
-      const msg =
-        pfmData?.message ||
-        pfmData?.error ||
-        `PostForMe error (${pfmRes.status})`;
-      return NextResponse.json({ error: msg }, { status: pfmRes.status });
+      console.error("[PostForMe] Full error response:", JSON.stringify(pfmData, null, 2));
+      const base = pfmData?.message || pfmData?.error || `PostForMe error (${pfmRes.status})`;
+      const extra = pfmData?.details || pfmData?.errors || pfmData?.validation_errors;
+      const msg = extra ? `${base} — ${JSON.stringify(extra)}` : base;
+      return NextResponse.json({ error: msg, pfmRaw: pfmData }, { status: pfmRes.status });
     }
 
     // 9. Update content status
