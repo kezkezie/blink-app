@@ -291,6 +291,8 @@ export default function ContentDetailPage({
 
     try {
       const activeStyleObj = STYLE_OPTIONS.find(s => s.value === selectedStyle);
+      // route.ts reads style?.id — map .value to the blueprint key it understands
+      const styleForHelper = activeStyleObj ? { id: activeStyleObj.value, ...activeStyleObj } : null;
 
       const res = await fetch("/api/ai/prompt-helper", {
         method: "POST",
@@ -300,7 +302,7 @@ export default function ContentDetailPage({
           brandContext: brandContext,
           useBrand: true,
           mode: generationMode,
-          style: activeStyleObj
+          style: styleForHelper
         }),
       });
 
@@ -476,8 +478,13 @@ export default function ContentDetailPage({
     setImageModalOpen(false);
     setGeneratingImage(true);
 
+    const activeStyleObj = STYLE_OPTIONS.find(s => s.value === selectedStyle);
     let finalTopic = customPrompt.trim() || captionShort || caption?.substring(0, 60) || "Create a professional image";
     const displayImage = parseArray(content.image_urls)[0];
+
+    if (activeStyleObj?.promptAddon) {
+      finalTopic = `${finalTopic}. ${activeStyleObj.promptAddon}`;
+    }
 
     if (brandContext?.description) {
       finalTopic = `${finalTopic}. BRAND CONTEXT: We are ${brandContext.name}, operating in the ${brandContext.industry} industry. Product info: ${brandContext.description}`;
