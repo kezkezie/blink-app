@@ -53,6 +53,7 @@ import {
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
+import { useBrandStore } from "@/app/store/useBrandStore";
 import { triggerWorkflow } from "@/lib/workflows";
 import type { Content, ContentStatus } from "@/types/database";
 
@@ -105,12 +106,12 @@ const parseArray = (data: any): any[] => {
 type GenerationMode = "generate" | "style_transfer";
 
 const STYLE_OPTIONS = [
-  { value: "realistic", label: "Hyper-Realistic Photo", promptAddon: "Hyper-realistic photograph, highly detailed, 8k resolution." },
-  { value: "cinematic", label: "Cinematic Lighting", promptAddon: "Cinematic lighting, dramatic shadows, movie still, moody aesthetic." },
-  { value: "3d_render", label: "3D Product Render", promptAddon: "Abstract 3D render, Cinema4D, Octane render, smooth glossy textures." },
-  { value: "studio", label: "Clean Studio Shot", promptAddon: "Professional studio lighting, clean infinite background, high-end commercial product photography." },
-  { value: "illustrative", label: "Modern Illustration", promptAddon: "Modern illustration, vibrant colors, flat vector aesthetic." },
-  { value: "2d_flat", label: "2D Flat Design", promptAddon: "2D flat design, minimalistic, clean lines, corporate vector." },
+  { value: "realistic", label: "Hyper-Realistic Photo", promptAddon: "Hyper-realistic photograph, highly detailed, 8k resolution. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO WATERMARKS in the image." },
+  { value: "cinematic", label: "Cinematic Lighting", promptAddon: "Cinematic lighting, dramatic shadows, movie still, moody aesthetic. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO WATERMARKS in the image." },
+  { value: "3d_render", label: "3D Product Render", promptAddon: "Abstract 3D render, Cinema4D, Octane render, smooth glossy textures. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO WATERMARKS in the image." },
+  { value: "studio", label: "Clean Studio Shot", promptAddon: "Professional studio lighting, clean infinite background, high-end commercial product photography. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO WATERMARKS in the image." },
+  { value: "illustrative", label: "Modern Illustration", promptAddon: "Modern illustration, vibrant colors, flat vector aesthetic. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO WATERMARKS in the image." },
+  { value: "2d_flat", label: "2D Flat Design", promptAddon: "2D flat design, minimalistic, clean lines, corporate vector. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO WATERMARKS in the image." },
 ];
 
 export default function ContentDetailPage({
@@ -120,6 +121,7 @@ export default function ContentDetailPage({
 }) {
   const { id } = use(params);
   const { clientId } = useClient();
+  const { activeBrand } = useBrandStore();
   const router = useRouter();
 
   const [content, setContent] = useState<Content | null>(null);
@@ -203,46 +205,50 @@ export default function ContentDetailPage({
     async function fetchData() {
       if (!clientId) return;
       try {
-        const [contentRes, clientRes, brandRes, socialRes] = await Promise.all([
+        const [contentRes, clientRes] = await Promise.all([
           supabase.from("content").select("*").eq("id", id).maybeSingle(),
-          supabase.from("clients").select("company_name, industry, onboarding_notes").eq("id", clientId).single(),
-          supabase.from("brand_profiles").select("logo_url, image_style, brand_voice").eq("client_id", clientId).maybeSingle(),
-          supabase.from("social_accounts").select("platform").eq("client_id", clientId).eq("is_active", true)
+          supabase.from("clients").select("industry").eq("id", clientId).single(),
         ]);
 
-        if (contentRes.data) {
-          const item = contentRes.data as any;
+        const item = contentRes.data as any;
+        if (item) {
           setContent(item);
           setCaption(item.caption || "");
           setCaptionShort(item.caption_short || "");
           setHashtags(item.hashtags || "");
           setCallToAction(item.call_to_action || "");
-
-          // ✨ Load Publish Settings
           setPublishSettings(parsePublishSettings(item.target_platforms));
         }
 
-        if (brandRes.data?.logo_url) setBrandLogo(brandRes.data.logo_url);
+        // Use activeBrand if set, otherwise fall back to the brand_id stored on the content row
+        const brandId = activeBrand?.id || item?.brand_id;
+        if (brandId) {
+          const [brandRes, socialRes] = await Promise.all([
+            supabase.from("brand_profiles")
+              .select("brand_name, website_url, description, image_style, brand_voice, logo_url, primary_color, secondary_color, primary_font")
+              .eq("id", brandId)
+              .maybeSingle(),
+            supabase.from("social_accounts").select("platform").eq("brand_id", brandId).eq("is_active", true),
+          ]);
 
-        if (socialRes.data) {
-          const platforms = Array.from(new Set(socialRes.data.map(s => s.platform)));
-          setConnectedPlatforms(platforms);
+          if (brandRes.data?.logo_url) setBrandLogo(brandRes.data.logo_url);
+          if (socialRes.data) {
+            setConnectedPlatforms(Array.from(new Set(socialRes.data.map((s: any) => s.platform))));
+          }
+
+          setBrandContext({
+            name: brandRes.data?.brand_name,
+            industry: clientRes.data?.industry,
+            description: brandRes.data?.description,
+            imageStyle: brandRes.data?.image_style,
+            brandVoice: brandRes.data?.brand_voice,
+            logoUrl: brandRes.data?.logo_url,
+            websiteUrl: brandRes.data?.website_url,
+            primaryColor: brandRes.data?.primary_color,
+            secondaryColor: brandRes.data?.secondary_color,
+            primaryFont: brandRes.data?.primary_font,
+          });
         }
-
-        let desc = "";
-        if (clientRes.data?.onboarding_notes) {
-          try { desc = JSON.parse(clientRes.data.onboarding_notes as string).description || ""; }
-          catch { desc = clientRes.data.onboarding_notes as string || ""; }
-        }
-
-        setBrandContext({
-          name: clientRes.data?.company_name,
-          industry: clientRes.data?.industry,
-          description: desc,
-          imageStyle: brandRes.data?.image_style,
-          brandVoice: brandRes.data?.brand_voice,
-          logoUrl: brandRes.data?.logo_url,
-        });
 
       } catch (err) {
         console.error("Fetch error:", err);
@@ -251,7 +257,7 @@ export default function ContentDetailPage({
       }
     }
     fetchData();
-  }, [id, clientId]);
+  }, [id, clientId, activeBrand?.id]);
 
   // ✨ Omni-Publishing Toggles
   const togglePlatform = (platform: string, defaultFormat: any) => {
