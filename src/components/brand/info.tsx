@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useDropzone } from "react-dropzone";
 import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
 import { createBrandWorkspace } from "@/app/actions/brand";
+import { GOOGLE_FONTS_REGISTRY, matchFontToBrandVibe, injectGoogleFont, loadCustomFont } from "@/lib/fonts";
 import {
     Loader2,
     ArrowRight,
@@ -18,6 +20,7 @@ import {
     Sparkles,
     AlertCircle,
     CheckCircle2,
+    Type,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,11 +44,6 @@ import { cn } from "@/lib/utils";
 const PREDEFINED_TONES = [
     "Luxurious", "Modern", "Earthy", "Professional", "Minimal", "Elegant",
     "Warm", "Playful", "Bold", "Trustworthy", "Edgy", "Friendly",
-];
-
-const POPULAR_FONTS = [
-    "Inter", "Roboto", "Poppins", "Montserrat", "Playfair Display",
-    "Merriweather", "Lora", "Open Sans", "Lato", "Oswald", "Custom...",
 ];
 
 // ✨ Preset Visual Styles for easy selection
@@ -94,6 +92,9 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
     const [assetFiles, setAssetFiles] = useState<File[]>([]);
     const [assetPreviews, setAssetPreviews] = useState<string[]>([]);
 
+    // Custom font loading state
+    const [isLoadingCustomFont, setIsLoadingCustomFont] = useState(false);
+
     // AI Autofill state
     const [isAutofilling, setIsAutofilling] = useState(false);
     const [autofillStatus, setAutofillStatus] = useState<
@@ -101,6 +102,42 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
         | { type: "error"; message: string }
         | null
     >(null);
+
+    // Auto-match font from brand vibe when no font chosen yet
+    useEffect(() => {
+        if (primaryFont) return;
+        if (!description && !industry) return;
+        const matched = matchFontToBrandVibe(description, industry);
+        setPrimaryFont(matched.family);
+    }, [description, industry]);
+
+    // Inject Google Font stylesheet whenever selection changes
+    useEffect(() => {
+        if (!primaryFont) return;
+        const isGoogleFont = GOOGLE_FONTS_REGISTRY.some(f => f.family === primaryFont);
+        if (isGoogleFont) injectGoogleFont(primaryFont);
+    }, [primaryFont]);
+
+    // Custom font drop handler (.ttf / .otf / .woff2)
+    const onFontDrop = useCallback(async (acceptedFiles: File[]) => {
+        const file = acceptedFiles[0];
+        if (!file) return;
+        setIsLoadingCustomFont(true);
+        try {
+            const fontName = await loadCustomFont(file);
+            setPrimaryFont(fontName);
+        } catch {
+            // silent — font still registered in browser memory
+        } finally {
+            setIsLoadingCustomFont(false);
+        }
+    }, []);
+
+    const { getRootProps: getFontRootProps, getInputProps: getFontInputProps, isDragActive: isFontDragActive } = useDropzone({
+        onDrop: onFontDrop,
+        accept: { 'application/octet-stream': ['.ttf', '.otf', '.woff2'] },
+        maxFiles: 1,
+    });
 
     const canAutofill = websiteUrl.trim().length > 0 || socialUrls.trim().length > 0;
 
@@ -463,16 +500,53 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
                                     )}
                                 </div>
 
-                                <div className="space-y-4">
-                                    <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2">Primary Font</label>
+                                <div className="space-y-3">
+                                    <label className="block text-[10px] font-bold text-[#57707A] uppercase mb-2 flex items-center gap-1.5">
+                                        <Type className="h-3 w-3" /> Primary Font
+                                    </label>
+
+                                    {/* Google Fonts dropdown */}
                                     <Select value={primaryFont} onValueChange={setPrimaryFont}>
                                         <SelectTrigger className="h-10 bg-[#191D23] border-[#57707A]/40">
-                                            <SelectValue placeholder="Select font" />
+                                            <SelectValue placeholder="Auto-matched from your brand vibe" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
-                                            {POPULAR_FONTS.map((f) => (<SelectItem key={f} value={f}>{f}</SelectItem>))}
+                                            {GOOGLE_FONTS_REGISTRY.map((f) => (
+                                                <SelectItem key={f.family} value={f.family}>
+                                                    <span className="font-medium">{f.family}</span>
+                                                    <span className="ml-2 text-[10px] text-[#57707A]">— {f.vibe}</span>
+                                                </SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
+
+                                    {/* Live font preview */}
+                                    {primaryFont && (
+                                        <div
+                                            className="px-3 py-2 bg-[#191D23] border border-[#57707A]/30 rounded-lg text-sm text-[#DEDCDC] truncate"
+                                            style={{ fontFamily: primaryFont }}
+                                        >
+                                            {primaryFont} — The quick brown fox
+                                        </div>
+                                    )}
+
+                                    {/* Custom font drop zone */}
+                                    <div
+                                        {...getFontRootProps()}
+                                        className={cn(
+                                            "flex items-center justify-center gap-2 h-9 rounded-lg border border-dashed cursor-pointer transition-colors text-[10px] font-bold uppercase",
+                                            isFontDragActive
+                                                ? "border-[#C5BAC4] bg-[#C5BAC4]/10 text-[#C5BAC4]"
+                                                : "border-[#57707A]/40 text-[#57707A] hover:border-[#57707A] hover:text-[#989DAA]"
+                                        )}
+                                    >
+                                        <input {...getFontInputProps()} />
+                                        {isLoadingCustomFont ? (
+                                            <><Loader2 className="h-3 w-3 animate-spin" /> Loading font...</>
+                                        ) : (
+                                            <><Upload className="h-3 w-3" /> Drop custom .ttf / .otf / .woff2</>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 

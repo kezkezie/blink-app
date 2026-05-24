@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Palette, Layers, Download, Share2, Briefcase } from "lucide-react";
+import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Layers, Download, Share2, Briefcase, Info } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
@@ -25,13 +26,41 @@ const IMAGE_MODES = [
 
 // ✨ Universal Marketing Styles
 const MARKETING_STYLES = [
-  { id: "studio", label: "📸 Studio Product Shoot", promptAddon: "Professional studio lighting, clean infinite background, high-end commercial product photography, 8k resolution, highly detailed." },
-  { id: "lifestyle", label: "🌿 Lifestyle Photography", promptAddon: "Candid lifestyle photography, natural sunlight, authentic, relatable, shot on 35mm lens, depth of field." },
-  { id: "cinematic", label: "🎬 Cinematic", promptAddon: "Cinematic lighting, dramatic shadows, anamorphic lens, movie still, highly detailed, moody aesthetic." },
-  { id: "poster", label: "📝 Poster / Ad Design", promptAddon: "Graphic design poster style, bold typography layout space, vibrant colors, professional advertising campaign aesthetic." },
-  { id: "brand", label: "✨ Brand Integrated (Logo)", promptAddon: "Professional aesthetic integrating brand identity. The brand logo or motif is naturally placed in the environment as a decal, sign, or texture." },
-  { id: "abstract", label: "🎨 Abstract / 3D Render", promptAddon: "Abstract 3D render, Cinema4D, Octane render, smooth glossy textures, soft geometric shapes, visually striking." },
-  { id: "flatlay", label: "📐 Flatlay / Top-Down", promptAddon: "Top-down flatlay perspective, neatly organized items, aesthetic grid arrangement, soft diffused lighting." }
+  {
+    id: "studio",
+    label: "📸 Studio Product Shoot",
+    promptAddon: "STUDIO EXECUTION BLUEPRINT: Commercial product photography. The subject is captured on a seamless, infinite solid background (warm white, limestone off-white, or matte deep charcoal). The product acts as the single dominant focal point, center-framed and occupying exactly 60% of the composition canvas. Illumination is driven by a professional three-point softbox setup, casting soft diffused gradients with clean catchlights and absolute avoidance of harsh digital shadows. Maintain crisp, micro-textured material sharpness. Preserve generous, intentional negative space on at least two entire sides of the frame. Shot on a macro lens, deep depth of field (f/8), high clarity, commercial catalog asset, 8k resolution. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO LOGOS, NO WATERMARKS anywhere in the image.",
+  },
+  {
+    id: "lifestyle",
+    label: "🌿 Lifestyle Photography",
+    promptAddon: "LIFESTYLE DIRECTION BLUEPRINT: Authentic editorial product placement inside a real, physical environment. Subject is unposed, candid, and naturally integrated into the geometric space, while maintaining distinct separation from background surfaces. Illumination is entirely directional, utilizing warm golden hour sunlight or soft morning natural window light to cast realistic, elongated shadows. Avoid busy or cluttered background objects by maintaining a clean, open environment layer. Captured via Fujifilm color science for true-to-life organic tones, shot on a prime 35mm lens with a shallow depth of field (f/2.0), introducing subtle film grain and natural, creamy background bokeh. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO LOGOS, NO WATERMARKS anywhere in the image.",
+  },
+  {
+    id: "cinematic",
+    label: "🎬 Cinematic",
+    promptAddon: "CINEMATIC MIS-EN-SCÈNE BLUEPRINT: A high-fidelity movie still composition. Employs stylized atmospheric color grading with a rich palette of muted teal tones and warm amber volumetric highlights. Implements dramatic chiaroscuro key lighting with high-contrast shadow modeling to carve out depth. Frame outlines a single focal point with an aggressive left-center or right-center dominance rule, backed by extensive negative space. Avoid center-weighting. Captured on an anamorphic 35mm lens, ultra-wide perspective, with an ultra-shallow depth of field (f/1.8), creating elongated cinematic bokeh and heavy background isolation. Moody, high-production values. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO LOGOS, NO WATERMARKS anywhere in the image.",
+  },
+  {
+    id: "poster",
+    label: "📊 Ad Design / Poster",
+    promptAddon: "GRAPHIC DESIGN POSTER BLUEPRINT — This is a structured page layout, NOT a full-bleed environmental photograph with floating text. BACKGROUND: Clean, flat, solid surface utilizing a single neutral tint or brand color accent. No scenes, rooms, or background horizons. COMPOSITION MARGINS: Enforce a strict 10% safety margin inset from all outer boundaries — no elements near edges. 30% of the entire frame must remain clean, empty negative workspace. SPATIAL ZONES: The subject is a clean, standalone studio asset with a soft grounding drop shadow, occupying exactly 55% of the frame space. TYPOGRAPHY: All text fields are strictly isolated into dedicated copy zones that NEVER overlap the product silhouette. Top-left headline copy is crisp, bold, and display-weighted. Bottom-right website text is thin, small, and highly legible.",
+  },
+  {
+    id: "brand",
+    label: "✨ Brand Integrated (Logo)",
+    promptAddon: "BRAND ASSET INTEGRATION BLUEPRINT: Premium commercial design. The official brand logo graphic must be rendered with absolute fidelity as a flat, real-world texture decal — such as a clean printed paper label, a laser-etched stamp, or a matte card placement within the scene's layout. The logo is positioned neatly in a lower corner, occupying a strict 5-10% threshold of the total canvas space, supported by a solid white or high-contrast neutral background badge for flawless readability. CRITICAL: Do NOT warp, skew, redraw, reinterpret, or blur the logo graphics. Maintain original vectors, geometry, and font weights exactly. The surrounding layout is an ultra-minimalist, high-clarity product scene with expansive whitespace and zero distracting elements.",
+  },
+  {
+    id: "abstract",
+    label: "🎨 Abstract / 3D Render",
+    promptAddon: "ABSTRACT 3D VISUALIZATION BLUEPRINT: High-end digital art direction matching an ultra-modern Octane render and Unreal Engine 5 aesthetic framework. Features a single dominant, smooth geometric form as the ultimate composition anchor. Surfaces utilize advanced material shaders displaying glossy clear-coat textures, subtle subsurface scattering refraction, and clean frosted finishes. Illumination is driven by a studio HDRI skybox wrapper, creating realistic, soft reflections along curves. The frame maintains heavy, absolute negative space. Restrained, hyper-clean design execution that values simplicity, elegance, and premium balanced tone scales over visual noise.",
+  },
+  {
+    id: "flatlay",
+    label: "📐 Flatlay / Top-Down",
+    promptAddon: "OVERHEAD FLATLAY COMPOSITION BLUEPRINT: Symmetrical, structured top-down visualization. The camera angle is locked at a strict 90-degree downward vertical vector looking directly at a flat plane. Deep depth of field ensures every item across the surface remains crisply in focus, ultra-sharp from corner to corner. Objects are curated using precise knolling alignment, spaced out along an invisible geometric grid layout with a mandatory 20% empty space barrier separating individual items. Background is a solid, clean, minimal texture (Calacatta marble, matte white plaster, or clean vertical wood grain boards). Soft, even, diffused lighting from an off-camera side window source.",
+  },
 ];
 
 interface GeneratedResult {
@@ -77,17 +106,23 @@ export default function ImageStudioPage() {
     async function loadContext() {
       const [clientRes, brandRes] = await Promise.all([
         supabase.from("clients").select("company_name, industry").eq("id", clientId).single(),
-        // ✨ FIXED: Now specifically targets activeBrand.id instead of just client_id
-        supabase.from("brand_profiles").select("image_style, brand_voice, logo_url").eq("id", activeBrand!.id).maybeSingle(),
+        supabase.from("brand_profiles")
+          .select("brand_name, company_name, website_url, description, image_style, brand_voice, logo_url, primary_color, secondary_color, primary_font")
+          .eq("id", activeBrand!.id)
+          .maybeSingle(),
       ]);
 
       setBrandContext({
-        // ✨ FIX: Prioritize the specific workspace brand name!
-        name: (activeBrand as any).name || (activeBrand as any).brand_name || clientRes.data?.company_name,
+        name: brandRes.data?.brand_name || (activeBrand as any).brand_name || clientRes.data?.company_name,
         industry: clientRes.data?.industry,
         imageStyle: brandRes.data?.image_style,
         brandVoice: brandRes.data?.brand_voice,
         logoUrl: brandRes.data?.logo_url,
+        websiteUrl: brandRes.data?.website_url,
+        description: brandRes.data?.description,
+        primaryColor: brandRes.data?.primary_color,
+        secondaryColor: brandRes.data?.secondary_color,
+        primaryFont: brandRes.data?.primary_font,
       });
     }
     loadContext();
@@ -138,7 +173,7 @@ export default function ImageStudioPage() {
 
     allowedFiles.forEach(file => {
       if (selectedMode === 'product_drop' && file.type !== 'image/png') {
-        alert("For Product Drop, please upload PNG files for best transparency results.");
+        toast.warning("For Product Drop, PNG files give the best transparency results.");
       }
       setFiles(prev => [...prev, file]);
       const reader = new FileReader();
@@ -161,20 +196,46 @@ export default function ImageStudioPage() {
 
   // --- Main Generation Logic ---
   const handleGenerate = async () => {
-    if (!clientId) return alert("Session lost. Please refresh.");
-    if (!activeBrand) return alert("Please select a brand workspace first."); // ✨ SAFETY CHECK
-
-    if (activeConfig.requiresUpload && files.length === 0) return alert("Please upload the required images.");
-    if ((selectedMode === "grid" || selectedMode === "organic_blend") && files.length < 2) return alert("This mode requires at least 2 images.");
+    if (!clientId) return toast.error("Session lost. Please refresh.");
+    if (!activeBrand) return toast.error("Please select a brand workspace first.");
+    if (activeConfig.requiresUpload && files.length === 0) return toast.error("Please upload the required images.");
+    if ((selectedMode === "grid" || selectedMode === "organic_blend") && files.length < 2) return toast.error("This mode requires at least 2 images.");
 
     setIsGenerating(true);
 
-    const strictBrandAlignment = true; // Implicit since we enforce activeBrand
     const { addTask, removeTask } = useWorkflowStore.getState();
     const taskId = `img-gen-${Date.now()}`;
 
     try {
       addTask(taskId, "Generating Image");
+
+      // Auto Creative Director — if prompt is empty or lazy (<10 chars), generate a concept first
+      let activePrompt = prompt.trim();
+      if (activePrompt.length < 10) {
+        addTask(taskId, "Creative Director is writing your brief...");
+        try {
+          const helperRes = await fetch("/api/ai/prompt-helper", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: activePrompt,
+              brandContext,
+              useBrand: !!activeBrand,
+              mode: selectedMode,
+              style: MARKETING_STYLES.find(s => s.id === selectedStyle),
+            }),
+          });
+          const helperData = await helperRes.json();
+          if (helperData.suggestion) {
+            activePrompt = helperData.suggestion;
+            setPrompt(helperData.suggestion); // show user what was created
+          }
+        } catch {
+          // non-fatal — fall through with whatever prompt we have
+        }
+      }
+
+      // Upload any user-provided files
       const uploadedUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -185,67 +246,94 @@ export default function ImageStudioPage() {
         uploadedUrls.push(url);
       }
 
-      const activeStyleObj = MARKETING_STYLES.find(s => s.id === selectedStyle);
-      const finalPrompt = `${prompt}. ${activeStyleObj?.promptAddon || ""}`;
-
-      const response = await triggerWorkflow("blink-generate-images", {
-        client_id: clientId,
-        brand_id: activeBrand.id, // ✨ FIXED: Pass brand_id to n8n
-        mode: selectedMode,
-        prompt: finalPrompt,
-        reference_image_urls: uploadedUrls,
-        strict_brand_alignment: strictBrandAlignment,
-        numImages: selectedMode === "standard" ? numImages : 1,
-        style: selectedStyle,
-        logo_url: strictBrandAlignment ? brandContext?.logoUrl : undefined,
-        is_sync: true
-      });
-
-      if (response && response.success === false) {
-        const message =
-          typeof response.message === "string"
-            ? response.message
-            : "An AI generation error occurred.";
-        throw new Error(message);
+      // When brand style is selected, prepend logo as the primary reference so the
+      // AI anchors to the actual logo graphic instead of approximating it
+      const referenceUrls = [...uploadedUrls];
+      if (selectedStyle === "brand" && brandContext?.logoUrl) {
+        referenceUrls.unshift(brandContext.logoUrl);
       }
 
-      let newUrls: string[] = [];
-      if (response && Array.isArray(response.imageUrls)) {
-        newUrls = response.imageUrls as string[];
-      } else if (response && response.imageUrls) {
-        newUrls = response.imageUrls as string[];
+      const activeStyleObj = MARKETING_STYLES.find(s => s.id === selectedStyle);
+
+      // Hard-lock brand identity — prevents AI from inventing fictional brands
+      const brandConstraint = brandContext?.name
+        ? [
+          `CRITICAL BRAND CONSTRAINT: This content belongs to the brand "${brandContext.name}".`,
+          brandContext.websiteUrl ? `The website is ${brandContext.websiteUrl}.` : "",
+          brandContext.description ? `Brand description: ${brandContext.description}.` : "",
+          brandContext.industry ? `Industry: ${brandContext.industry}.` : "",
+          `Do NOT invent fictional brand names, fake website URLs, placeholder logos, or generic company names.`,
+          `Any text, signage, labels, or website URLs visible in the image MUST reflect "${brandContext.name}" only.`,
+        ].filter(Boolean).join(" ")
+        : "";
+
+      // activePrompt already went through the Creative Director above if it was empty/lazy
+      const finalPrompt = [brandConstraint, activePrompt, activeStyleObj?.promptAddon].filter(Boolean).join(". ");
+      const totalImages = selectedMode === "standard" ? numImages : 1;
+
+      // Fire one workflow call per image in parallel so batch actually works
+      const workflowPayload = {
+        client_id: clientId,
+        brand_id: activeBrand.id,
+        mode: selectedMode,
+        prompt: finalPrompt,
+        reference_image_urls: referenceUrls,
+        strict_brand_alignment: true,
+        numImages: 1,
+        style: selectedStyle,
+        // Full brand identity so n8n can reinforce brand context in its own prompt building
+        brand_name: brandContext?.name ?? undefined,
+        brand_website: brandContext?.websiteUrl ?? undefined,
+        brand_description: brandContext?.description ?? undefined,
+        brand_industry: brandContext?.industry ?? undefined,
+        brand_primary_color: brandContext?.primaryColor ?? undefined,
+        brand_secondary_color: brandContext?.secondaryColor ?? undefined,
+        logo_url: brandContext?.logoUrl ?? undefined,
+        is_sync: true,
+      };
+
+      const settled = await Promise.allSettled(
+        Array.from({ length: totalImages }).map(() => triggerWorkflow("blink-generate-images", workflowPayload))
+      );
+
+      const newUrls: string[] = [];
+      for (const result of settled) {
+        if (result.status === "fulfilled" && result.value) {
+          const r = result.value as any;
+          if (r.success === false) continue;
+          const urls: string[] = Array.isArray(r.imageUrls) ? r.imageUrls : r.imageUrls ? [r.imageUrls] : [];
+          newUrls.push(...urls);
+        }
       }
 
       if (newUrls.length === 0) throw new Error("No images were returned from the generator.");
 
       const newResults: GeneratedResult[] = [];
       for (const url of newUrls) {
-        // ✨ FIXED: Save with brand_id
         const { data: contentRecord, error } = await supabase
           .from("content")
           .insert({
             client_id: clientId,
-            brand_id: activeBrand.id, // Ensure it's tagged to the active workspace
+            brand_id: activeBrand.id,
             content_type: "post_image",
-            caption: finalPrompt,
+            caption: "",
             status: "draft",
             image_urls: [url],
-            ai_model: 'nano-banana-studio'
+            ai_model: "nano-banana-studio",
           })
           .select()
           .single();
 
         if (error) console.error("Failed to save to grid:", error);
-        if (contentRecord) {
-          newResults.push({ id: contentRecord.id, url, prompt: finalPrompt, mode: selectedMode });
-        }
+        if (contentRecord) newResults.push({ id: contentRecord.id, url, prompt: finalPrompt, mode: selectedMode });
       }
 
       setGeneratedResults(prev => [...newResults, ...prev]);
+      toast.success(`${newResults.length} image${newResults.length !== 1 ? "s" : ""} generated and saved.`);
 
     } catch (error: any) {
       console.error(error);
-      alert(`Generation failed: ${error.message || "Unknown error"}`);
+      toast.error(`Generation failed: ${error.message || "Unknown error"}`);
     } finally {
       removeTask(taskId);
       setIsGenerating(false);
@@ -255,10 +343,10 @@ export default function ImageStudioPage() {
   // --- Refinement Logic (Modal Buttons) ---
   const handleRefine = async (type: "fresh" | "retouch") => {
     if (!selectedResult || !clientId) return;
-    if (!activeBrand) return alert("Please select a brand workspace first."); // ✨ SAFETY CHECK
+    if (!activeBrand) return toast.error("Please select a brand workspace first.");
 
     if (type === "retouch" && !retouchPrompt.trim()) {
-      return alert("Please enter instructions on what you want to change.");
+      return toast.error("Please enter instructions on what you want to change.");
     }
 
     setIsRefining(true);
@@ -292,7 +380,7 @@ export default function ImageStudioPage() {
           client_id: clientId,
           brand_id: activeBrand.id,
           content_type: "post_image",
-          caption: wfPrompt,
+          caption: "",
           status: "draft",
           image_urls: [url],
           ai_model: type === "fresh" ? 'nano-banana-v2' : 'qwen-image-edit'
@@ -447,12 +535,30 @@ export default function ImageStudioPage() {
               <p className="text-[11px] text-[#989DAA] text-right">The AI Writer will automatically adapt your prompt to fit the <b className="text-[#DEDCDC]">{MARKETING_STYLES.find(s => s.id === selectedStyle)?.label}</b> style.</p>
             </div>
 
+            {selectedStyle === "brand" && brandContext?.logoUrl && (
+              <div className="flex items-start gap-2.5 bg-[#C5BAC4]/8 border border-[#C5BAC4]/20 rounded-xl px-4 py-3 relative z-10">
+                <Info className="w-4 h-4 text-[#C5BAC4] shrink-0 mt-0.5" />
+                <p className="text-[11px] text-[#C5BAC4]/80 leading-relaxed font-medium">
+                  Your logo is passed to the AI as a reference. For cleanest results the logo should be on a transparent or white background in your Brand Profile. The AI will interpret it — use Magic Retouch after to correct any imperfections.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-3 relative z-10">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-bold text-[#DEDCDC]">
-                  Image Assets {activeConfig.requiresUpload && <span className="text-red-400">*</span>}
-                </label>
-                <span className="text-xs text-[#989DAA] font-bold px-2 py-0.5 bg-[#191D23] rounded-md border border-[#57707A]/30">{files.length} / {activeConfig.maxUploads} Uploaded</span>
+                <div>
+                  <label className="text-sm font-bold text-[#DEDCDC]">
+                    Style Moodboard {activeConfig.requiresUpload && <span className="text-red-400 ml-1">*</span>}
+                  </label>
+                  <p className="text-[10px] text-[#57707A] mt-0.5 font-medium">
+                    {activeConfig.requiresUpload
+                      ? activeConfig.id === "product_drop"
+                        ? "Upload the product you want placed into a scene"
+                        : "Upload the images you want composed together"
+                      : "Optional — upload images whose look, vibe, or composition you want the AI to recreate"}
+                  </p>
+                </div>
+                <span className="text-xs text-[#989DAA] font-bold px-2 py-0.5 bg-[#191D23] rounded-md border border-[#57707A]/30 shrink-0 ml-3">{files.length} / {activeConfig.maxUploads}</span>
               </div>
 
               <div className="flex flex-wrap gap-4">
@@ -534,6 +640,18 @@ export default function ImageStudioPage() {
                       className="relative aspect-square rounded-xl overflow-hidden border-2 border-[#57707A]/30 hover:border-[#C5BAC4] transition-all shadow-md group cursor-pointer bg-[#191D23]"
                     >
                       <img src={result.url} alt={`Generated ${idx}`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-90 group-hover:opacity-100" loading="lazy" />
+
+                      {/* Brand logo overlay — always shows the real logo regardless of what the AI drew */}
+                      {brandContext?.logoUrl && (
+                        <div className="absolute bottom-2 right-2 z-20 bg-white rounded-md shadow-lg p-1 max-w-[40%]">
+                          <img
+                            src={brandContext.logoUrl}
+                            alt="Brand logo"
+                            className="h-6 w-auto max-w-full object-contain"
+                          />
+                        </div>
+                      )}
+
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent transition-all flex flex-col items-center justify-end pb-4 opacity-0 group-hover:opacity-100">
                         <div className="bg-[#191D23]/80 backdrop-blur-md border border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#C5BAC4] hover:text-[#191D23] hover:border-[#C5BAC4] text-xs font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
                           <Sparkles className="w-3.5 h-3.5" /> Refine & Edit
@@ -638,7 +756,7 @@ export default function ImageStudioPage() {
                   <Button variant="outline" className="flex-1 h-11 rounded-xl text-[#DEDCDC] font-bold bg-[#2A2F38] border-[#57707A]/50 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] transition-colors" onClick={() => window.open(selectedResult?.url, '_blank')}>
                     <Download className="w-4 h-4 mr-2 text-[#C5BAC4]" /> Save
                   </Button>
-                  <Button variant="outline" className="flex-1 h-11 rounded-xl text-[#DEDCDC] font-bold bg-[#2A2F38] border-[#57707A]/50 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] transition-colors" onClick={() => alert('Share link copied to clipboard! (Coming soon)')}>
+                  <Button variant="outline" className="flex-1 h-11 rounded-xl text-[#DEDCDC] font-bold bg-[#2A2F38] border-[#57707A]/50 hover:bg-[#57707A]/30 hover:border-[#C5BAC4] transition-colors" onClick={() => toast.info('Share links coming soon.')}>
                     <Share2 className="w-4 h-4 mr-2 text-[#C5BAC4]" /> Share
                   </Button>
                 </div>
@@ -652,6 +770,17 @@ export default function ImageStudioPage() {
                   className="max-w-full max-h-full object-contain relative z-10 drop-shadow-2xl"
                   alt="Selected result"
                 />
+
+                {/* Brand logo overlay on full-size modal view */}
+                {brandContext?.logoUrl && (
+                  <div className="absolute bottom-4 right-4 z-30 bg-white rounded-lg shadow-xl p-1.5 max-w-[30%]">
+                    <img
+                      src={brandContext.logoUrl}
+                      alt="Brand logo"
+                      className="h-8 w-auto max-w-full object-contain"
+                    />
+                  </div>
+                )}
 
                 {/* Prompt overlay on hover */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-8 pt-24 text-white opacity-0 group-hover:opacity-100 transition-opacity delay-100 pointer-events-none z-20">

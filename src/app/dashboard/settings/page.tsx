@@ -18,10 +18,18 @@ import {
   User,
   RefreshCw,
   Briefcase,
+  Type,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SettingsShimmer } from "@/components/shared/PageShimmer";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
+import { GOOGLE_FONTS_REGISTRY, injectGoogleFont } from "@/lib/fonts";
 
 const platformConfig: Record<
   string,
@@ -95,6 +104,11 @@ function SettingsContent() {
   const [socials, setSocials] = useState<SocialAccount[]>([]);
   const [hasAutoSynced, setHasAutoSynced] = useState(false);
 
+  // Brand typography state
+  const [brandFont, setBrandFont] = useState("");
+  const [savingFont, setSavingFont] = useState(false);
+  const [fontSaved, setFontSaved] = useState(false);
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -148,35 +162,16 @@ function SettingsContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to sync accounts");
 
-      if (data.accounts && data.accounts.length > 0) {
-        const { data: existing } = await supabase
-          .from('social_accounts')
-          .select('id, platform')
-          .eq('brand_id', activeBrand.id);
-
-        for (const acc of data.accounts) {
-          const exists = existing?.find(e => e.platform === acc.platform);
-          if (exists) {
-            await supabase.from('social_accounts').update(acc).eq('id', exists.id);
-          } else {
-            // ✨ MULTI-BRAND FIX: Insert the account linked to BOTH the client and the brand
-            const { error: insertErr } = await supabase.from('social_accounts').insert([{
-              ...acc,
-              client_id: clientId,
-              brand_id: activeBrand.id
-            }]);
-            if (insertErr) {
-              console.error("Insert error:", insertErr);
-              throw new Error(insertErr.message);
-            }
-          }
-        }
-      } else {
-        throw new Error("No accounts found in PostForMe for this client ID.");
-      }
-
+      // Sync route now handles all Supabase upserts + stale row cleanup server-side
       await loadData();
-      setConnectionMessage({ type: "success", text: "Accounts synced successfully!" });
+
+      const count = data.accounts?.length ?? 0;
+      setConnectionMessage({
+        type: count > 0 ? "success" : "info",
+        text: count > 0
+          ? `${count} account${count > 1 ? "s" : ""} synced successfully!`
+          : "No connected accounts found in PostForMe. Connect a platform below.",
+      });
       setTimeout(() => setConnectionMessage(null), 4000);
     } catch (err: any) {
       console.error("Sync process error:", err);
@@ -189,6 +184,33 @@ function SettingsContent() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Load brand font when active brand changes
+  useEffect(() => {
+    if (!activeBrand) { setBrandFont(""); return; }
+    supabase
+      .from("brand_profiles")
+      .select("primary_font")
+      .eq("id", activeBrand.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const f = data?.primary_font || "";
+        setBrandFont(f);
+        if (f) injectGoogleFont(f);
+      });
+  }, [activeBrand?.id]);
+
+  async function handleSaveFont() {
+    if (!activeBrand || !brandFont) return;
+    setSavingFont(true);
+    await supabase
+      .from("brand_profiles")
+      .update({ primary_font: brandFont })
+      .eq("id", activeBrand.id);
+    setSavingFont(false);
+    setFontSaved(true);
+    setTimeout(() => setFontSaved(false), 2500);
+  }
 
   useEffect(() => {
     if (!clientId || hasAutoSynced || !activeBrand) return;
@@ -620,21 +642,78 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* ✨ AI RULES TAB (COMING SOON) */}
       {mainTab === "ai-rules" && (
         <div className="space-y-6 animate-in fade-in duration-300">
-          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-10 text-center shadow-lg flex flex-col items-center justify-center min-h-[400px] relative overflow-hidden">
-            {/* Subtle background element */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-[#C5BAC4]/5 blur-[80px] rounded-full pointer-events-none" />
 
-            <div className="relative z-10 flex flex-col items-center">
-              <div className="h-20 w-20 bg-[#191D23] border border-[#57707A]/40 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                <Bot className="h-10 w-10 text-[#57707A]" />
+          {/* BRAND TYPOGRAPHY */}
+          <div className={cn("rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-6 md:p-8 space-y-5 shadow-lg", !activeBrand && "opacity-60 pointer-events-none")}>
+            <div className="border-b border-[#57707A]/20 pb-4 flex items-center gap-2">
+              <Type className="h-5 w-5 text-[#C5BAC4]" />
+              <div>
+                <h3 className="text-lg font-bold text-[#DEDCDC] font-display">Brand Typography</h3>
+                <p className="text-xs text-[#989DAA] mt-0.5">The selected font is injected directly into AI image generation prompts.</p>
               </div>
-              <span className="text-[10px] font-bold text-[#191D23] uppercase tracking-widest bg-[#C5BAC4] px-3 py-1 rounded-full mb-4">Coming Soon</span>
-              <h3 className="text-2xl font-bold text-[#DEDCDC] font-display mb-3">AI Auto-Reply Configuration</h3>
-              <p className="text-[#989DAA] max-w-md leading-relaxed">
-                Soon, you'll be able to configure your AI assistant to automatically reply to DMs and comments using your brand's unique voice and safety boundaries.
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Primary Font</label>
+              <Select
+                value={brandFont}
+                onValueChange={(val) => {
+                  setBrandFont(val);
+                  injectGoogleFont(val);
+                }}
+              >
+                <SelectTrigger className="h-11 bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC]">
+                  <SelectValue placeholder="Choose a font for this workspace" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
+                  {GOOGLE_FONTS_REGISTRY.map((f) => (
+                    <SelectItem key={f.family} value={f.family}>
+                      <span className="font-medium">{f.family}</span>
+                      <span className="ml-2 text-[10px] text-[#57707A]">— {f.vibe}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Live preview */}
+              {brandFont && (
+                <div
+                  className="px-4 py-3 bg-[#191D23] border border-[#57707A]/30 rounded-xl text-sm text-[#DEDCDC]"
+                  style={{ fontFamily: brandFont }}
+                >
+                  {brandFont} — The quick brown fox jumps over the lazy dog
+                </div>
+              )}
+
+              <Button
+                onClick={handleSaveFont}
+                disabled={savingFont || !brandFont || !activeBrand}
+                className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold gap-2 h-10 px-5 rounded-xl w-full sm:w-auto"
+              >
+                {savingFont ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : fontSaved ? (
+                  <><CheckCircle className="h-4 w-4" /> Saved!</>
+                ) : (
+                  <><Save className="h-4 w-4" /> Save Font</>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* AI AUTO-REPLY — coming soon */}
+          <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-10 text-center shadow-lg flex flex-col items-center justify-center min-h-[280px] relative overflow-hidden">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-[#C5BAC4]/5 blur-[80px] rounded-full pointer-events-none" />
+            <div className="relative z-10 flex flex-col items-center">
+              <div className="h-16 w-16 bg-[#191D23] border border-[#57707A]/40 rounded-full flex items-center justify-center mb-5 shadow-inner">
+                <Bot className="h-8 w-8 text-[#57707A]" />
+              </div>
+              <span className="text-[10px] font-bold text-[#191D23] uppercase tracking-widest bg-[#C5BAC4] px-3 py-1 rounded-full mb-3">Coming Soon</span>
+              <h3 className="text-xl font-bold text-[#DEDCDC] font-display mb-2">AI Auto-Reply Configuration</h3>
+              <p className="text-[#989DAA] max-w-md leading-relaxed text-sm">
+                Configure your AI to automatically reply to DMs and comments using your brand's unique voice and safety rules.
               </p>
             </div>
           </div>

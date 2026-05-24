@@ -477,6 +477,10 @@ export default function ContentDetailPage({
       finalTopic = `${finalTopic}. BRAND CONTEXT: We are ${brandContext.name}, operating in the ${brandContext.industry} industry. Product info: ${brandContext.description}`;
     }
 
+    if (generationMode === "style_transfer" && brandContext?.name) {
+      finalTopic = `${finalTopic}. BRAND LOGO REPLACEMENT (CRITICAL): The reference image may contain an existing logo, wordmark, or brand name that belongs to a different brand. You MUST remove it completely and replace it with "${brandContext.name}" branding — render the exact text "${brandContext.name}" in a clean sans-serif in the same position. If the reference image has a website URL, replace it with "${brandContext.websiteUrl || brandContext.name.toLowerCase().replace(/\s/g, "") + ".com"}". Never preserve, copy, or display logos or brand text from the reference image.`;
+    }
+
     try {
       await supabase
         .from("content")

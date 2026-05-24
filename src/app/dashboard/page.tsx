@@ -19,6 +19,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PlatformIcon } from "@/components/shared/PlatformIcon";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
+import { useBrandStore } from "@/app/store/useBrandStore";
 import type { Content, ContentStatus, Platform } from "@/types/database";
 
 interface Stats {
@@ -77,6 +78,7 @@ const parseArray = (data: any): any[] => {
 
 export default function DashboardPage() {
   const { clientId, loading: clientLoading } = useClient();
+  const { activeBrand } = useBrandStore();
   const [stats, setStats] = useState<Stats>({
     total: 0,
     pending: 0,
@@ -87,15 +89,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!clientId) return;
+    if (!clientId || !activeBrand) return;
+    const brandId = activeBrand.id;
 
     async function fetchData() {
       try {
-        // Fetch all content, but ✨ FILTER OUT the internal editor clips and audios
         const { data, error } = await supabase
           .from("content")
           .select("*")
-          .eq("client_id", clientId)
+          .eq("brand_id", brandId)
           .not("content_type", "in", `(${HIDDEN_CONTENT_TYPES.join(',')})`)
           .order("created_at", { ascending: false });
 
@@ -125,7 +127,7 @@ export default function DashboardPage() {
     }
 
     fetchData();
-  }, [clientId]);
+  }, [clientId, activeBrand?.id]);
 
   if (loading || clientLoading) {
     return <DashboardShimmer />;
