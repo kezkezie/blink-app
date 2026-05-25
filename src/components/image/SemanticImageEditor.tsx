@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useClient } from "@/hooks/useClient";
 import {
@@ -15,7 +15,8 @@ import {
     Image as ImageIcon,
     ChevronDown,
     ChevronUp,
-    ALargeSmall // ✨ NEW: Icon for text content
+    ALargeSmall,
+    AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,12 +47,14 @@ interface SemanticImageEditorProps {
 
 export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImageEditorProps) {
     const router = useRouter();
-    const [imageUrl, setImageUrl] = useState<string | null>(initialImageUrl);
+    const [imageUrl] = useState<string | null>(initialImageUrl);
     const [schema, setSchema] = useState<SemanticSchema | null>(null);
-    const { clientId } = useClient(); // ✨ Get the active user's ID
+    const { clientId, loading: clientLoading } = useClient();
 
     const [isExtracting, setIsExtracting] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [generatingStep, setGeneratingStep] = useState<string>("Rendering edit...");
 
     const [expandedObjectId, setExpandedObjectId] = useState<string | null>(null);
     const [replacementImages, setReplacementImages] = useState<Record<string, File>>({});
@@ -59,10 +62,11 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
 
     const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-    // 🧠 1. X-RAY FUNCTION (Calls updated n8n X-Ray flow)
+    // 🧠 1. X-RAY FUNCTION
     const handleExtractJSON = async () => {
-        if (!imageUrl) return;
+        if (!imageUrl || !clientId) return;
         setIsExtracting(true);
+        setErrorMessage(null);
 
         try {
             const res = await fetch("/api/video/nano-banana", {
@@ -77,20 +81,16 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
             });
 
             const data = await res.json();
-
             if (!res.ok) throw new Error(data.error || "Failed to extract JSON schema.");
 
             if (data.schema && data.schema.objects) {
                 setSchema(data.schema);
-                if (data.schema.objects.length > 0) {
-                    setExpandedObjectId(data.schema.objects[0].id);
-                }
+                if (data.schema.objects.length > 0) setExpandedObjectId(data.schema.objects[0].id);
             } else {
                 throw new Error("Invalid schema format returned from AI.");
             }
-
         } catch (err: any) {
-            alert(`X-Ray Failed: ${err.message}`);
+            setErrorMessage(`X-Ray failed: ${err.message}`);
         } finally {
             setIsExtracting(false);
         }
@@ -130,12 +130,14 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
         });
     };
 
-    // 🧠 2. APPLY EDITS (Sends updated text JSON to n8n)
+    // 🧠 2. APPLY EDITS
     const handleApplyEdits = async () => {
         if (!schema || !imageUrl) return;
         setIsGenerating(true);
+        setErrorMessage(null);
 
         try {
+            setGeneratingStep("Uploading replacements...");
             const uploadedReplacementUrls: Record<string, string> = {};
             for (const [objId, file] of Object.entries(replacementImages)) {
                 const path = `edits/replacement_${Date.now()}_${file.name}`;
@@ -143,12 +145,14 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                 uploadedReplacementUrls[objId] = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
             }
 
+            setGeneratingStep("Sending edits to AI...");
             const res = await fetch("/api/video/nano-banana", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     mode: "scene_video_generator",
                     video_mode: "json_image_edit",
+                    client_id: clientId,
                     post_id: contentId,
                     primary_image_url: imageUrl,
                     json_schema: schema,
@@ -156,14 +160,14 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                 })
             });
 
-            if (!res.ok) throw new Error("Failed to trigger image edit");
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to trigger image edit");
 
-            alert("✨ Image successfully updated! Redirecting to post...");
-            router.push(`/dashboard/content/${contentId}`);
+            setGeneratingStep("Done! Redirecting...");
+            setTimeout(() => router.push(`/dashboard/content/${contentId}?processing=true`), 800);
 
         } catch (err: any) {
-            alert(`Edit generation failed: ${err.message}`);
-        } finally {
+            setErrorMessage(`Edit failed: ${err.message}`);
             setIsGenerating(false);
         }
     };
@@ -198,7 +202,7 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                             <p className="text-xs text-[#989DAA] mb-8 max-w-[250px] leading-relaxed">Run an X-Ray on this image to break it down into editable JSON layers.</p>
                             <Button
                                 onClick={handleExtractJSON}
-                                disabled={isExtracting}
+                                disabled={isExtracting || clientLoading || !clientId}
                                 className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold shadow-lg shadow-[#C5BAC4]/10 h-12 rounded-xl transition-all"
                             >
                                 {isExtracting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ScanSearch className="w-4 h-4 mr-2" />}
@@ -358,14 +362,20 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                     )}
                 </div>
 
-                <div className="p-5 border-t border-[#57707A]/30 bg-[#191D23]/40 relative z-10 shrink-0">
+                <div className="p-5 border-t border-[#57707A]/30 bg-[#191D23]/40 relative z-10 shrink-0 space-y-3">
+                    {errorMessage && (
+                        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400">
+                            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                            <p className="text-xs font-medium leading-relaxed">{errorMessage}</p>
+                        </div>
+                    )}
                     <Button
                         onClick={handleApplyEdits}
                         disabled={!schema || isGenerating}
                         className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-12 rounded-xl shadow-lg shadow-[#C5BAC4]/10 transition-all disabled:opacity-50"
                     >
                         {isGenerating ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Wand2 className="w-5 h-5 mr-2" />}
-                        {isGenerating ? "Rendering Edit..." : "Apply JSON Edits"}
+                        {isGenerating ? generatingStep : "Apply JSON Edits"}
                     </Button>
                 </div>
             </div>
@@ -382,7 +392,8 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                             <div className="absolute inset-0 rounded-full blur-xl bg-[#C5BAC4]/20 animate-pulse"></div>
                             <Loader2 className="w-12 h-12 text-[#C5BAC4] animate-spin relative z-10" />
                         </div>
-                        <p className="text-sm font-bold text-[#DEDCDC] uppercase tracking-wider animate-pulse font-display">AI is modifying pixels...</p>
+                        <p className="text-sm font-bold text-[#DEDCDC] uppercase tracking-wider animate-pulse font-display">{generatingStep}</p>
+                        <p className="text-xs text-[#989DAA]">This may take 30–60 seconds</p>
                     </div>
                 )}
             </div>

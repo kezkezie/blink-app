@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Layers, Download, Share2, Briefcase, Info } from "lucide-react";
+import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Layers, Download, Share2, Briefcase, Info, FolderOpen } from "lucide-react";
+import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -86,6 +87,10 @@ export default function ImageStudioPage() {
 
   // --- State: Brand Context ---
   const [brandContext, setBrandContext] = useState<any>(null);
+
+  // --- State: Library Picker ---
+  const [libraryUrls, setLibraryUrls] = useState<string[]>([]);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
 
   // --- State: Modals & Refinement ---
   const [selectedResult, setSelectedResult] = useState<GeneratedResult | null>(null);
@@ -194,12 +199,29 @@ export default function ImageStudioPage() {
     setPreviews(prev => prev.filter((_, i) => i !== index));
   };
 
+  const removeLibraryUrl = (index: number) => {
+    setLibraryUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleLibrarySelect = (url: string) => {
+    const totalUsed = files.length + libraryUrls.length;
+    if (totalUsed >= activeConfig.maxUploads) {
+      toast.warning(`Maximum ${activeConfig.maxUploads} reference images allowed.`);
+      return;
+    }
+    if (!libraryUrls.includes(url)) {
+      setLibraryUrls(prev => [...prev, url]);
+    }
+    setIsLibraryOpen(false);
+  };
+
   // --- Main Generation Logic ---
   const handleGenerate = async () => {
     if (!clientId) return toast.error("Session lost. Please refresh.");
     if (!activeBrand) return toast.error("Please select a brand workspace first.");
-    if (activeConfig.requiresUpload && files.length === 0) return toast.error("Please upload the required images.");
-    if ((selectedMode === "grid" || selectedMode === "organic_blend") && files.length < 2) return toast.error("This mode requires at least 2 images.");
+    const totalRefs = files.length + libraryUrls.length;
+    if (activeConfig.requiresUpload && totalRefs === 0) return toast.error("Please upload or pick an image from your content grid.");
+    if ((selectedMode === "grid" || selectedMode === "organic_blend") && totalRefs < 2) return toast.error("This mode requires at least 2 images.");
 
     setIsGenerating(true);
 
@@ -246,9 +268,8 @@ export default function ImageStudioPage() {
         uploadedUrls.push(url);
       }
 
-      // When brand style is selected, prepend logo as the primary reference so the
-      // AI anchors to the actual logo graphic instead of approximating it
-      const referenceUrls = [...uploadedUrls];
+      // Merge uploaded files + library picks. Library URLs are already on CDN — no upload needed.
+      const referenceUrls = [...uploadedUrls, ...libraryUrls];
       if (selectedStyle === "brand" && brandContext?.logoUrl) {
         referenceUrls.unshift(brandContext.logoUrl);
       }
@@ -297,16 +318,20 @@ export default function ImageStudioPage() {
       );
 
       const newUrls: string[] = [];
+      let safetyMessage: string | null = null;
       for (const result of settled) {
         if (result.status === "fulfilled" && result.value) {
           const r = result.value as any;
-          if (r.success === false) continue;
+          if (r.success === false) {
+            if (r.message) safetyMessage = r.message;
+            continue;
+          }
           const urls: string[] = Array.isArray(r.imageUrls) ? r.imageUrls : r.imageUrls ? [r.imageUrls] : [];
           newUrls.push(...urls);
         }
       }
 
-      if (newUrls.length === 0) throw new Error("No images were returned from the generator.");
+      if (newUrls.length === 0) throw new Error(safetyMessage || "No images were returned from the generator.");
 
       const newResults: GeneratedResult[] = [];
       for (const url of newUrls) {
@@ -357,15 +382,24 @@ export default function ImageStudioPage() {
 
       const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId,
-        brand_id: activeBrand.id, // ✨ FIXED: Pass brand_id to n8n
+        brand_id: activeBrand.id,
         mode: wfMode,
         prompt: wfPrompt,
         reference_image_urls: [selectedResult.url],
         strict_brand_alignment: true,
         numImages: 1,
-        is_sync: true
+        is_sync: true,
+        logo_url: brandContext?.logoUrl ?? undefined,
+        brand_name: brandContext?.name ?? undefined,
+        brand_website: brandContext?.websiteUrl ?? undefined,
+        brand_description: brandContext?.description ?? undefined,
+        brand_industry: brandContext?.industry ?? undefined,
+        brand_primary_color: brandContext?.primaryColor ?? undefined,
       });
 
+      if (response && (response as any).success === false) {
+        throw new Error((response as any).message || "No images were returned.");
+      }
       let newUrls: string[] = [];
       if (response && Array.isArray(response.imageUrls)) newUrls = response.imageUrls as string[];
       else if (response && response.imageUrls) newUrls = response.imageUrls as string[];
@@ -399,7 +433,7 @@ export default function ImageStudioPage() {
 
     } catch (error: any) {
       console.error(error);
-      alert(`Refinement failed: ${error.message || "Unknown error"}`);
+      toast.error(error.message || "Refinement failed. Please try again.");
     } finally {
       setIsRefining(false);
     }
@@ -455,7 +489,7 @@ export default function ImageStudioPage() {
                 return (
                   <div
                     key={mode.id}
-                    onClick={() => { setSelectedMode(mode.id); setFiles([]); setPreviews([]); }}
+                    onClick={() => { setSelectedMode(mode.id); setFiles([]); setPreviews([]); setLibraryUrls([]); }}
                     className={cn(
                       "p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
                       isSelected ? "border-[#C5BAC4]/50 bg-[#C5BAC4]/10 shadow-sm" : "border-[#57707A]/30 bg-[#191D23]/40 hover:border-[#57707A]/80 hover:bg-[#57707A]/20"
@@ -562,8 +596,9 @@ export default function ImageStudioPage() {
               </div>
 
               <div className="flex flex-wrap gap-4">
+                {/* Uploaded file previews */}
                 {previews.map((src, idx) => (
-                  <div key={idx} className="relative w-24 h-24 rounded-xl border border-[#57707A]/40 overflow-hidden group shadow-sm bg-[#191D23]">
+                  <div key={`file-${idx}`} className="relative w-24 h-24 rounded-xl border border-[#57707A]/40 overflow-hidden group shadow-sm bg-[#191D23]">
                     <img src={src} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="upload preview" />
                     {selectedMode === 'product_drop' && (
                       <div className="absolute inset-0 bg-black/40 pointer-events-none" style={{ backgroundImage: 'linear-gradient(45deg, #333 25%, transparent 25%), linear-gradient(-45deg, #333 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #333 75%), linear-gradient(-45deg, transparent 75%, #333 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px', zIndex: -1 }}></div>
@@ -574,7 +609,19 @@ export default function ImageStudioPage() {
                   </div>
                 ))}
 
-                {files.length < activeConfig.maxUploads && (
+                {/* Library-picked image previews */}
+                {libraryUrls.map((src, idx) => (
+                  <div key={`lib-${idx}`} className="relative w-24 h-24 rounded-xl border border-[#C5BAC4]/40 overflow-hidden group shadow-sm bg-[#191D23]">
+                    <img src={src} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="library pick" />
+                    <div className="absolute bottom-1 left-1 bg-[#C5BAC4] text-[#191D23] text-[8px] font-bold px-1.5 py-0.5 rounded-full leading-none">Grid</div>
+                    <button onClick={() => removeLibraryUrl(idx)} className="absolute top-1.5 right-1.5 bg-red-500/90 backdrop-blur-sm text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md hover:bg-red-500 hover:scale-110">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Upload drop zone */}
+                {(files.length + libraryUrls.length) < activeConfig.maxUploads && (
                   <div
                     {...getRootProps()}
                     className={cn(
@@ -589,6 +636,17 @@ export default function ImageStudioPage() {
                     </span>
                   </div>
                 )}
+
+                {/* From Content Library button */}
+                {(files.length + libraryUrls.length) < activeConfig.maxUploads && (
+                  <button
+                    onClick={() => setIsLibraryOpen(true)}
+                    className="w-24 h-24 rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 text-[#57707A] hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 hover:text-[#989DAA] flex flex-col items-center justify-center cursor-pointer transition-all"
+                  >
+                    <FolderOpen className="w-6 h-6 mb-1.5" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight px-1">From Grid</span>
+                  </button>
+                )}
               </div>
               {selectedMode === 'product_drop' && <p className="text-[10px] text-[#B3FF00] font-bold mt-2 flex items-center gap-1.5 bg-[#B3FF00]/10 border border-[#B3FF00]/20 px-2 py-1.5 rounded-md w-fit"><CheckCircle className="w-3.5 h-3.5" /> Pro Tip: Use transparent PNGs for best results.</p>}
               {selectedStyle === 'brand' && !brandContext?.logoUrl && <p className="text-[10px] text-red-400 font-bold mt-2 bg-red-500/10 border border-red-500/20 px-2 py-1.5 rounded-md w-fit">⚠️ Warning: No logo found in your Brand Profile. Please upload one in the settings.</p>}
@@ -597,7 +655,7 @@ export default function ImageStudioPage() {
             <div className="mt-auto pt-6 border-t border-[#57707A]/30 flex justify-end relative z-10">
               <Button
                 onClick={handleGenerate}
-                disabled={isGenerating || (activeConfig.requiresUpload && files.length === 0) || isHelpLoading || (selectedStyle === 'brand' && !brandContext?.logoUrl)}
+                disabled={isGenerating || (activeConfig.requiresUpload && (files.length + libraryUrls.length) === 0) || isHelpLoading || (selectedStyle === 'brand' && !brandContext?.logoUrl)}
                 className="bg-[#C5BAC4] hover:bg-white text-[#191D23] h-12 px-8 font-bold shadow-lg shadow-[#C5BAC4]/20 transition-all relative overflow-hidden rounded-xl disabled:opacity-50"
               >
                 {isGenerating ? (
@@ -799,6 +857,12 @@ export default function ImageStudioPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AssetSelectionModal
+        open={isLibraryOpen}
+        onClose={() => setIsLibraryOpen(false)}
+        onSelect={handleLibrarySelect}
+      />
     </div >
   );
 }

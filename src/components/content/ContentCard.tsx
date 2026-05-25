@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ImageIcon } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -13,9 +14,8 @@ interface ContentCardProps {
   onUpdate?: (updated: Content) => void;
 }
 
-export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
-  const isActionable =
-    content.status === "draft" || content.status === "rejected" || content.status === "failed";
+export function ContentCard({ content }: ContentCardProps) {
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   // ── Fail-proof JSONB array parser ──
   const parseArray = (data: unknown): string[] => {
@@ -105,11 +105,24 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
                 preload="metadata"
               />
             ) : (
-              <img
-                src={displayUrl!}
-                alt={content.caption_short || "Content Preview"}
-                className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
-              />
+              <>
+                {/* Shimmer shown until image fires onLoad */}
+                <div className={cn(
+                  "absolute inset-0 z-10 bg-[#2A2F38] transition-opacity duration-300",
+                  imageLoaded ? "opacity-0 pointer-events-none" : "opacity-100"
+                )}>
+                  <div className="h-full w-full animate-pulse bg-gradient-to-r from-[#2A2F38] via-[#3A4048] to-[#2A2F38]" />
+                </div>
+                <img
+                  src={displayUrl!}
+                  alt={content.caption_short || "Content Preview"}
+                  className={cn(
+                    "h-full w-full object-cover group-hover:scale-105 transition-all duration-500",
+                    imageLoaded ? "opacity-100" : "opacity-0"
+                  )}
+                  onLoad={() => setImageLoaded(true)}
+                />
+              </>
             )
           ) : (
             <div className="h-full w-full flex items-center justify-center">
@@ -127,12 +140,13 @@ export function ContentCard({ content, clientId, onUpdate }: ContentCardProps) {
                   <span className="font-bold text-sm">Generation Failed</span>
                 </div>
                 <div className="text-[11px] text-[#989DAA] leading-relaxed space-y-1.5">
-                  <p>Something went wrong with the AI processing. Please check the following:</p>
+                  <p>Something went wrong with the AI processing. Common causes:</p>
                   <ul className="list-disc pl-3 text-red-500/50 space-y-0.5">
-                    <li><span className="text-[#989DAA]"><b className="text-[#DEDCDC]">Safety Filter:</b> Face resembles a celebrity or is cropped too tightly.</span></li>
+                    <li><span className="text-[#989DAA]"><b className="text-[#DEDCDC]">Safety Filter:</b> Prompts that add people to images, recreate public figures, or resemble deepfakes are blocked.</span></li>
+                    <li><span className="text-[#989DAA]"><b className="text-[#DEDCDC]">Tip:</b> Upload a reference image of the person instead of describing them in text.</span></li>
                     <li><span className="text-[#989DAA]"><b className="text-[#DEDCDC]">Invalid Media:</b> File format unsupported or too large.</span></li>
                   </ul>
-                  <p className="pt-2 text-[#57707A] font-medium">Please delete this draft and try again.</p>
+                  <p className="pt-2 text-[#57707A] font-medium">Credits have been refunded. Please delete this draft and try again.</p>
                 </div>
               </div>
             </div>

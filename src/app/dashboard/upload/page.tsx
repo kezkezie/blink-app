@@ -312,8 +312,8 @@ export default function YourContentPage() {
 
       if (dbError) throw dbError;
       router.push("/dashboard/content");
-    } catch (error) {
-      alert("Something went wrong during analysis.");
+    } catch (error: any) {
+      alert(error?.message || "Something went wrong during analysis.");
       setIsProcessing(false);
     }
   };

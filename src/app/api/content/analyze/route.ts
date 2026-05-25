@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     }
 
     clientIdForRefund = clientId; // Save it for error handling
-    const captionCost = 0.1; // ✨ Set the price for a caption generation
+    const captionCost = 1; // 1 credit per caption (amount must be integer)
 
     // ─── BILLING: DEDUCT CREDITS UPFRONT ───
     const { data: deductData, error: deductError } = await supabaseAdmin.rpc(
@@ -128,7 +128,7 @@ export async function POST(req: Request) {
       try {
         await supabaseAdmin.rpc("refund_credits", {
           p_client_id: clientIdForRefund,
-          p_amount: 0.1, // Refund the exact amount charged
+          p_amount: 1,
           p_operation: "refund",
           p_description: "Refund: Caption generation failed"
         });

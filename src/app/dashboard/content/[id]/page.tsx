@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, use } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ImageIcon,
@@ -123,8 +123,11 @@ export default function ContentDetailPage({
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [content, setContent] = useState<Content | null>(null);
+  const [isProcessing, setIsProcessing] = useState(() => searchParams.get("processing") === "true");
+  const [processingTimedOut, setProcessingTimedOut] = useState(false);
   const [brandLogo, setBrandLogo] = useState<string | null>(null);
   const [brandContext, setBrandContext] = useState<any>(null);
 
@@ -258,6 +261,46 @@ export default function ContentDetailPage({
     }
     fetchData();
   }, [id, clientId, activeBrand?.id]);
+
+  useEffect(() => {
+    if (!isProcessing || !id) return;
+
+    const channel = supabase
+      .channel(`content-processing-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "content", filter: `id=eq.${id}` },
+        (payload) => {
+          const updated = payload.new as any;
+          const newUrls = parseArray(updated.image_urls);
+          if (newUrls.length > 0) {
+            setContent((prev) => prev ? { ...prev, ...updated } as Content : null);
+            setIsProcessing(false);
+            router.replace(`/dashboard/content/${id}`, { scroll: false });
+          }
+        }
+      )
+      .subscribe();
+
+    // Fallback: after 90s try a manual refetch; if the image is already there show it,
+    // otherwise surface a "still processing" state so the user isn't stuck forever.
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase.from("content").select("*").eq("id", id).maybeSingle();
+      if (data && parseArray((data as any).image_urls).length > 0) {
+        setContent(data as unknown as Content);
+        setIsProcessing(false);
+        router.replace(`/dashboard/content/${id}`, { scroll: false });
+      } else {
+        setIsProcessing(false);
+        setProcessingTimedOut(true);
+      }
+    }, 90_000);
+
+    return () => {
+      clearTimeout(timeout);
+      supabase.removeChannel(channel);
+    };
+  }, [isProcessing, id]);
 
   // ✨ Omni-Publishing Toggles
   const togglePlatform = (platform: string, defaultFormat: any) => {
@@ -611,6 +654,40 @@ export default function ContentDetailPage({
         <div className="lg:col-span-3 space-y-6">
           <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] shadow-lg overflow-hidden relative">
             <div className="relative h-[400px] md:h-[550px] w-full bg-[#0F1115] flex items-center justify-center overflow-hidden shadow-inner">
+              {(isProcessing || processingTimedOut) && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-[#191D23]/85 backdrop-blur-md gap-4 animate-in fade-in">
+                  {processingTimedOut ? (
+                    <>
+                      <div className="p-4 bg-[#2A2F38] border border-[#57707A]/40 rounded-2xl shadow-xl flex flex-col items-center gap-3 max-w-[260px] text-center">
+                        <p className="text-sm font-bold text-[#DEDCDC]">Still processing...</p>
+                        <p className="text-xs text-[#989DAA] leading-relaxed">The AI is taking longer than usual. Your edit is still running in the background.</p>
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            setProcessingTimedOut(false);
+                            const { data } = await supabase.from("content").select("*").eq("id", id).maybeSingle();
+                            if (data) setContent(data as unknown as Content);
+                          }}
+                          className="w-full bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold h-9 rounded-xl text-xs"
+                        >
+                          Check Now
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <div className="absolute inset-0 rounded-full blur-xl bg-[#C5BAC4]/20 animate-pulse"></div>
+                        <Loader2 className="h-10 w-10 animate-spin text-[#C5BAC4] relative z-10" />
+                      </div>
+                      <p className="text-sm font-bold text-[#DEDCDC] tracking-wider uppercase animate-pulse">
+                        Applying your edits...
+                      </p>
+                      <p className="text-xs text-[#989DAA]">Hang tight — AI is processing your changes</p>
+                    </>
+                  )}
+                </div>
+              )}
               {generatingImage ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#191D23]/80 backdrop-blur-md z-20 gap-4">
                   <div className="relative">
