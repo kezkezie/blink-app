@@ -129,10 +129,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Guard: strip any accounts with null/undefined postforme_account_id
-    const accountIds = matchedAccounts
-      .map((a) => a.postforme_account_id)
-      .filter(Boolean);
+    // Guard: strip nulls and deduplicate — same account may appear for multiple brands
+    const accountIds = [...new Set(
+      matchedAccounts.map((a) => a.postforme_account_id).filter(Boolean)
+    )];
 
     if (accountIds.length === 0) {
       throw new Error(
@@ -146,6 +146,13 @@ export async function POST(req: Request) {
       .filter(Boolean)
       .join("\n\n");
     const finalCaption = rawCaption.substring(0, 2200);
+
+    if (!finalCaption) {
+      return NextResponse.json(
+        { error: "Caption is required. Add a caption to this post before publishing." },
+        { status: 400 }
+      );
+    }
 
     // 6. Build the PostForMe payload — matches the official docs exactly.
     // platform_configurations (placement) is not supported on Quickstart Projects.

@@ -31,7 +31,9 @@ import {
   Pin,
   AtSign,
   Cloud,
+  FolderOpen,
 } from "lucide-react";
+import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -154,6 +156,8 @@ export default function ContentDetailPage({
 
   const [refFiles, setRefFiles] = useState<File[]>([]);
   const [refPreviews, setRefPreviews] = useState<string[]>([]);
+  const [refLibraryUrls, setRefLibraryUrls] = useState<string[]>([]);
+  const [isRefLibraryOpen, setIsRefLibraryOpen] = useState(false);
 
   const [generationMode, setGenerationMode] = useState<GenerationMode>("generate");
   const [customPrompt, setCustomPrompt] = useState("");
@@ -515,6 +519,17 @@ export default function ContentDetailPage({
     setRefPreviews((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function removeRefLibraryUrl(index: number) {
+    setRefLibraryUrls((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleRefLibrarySelect(url: string) {
+    if (!refLibraryUrls.includes(url)) {
+      setRefLibraryUrls((prev) => [...prev, url]);
+    }
+    setIsRefLibraryOpen(false);
+  }
+
   async function handleGenerateImage() {
     if (!content) return;
 
@@ -553,13 +568,16 @@ export default function ContentDetailPage({
         }
       }
 
+      // Library-picked images are already on CDN — merge directly, no upload needed
+      const allReferenceUrls = [...uploadedUrls, ...refLibraryUrls];
+
       const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId!,
         post_id: content.id,
         topic: finalTopic,
         content_type: content.content_type,
         mode: generationMode,
-        reference_image_urls: uploadedUrls,
+        reference_image_urls: allReferenceUrls,
         logo_url: brandLogo || null,
         style: selectedStyle,
         is_sync: true
@@ -592,6 +610,7 @@ export default function ContentDetailPage({
 
       setRefFiles([]);
       setRefPreviews([]);
+      setRefLibraryUrls([]);
       setCustomPrompt("");
       setGenerationMode("generate");
 
@@ -639,7 +658,7 @@ export default function ContentDetailPage({
       displayImage.toLowerCase().includes(".mov") ||
       displayImage.toLowerCase().includes(".webm"));
 
-  const isGenerationDisabled = generatingImage || (generationMode === "style_transfer" && refFiles.length === 0);
+  const isGenerationDisabled = generatingImage || (generationMode === "style_transfer" && refFiles.length === 0 && refLibraryUrls.length === 0);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
@@ -1373,12 +1392,21 @@ export default function ContentDetailPage({
                 <h4 className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">Reference Images</h4>
 
                 <div className="space-y-4">
-                  {refPreviews.length > 0 && (
+                  {(refPreviews.length > 0 || refLibraryUrls.length > 0) && (
                     <div className="grid grid-cols-4 gap-3 mb-2">
                       {refPreviews.map((src, i) => (
-                        <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-[#57707A]/50 shadow-sm bg-[#191D23]">
+                        <div key={`file-${i}`} className="relative aspect-square rounded-lg overflow-hidden border border-[#57707A]/50 shadow-sm bg-[#191D23]">
                           <img src={src} className="w-full h-full object-cover opacity-90" alt={`Ref ${i}`} />
                           <button onClick={() => removeRefFile(i)} className="absolute top-1 right-1 p-1 bg-red-500/90 rounded-full shadow-sm hover:bg-red-500 text-white transition-colors">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      {refLibraryUrls.map((src, i) => (
+                        <div key={`lib-${i}`} className="relative aspect-square rounded-lg overflow-hidden border border-[#C5BAC4]/40 shadow-sm bg-[#191D23]">
+                          <img src={src} className="w-full h-full object-cover opacity-90" alt={`Grid pick ${i}`} />
+                          <div className="absolute bottom-1 left-1 bg-[#C5BAC4] text-[#191D23] text-[7px] font-bold px-1.5 py-0.5 rounded-full leading-none">Grid</div>
+                          <button onClick={() => removeRefLibraryUrl(i)} className="absolute top-1 right-1 p-1 bg-red-500/90 rounded-full shadow-sm hover:bg-red-500 text-white transition-colors">
                             <X className="h-3 w-3" />
                           </button>
                         </div>
@@ -1386,14 +1414,23 @@ export default function ContentDetailPage({
                     </div>
                   )}
 
-                  <div
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={handleRefFilesDrop}
-                    onClick={() => refInputRef.current?.click()}
-                    className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20"
-                  >
-                    <Upload className="h-8 w-8 mx-auto mb-3 text-[#57707A]" />
-                    <p className="text-xs font-bold text-[#989DAA] uppercase tracking-wider">Click or drag & drop reference images</p>
+                  <div className="flex gap-3">
+                    <div
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={handleRefFilesDrop}
+                      onClick={() => refInputRef.current?.click()}
+                      className="flex-1 border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20"
+                    >
+                      <Upload className="h-6 w-6 mx-auto mb-2 text-[#57707A]" />
+                      <p className="text-xs font-bold text-[#989DAA] uppercase tracking-wider">Click or drag & drop</p>
+                    </div>
+                    <button
+                      onClick={() => setIsRefLibraryOpen(true)}
+                      className="flex-1 border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 flex flex-col items-center justify-center gap-2"
+                    >
+                      <FolderOpen className="h-6 w-6 text-[#57707A]" />
+                      <p className="text-xs font-bold text-[#989DAA] uppercase tracking-wider">From Content Grid</p>
+                    </button>
                   </div>
                   <input
                     ref={refInputRef}
@@ -1421,6 +1458,12 @@ export default function ContentDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AssetSelectionModal
+        open={isRefLibraryOpen}
+        onClose={() => setIsRefLibraryOpen(false)}
+        onSelect={handleRefLibrarySelect}
+      />
     </div>
   );
 }
