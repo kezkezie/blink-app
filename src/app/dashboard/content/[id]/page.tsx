@@ -450,7 +450,7 @@ export default function ContentDetailPage({
           }
           : null
       );
-      alert("Post approved and sent live to PostForMe! 🚀");
+      alert("Post sent to PostForMe and queued for Instagram. Note: if the Instagram account has any Meta restrictions, posts may not appear — check Account Status in Instagram Settings if the post doesn't show within 5 minutes.");
     } catch (err: any) {
       alert(`Failed to publish: ${err.message}`);
     } finally {
