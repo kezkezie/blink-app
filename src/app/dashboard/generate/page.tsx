@@ -16,6 +16,7 @@ import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
+import { selectCreativeDirection, assemblePrompt } from "@/lib/creative-direction";
 
 // --- Configuration ---
 const IMAGE_MODES = [
@@ -30,37 +31,37 @@ const MARKETING_STYLES = [
   {
     id: "studio",
     label: "📸 Studio Product Shoot",
-    promptAddon: "STUDIO EXECUTION BLUEPRINT: Commercial product photography. The subject is captured on a seamless, infinite solid background (warm white, limestone off-white, or matte deep charcoal). The product acts as the single dominant focal point, center-framed and occupying exactly 60% of the composition canvas. Illumination is driven by a professional three-point softbox setup, casting soft diffused gradients with clean catchlights and absolute avoidance of harsh digital shadows. Maintain crisp, micro-textured material sharpness. Preserve generous, intentional negative space on at least two entire sides of the frame. Shot on a macro lens, deep depth of field (f/8), high clarity, commercial catalog asset, 8k resolution. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO LOGOS, NO WATERMARKS anywhere in the image.",
+    promptAddon: `Reference: Irving Penn product portraits, Bottega Veneta campaigns. The background is silence that amplifies — not empty space. NO TEXT, NO TYPOGRAPHY, NO LOGOS anywhere in the image.`,
   },
   {
     id: "lifestyle",
     label: "🌿 Lifestyle Photography",
-    promptAddon: "LIFESTYLE DIRECTION BLUEPRINT: Authentic editorial product placement inside a real, physical environment. Subject is unposed, candid, and naturally integrated into the geometric space, while maintaining distinct separation from background surfaces. Illumination is entirely directional, utilizing warm golden hour sunlight or soft morning natural window light to cast realistic, elongated shadows. Avoid busy or cluttered background objects by maintaining a clean, open environment layer. Captured via Fujifilm color science for true-to-life organic tones, shot on a prime 35mm lens with a shallow depth of field (f/2.0), introducing subtle film grain and natural, creamy background bokeh. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO LOGOS, NO WATERMARKS anywhere in the image.",
+    promptAddon: `Reference: Kinfolk magazine, Aesop campaign photography, Monocle editorial. The product was not placed here — it lives here. NO TEXT, NO TYPOGRAPHY, NO LOGOS anywhere in the image.`,
   },
   {
     id: "cinematic",
     label: "🎬 Cinematic",
-    promptAddon: "CINEMATIC MIS-EN-SCÈNE BLUEPRINT: A high-fidelity movie still composition. Employs stylized atmospheric color grading with a rich palette of muted teal tones and warm amber volumetric highlights. Implements dramatic chiaroscuro key lighting with high-contrast shadow modeling to carve out depth. Frame outlines a single focal point with an aggressive left-center or right-center dominance rule, backed by extensive negative space. Avoid center-weighting. Captured on an anamorphic 35mm lens, ultra-wide perspective, with an ultra-shallow depth of field (f/1.8), creating elongated cinematic bokeh and heavy background isolation. Moody, high-production values. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO LOGOS, NO WATERMARKS anywhere in the image.",
+    promptAddon: `Reference: Roger Deakins lighting, Denis Villeneuve visual language. A single frame from a film that has not been made yet. NO TEXT, NO TYPOGRAPHY, NO LOGOS anywhere in the image.`,
   },
   {
     id: "poster",
-    label: "📊 Ad Design / Poster",
-    promptAddon: "GRAPHIC DESIGN POSTER BLUEPRINT — This is a structured page layout, NOT a full-bleed environmental photograph with floating text. BACKGROUND: Clean, flat, solid surface utilizing a single neutral tint or brand color accent. No scenes, rooms, or background horizons. COMPOSITION MARGINS: Enforce a strict 10% safety margin inset from all outer boundaries — no elements near edges. 30% of the entire frame must remain clean, empty negative workspace. SPATIAL ZONES: The subject is a clean, standalone studio asset with a soft grounding drop shadow, occupying exactly 55% of the frame space. TYPOGRAPHY: All text fields are strictly isolated into dedicated copy zones that NEVER overlap the product silhouette. Top-left headline copy is crisp, bold, and display-weighted. Bottom-right website text is thin, small, and highly legible.",
+    label: "🔥 Editorial Ad Campaign",
+    promptAddon: `Reference: Apple launch photography, Mubi film poster art, Virgil Abloh design language. The poster is an event, not a flyer. Typography has mass, depth, and shadow — it belongs to the world of the image.`,
   },
   {
     id: "brand",
     label: "✨ Brand Integrated (Logo)",
-    promptAddon: "BRAND ASSET INTEGRATION BLUEPRINT: Premium commercial design. The official brand logo graphic must be rendered with absolute fidelity as a flat, real-world texture decal — such as a clean printed paper label, a laser-etched stamp, or a matte card placement within the scene's layout. The logo is positioned neatly in a lower corner, occupying a strict 5-10% threshold of the total canvas space, supported by a solid white or high-contrast neutral background badge for flawless readability. CRITICAL: Do NOT warp, skew, redraw, reinterpret, or blur the logo graphics. Maintain original vectors, geometry, and font weights exactly. The surrounding layout is an ultra-minimalist, high-clarity product scene with expansive whitespace and zero distracting elements.",
+    promptAddon: `Reference: Supreme box logo integration, Hermès leather embossing. CRITICAL: Render the provided logo with exact fidelity — do not redraw or reinterpret letterforms. Logo appears as a physical material application.`,
   },
   {
     id: "abstract",
     label: "🎨 Abstract / 3D Render",
-    promptAddon: "ABSTRACT 3D VISUALIZATION BLUEPRINT: High-end digital art direction matching an ultra-modern Octane render and Unreal Engine 5 aesthetic framework. Features a single dominant, smooth geometric form as the ultimate composition anchor. Surfaces utilize advanced material shaders displaying glossy clear-coat textures, subtle subsurface scattering refraction, and clean frosted finishes. Illumination is driven by a studio HDRI skybox wrapper, creating realistic, soft reflections along curves. The frame maintains heavy, absolute negative space. Restrained, hyper-clean design execution that values simplicity, elegance, and premium balanced tone scales over visual noise.",
+    promptAddon: `Reference: Zaha Hadid architecture as product design, Kaws sculpture meets Octane rendering. One dominant form. Surface tells the story through light, shadow, and material precision.`,
   },
   {
     id: "flatlay",
     label: "📐 Flatlay / Top-Down",
-    promptAddon: "OVERHEAD FLATLAY COMPOSITION BLUEPRINT: Symmetrical, structured top-down visualization. The camera angle is locked at a strict 90-degree downward vertical vector looking directly at a flat plane. Deep depth of field ensures every item across the surface remains crisply in focus, ultra-sharp from corner to corner. Objects are curated using precise knolling alignment, spaced out along an invisible geometric grid layout with a mandatory 20% empty space barrier separating individual items. Background is a solid, clean, minimal texture (Calacatta marble, matte white plaster, or clean vertical wood grain boards). Soft, even, diffused lighting from an off-camera side window source.",
+    promptAddon: `Reference: Wallpaper* magazine spreads, System Magazine editorial. Objects in conversation, not arranged. Surface chosen like a frame. NO TEXT, NO TYPOGRAPHY, NO LOGOS anywhere in the image.`,
   },
 ];
 
@@ -136,6 +137,8 @@ export default function ImageStudioPage() {
 
   // --- AI Prompt Helper ---
   const [isHelpLoading, setIsHelpLoading] = useState(false);
+  const [customTypography, setCustomTypography] = useState("");
+  const [showTypographyInput, setShowTypographyInput] = useState(false);
 
   const handlePromptHelp = async () => {
     if (isHelpLoading) return;
@@ -288,8 +291,22 @@ export default function ImageStudioPage() {
         ].filter(Boolean).join(" ")
         : "";
 
-      // activePrompt already went through the Creative Director above if it was empty/lazy
-      const finalPrompt = [brandConstraint, activePrompt, activeStyleObj?.promptAddon].filter(Boolean).join(". ");
+      // Creative Direction Engine — dynamically layers composition, emotion, lighting,
+      // depth, and tension systems based on brand DNA. Replaces flat style concatenation.
+      const creativeDirection = selectCreativeDirection(brandContext ?? {}, {
+        topic: activePrompt,
+        style: selectedStyle,
+        mode: selectedMode,
+        customTypography: customTypography.trim() || undefined,
+      });
+      const { prompt: finalPrompt, negativePrompt } = assemblePrompt(
+        activePrompt,
+        creativeDirection,
+        brandContext ?? {},
+        activeStyleObj?.promptAddon ?? "",
+        brandConstraint,
+        customTypography.trim() || undefined,
+      );
       const totalImages = selectedMode === "standard" ? numImages : 1;
 
       // Fire one workflow call per image in parallel so batch actually works
@@ -297,7 +314,10 @@ export default function ImageStudioPage() {
         client_id: clientId,
         brand_id: activeBrand.id,
         mode: selectedMode,
-        prompt: finalPrompt,
+        prompt: activePrompt,
+        assembled_prompt: finalPrompt,
+        negative_prompt: negativePrompt,
+        custom_typography: customTypography.trim() || undefined,
         reference_image_urls: referenceUrls,
         strict_brand_alignment: true,
         numImages: 1,
@@ -536,6 +556,31 @@ export default function ImageStudioPage() {
                   <option className="bg-[#2A2F38]" key={style.id} value={style.id}>{style.label}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Typography specification — off by default, AI chooses freely */}
+            <div className="relative z-10">
+              <button
+                onClick={() => { setShowTypographyInput(v => !v); if (showTypographyInput) setCustomTypography(""); }}
+                className={cn(
+                  "flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors",
+                  showTypographyInput
+                    ? "border-[#C5BAC4]/50 text-[#C5BAC4] bg-[#C5BAC4]/10"
+                    : "border-[#57707A]/40 text-[#57707A] hover:text-[#DEDCDC] hover:border-[#57707A]/70"
+                )}
+              >
+                <span>🔤</span>
+                {showTypographyInput ? "Typography: Custom" : "Typography: AI Chooses"}
+              </button>
+              {showTypographyInput && (
+                <input
+                  type="text"
+                  value={customTypography}
+                  onChange={(e) => setCustomTypography(e.target.value)}
+                  placeholder='e.g. "Bold condensed sans-serif, Futura-style headline"'
+                  className="mt-2 w-full p-3 bg-[#191D23] border border-[#57707A]/40 rounded-xl text-sm text-[#DEDCDC] placeholder:text-[#57707A] focus:ring-2 ring-[#C5BAC4] outline-none"
+                />
+              )}
             </div>
 
             <div className="space-y-2 relative z-10">

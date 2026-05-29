@@ -156,10 +156,19 @@ export async function POST(req: Request) {
 
     // 6. Build the PostForMe payload — matches the official docs exactly.
     // platform_configurations (placement) is not supported on Quickstart Projects.
+    //
+    // Instagram's Graph API silently rejects non-JPEG media (WebP, PNG).
+    // Force f_jpg via Cloudinary URL transformation so PostForMe sends a JPEG.
+    const ensureJpeg = (url: string): string => {
+      if (!url.includes("res.cloudinary.com") || !url.includes("/image/upload/")) return url;
+      if (url.includes("f_jpg") || url.includes("f_jpeg")) return url;
+      return url.replace("/image/upload/", "/image/upload/f_jpg,q_auto:best/");
+    };
+
     const postPayload: Record<string, unknown> = {
       social_accounts: accountIds,
       caption: finalCaption,
-      media: mediaUrls.map((url) => ({ url })),
+      media: mediaUrls.map((url) => ({ url: ensureJpeg(url) })),
     };
 
     // Validate and attach scheduled_at
