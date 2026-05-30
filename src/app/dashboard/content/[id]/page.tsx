@@ -106,7 +106,7 @@ const parseArray = (data: any): any[] => {
   return [];
 };
 
-type GenerationMode = "generate" | "style_transfer";
+type GenerationMode = "generate" | "style_transfer" | "gpt_image_2_i2i";
 
 const STYLE_OPTIONS = [
   { value: "realistic", label: "Hyper-Realistic Photo", promptAddon: "Hyper-realistic photograph, highly detailed, 8k resolution. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO WATERMARKS in the image." },
@@ -582,7 +582,11 @@ export default function ContentDetailPage({
         reference_image_urls: allReferenceUrls,
         logo_url: brandLogo || null,
         style: selectedStyle,
-        is_sync: true
+        is_sync: true,
+        ...(generationMode === "gpt_image_2_i2i" && {
+          kie_model: "gpt-image-2-image-to-image",
+          input_urls: allReferenceUrls,
+        }),
       });
 
       let newUrls: string[] = [];
@@ -660,7 +664,7 @@ export default function ContentDetailPage({
       displayImage.toLowerCase().includes(".mov") ||
       displayImage.toLowerCase().includes(".webm"));
 
-  const isGenerationDisabled = generatingImage || (generationMode === "style_transfer" && refFiles.length === 0 && refLibraryUrls.length === 0);
+  const isGenerationDisabled = generatingImage || ((generationMode === "style_transfer" || generationMode === "gpt_image_2_i2i") && refFiles.length === 0 && refLibraryUrls.length === 0);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
@@ -1346,6 +1350,12 @@ export default function ContentDetailPage({
                 <SelectContent className="bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
                   <SelectItem value="generate" className="focus:bg-[#191D23] focus:text-white cursor-pointer">Pure Generation (Text to Image)</SelectItem>
                   <SelectItem value="style_transfer" className="focus:bg-[#191D23] focus:text-white cursor-pointer">Style Transfer (Image to Image)</SelectItem>
+                  <SelectItem value="gpt_image_2_i2i" className="focus:bg-[#191D23] focus:text-white cursor-pointer">
+                    <span className="flex items-center gap-2">
+                      GPT Image 2 · Image to Image
+                      <span className="text-[8px] font-black bg-[#B3FF00] text-[#191D23] px-1.5 py-0.5 rounded uppercase tracking-wide leading-none">NEW</span>
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1395,9 +1405,14 @@ export default function ContentDetailPage({
               </div>
             </div>
 
-            {generationMode === "style_transfer" && (
+            {(generationMode === "style_transfer" || generationMode === "gpt_image_2_i2i") && (
               <div className="space-y-4 p-5 border border-[#57707A]/40 rounded-xl bg-[#191D23]/50 shadow-inner">
-                <h4 className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">Reference Images</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-[#DEDCDC] uppercase tracking-wider">Reference Images</h4>
+                  {generationMode === "gpt_image_2_i2i" && (
+                    <span className="text-[10px] text-[#989DAA] font-medium">GPT Image 2 will transform these into your prompt</span>
+                  )}
+                </div>
 
                 <div className="space-y-4">
                   {(refPreviews.length > 0 || refLibraryUrls.length > 0) && (
