@@ -29,14 +29,15 @@ interface CastingRoomModalProps {
   onSaveActor: (actor: ActorProfile) => void;
   onDeleteActor: (id: string) => void;
   actors: ActorProfile[];
-  selectedActorA: string;
-  setSelectedActorA: (id: string) => void;
+  selectedActors: string[];
+  onSelectActor: (actorId: string) => void;
+  targetSlot: number;
   callN8n: (mode: 'director' | 'generator' | 'manual' | 'scene_video_generator', body: any) => Promise<any>;
   clientId: string | null;
   onPreviewActor: (url: string) => void;
 }
 
-function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, selectedActorA, setSelectedActorA, callN8n, clientId, onPreviewActor }: CastingRoomModalProps) {
+function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, selectedActors, onSelectActor, targetSlot, callN8n, clientId, onPreviewActor }: CastingRoomModalProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [isStitching, setIsStitching] = useState(false);
 
@@ -297,7 +298,8 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
             {actors.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-2">
                 {actors.map(actor => {
-                  const isSelected = selectedActorA === actor.id;
+                  const isSelected = selectedActors[targetSlot] === actor.id;
+                  const lockedSlots = selectedActors.map((id, i) => id === actor.id ? i : -1).filter(i => i >= 0);
                   return (
                     <div key={actor.id} className={cn(
                       "rounded-xl p-2.5 bg-[#191D23] shadow-inner flex flex-col gap-3 transition-all relative border",
@@ -318,17 +320,17 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                           <Maximize2 className="w-4 h-4 text-white" />
                         </div>
-                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded shadow-md z-10">Locked</div>}
+                        {lockedSlots.length > 0 && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded shadow-md z-10">A{lockedSlots.map(s => s + 1).join("+")}</div>}
                       </div>
                       <span className="text-xs font-bold text-center text-[#DEDCDC] truncate px-1">{actor.name}</span>
                       <button
-                        onClick={() => setSelectedActorA(isSelected ? "" : actor.id)}
+                        onClick={() => onSelectActor(isSelected ? "" : actor.id)}
                         className={cn(
                           "w-full text-[10px] font-bold py-2 rounded-lg transition-colors uppercase tracking-wider",
                           isSelected ? "bg-[#C5BAC4] text-[#191D23] shadow-md" : "bg-[#2A2F38] text-[#989DAA] hover:bg-[#57707A]/40 hover:text-[#DEDCDC] border border-[#57707A]/30"
                         )}
                       >
-                        {isSelected ? "✓ Locked" : "Select Actor"}
+                        {isSelected ? `✓ Actor ${targetSlot + 1}` : "Select"}
                       </button>
                     </div>
                   );
@@ -406,7 +408,8 @@ export function StorytellingSetup({
   const [isCastingOpen, setIsCastingOpen] = useState(false);
   const [enableCharacterLock, setEnableCharacterLock] = useState(false);
   const [isCharacterLockModalOpen, setIsCharacterLockModalOpen] = useState(false);
-  const [selectedActorA, setSelectedActorA] = useState<string>("");
+  const [selectedActors, setSelectedActors] = useState<string[]>(["", "", ""]);
+  const [castingTargetSlot, setCastingTargetSlot] = useState(0);
 
   const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
   const [aiEnhance, setAiEnhance] = useState(true);
@@ -712,18 +715,26 @@ export function StorytellingSetup({
       }
 
       let characterSheetUrlA: string | null = null;
-      if (enableCharacterLock && selectedActorA) {
-        const actorA = actors.find(a => a.id === selectedActorA);
+      if (enableCharacterLock && selectedActors[0]) {
+        const actorA = actors.find(a => a.id === selectedActors[0]);
         if (actorA) characterSheetUrlA = actorA.stitchedSheetUrl;
       }
 
+      const sceneImageEngine = scene.imageEngine || 'nb2';
       const genData = await callN8n('generator', {
         prompt: safePrompt,
         refImage: styleRefUrl || previousUrl || null,
         styleRefImage: styleRefUrl || null,
         previousFrameImage: previousUrl,
         characterRefA: characterSheetUrlA,
-        client_id: clientId
+        client_id: clientId,
+        imageEngine: sceneImageEngine,
+        gptRefImages: sceneImageEngine === 'gpt-image-2-image-to-image'
+          ? ensureArray(scene.gptRefPreviews || []).filter(Boolean)
+          : undefined,
+        geminiRefImages: scene.aiModel === 'gemini-omni-video'
+          ? ensureArray(scene.gptRefPreviews || []).filter(Boolean)
+          : undefined,
       });
 
       if (genData.url) {
@@ -848,10 +859,11 @@ export function StorytellingSetup({
         finalReferenceVideoUrl = supabase.storage.from("assets").getPublicUrl(vidPath).data.publicUrl;
       }
 
-      let characterSheetA = null;
-      if (enableCharacterLock) {
-        characterSheetA = actors.find(a => a.id === selectedActorA)?.stitchedSheetUrl || null;
-      }
+      const characterSheetA = enableCharacterLock ? {
+        actor_1_sheet: actors.find(a => a.id === selectedActors[0])?.stitchedSheetUrl || null,
+        actor_2_sheet: actors.find(a => a.id === selectedActors[1])?.stitchedSheetUrl || null,
+        actor_3_sheet: actors.find(a => a.id === selectedActors[2])?.stitchedSheetUrl || null,
+      } : null;
 
       if (finalPrimaryUrl && finalPrimaryUrl.startsWith('data:')) {
         const mimeMatch = finalPrimaryUrl.match(/data:(.*?);/);
@@ -908,9 +920,7 @@ export function StorytellingSetup({
             script: scene.audioPrompt || null,
             audio_url: null
           },
-          casting: enableCharacterLock ? {
-            actor_1_sheet: characterSheetA
-          } : null
+          casting: characterSheetA
         }
       });
 
@@ -1210,9 +1220,14 @@ export function StorytellingSetup({
         onClose={() => setIsCastingOpen(false)}
         actors={actors}
         onSaveActor={(newActor) => setActors([...actors, newActor])}
-        onDeleteActor={async (id) => { setActors(actors.filter(a => a.id !== id)); if (selectedActorA === id) setSelectedActorA(""); await supabase.from('assets').delete().eq('id', id); }}
-        selectedActorA={selectedActorA}
-        setSelectedActorA={setSelectedActorA}
+        onDeleteActor={async (id) => {
+          setActors(actors.filter(a => a.id !== id));
+          setSelectedActors(prev => prev.map(s => s === id ? "" : s));
+          await supabase.from('assets').delete().eq('id', id);
+        }}
+        selectedActors={selectedActors}
+        onSelectActor={(actorId) => setSelectedActors(prev => { const next = [...prev]; next[castingTargetSlot] = actorId; return next; })}
+        targetSlot={castingTargetSlot}
         callN8n={callN8n as any}
         clientId={clientId}
         onPreviewActor={setPreviewModalImg}
@@ -1244,61 +1259,154 @@ export function StorytellingSetup({
           {bRollScenes.map((scene, index) => {
             const labels = getLabels(scene.mode || "showcase");
             const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
-            const isNativeAudio = isSeedance2 || scene.aiModel === 'replicate:openai/sora-2' || scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'replicate:prunaai/p-video' || scene.aiModel === 'auto';
+            const isGeminiOmniVideo = scene.aiModel === 'gemini-omni-video';
+            const isNativeAudio = isSeedance2 || scene.aiModel === 'replicate:openai/sora-2' || scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'replicate:prunaai/p-video' || scene.aiModel === 'auto' || isGeminiOmniVideo;
             const isPruna = scene.aiModel === 'replicate:prunaai/p-video';
             const isKling = scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'auto';
+            const imageEngine = scene.imageEngine || 'nb2';
+            const isGptImg2Txt = imageEngine === 'gpt-image-2-text-to-image';
+            const isGptImg2Img = imageEngine === 'gpt-image-2-image-to-image';
+            const isGptImage2 = isGptImg2Txt || isGptImg2Img;
 
             const seedancePreviews = ensureArray(scene.seedancePreviews || [scene.primaryPreview || null]);
 
             return (
               <div key={scene.id} className={cn(
-                "relative rounded-[2rem] border overflow-hidden flex flex-col transition-all duration-300 group bg-[#2A2F38] shadow-lg",
-                scene.videoUrl ? "border-[#B3FF00]/40 shadow-[0_0_30px_rgba(179,255,0,0.1)]" : (scene.primaryPreview || seedancePreviews[0] ? "border-[#C5BAC4]/30 hover:border-[#C5BAC4]/50" : "border-dashed border-[#57707A]/40 hover:border-[#57707A]/60")
+                "relative rounded-[2rem] border overflow-hidden flex flex-col group bg-[#2A2F38] shadow-lg",
+                "transition-[border-color,box-shadow] duration-300",
+                scene.videoUrl ? "border-[#B3FF00]/40 shadow-[0_0_30px_rgba(179,255,0,0.1)]" : (scene.primaryPreview || seedancePreviews[0] ? "border-[#C5BAC4]/25 hover:border-[#C5BAC4]/45" : "border-dashed border-[#57707A]/35 hover:border-[#57707A]/55")
               )}>
                 {/* ── Scene Header ── */}
-                <div className="bg-[#191D23]/80 border-b border-[#57707A]/30 px-6 py-4 flex flex-wrap gap-4 items-center justify-between shrink-0">
-                  <div className="flex flex-wrap items-center gap-4">
-                    <span className="text-xs font-black text-[#C5BAC4] tracking-widest uppercase bg-[#191D23] border border-[#C5BAC4]/30 px-3 py-1.5 rounded-lg shadow-inner">
-                      SCENE {index + 1}
-                    </span>
+                <div className="bg-[#191D23]/90 border-b border-[#57707A]/25 px-5 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0 relative">
+                  {/* Left status accent strip */}
+                  <div className={cn(
+                    "absolute left-0 top-0 bottom-0 w-[3px] rounded-tl-[2rem]",
+                    scene.videoUrl ? "bg-[#B3FF00]" : (scene.primaryPreview || seedancePreviews[0] ? "bg-[#C5BAC4]/60" : "bg-[#57707A]/25")
+                  )} />
+                  <div className="flex flex-wrap items-center gap-3 pl-2">
+                    {/* Scene number chip */}
+                    <div className="flex flex-col items-center justify-center bg-[#2A2F38] border border-[#57707A]/40 rounded-xl px-3 py-1.5 shadow-inner min-w-[44px]">
+                      <span className="text-[7px] font-black text-[#57707A] tracking-[0.14em] uppercase leading-none">SCENE</span>
+                      <span className="text-base font-black text-[#C5BAC4] leading-tight">{index + 1}</span>
+                    </div>
 
-                    <select value={scene.aiModel || "auto"} onChange={(e) => updateScene(scene.id, "aiModel", e.target.value)} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#B3FF00] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#B3FF00]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
-                      <option value="auto" className="bg-[#191D23]">✨ Auto Engine</option>
-                      <option value="replicate:openai/sora-2" className="bg-[#191D23]">Sora 2</option>
-                      <option value="kling-3.0/video" className="bg-[#191D23]">Kling 3.0</option>
-                      <option value="bytedance/seedance-2" className="bg-[#191D23]">Seedance 2 (Cinematic)</option>
-                      <option value="bytedance/seedance-2-fast" className="bg-[#191D23]">Seedance 2 (Fast)</option>
-                      <option value="replicate:prunaai/p-video" className="bg-[#191D23]">Pruna (Fast)</option>
-                    </select>
+                    <div className="flex flex-col gap-1.5">
+                      <select value={scene.aiModel || "auto"} onChange={(e) => updateScene(scene.id, "aiModel", e.target.value)} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#B3FF00] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#B3FF00]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
+                        <optgroup label="— Video Engines —" className="bg-[#191D23] text-[#57707A]">
+                          <option value="auto" className="bg-[#191D23]">✨ Auto Engine</option>
+                          <option value="replicate:openai/sora-2" className="bg-[#191D23]">Sora 2</option>
+                          <option value="kling-3.0/video" className="bg-[#191D23]">Kling 3.0</option>
+                          <option value="bytedance/seedance-2" className="bg-[#191D23]">Seedance 2 (Cinematic)</option>
+                          <option value="bytedance/seedance-2-fast" className="bg-[#191D23]">Seedance 2 (Fast)</option>
+                          <option value="replicate:prunaai/p-video" className="bg-[#191D23]">Pruna (Fast)</option>
+                        </optgroup>
+                        <optgroup label="— Gemini Omni —" className="bg-[#191D23] text-[#57707A]">
+                          <option value="gemini-omni-video" className="bg-[#191D23]">✦ Gemini Omni Video</option>
+                        </optgroup>
+                      </select>
+
+                      {/* Image Engine — pill buttons */}
+                      <div className="flex gap-1 mt-0.5">
+                        {([
+                          { id: 'nb2', label: 'NB2' },
+                          { id: 'gpt-image-2-text-to-image', label: 'GPT·T2I' },
+                          { id: 'gpt-image-2-image-to-image', label: 'GPT·I2I' },
+                        ] as const).map(opt => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => updateScene(scene.id, "imageEngine", opt.id)}
+                            className={cn(
+                              "text-[9px] font-bold px-2 py-1 rounded-lg border transition-all uppercase tracking-wide",
+                              imageEngine === opt.id
+                                ? "bg-[#C5BAC4]/15 border-[#C5BAC4]/50 text-[#C5BAC4]"
+                                : "bg-transparent border-[#57707A]/30 text-[#57707A] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/30"
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
 
-                    {/* ✨ RESTORED PER-SCENE ASPECT RATIO */}
+                    {/* ✨ PER-SCENE ASPECT RATIO */}
                     <select
                       value={scene.aspectRatio || "16:9"}
                       onChange={(e) => updateScene(scene.id, "aspectRatio", e.target.value)}
-                      className="text-[10px] font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2.5 px-3 bg-[#2A2F38] text-[#f472b6] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#f472b6]/50 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
+                      className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#f472b6] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#f472b6]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
                     >
                       <option value="16:9" className="bg-[#191D23]">📐 16:9</option>
                       <option value="9:16" className="bg-[#191D23]">📐 9:16</option>
-                      <option value="1:1" className="bg-[#191D23]">📐 1:1</option>
-                      <option value="21:9" className="bg-[#191D23]">📐 21:9</option>
+                      {!isGeminiOmniVideo && <option value="1:1" className="bg-[#191D23]">📐 1:1</option>}
+                      {!isGeminiOmniVideo && <option value="21:9" className="bg-[#191D23]">📐 21:9</option>}
                     </select>
 
-                    <select
-                      value={scene.duration || "5"}
-                      onChange={(e) => updateScene(scene.id, "duration", e.target.value)}
-                      className="text-[10px] font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2.5 px-3 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
-                    >
-                      <option value="5" className="bg-[#191D23]">5 Secs</option>
-                      <option value="10" className="bg-[#191D23]">10 Secs</option>
-                      {(isKling || isSeedance2 || scene.aiModel === 'replicate:openai/sora-2') && (
-                        <option value="15" className="bg-[#191D23]">15 Secs</option>
-                      )}
-                      {isKling && (
-                        <option value="300" className="bg-[#191D23]">5 Min ✦ Premium</option>
-                      )}
-                    </select>
+                    {/* Duration — different options for gemini-omni-video */}
+                    {(
+                      <select
+                        value={scene.duration || "5"}
+                        onChange={(e) => updateScene(scene.id, "duration", e.target.value)}
+                        className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
+                      >
+                        {isGeminiOmniVideo ? (
+                          <>
+                            <option value="4" className="bg-[#191D23]">4 Secs</option>
+                            <option value="6" className="bg-[#191D23]">6 Secs</option>
+                            <option value="8" className="bg-[#191D23]">8 Secs</option>
+                            <option value="10" className="bg-[#191D23]">10 Secs</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="5" className="bg-[#191D23]">5 Secs</option>
+                            <option value="10" className="bg-[#191D23]">10 Secs</option>
+                            {(isKling || isSeedance2 || scene.aiModel === 'replicate:openai/sora-2') && (
+                              <option value="15" className="bg-[#191D23]">15 Secs</option>
+                            )}
+                            {isKling && (
+                              <option value="300" className="bg-[#191D23]">5 Min ✦ Premium</option>
+                            )}
+                          </>
+                        )}
+                      </select>
+                    )}
+
+                    {/* Resolution — shown for Gemini Omni Video and GPT Image 2 */}
+                    {(isGeminiOmniVideo || isGptImage2) && (
+                      <select
+                        value={scene.videoResolution || (isGeminiOmniVideo ? "720p" : "1K")}
+                        onChange={(e) => updateScene(scene.id, "videoResolution", e.target.value)}
+                        className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#00E5FF] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#00E5FF]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
+                      >
+                        {isGeminiOmniVideo ? (
+                          <>
+                            <option value="720p" className="bg-[#191D23]">720p</option>
+                            <option value="1080p" className="bg-[#191D23]">1080p</option>
+                            <option value="4k" className="bg-[#191D23]">4K</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="1K" className="bg-[#191D23]">1K</option>
+                            <option value="2K" className="bg-[#191D23]">2K</option>
+                            <option value="4K" className="bg-[#191D23]">4K</option>
+                          </>
+                        )}
+                      </select>
+                    )}
+
+                    {/* Seed — Gemini Omni Video only */}
+                    {isGeminiOmniVideo && (
+                      <input
+                        type="number"
+                        value={scene.seed ?? ""}
+                        onChange={(e) => updateScene(scene.id, "seed", e.target.value === "" ? null : Number(e.target.value))}
+                        placeholder="Seed (opt)"
+                        min={0}
+                        max={2147483647}
+                        className="text-[10px] font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2.5 px-3 bg-[#2A2F38] text-[#DEDCDC] w-28 focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 placeholder:text-[#57707A] [appearance:textfield]"
+                      />
+                    )}
                     {scene.duration === "300" && isKling && (
                       <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-[#1E2329] border border-[#C5BAC4]/20 rounded-xl p-2.5 shadow-xl">
                         <p className="text-[9px] text-[#989DAA] leading-relaxed">Long-form rendering takes up to tens of minutes. You can safely browse away — Content Grid updates live when complete.</p>
@@ -1317,7 +1425,7 @@ export function StorytellingSetup({
                       </label>
                     )}
 
-                    {!isSeedance2 && (
+                    {!isSeedance2 && !isGeminiOmniVideo && (
                       <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
                         <input
                           type="checkbox"
@@ -1512,6 +1620,99 @@ export function StorytellingSetup({
                           <p className="text-[9px] text-[#57707A] mt-2 font-medium">Upload a video to guide camera and character movement. Use <strong className="text-[#b488d4]">@Video1</strong> in your prompt.</p>
                         </div>
                       </div>
+                    ) : isGeminiOmniVideo ? (
+                      // ── GEMINI OMNI VIDEO LAYOUT: optional reference images + optional video ──
+                      <div className="flex flex-col gap-5">
+                        {/* Slot counter */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className="text-[10px] font-bold text-[#00E5FF] uppercase tracking-wider block">Reference Images</label>
+                            <p className="text-[9px] text-[#57707A]/70 mt-0.5">Up to 5 images · optional</p>
+                          </div>
+                          {(() => {
+                            const imgCount = ensureArray(scene.gptRefPreviews || []).filter(Boolean).length;
+                            const vidCount = scene.referenceVideoPreview ? 2 : 0;
+                            const used = imgCount + vidCount;
+                            return (
+                              <span className={cn(
+                                "text-[9px] font-bold px-2 py-1 rounded-lg border",
+                                used > 0 ? "text-[#00E5FF] border-[#00E5FF]/30 bg-[#00E5FF]/10" : "text-[#57707A] border-[#57707A]/30 bg-[#191D23]"
+                              )}>
+                                {used}/7 slots
+                              </span>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Image slots */}
+                        <div className="grid grid-cols-3 gap-2">
+                          {[0, 1, 2, 3, 4].map((imgIdx) => {
+                            const refPreviews: (string | null)[] = ensureArray(scene.gptRefPreviews || Array(5).fill(null));
+                            const preview = refPreviews[imgIdx] || null;
+                            return (
+                              <div key={imgIdx} className={cn(
+                                "relative aspect-square rounded-xl overflow-hidden bg-[#0F1115] border-2 flex items-center justify-center transition-all group/gi shadow-inner",
+                                preview ? "border-[#00E5FF]/40" : "border-dashed border-[#00E5FF]/20 hover:border-[#00E5FF]/50 hover:bg-[#00E5FF]/5 cursor-pointer"
+                              )}>
+                                <div className="absolute top-1.5 left-1.5 z-20 bg-[#00E5FF]/20 text-[#00E5FF] border border-[#00E5FF]/30 px-1.5 py-0.5 text-[9px] font-black rounded uppercase shadow-md">{imgIdx + 1}</div>
+                                {preview ? (
+                                  <>
+                                    <img src={preview} className="w-full h-full object-cover" />
+                                    <button type="button" onClick={() => {
+                                      const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
+                                      p[imgIdx] = null;
+                                      updateScene(scene.id, "gptRefPreviews", p);
+                                    }} className="absolute top-1.5 right-1.5 z-30 p-1 bg-red-500/90 text-white rounded-md opacity-0 group-hover/gi:opacity-100 transition-all shadow-sm">
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <label htmlFor={`gemvid-img-${scene.id}-${imgIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#00E5FF] transition-colors gap-1">
+                                    <ImageIcon className="h-4 w-4" />
+                                    <p className="text-[9px] font-bold">Add</p>
+                                  </label>
+                                )}
+                                <input id={`gemvid-img-${scene.id}-${imgIdx}`} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    const reader = new FileReader();
+                                    reader.onload = (ev) => {
+                                      const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
+                                      p[imgIdx] = ev.target?.result as string;
+                                      updateScene(scene.id, "gptRefPreviews", p);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }}
+                                  onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[9px] text-[#57707A] -mt-3 font-medium">JPEG, PNG, WebP · Max 10MB each</p>
+
+                        {/* Optional video slot */}
+                        <div>
+                          <label className="text-[10px] font-bold text-[#b488d4] uppercase tracking-wider block mb-2">
+                            Reference Video <span className="text-[#57707A]/60 normal-case font-medium ml-1">(optional · uses 2 slots · duration set by model)</span>
+                          </label>
+                          <div onDragOver={handleDragOver} onDrop={(e) => handleRefVideoDrop(e, scene.id)} className="relative h-24 rounded-xl overflow-hidden bg-[#0F1115] border border-dashed border-[#b488d4]/40 hover:border-[#b488d4]/70 hover:bg-[#b488d4]/5 flex flex-col items-center justify-center transition-all group/vslot shadow-inner">
+                            {scene.referenceVideoPreview ? (
+                              <>
+                                <video src={scene.referenceVideoPreview} className="w-full h-full object-cover opacity-80" muted loop autoPlay playsInline />
+                                <button type="button" onClick={() => { updateScene(scene.id, "referenceVideoFile", null); updateScene(scene.id, "referenceVideoPreview", null); }} className="absolute top-2 right-2 p-1.5 bg-[#191D23]/80 border border-[#b488d4]/50 hover:bg-red-500/90 hover:border-red-400 text-white rounded-lg shadow-md opacity-0 group-hover/vslot:opacity-100 transition-all z-20"><X className="h-3.5 w-3.5" /></button>
+                              </>
+                            ) : (
+                              <label htmlFor={`gemvid-ref-${scene.id}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#b488d4]/60 hover:text-[#b488d4] transition-colors gap-1">
+                                <Video className="h-5 w-5" />
+                                <p className="text-[9px] font-bold uppercase tracking-wider">Drop or click to upload</p>
+                              </label>
+                            )}
+                            <input id={`gemvid-ref-${scene.id}`} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={(e) => handleRefVideoSelect(e, scene.id)} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                          </div>
+                        </div>
+                      </div>
                     ) : (
                       // STANDARD LAYOUT
                       <div className="flex flex-col sm:flex-row gap-5 w-full">
@@ -1568,6 +1769,79 @@ export function StorytellingSetup({
                             <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'secondary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
                           </div>
                         </div>
+
+                        {/* GPT Image 2 · Image→Image reference inputs */}
+                        {isGptImg2Img && (
+                          <div className="mt-4 pt-4 border-t border-[#57707A]/20">
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="text-[10px] font-bold text-[#C5BAC4] uppercase tracking-wider">
+                                Reference Images <span className="text-[9px] text-[#57707A] normal-case font-medium">(input_urls · up to 5)</span>
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2.5">
+                              {[0, 1, 2, 3, 4].map((rIdx) => {
+                                const refPreviews: (string | null)[] = ensureArray(scene.gptRefPreviews || Array(5).fill(null));
+                                const preview = refPreviews[rIdx] || null;
+                                return (
+                                  <div key={rIdx} className={cn(
+                                    "relative aspect-square rounded-xl overflow-hidden bg-[#0F1115] border-2 flex items-center justify-center transition-all group/ri shadow-inner",
+                                    preview ? "border-[#C5BAC4]/40" : "border-dashed border-[#57707A]/30 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 cursor-pointer"
+                                  )}>
+                                    {preview ? (
+                                      <>
+                                        <img src={preview} className="w-full h-full object-cover" />
+                                        <button type="button" onClick={() => {
+                                          const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
+                                          p[rIdx] = null;
+                                          updateScene(scene.id, "gptRefPreviews", p);
+                                        }} className="absolute top-1 right-1 z-20 p-1 bg-red-500/90 text-white rounded-md opacity-0 group-hover/ri:opacity-100 transition-all">
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <label htmlFor={`gptref-${scene.id}-${rIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors gap-1">
+                                        <ImageIcon className="h-4 w-4" />
+                                        <p className="text-[9px] font-bold">{rIdx + 1}</p>
+                                      </label>
+                                    )}
+                                    <input
+                                      id={`gptref-${scene.id}-${rIdx}`}
+                                      type="file"
+                                      accept="image/jpeg,image/png,image/webp,image/jpg"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        const reader = new FileReader();
+                                        reader.onload = (ev) => {
+                                          const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
+                                          p[rIdx] = ev.target?.result as string;
+                                          updateScene(scene.id, "gptRefPreviews", p);
+                                        };
+                                        reader.readAsDataURL(file);
+                                      }}
+                                      onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <p className="text-[9px] text-[#57707A] mt-2 font-medium">Upload images to remix or transform · Max 30MB each · JPEG, PNG, WebP</p>
+                          </div>
+                        )}
+
+                        {/* GPT Image 2 info badge */}
+                        {isGptImage2 && (
+                          <div className="mt-3 flex items-start gap-2 bg-[#C5BAC4]/5 border border-[#C5BAC4]/20 rounded-xl p-3">
+                            <Sparkles className="w-3.5 h-3.5 text-[#C5BAC4] shrink-0 mt-0.5" />
+                            <p className="text-[9px] text-[#989DAA] leading-relaxed font-medium">
+                              {isGptImg2Txt
+                                ? <><strong className="text-[#C5BAC4]">GPT Image 2 · Text → Image:</strong> Describe what you want in the Scene Director prompt. Supports up to 20,000 characters.</>
+                                : <><strong className="text-[#C5BAC4]">GPT Image 2 · Image → Image:</strong> Upload reference images above, then describe the transformation in the Scene Director prompt.</>
+                              }
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1575,7 +1849,10 @@ export function StorytellingSetup({
                   <div className="w-full lg:w-1/2 flex flex-col relative gap-4">
                     <div className="flex items-center justify-between shrink-0 mb-1">
                       <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider flex items-center gap-1.5">
-                        {scene.videoUrl ? <><Video className="h-4 w-4 text-[#B3FF00]" /> <span className="text-[#B3FF00]">Generated Video</span></> : <span className="text-[#DEDCDC]">Scene Director</span>}
+                        {scene.videoUrl
+                          ? <><Video className="h-4 w-4 text-[#B3FF00]" /> <span className="text-[#B3FF00]">Generated Video</span></>
+                          : <span className="text-[#DEDCDC]">Scene Director</span>
+                        }
                       </label>
                       {!scene.videoUrl && (
                         <button onClick={() => handleSuggestPrompt(scene.id, index)} disabled={suggestingPromptIndex === index} className="text-[#191D23] bg-[#C5BAC4] hover:bg-white px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold shadow-md shadow-[#C5BAC4]/10 border-none">
@@ -1770,25 +2047,22 @@ export function StorytellingSetup({
       {/* ── RIGHT PANE: DIRECTOR & PREVIEW ── */}
       <div className="w-full xl:w-[400px] shrink-0 xl:sticky xl:top-6 flex flex-col gap-6 z-20">
         {/* CARD 1: MASTER DIRECTOR */}
-        <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative overflow-hidden">
-
-          {/* ✨ RESTORED ASPECT RATIO DROPDOWN ✨ */}
-          <div className="flex items-center justify-between mb-5 pb-4 border-b border-[#57707A]/20">
-            <h3 className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide"><Settings2 className="w-4 h-4 text-[#C5BAC4]" /> Master Director</h3>
-
-            {/* <select
-              value={localAspectRatio}
-              onChange={(e) => setLocalAspectRatio(e.target.value)}
-              className="text-xs font-bold text-[#f472b6] bg-[#191D23] border border-[#f472b6]/30 px-3 py-1.5 rounded-xl cursor-pointer hover:border-[#f472b6]/60 transition-colors appearance-none shadow-sm outline-none"
-              title="Universal Aspect Ratio for all scenes"
-            >
-              <option value="16:9">📐 16:9</option>
-              <option value="9:16">📐 9:16</option>
-              <option value="1:1">📐 1:1</option>
-              <option value="21:9">📐 21:9</option>
-            </select> */}
+        <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 shadow-xl relative overflow-hidden">
+          {/* Card header */}
+          <div className="px-6 pt-5 pb-4 border-b border-[#57707A]/20 bg-gradient-to-r from-[#191D23]/60 to-transparent">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-[#C5BAC4]/10 border border-[#C5BAC4]/20 flex items-center justify-center">
+                  <Settings2 className="w-3.5 h-3.5 text-[#C5BAC4]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[#DEDCDC] tracking-tight leading-none">Master Director</h3>
+                  <p className="text-[9px] text-[#57707A] font-medium mt-0.5 uppercase tracking-wider">Story concept + settings</p>
+                </div>
+              </div>
+            </div>
           </div>
-
+          <div className="p-6">
           <div className="flex flex-col gap-4 mb-2">
             <div className="relative">
               <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Master Story Concept</label>
@@ -1829,6 +2103,7 @@ export function StorytellingSetup({
               </Button>
             </div>
           </div>
+          </div>
         </div>
 
         {/* CARD 2: CASTING ROOM */}
@@ -1849,37 +2124,44 @@ export function StorytellingSetup({
             </div>
           </div>
 
-          {enableCharacterLock && selectedActorA && (
-            <div className="flex flex-col gap-3 mt-1 animate-in fade-in">
-              <div className="flex items-center justify-between bg-[#191D23] border border-[#C5BAC4]/30 rounded-xl p-2 shadow-inner">
-                {(() => {
-                  const actorA = actors.find(a => a.id === selectedActorA);
-                  return actorA ? (
-                    <div className="flex items-center gap-3 pl-2">
-                      <div
-                        className="w-10 h-10 rounded-lg overflow-hidden border border-[#57707A]/50 shadow-sm relative group cursor-pointer"
-                        onClick={() => setPreviewModalImg(actorA.stitchedSheetUrl)}
+          {enableCharacterLock && (
+            <div className="flex flex-col gap-2 mt-1 animate-in fade-in">
+              {[0, 1, 2].map(slot => {
+                const actor = actors.find(a => a.id === selectedActors[slot]);
+                return (
+                  <div key={slot} className={cn(
+                    "flex items-center gap-2.5 rounded-xl p-2 border transition-all",
+                    actor ? "bg-[#191D23] border-[#C5BAC4]/25" : "bg-[#191D23]/50 border-[#57707A]/30"
+                  )}>
+                    <span className="text-[9px] font-black text-[#57707A] uppercase tracking-widest w-10 shrink-0">A{slot + 1}</span>
+                    {actor ? (
+                      <>
+                        <div
+                          className="w-8 h-8 rounded-lg overflow-hidden border border-[#57707A]/50 shrink-0 cursor-pointer relative group"
+                          onClick={() => setPreviewModalImg(actor.stitchedSheetUrl)}
+                        >
+                          <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-50 transition-opacity" />
+                        </div>
+                        <span className="text-[#C5BAC4] text-[11px] font-bold truncate flex-1">{actor.name}</span>
+                        <button
+                          onClick={() => { setCastingTargetSlot(slot); setIsCharacterLockModalOpen(true); }}
+                          className="shrink-0 h-7 w-7 flex items-center justify-center bg-[#2A2F38] text-[#DEDCDC] hover:text-[#C5BAC4] rounded-lg border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-colors"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => { setCastingTargetSlot(slot); setIsCharacterLockModalOpen(true); }}
+                        className="flex-1 flex items-center gap-1.5 text-[#57707A] hover:text-[#C5BAC4] text-[10px] font-bold transition-colors py-1"
                       >
-                        <img src={actorA.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-50 transition-opacity" />
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Maximize2 className="w-4 h-4 text-white" /></div>
-                      </div>
-                      <span className="text-[#C5BAC4] text-sm font-bold">
-                        {actorA.name}
-                      </span>
-                    </div>
-                  ) : null;
-                })()}
-                <button onClick={() => setIsCharacterLockModalOpen(true)} className="inline-flex items-center justify-center h-10 w-10 bg-[#2A2F38] text-[#DEDCDC] hover:text-[#C5BAC4] rounded-lg border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-colors shadow-sm" title="Change Actor">
-                  <Settings2 className="w-4 h-4" />
-                </button>
-              </div>
+                        <UserPlus className="w-3.5 h-3.5" /> Add actor
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
-
-          {enableCharacterLock && !selectedActorA && (
-            <button onClick={() => setIsCharacterLockModalOpen(true)} className="mt-1 w-full flex items-center justify-center gap-2 bg-[#191D23] hover:bg-[#57707A]/30 text-[#DEDCDC]/60 hover:text-[#C5BAC4] text-xs font-bold py-3.5 rounded-xl border border-dashed border-[#57707A]/50 hover:border-[#C5BAC4]/50 transition-all animate-in fade-in shadow-inner">
-              <UserPlus className="w-4 h-4" /> Select Actor to Lock
-            </button>
           )}
 
           <Button onClick={() => setIsCastingOpen(true)} variant="outline" className="w-full mt-4 h-11 text-xs font-bold border-[#57707A]/40 text-[#DEDCDC] hover:text-[#191D23] hover:bg-[#C5BAC4] hover:border-[#C5BAC4] bg-[#191D23] transition-all rounded-xl shadow-sm">
@@ -1969,8 +2251,12 @@ export function StorytellingSetup({
       <Dialog open={isCharacterLockModalOpen} onOpenChange={(open) => !open && setIsCharacterLockModalOpen(false)}>
         <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl custom-scrollbar">
           <DialogHeader className="border-b border-[#57707A]/20 pb-4">
-            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl"><Lock className="w-5 h-5" /> Select Actor to Lock</DialogTitle>
-            <DialogDescription className="text-[#989DAA] font-medium mt-1">Click on an actor to lock their character consistency across all scenes.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl">
+              <Lock className="w-5 h-5" /> Select Actor {castingTargetSlot + 1}
+            </DialogTitle>
+            <DialogDescription className="text-[#989DAA] font-medium mt-1">
+              Choosing for slot <span className="text-[#C5BAC4] font-bold">Actor {castingTargetSlot + 1}</span>. This actor's character sheet will be injected into every scene.
+            </DialogDescription>
           </DialogHeader>
           <div className="py-5">
             {actors.length === 0 ? (
@@ -1985,11 +2271,13 @@ export function StorytellingSetup({
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {actors.map(actor => {
-                  const isSelected = selectedActorA === actor.id;
+                  const isSelected = selectedActors[castingTargetSlot] === actor.id;
                   return (
                     <button
                       key={actor.id}
-                      onClick={() => setSelectedActorA(isSelected ? "" : actor.id)}
+                      onClick={() => {
+                        setSelectedActors(prev => { const next = [...prev]; next[castingTargetSlot] = isSelected ? "" : actor.id; return next; });
+                      }}
                       className={cn(
                         "rounded-2xl p-2.5 flex flex-col gap-3 transition-all text-left border relative overflow-hidden group",
                         isSelected ? "bg-[#191D23] border-[#C5BAC4] ring-2 ring-[#C5BAC4]/50 shadow-lg" :
@@ -2002,7 +2290,7 @@ export function StorytellingSetup({
                       >
                         <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-50 transition-opacity" />
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Maximize2 className="w-5 h-5 text-white" /></div>
-                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black px-2 py-0.5 uppercase tracking-widest rounded shadow-md z-10">Locked</div>}
+                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black px-2 py-0.5 uppercase tracking-widest rounded shadow-md z-10">A{castingTargetSlot + 1}</div>}
                       </div>
                       <span className={cn(
                         "text-xs font-bold text-center truncate px-2 w-full",
@@ -2015,7 +2303,7 @@ export function StorytellingSetup({
             )}
           </div>
           <DialogFooter className="border-t border-[#57707A]/20 pt-4">
-            <Button variant="outline" onClick={() => setSelectedActorA("")} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 font-bold rounded-xl h-11 px-6">Clear Selection</Button>
+            <Button variant="outline" onClick={() => setSelectedActors(prev => { const next = [...prev]; next[castingTargetSlot] = ""; return next; })} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 font-bold rounded-xl h-11 px-6">Clear Slot</Button>
             <Button onClick={() => setIsCharacterLockModalOpen(false)} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-xl h-11 px-8 shadow-lg transition-all border-none">
               <CheckCircle className="w-4 h-4 mr-2" /> Done
             </Button>

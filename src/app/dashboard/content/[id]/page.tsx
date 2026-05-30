@@ -34,6 +34,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
+import { InstagramTroubleshootModal } from "@/components/publishing/InstagramTroubleshootModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -150,6 +151,7 @@ export default function ContentDetailPage({
   const [callToAction, setCallToAction] = useState("");
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [igTroubleshootOpen, setIgTroubleshootOpen] = useState(false);
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -1117,6 +1119,12 @@ export default function ContentDetailPage({
                   <p className="text-[10px] text-[#57707A] font-medium text-center">
                     To schedule, drag this post to a date on the <a href="/dashboard/calendar" className="text-[#C5BAC4] font-bold hover:text-white">Calendar</a>.
                   </p>
+                  <button
+                    onClick={() => setIgTroubleshootOpen(true)}
+                    className="w-full text-[10px] text-[#57707A] hover:text-[#C5BAC4] font-medium text-center transition-colors py-0.5"
+                  >
+                    Post sent but not showing on Instagram? →
+                  </button>
                 </>
               )}
 
@@ -1463,6 +1471,11 @@ export default function ContentDetailPage({
         open={isRefLibraryOpen}
         onClose={() => setIsRefLibraryOpen(false)}
         onSelect={handleRefLibrarySelect}
+      />
+
+      <InstagramTroubleshootModal
+        open={igTroubleshootOpen}
+        onClose={() => setIgTroubleshootOpen(false)}
       />
     </div>
   );

@@ -79,6 +79,7 @@ export default function ImageStudioPage() {
   // --- State: Core ---
   const [selectedMode, setSelectedMode] = useState("standard");
   const [selectedStyle, setSelectedStyle] = useState("studio");
+  const [selectedImageEngine, setSelectedImageEngine] = useState("nb2");
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -322,6 +323,7 @@ export default function ImageStudioPage() {
         strict_brand_alignment: true,
         numImages: 1,
         style: selectedStyle,
+        imageEngine: selectedImageEngine,
         // Full brand identity so n8n can reinforce brand context in its own prompt building
         brand_name: brandContext?.name ?? undefined,
         brand_website: brandContext?.websiteUrl ?? undefined,
@@ -556,6 +558,40 @@ export default function ImageStudioPage() {
                   <option className="bg-[#2A2F38]" key={style.id} value={style.id}>{style.label}</option>
                 ))}
               </select>
+            </div>
+
+            {/* AI Engine selector */}
+            <div className="space-y-2 relative z-10">
+              <label className="text-sm font-bold text-[#DEDCDC]">AI Engine</label>
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  { id: "nb2", label: "Nano Banana 2", badge: "default" },
+                  { id: "gpt-image-2-text-to-image", label: "GPT Image 2 · T2I", badge: "new" },
+                  { id: "gpt-image-2-image-to-image", label: "GPT Image 2 · I2I", badge: "new" },
+                ] as const).map((engine) => (
+                  <button
+                    key={engine.id}
+                    type="button"
+                    onClick={() => setSelectedImageEngine(engine.id)}
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all",
+                      selectedImageEngine === engine.id
+                        ? "bg-[#C5BAC4]/15 border-[#C5BAC4]/50 text-[#C5BAC4] shadow-sm"
+                        : "bg-[#191D23] border-[#57707A]/30 text-[#57707A] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/30"
+                    )}
+                  >
+                    {engine.label}
+                    {engine.badge === "new" && (
+                      <span className="text-[8px] font-black bg-[#B3FF00] text-[#191D23] px-1 py-0.5 rounded uppercase tracking-wide leading-none">NEW</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {selectedImageEngine === "gpt-image-2-image-to-image" && (
+                <p className="text-[10px] text-[#989DAA] leading-relaxed mt-1">
+                  Upload reference images in the Style Moodboard below — GPT Image 2 will transform them based on your prompt.
+                </p>
+              )}
             </div>
 
             {/* Typography specification — off by default, AI chooses freely */}

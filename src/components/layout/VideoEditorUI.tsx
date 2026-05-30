@@ -733,7 +733,7 @@ export function VideoEditorUI() {
   if (zoom < 0.2) rulerStep = 60;
 
   return (
-    <div className="flex flex-col h-[850px] bg-[#191D23] border border-[#57707A]/30 rounded-2xl overflow-hidden shadow-lg select-none relative">
+    <div className="flex flex-col h-[850px] bg-[#191D23] border border-[#57707A]/25 rounded-3xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] select-none relative ring-1 ring-white/[0.03]">
 
       {isRendering && (
         <div className="absolute inset-0 z-50 bg-[#191D23]/95 backdrop-blur-md flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
@@ -782,10 +782,22 @@ export function VideoEditorUI() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT PANEL: Media/Text */}
-        <div className="w-72 bg-[#2A2F38] border-r border-[#57707A]/30 flex flex-col z-10">
-          <div className="flex border-b border-[#57707A]/30">
-            <button onClick={() => setActiveTab("assets")} className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors", activeTab === "assets" ? "text-[#C5BAC4] border-b-2 border-[#C5BAC4] bg-[#191D23]/30" : "text-[#DEDCDC]/40 hover:bg-[#191D23]/20")}>{"Media"}</button>
-            <button onClick={() => setActiveTab("text")} className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors", activeTab === "text" ? "text-[#C5BAC4] border-b-2 border-[#C5BAC4] bg-[#191D23]/30" : "text-[#DEDCDC]/40 hover:bg-[#191D23]/20")}>{"Text"}</button>
+        <div className="w-72 bg-[#2A2F38] border-r border-[#57707A]/25 flex flex-col z-10">
+          <div className="flex border-b border-[#57707A]/25 bg-[#191D23]/40">
+            <button onClick={() => setActiveTab("assets")} className={cn(
+              "flex-1 py-3 text-[11px] font-black uppercase tracking-[0.08em] transition-all relative",
+              activeTab === "assets" ? "text-[#C5BAC4]" : "text-[#57707A] hover:text-[#989DAA]"
+            )}>
+              Media
+              {activeTab === "assets" && <span className="absolute bottom-0 left-1/4 right-1/4 h-[2px] bg-[#C5BAC4] rounded-full" />}
+            </button>
+            <button onClick={() => setActiveTab("text")} className={cn(
+              "flex-1 py-3 text-[11px] font-black uppercase tracking-[0.08em] transition-all relative",
+              activeTab === "text" ? "text-[#C5BAC4]" : "text-[#57707A] hover:text-[#989DAA]"
+            )}>
+              Text
+              {activeTab === "text" && <span className="absolute bottom-0 left-1/4 right-1/4 h-[2px] bg-[#C5BAC4] rounded-full" />}
+            </button>
           </div>
 
           <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
@@ -814,8 +826,8 @@ export function VideoEditorUI() {
                 </div>
 
                 <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" onChange={handleManualUpload} />
-                <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full border-dashed border-2 border-[#57707A]/50 bg-transparent text-[#C5BAC4] hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/10 h-10 font-bold transition-colors">
-                  <UploadCloud className="w-4 h-4 mr-2" /> Upload File
+                <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full border-dashed border-2 border-[#57707A]/40 bg-[#191D23]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 h-10 font-bold transition-all rounded-xl">
+                  <UploadCloud className="w-3.5 h-3.5 mr-2" /> Upload File
                 </Button>
 
                 <div className="space-y-2">
@@ -828,9 +840,9 @@ export function VideoEditorUI() {
                     {isLoadingDB && <Loader2 className="w-3 h-3 text-[#C5BAC4] animate-spin" />}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pb-2">
+                  <div className="grid grid-cols-2 gap-2.5 pb-2">
                     {assets.map((asset) => (
-                      <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className="group relative aspect-square bg-[#0F1115] rounded-xl overflow-hidden cursor-grab active:cursor-grabbing hover:ring-2 ring-[#C5BAC4] transition-all border border-[#57707A]/40 shadow-sm">
+                      <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className="group relative aspect-square bg-[#0F1115] rounded-xl overflow-hidden cursor-grab active:cursor-grabbing hover:ring-1 ring-[#C5BAC4]/70 transition-all border border-[#57707A]/30 hover:border-[#C5BAC4]/30 shadow-sm">
                         {asset.type === "video" ? (
                           <video src={asset.url} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" preload="metadata" muted playsInline />
                         ) : asset.type === "audio" ? (
@@ -887,16 +899,18 @@ export function VideoEditorUI() {
 
         {/* CENTER PANEL: Preview Canvas */}
         <div className="flex-1 bg-[#191D23] flex flex-col relative" onClick={() => setSelectedElement(null)}>
-          <div className="h-14 bg-[#2A2F38] border-b border-[#57707A]/30 flex items-center justify-between px-5 shrink-0 z-10 shadow-sm">
-            <span className="text-sm font-bold text-[#DEDCDC] tracking-wider uppercase font-display">Preview Canvas</span>
-
+          <div className="h-13 bg-gradient-to-r from-[#2A2F38] to-[#232830] border-b border-[#57707A]/25 flex items-center justify-between px-5 shrink-0 z-10 shadow-sm py-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-1.5 h-4 rounded-full bg-[#C5BAC4]/40" />
+              <span className="text-[11px] font-black text-[#989DAA] tracking-[0.1em] uppercase">Preview Canvas</span>
+            </div>
             <Button
               size="sm"
               onClick={handleRender}
               disabled={isRendering || videoClips.length === 0}
-              className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold shadow-md shadow-[#C5BAC4]/20 transition-all duration-200 h-9 rounded-lg px-4"
+              className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-black shadow-md shadow-[#C5BAC4]/15 transition-all duration-200 h-8 rounded-xl px-4 text-xs tracking-wide disabled:opacity-40"
             >
-              <Film className="w-4 h-4 mr-2" />
+              <Film className="w-3.5 h-3.5 mr-1.5" />
               Render & Finish
             </Button>
           </div>
@@ -1105,12 +1119,15 @@ export function VideoEditorUI() {
       </div>
 
       {/* ─── BOTTOM WORKSPACE (Timeline Engine) ─── */}
-      <div className="h-80 bg-[#2A2F38] border-t border-[#57707A]/40 flex flex-col z-0 shadow-[0_-5px_20px_rgba(0,0,0,0.2)]">
-        <div className="h-12 bg-[#191D23] border-b border-[#57707A]/30 flex items-center justify-between px-5 z-20 shrink-0">
-          <div className="flex items-center gap-4 text-[#DEDCDC]/50">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#989DAA] font-display">Timeline Tracks</span>
-            <div className="h-4 w-px bg-[#57707A]/40"></div>
-            <button onClick={deleteSelected} disabled={!selectedElement} className="p-1.5 hover:bg-[#57707A]/30 rounded-lg text-red-400 disabled:opacity-30 disabled:hover:bg-transparent transition-colors" title="Delete Selected Clip"><Trash2 className="w-4 h-4" /></button>
+      <div className="h-80 bg-[#2A2F38] border-t border-[#57707A]/25 flex flex-col z-0 shadow-[0_-8px_24px_rgba(0,0,0,0.25)]">
+        <div className="h-11 bg-gradient-to-r from-[#191D23] to-[#1D2229] border-b border-[#57707A]/25 flex items-center justify-between px-5 z-20 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-3.5 rounded-full bg-[#B3FF00]/50" />
+              <span className="text-[10px] font-black uppercase tracking-[0.1em] text-[#57707A]">Timeline</span>
+            </div>
+            <div className="h-3.5 w-px bg-[#57707A]/30"></div>
+            <button onClick={deleteSelected} disabled={!selectedElement} className="p-1.5 hover:bg-red-500/20 rounded-lg text-[#57707A] hover:text-red-400 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-[#57707A] transition-colors" title="Delete Selected Clip"><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
           <div className="flex items-center gap-4">
 
