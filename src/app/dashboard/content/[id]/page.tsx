@@ -106,7 +106,7 @@ const parseArray = (data: any): any[] => {
   return [];
 };
 
-type GenerationMode = "generate" | "style_transfer" | "gpt_image_2_i2i";
+type GenerationMode = "generate" | "style_transfer" | "gpt_image_2_t2i" | "gpt_image_2_i2i";
 
 const STYLE_OPTIONS = [
   { value: "realistic", label: "Hyper-Realistic Photo", promptAddon: "Hyper-realistic photograph, highly detailed, 8k resolution. NO TEXT, NO WORDS, NO TYPOGRAPHY, NO WATERMARKS in the image." },
@@ -583,6 +583,9 @@ export default function ContentDetailPage({
         logo_url: brandLogo || null,
         style: selectedStyle,
         is_sync: true,
+        ...(generationMode === "gpt_image_2_t2i" && {
+          kie_model: "gpt-image-2-text-to-image",
+        }),
         ...(generationMode === "gpt_image_2_i2i" && {
           kie_model: "gpt-image-2-image-to-image",
           input_urls: allReferenceUrls,
@@ -1349,6 +1352,12 @@ export default function ContentDetailPage({
                 </SelectTrigger>
                 <SelectContent className="bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC]">
                   <SelectItem value="generate" className="focus:bg-[#191D23] focus:text-white cursor-pointer">Pure Generation (Text to Image)</SelectItem>
+                  <SelectItem value="gpt_image_2_t2i" className="focus:bg-[#191D23] focus:text-white cursor-pointer">
+                    <span className="flex items-center gap-2">
+                      GPT Image 2 · Text to Image
+                      <span className="text-[8px] font-black bg-[#B3FF00] text-[#191D23] px-1.5 py-0.5 rounded uppercase tracking-wide leading-none">NEW</span>
+                    </span>
+                  </SelectItem>
                   <SelectItem value="style_transfer" className="focus:bg-[#191D23] focus:text-white cursor-pointer">Style Transfer (Image to Image)</SelectItem>
                   <SelectItem value="gpt_image_2_i2i" className="focus:bg-[#191D23] focus:text-white cursor-pointer">
                     <span className="flex items-center gap-2">
