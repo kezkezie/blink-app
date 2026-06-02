@@ -283,7 +283,7 @@ export default function BillingPage() {
                     <div>
                         <h4 className="text-[#DEDCDC] font-bold font-display text-base">Running low?</h4>
                         <p className="text-xs text-[#989DAA] mt-0.5">
-                            Add <strong className="text-[#DEDCDC]">5,000 Credits</strong> for <strong className="text-[#B3FF00]">$5.00</strong>.
+                            Add <strong className="text-[#DEDCDC]">800 Credits</strong> for <strong className="text-[#B3FF00]">$5.00</strong>.
                         </p>
                     </div>
                     <Button

@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { createServerClient } from "@supabase/ssr";
 
 function dedupeHex(arr: string[]): string[] {
   return [...new Set(arr.map((c) => c.toLowerCase()))];
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll() { return req.cookies.getAll(); }, setAll() {} } }
+  );
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { website_url, social_urls } = await req.json();
 
   if (!website_url?.trim() && !social_urls?.trim()) {

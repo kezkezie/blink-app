@@ -1,10 +1,19 @@
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-server"; // ✨ IMPORT THE ADMIN CLIENT
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { supabaseAdmin } from "@/lib/supabase-server";
 
-export async function POST(req: Request) {
-  let clientIdForRefund = null; // Store this globally so the catch block can refund if necessary
+export async function POST(req: NextRequest) {
+  let clientIdForRefund = null;
 
   try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll() { return req.cookies.getAll(); }, setAll() {} } }
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const apiKey = process.env.OPENAI_API_KEY;
 
@@ -31,8 +40,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing clientId for billing." }, { status: 400 });
     }
 
-    clientIdForRefund = clientId; // Save it for error handling
-    const captionCost = 1; // 1 credit per caption (amount must be integer)
+    clientIdForRefund = clientId;
+
+    const { data: clientOwner } = await supabaseAdmin.from("clients")
+      .select("id").eq("user_id", user.id).eq("id", clientId).single();
+    if (!clientOwner) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const captionCost = 1;
 
     // ─── BILLING: DEDUCT CREDITS UPFRONT ───
     const { data: deductData, error: deductError } = await supabaseAdmin.rpc(

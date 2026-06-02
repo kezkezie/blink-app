@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 
 // FORMAT_TO_POST_TYPE maps user-selected format → PostForMe post type.
 // All formats currently resolve to "media" — Quickstart Projects block placement routing.
@@ -14,8 +15,16 @@ const FORMAT_TO_POST_TYPE: Record<string, string> = {
   // carousel: "carousel", // TODO: Uncomment when upgraded from Quickstart API tier
 };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll() { return req.cookies.getAll(); }, setAll() {} } }
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const { contentId, clientId, scheduledAt, publishSettings: clientPublishSettings } = body;
 
@@ -40,6 +49,10 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       { auth: { persistSession: false } }
     );
+
+    const { data: clientOwner } = await supabaseAdmin
+      .from("clients").select("id").eq("user_id", user.id).eq("id", clientId).single();
+    if (!clientOwner) return NextResponse.json({ error: "Forbidden: Client scope mismatch" }, { status: 403 });
 
     // 1. Fetch the content row
     const { data: content, error: contentError } = await supabaseAdmin

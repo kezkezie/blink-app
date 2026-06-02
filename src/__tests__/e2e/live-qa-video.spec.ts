@@ -29,7 +29,7 @@ const SUPABASE_URL =
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const N8N_BASE = 'https://n8n.srv1166077.hstgr.cloud';
-const N8N_MCP_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ZmMwMzAyYy03Yzg5LTQ5YjUtYmY3MC0wZTEyMTQ3NjZlNzciLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6IjZkY2ViYTFmLWMxZGUtNGQzNC1hYWUzLTNhYjhmY2U4M2Q2NiIsImlhdCI6MTc3ODg1NjU5MX0.TmNxGuFZfcMW5PVHIMnB5ycZehdpZ3tN6_J8J99RGHc';
+const N8N_MCP_TOKEN = process.env.N8N_TEST_TOKEN;
 
 const QA_DIR = '/Users/freddykezie/Documents/ AIos demo/AIS-OS/references/qa-reports';
 const SCREENSHOT_VIDEO = path.join(QA_DIR, 'flow-4-video-success.png');

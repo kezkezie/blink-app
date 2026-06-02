@@ -1,8 +1,25 @@
 // app/api/workflows/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+
+const ALLOWED_PATHS = [
+  'blink-generate-images',
+  'blink-generate-video-v1',
+  'blink-approval-response',
+  'blink-brand-extract-001',
+  'blink-suggest-visual',
+];
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll() { return req.cookies.getAll(); }, setAll() {} } }
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     // Get the target workflow path from the URL
     const path = req.nextUrl.searchParams.get("path");
     if (!path)
@@ -10,6 +27,9 @@ export async function POST(req: NextRequest) {
         { error: "Missing workflow path" },
         { status: 400 }
       );
+
+    if (!ALLOWED_PATHS.includes(path))
+      return NextResponse.json({ error: "Invalid workflow path" }, { status: 400 });
 
     // Ensure this matches your live n8n URL
     const n8nBaseUrl =
