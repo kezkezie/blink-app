@@ -452,7 +452,15 @@ export default function ContentDetailPage({
           }
           : null
       );
-      alert("Post sent to PostForMe and queued for Instagram. Note: if the Instagram account has any Meta restrictions, posts may not appear — check Account Status in Instagram Settings if the post doesn't show within 5 minutes.");
+      const activePlatformNames = Object.entries(publishSettings)
+        .filter(([, v]) => v?.enabled)
+        .map(([p]) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(", ");
+      const hasInstagram = activePlatformNames.toLowerCase().includes("instagram");
+      const instagramNote = hasInstagram
+        ? " Note: if the Instagram account has any Meta restrictions, posts may not appear — check Account Status in Instagram Settings if the post doesn't show within 5 minutes."
+        : "";
+      alert(`Post sent to PostForMe and queued for: ${activePlatformNames || "your social accounts"}.${instagramNote}`);
     } catch (err: any) {
       alert(`Failed to publish: ${err.message}`);
     } finally {

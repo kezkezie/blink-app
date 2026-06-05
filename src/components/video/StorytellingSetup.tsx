@@ -901,9 +901,11 @@ export function StorytellingSetup({
       await callN8n('scene_video_generator', {
         post_id: postId,
         client_id: clientId,
-        content_type: "sequence_clip", // ✨ THIS IS THE MISSING LINK
+        content_type: "sequence_clip",
         ai_model_override: scene.aiModel || "auto",
         aspect_ratio: scene.aspectRatio || "16:9",
+        video_resolution: scene.videoResolution || "720p",
+        ...(scene.seed !== null && scene.seed !== undefined ? { seed: scene.seed } : {}),
         referenceVideoUrl: finalReferenceVideoUrl,
         scene_data: {
           visual_prompt: scene.prompt?.trim() || bRollConcept,
