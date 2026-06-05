@@ -82,7 +82,7 @@ export default function PrivacyPage() {
                         <li>Job titles</li>
                     </ul>
                     <p><strong>Sensitive Information.</strong> We do not process sensitive information.</p>
-                    <p><strong>Payment Data.</strong> We may collect data necessary to process your payment if you choose to make purchases, such as your payment instrument number, and the security code associated with your payment instrument. All payment data is handled and stored by Platnova. You may find their privacy notice here: <a href="https://platnova.com/privacy-policy" className="text-[#C5BAC4] hover:underline" target="_blank" rel="noopener noreferrer">https://platnova.com/privacy-policy</a>.</p>
+                    <p><strong>Payment Data.</strong> We may collect data necessary to process your payment if you choose to make purchases, such as your payment instrument number, and the security code associated with your payment instrument. All payment data is handled and stored by Paystack. You may find their privacy notice here: <a href="https://paystack.com/privacy-policy" className="text-[#C5BAC4] hover:underline" target="_blank" rel="noopener noreferrer">https://paystack.com/privacy-policy</a>.</p>
                     <p>All personal information that you provide to us must be true, complete, and accurate, and you must notify us of any changes to such personal information.</p>
 
                     <h3 className="text-lg font-bold text-[#DEDCDC] mt-8 mb-2">Information automatically collected</h3>
