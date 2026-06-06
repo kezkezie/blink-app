@@ -44,6 +44,15 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Hide scrollbar but keep scroll functionality (for horizontal showcase) */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes shimmer {
