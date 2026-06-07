@@ -278,8 +278,10 @@ export default function ContentDetailPage({
         { event: "UPDATE", schema: "public", table: "content", filter: `id=eq.${id}` },
         (payload) => {
           const updated = payload.new as any;
-          const newUrls = parseArray(updated.image_urls);
-          if (newUrls.length > 0) {
+          // ✨ FIX: Check both image_urls AND video_urls — story sequences write to video_urls
+          const newImageUrls = parseArray(updated.image_urls);
+          const newVideoUrls = parseArray(updated.video_urls);
+          if (newImageUrls.length > 0 || newVideoUrls.length > 0) {
             setContent((prev) => prev ? { ...prev, ...updated } as Content : null);
             setIsProcessing(false);
             router.replace(`/dashboard/content/${id}`, { scroll: false });
@@ -288,11 +290,11 @@ export default function ContentDetailPage({
       )
       .subscribe();
 
-    // Fallback: after 90s try a manual refetch; if the image is already there show it,
+    // Fallback: after 90s try a manual refetch; if media is already there show it,
     // otherwise surface a "still processing" state so the user isn't stuck forever.
     const timeout = setTimeout(async () => {
       const { data } = await supabase.from("content").select("*").eq("id", id).maybeSingle();
-      if (data && parseArray((data as any).image_urls).length > 0) {
+      if (data && (parseArray((data as any).image_urls).length > 0 || parseArray((data as any).video_urls).length > 0)) {
         setContent(data as unknown as Content);
         setIsProcessing(false);
         router.replace(`/dashboard/content/${id}`, { scroll: false });
@@ -667,13 +669,40 @@ export default function ContentDetailPage({
       </div>
     );
 
-  const displayImage = parseArray(content.image_urls)[0];
+  // ── Resolve the best display URL: prefer video_urls for video content, fall back to image_urls ──
+  const videoUrlsArray = parseArray(content.video_urls);
+  const imageUrlsArray = parseArray(content.image_urls);
 
-  const isVideo =
-    displayImage &&
-    (displayImage.toLowerCase().includes(".mp4") ||
-      displayImage.toLowerCase().includes(".mov") ||
-      displayImage.toLowerCase().includes(".webm"));
+  const VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm"];
+  const isVideoUrl = (url: string) =>
+    VIDEO_EXTENSIONS.some(ext => url.toLowerCase().includes(ext));
+
+  // 1. Check video_urls for actual video files
+  const firstVideoFromVideos = videoUrlsArray.find(
+    (u: string) => typeof u === "string" && u.length > 5 && isVideoUrl(u)
+  );
+  // 2. Check image_urls for video files (sometimes videos are stored here)
+  const firstVideoFromImages = imageUrlsArray.find(
+    (u: string) => typeof u === "string" && u.length > 5 && isVideoUrl(u)
+  );
+  // 3. First image from image_urls
+  const firstImage = imageUrlsArray.find(
+    (u: string) => typeof u === "string" && u.length > 5
+  );
+
+  let displayImage: string | null = null;
+  let isVideo = false;
+
+  if (firstVideoFromVideos) {
+    displayImage = firstVideoFromVideos;
+    isVideo = true;
+  } else if (firstVideoFromImages) {
+    displayImage = firstVideoFromImages;
+    isVideo = true;
+  } else if (firstImage) {
+    displayImage = firstImage;
+    isVideo = false;
+  }
 
   const isGenerationDisabled = generatingImage || ((generationMode === "style_transfer" || generationMode === "gpt_image_2_i2i") && refFiles.length === 0 && refLibraryUrls.length === 0);
 

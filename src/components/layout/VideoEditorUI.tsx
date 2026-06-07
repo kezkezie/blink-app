@@ -140,19 +140,26 @@ export function VideoEditorUI() {
       data.forEach((item) => {
         let parsedUrls: string[] = [];
 
+        // ✨ FIX: Always collect from BOTH image_urls and video_urls, then deduplicate.
+        // Previously we only checked video_urls if image_urls was empty, which meant
+        // story sequences with videos in video_urls were invisible.
+        let fromImages: string[] = [];
         if (Array.isArray(item.image_urls) && item.image_urls.length > 0) {
-          parsedUrls = item.image_urls;
+          fromImages = item.image_urls;
         } else if (typeof item.image_urls === 'string' && item.image_urls.length > 5) {
-          try { parsedUrls = JSON.parse(item.image_urls); } catch (e) { }
+          try { fromImages = JSON.parse(item.image_urls); } catch (e) { }
         }
 
-        if (parsedUrls.length === 0) {
-          if (Array.isArray(item.video_urls) && item.video_urls.length > 0) {
-            parsedUrls = item.video_urls;
-          } else if (typeof item.video_urls === 'string' && item.video_urls.length > 5) {
-            try { parsedUrls = JSON.parse(item.video_urls); } catch (e) { }
-          }
+        let fromVideos: string[] = [];
+        if (Array.isArray(item.video_urls) && item.video_urls.length > 0) {
+          fromVideos = item.video_urls;
+        } else if (typeof item.video_urls === 'string' && item.video_urls.length > 5) {
+          try { fromVideos = JSON.parse(item.video_urls); } catch (e) { fromVideos = [item.video_urls]; }
         }
+
+        // Merge and deduplicate — put videos first so they get priority display
+        const allUrls = [...fromVideos, ...fromImages];
+        parsedUrls = [...new Set(allUrls.filter((u: string) => typeof u === 'string' && u.length > 5))];
 
         parsedUrls.forEach((url: string, idx: number) => {
           const isAudioUrl = url.includes(".mp3") || url.includes(".wav") || url.includes("audios/");
