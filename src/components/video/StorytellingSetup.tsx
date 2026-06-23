@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useClient } from "@/hooks/useClient";
+import { useBrandStore } from "@/app/store/useBrandStore";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
@@ -402,6 +403,7 @@ export function StorytellingSetup({
   isSuggesting,
 }: StorytellingSetupProps) {
   const { clientId } = useClient();
+  const { activeBrand } = useBrandStore();
   const router = useRouter();
 
   const [actors, setActors] = useState<ActorProfile[]>([]);
@@ -887,6 +889,7 @@ export function StorytellingSetup({
         .from('content')
         .insert({
           client_id: clientId,
+          brand_id: activeBrand?.id ?? null,
           content_type: "sequence_clip",
           caption: `🎬 Scene ${slotIndex + 1} Video`,
           status: "draft",

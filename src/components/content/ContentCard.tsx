@@ -50,7 +50,10 @@ export function ContentCard({ content }: ContentCardProps) {
     }
   };
 
-  const isVideoUrl = (url: string): boolean => VIDEO_EXTENSIONS.includes(getCleanExtension(url));
+  const isVideoUrl = (url: string): boolean =>
+    VIDEO_EXTENSIONS.includes(getCleanExtension(url)) ||
+    url.includes("/video/upload/") ||
+    url.includes("story-sequences");
 
   // ── Media resolution ──
   const videoUrlsArray = parseArray(content.video_urls);

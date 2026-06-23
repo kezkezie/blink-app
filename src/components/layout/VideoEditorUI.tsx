@@ -168,7 +168,7 @@ export function VideoEditorUI() {
 
           // ✨ SYNCED: Recognize all sequence types as video assets
           const isSequenceType = sequenceTypes.includes(item.content_type);
-          const isVid = url.includes(".mp4") || url.includes(".mov") || isSequenceType || item.content_type === "reel";
+          const isVid = url.includes(".mp4") || url.includes(".mov") || url.includes("/video/upload/") || url.includes("story-sequences") || isSequenceType || item.content_type === "reel";
 
           if (filterType === "audio" && !isAudio) return;
           if (filterType === "library" && (isAudio || isSequenceType)) return;
