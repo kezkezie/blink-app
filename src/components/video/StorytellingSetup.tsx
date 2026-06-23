@@ -775,6 +775,7 @@ export function StorytellingSetup({
         try {
           await supabase.from("content").insert({
             client_id: clientId,
+            brand_id: activeBrand?.id ?? null,
             content_type: "generated_image",
             caption: `Storyboard: Scene ${slotIndex + 1} ${type === 'primary' ? 'Start' : 'End'} Frame`,
             status: "approved",
