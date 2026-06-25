@@ -495,11 +495,11 @@ export function StorytellingSetup({
 
 
 
-  const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number } | null>(null);
-  const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number } | null>(null);
+  const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number, geminiIndex?: number } | null>(null);
+  const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number, geminiIndex?: number } | null>(null);
   const [suggestingPromptIndex, setSuggestingPromptIndex] = useState<number | null>(null);
 
-  const [regenDialogState, setRegenDialogState] = useState<{ isOpen: boolean; sceneId: string | null; index: number | null; slotType: 'primary' | 'secondary'; promptText: string; seedanceIndex?: number }>({
+  const [regenDialogState, setRegenDialogState] = useState<{ isOpen: boolean; sceneId: string | null; index: number | null; slotType: 'primary' | 'secondary'; promptText: string; seedanceIndex?: number; geminiIndex?: number }>({
     isOpen: false, sceneId: null, index: null, slotType: 'primary', promptText: ""
   });
 
@@ -526,6 +526,16 @@ export function StorytellingSetup({
   };
 
   const ensureArray = (val: any) => Array.isArray(val) ? val : [val || null];
+
+  // Which video engines can transition between a start and an end keyframe.
+  // Seedance uses sequential reference images (not an end frame) and Gemini Omni
+  // has its own reference model, so both are excluded.
+  const modelSupportsEndFrame = (model?: string) =>
+    model === 'kling-3.0/video' ||
+    model === 'replicate:openai/sora-2' ||
+    model === 'replicate:prunaai/p-video' ||
+    model === 'auto' ||
+    !model; // default scenes start as "auto" → Kling
 
   const totalImageSlots = bRollScenes.reduce((count, scene) => {
     const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
@@ -587,9 +597,10 @@ export function StorytellingSetup({
     return new Blob([byteArray], { type: mimeType });
   };
 
-  const generateScript = async (): Promise<string[]> => {
+  const generateScript = async (): Promise<{ prompts: string[]; scenes: StoryboardScene[] }> => {
     setIsWritingScript(true);
     let generatedPrompts: string[] = [];
+    let generatedScenes: StoryboardScene[] = bRollScenes;
     try {
       const directorData = await callN8n('director', {
         clientId: clientId,
@@ -606,12 +617,16 @@ export function StorytellingSetup({
         const scenesToAdd = scenesData.length - currentScenes.length;
         for (let i = 0; i < scenesToAdd; i++) {
           const aiData = scenesData[currentScenes.length + i] || {};
+          const addedModel = aiData.aiModel || aiData.ai_model || "auto";
           currentScenes.push({
             id: crypto.randomUUID(),
             scene_number: currentScenes.length + i + 1,
             // ✨ FIX: Safely catch snake_case or camelCase keys from the AI
-            aiModel: aiData.aiModel || aiData.ai_model || "auto",
-            useEndFrame: aiData.useEndFrame !== undefined ? aiData.useEndFrame : (aiData.use_end_frame !== undefined ? aiData.use_end_frame : false),
+            aiModel: addedModel,
+            // ✨ Auto-enable the End Frame slot for engines that support keyframe
+            // transitions. The AI Director often returns useEndFrame:false even for
+            // Kling/Sora, which left the End Frame slot greyed out and ungenerated.
+            useEndFrame: modelSupportsEndFrame(addedModel),
             primaryFile: null,
             primaryPreview: null,
             secondaryFile: null,
@@ -632,19 +647,24 @@ export function StorytellingSetup({
         const aiData = scenesData[i] || {};
         const newVisualPrompt = aiData.video_prompt || aiData.image_prompt || "";
         const finalPrompt = scene.prompt?.trim() || newVisualPrompt;
+        const finalModel = (aiData.aiModel || aiData.ai_model) ? (aiData.aiModel || aiData.ai_model) : scene.aiModel;
 
         return {
           ...scene,
           prompt: finalPrompt,
           // ✨ FIX: Safely catch snake_case or camelCase keys from the AI
-          aiModel: aiData.aiModel || aiData.ai_model ? (aiData.aiModel || aiData.ai_model) : scene.aiModel,
+          aiModel: finalModel,
           duration: aiData.duration ? String(aiData.duration) : scene.duration,
-          useEndFrame: aiData.useEndFrame !== undefined ? aiData.useEndFrame : (aiData.use_end_frame !== undefined ? aiData.use_end_frame : scene.useEndFrame)
+          // ✨ Auto-enable End Frame for keyframe-capable engines (Kling/Sora/Pruna).
+          // Seedance/Gemini stay false. This makes the toggle reflect on "Write
+          // Scenes" and lets the bulk image generator produce the end frame too.
+          useEndFrame: modelSupportsEndFrame(finalModel)
         };
       });
 
       setBRollScenes(updatedScenes);
       generatedPrompts = updatedScenes.map(s => s.prompt);
+      generatedScenes = updatedScenes;
 
     } catch (err: any) {
       alert(`Script generation failed: ${err.message}`);
@@ -652,7 +672,7 @@ export function StorytellingSetup({
     } finally {
       setIsWritingScript(false);
     }
-    return generatedPrompts;
+    return { prompts: generatedPrompts, scenes: generatedScenes };
   };
 
   const handleWriteScript = async () => {
@@ -698,9 +718,18 @@ export function StorytellingSetup({
   };
 
 
-  const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string, seedanceIndex: number = 0) => {
-    const scene = bRollScenes[slotIndex];
+  const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string, seedanceIndex: number = 0, scenesOverride?: StoryboardScene[], geminiIndex?: number) => {
+    // scenesOverride lets bulk callers (handleGenerateAllImages) pass the just-fetched
+    // AI Director scenes directly — bRollScenes here is a closure snapshot from the
+    // last render and won't reflect a setBRollScenes() that happened earlier in the
+    // same call stack (e.g. generateScript()'s fallback), so re-reading it would give
+    // a stale aiModel/useEndFrame and misroute Seedance scenes through the wrong branch.
+    const scenes = scenesOverride || bRollScenes;
+    const scene = scenes[slotIndex];
     const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
+    // Gemini Omni stores its reference images in gptRefPreviews[geminiIndex] rather
+    // than primaryPreview/seedancePreviews — route generation results there.
+    const isGeminiRef = geminiIndex !== undefined;
     const promptToUse = overridePrompt || scene.prompt || bRollConcept;
 
     if (!promptToUse.trim()) return alert("Please write a visual prompt for this scene first.");
@@ -708,12 +737,12 @@ export function StorytellingSetup({
     const NO_TEXT_CONSTRAINT = " CRITICAL: Do NOT output a character reference sheet, split screen, or multiple angles. Output a SINGLE, unified, cinematic scene featuring this exact character integrated naturally into the described environment.";
     const safePrompt = promptToUse + NO_TEXT_CONSTRAINT;
 
-    setGeneratingSlot({ index: slotIndex, type, seedanceIndex });
+    setGeneratingSlot({ index: slotIndex, type, seedanceIndex, geminiIndex });
     try {
       const styleRefUrl = await uploadRefImage();
       let previousUrl = null;
       if (slotIndex > 0) {
-        previousUrl = bRollScenes[slotIndex - 1].secondaryPreview || bRollScenes[slotIndex - 1].primaryPreview;
+        previousUrl = scenes[slotIndex - 1].secondaryPreview || scenes[slotIndex - 1].primaryPreview;
       }
 
       let characterSheetUrlA: string | null = null;
@@ -740,7 +769,17 @@ export function StorytellingSetup({
       });
 
       if (genData.url) {
-        if (isSeedance2) {
+        if (isGeminiRef) {
+          setBRollScenes(currentScenes => {
+            const newScenes = [...currentScenes];
+            const oldScene = newScenes[slotIndex];
+            const refPreviews = [...ensureArray(oldScene.gptRefPreviews || Array(5).fill(null))];
+            refPreviews[geminiIndex!] = genData.url;
+            newScenes[slotIndex] = { ...oldScene, gptRefPreviews: refPreviews, videoUrl: null };
+            return newScenes;
+          });
+
+        } else if (isSeedance2) {
           setBRollScenes(currentScenes => {
             const newScenes = [...currentScenes];
             const oldScene = newScenes[slotIndex];
@@ -776,7 +815,7 @@ export function StorytellingSetup({
           await supabase.from("content").insert({
             client_id: clientId,
             brand_id: activeBrand?.id ?? null,
-            content_type: "generated_image",
+            content_type: "post_image",
             caption: `Storyboard: Scene ${slotIndex + 1} ${type === 'primary' ? 'Start' : 'End'} Frame`,
             status: "approved",
             image_urls: [genData.url],
@@ -796,30 +835,41 @@ export function StorytellingSetup({
     if (!bRollConcept.trim()) return alert("Please enter a concept first.");
     setIsGeneratingAllImages(true);
 
+    // Default to the closure's bRollScenes — but if we have to run the AI
+    // Director below, switch to ITS returned scenes instead. bRollScenes here
+    // is a stale snapshot from the render that created this click handler;
+    // setBRollScenes() inside generateScript() doesn't mutate it in place, so
+    // reading bRollScenes after that call would still see pre-Director values
+    // (useEndFrame/aiModel = scene defaults) and silently skip slots.
+    let scenesToUse: StoryboardScene[] = bRollScenes;
     let currentPrompts = bRollScenes.map(s => s.prompt);
     if (currentPrompts.every(p => !p?.trim())) {
-      try { currentPrompts = await generateScript(); } catch (e) { setIsGeneratingAllImages(false); return; }
+      try {
+        const result = await generateScript();
+        currentPrompts = result.prompts;
+        scenesToUse = result.scenes;
+      } catch (e) { setIsGeneratingAllImages(false); return; }
     }
 
     // ✨ THIS IS THE SECRET TO PREVENTING SERVER CRASHES
     // We process them sequentially (one by one) to keep CPU usage low
-    for (let i = 0; i < bRollScenes.length; i++) {
-      const isSeedance2 = bRollScenes[i].aiModel === 'bytedance/seedance-2' || bRollScenes[i].aiModel === 'bytedance/seedance-2-fast';
+    for (let i = 0; i < scenesToUse.length; i++) {
+      const isSeedance2 = scenesToUse[i].aiModel === 'bytedance/seedance-2' || scenesToUse[i].aiModel === 'bytedance/seedance-2-fast';
 
       if (isSeedance2) {
-        const previews = ensureArray(bRollScenes[i].seedancePreviews || [null]);
+        const previews = ensureArray(scenesToUse[i].seedancePreviews || [null]);
         for (let sIdx = 0; sIdx < previews.length; sIdx++) {
           if (!previews[sIdx] && currentPrompts[i]) {
             // AWAIT pauses the loop until this specific image is finished
-            await handleGenerateSlot(i, 'primary', currentPrompts[i], sIdx);
+            await handleGenerateSlot(i, 'primary', currentPrompts[i], sIdx, scenesToUse);
           }
         }
       } else {
-        if (!bRollScenes[i].primaryPreview && currentPrompts[i]) {
-          await handleGenerateSlot(i, 'primary', currentPrompts[i]);
+        if (!scenesToUse[i].primaryPreview && currentPrompts[i]) {
+          await handleGenerateSlot(i, 'primary', currentPrompts[i], 0, scenesToUse);
         }
-        if (bRollScenes[i].useEndFrame && !bRollScenes[i].secondaryPreview && currentPrompts[i]) {
-          await handleGenerateSlot(i, 'secondary', currentPrompts[i]);
+        if (scenesToUse[i].useEndFrame && !scenesToUse[i].secondaryPreview && currentPrompts[i]) {
+          await handleGenerateSlot(i, 'secondary', currentPrompts[i], 0, scenesToUse);
         }
       }
     }
@@ -830,6 +880,11 @@ export function StorytellingSetup({
   const handleGenerateSingleVideo = async (slotIndex: number) => {
     const scene = bRollScenes[slotIndex];
     if (!clientId) return;
+    // Guard: without an active brand the row would be saved with brand_id=null and
+    // then never appear in the brand-scoped Story Sequences tab or editor library.
+    if (!activeBrand?.id) {
+      return alert("Please select a brand workspace before generating videos.");
+    }
 
     const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
 
@@ -1006,15 +1061,15 @@ export function StorytellingSetup({
     }
   };
 
-  const openRegenModal = (scene: any, index: number, slotType: 'primary' | 'secondary', seedanceIndex?: number) => {
-    setRegenDialogState({ isOpen: true, sceneId: scene.id, index: index, slotType: slotType, promptText: scene.prompt || bRollConcept || "", seedanceIndex });
+  const openRegenModal = (scene: any, index: number, slotType: 'primary' | 'secondary', seedanceIndex?: number, geminiIndex?: number) => {
+    setRegenDialogState({ isOpen: true, sceneId: scene.id, index: index, slotType: slotType, promptText: scene.prompt || bRollConcept || "", seedanceIndex, geminiIndex });
   };
 
   const handleConfirmRegen = () => {
-    const { sceneId, index, slotType, promptText, seedanceIndex } = regenDialogState;
+    const { sceneId, index, slotType, promptText, seedanceIndex, geminiIndex } = regenDialogState;
     if (sceneId && index !== null) {
       updateScene(sceneId, "prompt", promptText);
-      handleGenerateSlot(index, slotType, promptText, seedanceIndex || 0);
+      handleGenerateSlot(index, slotType, promptText, seedanceIndex || 0, undefined, geminiIndex);
     }
     setRegenDialogState(prev => ({ ...prev, isOpen: false }));
   };
@@ -1023,7 +1078,11 @@ export function StorytellingSetup({
     if (!libraryTarget) return;
     const scene = bRollScenes[libraryTarget.index];
 
-    if (libraryTarget.seedanceIndex !== undefined) {
+    if (libraryTarget.geminiIndex !== undefined) {
+      const refPreviews = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
+      refPreviews[libraryTarget.geminiIndex] = url;
+      updateScene(scene.id, "gptRefPreviews", refPreviews);
+    } else if (libraryTarget.seedanceIndex !== undefined) {
       const currentPreviews = ensureArray(scene.seedancePreviews || [null]);
       const currentFiles = ensureArray(scene.seedanceImages || [null]);
       const newPreviews = [...currentPreviews];
@@ -1655,43 +1714,67 @@ export function StorytellingSetup({
                           {[0, 1, 2, 3, 4].map((imgIdx) => {
                             const refPreviews: (string | null)[] = ensureArray(scene.gptRefPreviews || Array(5).fill(null));
                             const preview = refPreviews[imgIdx] || null;
+                            const isGenningThis = generatingSlot?.index === index && generatingSlot.geminiIndex === imgIdx;
                             return (
-                              <div key={imgIdx} className={cn(
-                                "relative aspect-square rounded-xl overflow-hidden bg-[#0F1115] border-2 flex items-center justify-center transition-all group/gi shadow-inner",
-                                preview ? "border-[#00E5FF]/40" : "border-dashed border-[#00E5FF]/20 hover:border-[#00E5FF]/50 hover:bg-[#00E5FF]/5 cursor-pointer"
-                              )}>
-                                <div className="absolute top-1.5 left-1.5 z-20 bg-[#00E5FF]/20 text-[#00E5FF] border border-[#00E5FF]/30 px-1.5 py-0.5 text-[9px] font-black rounded uppercase shadow-md">{imgIdx + 1}</div>
-                                {preview ? (
-                                  <>
-                                    <img src={preview} className="w-full h-full object-cover" />
-                                    <button type="button" onClick={() => {
-                                      const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
-                                      p[imgIdx] = null;
-                                      updateScene(scene.id, "gptRefPreviews", p);
-                                    }} className="absolute top-1.5 right-1.5 z-30 p-1 bg-red-500/90 text-white rounded-md opacity-0 group-hover/gi:opacity-100 transition-all shadow-sm">
-                                      <X className="w-3 h-3" />
+                              <div key={imgIdx} className="flex flex-col gap-1.5">
+                                <div className={cn(
+                                  "relative aspect-square rounded-xl overflow-hidden bg-[#0F1115] border-2 flex items-center justify-center transition-all group/gi shadow-inner",
+                                  preview ? "border-[#00E5FF]/40" : "border-dashed border-[#00E5FF]/20 hover:border-[#00E5FF]/50 hover:bg-[#00E5FF]/5 cursor-pointer"
+                                )}>
+                                  <div className="absolute top-1.5 left-1.5 z-20 bg-[#00E5FF]/20 text-[#00E5FF] border border-[#00E5FF]/30 px-1.5 py-0.5 text-[9px] font-black rounded uppercase shadow-md">{imgIdx + 1}</div>
+                                  {isGenningThis ? (
+                                    <div className="flex flex-col items-center justify-center gap-1.5 w-full h-full bg-[#191D23]/90 backdrop-blur-sm">
+                                      <Loader2 className="h-5 w-5 text-[#00E5FF] animate-spin" />
+                                      <span className="text-[8px] font-bold text-[#00E5FF] uppercase tracking-wider">Generating…</span>
+                                    </div>
+                                  ) : preview ? (
+                                    <>
+                                      <img src={preview} className="w-full h-full object-cover" />
+                                      <button type="button" onClick={() => {
+                                        const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
+                                        p[imgIdx] = null;
+                                        updateScene(scene.id, "gptRefPreviews", p);
+                                      }} className="absolute top-1.5 right-1.5 z-30 p-1 bg-red-500/90 text-white rounded-md opacity-0 group-hover/gi:opacity-100 transition-all shadow-sm">
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <label htmlFor={`gemvid-img-${scene.id}-${imgIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#00E5FF] transition-colors gap-1">
+                                      <ImageIcon className="h-4 w-4" />
+                                      <p className="text-[9px] font-bold">Add</p>
+                                    </label>
+                                  )}
+                                  <input id={`gemvid-img-${scene.id}-${imgIdx}`} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      const reader = new FileReader();
+                                      reader.onload = (ev) => {
+                                        const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
+                                        p[imgIdx] = ev.target?.result as string;
+                                        updateScene(scene.id, "gptRefPreviews", p);
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }}
+                                    onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                                  />
+                                </div>
+
+                                {/* ✨ AI Generate / Re-Gen + Library for Gemini Omni reference slots */}
+                                <div className="flex gap-1">
+                                  {preview ? (
+                                    <button type="button" title="Regenerate this reference image" onClick={() => openRegenModal(scene, index, 'primary', undefined, imgIdx)} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-7 flex items-center justify-center rounded-lg border border-[#57707A]/40 text-[#989DAA] hover:text-[#00E5FF] hover:border-[#00E5FF]/40 bg-[#191D23] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                      <Wand2 className="h-3 w-3" />
                                     </button>
-                                  </>
-                                ) : (
-                                  <label htmlFor={`gemvid-img-${scene.id}-${imgIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#00E5FF] transition-colors gap-1">
-                                    <ImageIcon className="h-4 w-4" />
-                                    <p className="text-[9px] font-bold">Add</p>
-                                  </label>
-                                )}
-                                <input id={`gemvid-img-${scene.id}-${imgIdx}`} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    const reader = new FileReader();
-                                    reader.onload = (ev) => {
-                                      const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
-                                      p[imgIdx] = ev.target?.result as string;
-                                      updateScene(scene.id, "gptRefPreviews", p);
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }}
-                                  onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
-                                />
+                                  ) : (
+                                    <button type="button" title="Generate a reference image with AI" onClick={() => handleGenerateSlot(index, 'primary', scene.prompt, 0, undefined, imgIdx)} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-7 flex items-center justify-center rounded-lg border border-[#57707A]/40 text-[#989DAA] hover:text-[#00E5FF] hover:border-[#00E5FF]/40 bg-[#191D23] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                      <Wand2 className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                  <button type="button" title="Pick from library" onClick={() => setLibraryTarget({ index, type: 'primary', geminiIndex: imgIdx })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-7 flex items-center justify-center rounded-lg border border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                    <FolderOpen className="h-3 w-3" />
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}

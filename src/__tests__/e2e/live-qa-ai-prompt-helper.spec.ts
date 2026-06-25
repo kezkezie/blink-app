@@ -275,9 +275,12 @@ test('Live QA — AI Prompt Helper ON: Cloudinary URL reaches n8n → AI Directo
     console.log('\n── Phase 2: n8n Payload Diagnosis ───────────────────────────');
 
     if (capturedN8nPayload) {
-        const primaryUrl = capturedN8nPayload.primary_image_url as string ?? '';
-        const aiEnhance  = capturedN8nPayload.ai_enhance;
-        const videoMode  = capturedN8nPayload.video_mode;
+        // Assigned inside a network callback, so TS flow-narrows it to `never`
+        // at this synchronous read — alias through an explicit cast.
+        const payload = capturedN8nPayload as Record<string, unknown>;
+        const primaryUrl = payload.primary_image_url as string ?? '';
+        const aiEnhance  = payload.ai_enhance;
+        const videoMode  = payload.video_mode;
 
         console.log(`  primary_image_url: ${primaryUrl}`);
         console.log(`  ai_enhance:        ${aiEnhance}`);
@@ -354,7 +357,7 @@ test('Live QA — AI Prompt Helper ON: Cloudinary URL reaches n8n → AI Directo
 
     const hasCloudinaryCall  = cloudinaryUploadCalls.length > 0;
     const payloadHasCloudinary = capturedN8nPayload
-        ? String(capturedN8nPayload.primary_image_url ?? '').startsWith(CLOUDINARY_ORIGIN)
+        ? String((capturedN8nPayload as Record<string, unknown>).primary_image_url ?? '').startsWith(CLOUDINARY_ORIGIN)
         : false;
     const aiDirectorFired = statusText.includes('AI Director') || statusText.includes('Rendering') || statusText.includes('Allocating');
 

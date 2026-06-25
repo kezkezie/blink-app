@@ -8,7 +8,7 @@ import {
   ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, cloudinaryVideoPoster } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
 import { FFmpeg } from '@ffmpeg/ffmpeg';
@@ -851,7 +851,12 @@ export function VideoEditorUI() {
                     {assets.map((asset) => (
                       <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className="group relative aspect-square bg-[#0F1115] rounded-xl overflow-hidden cursor-grab active:cursor-grabbing hover:ring-1 ring-[#C5BAC4]/70 transition-all border border-[#57707A]/30 hover:border-[#C5BAC4]/30 shadow-sm">
                         {asset.type === "video" ? (
-                          <video src={asset.url} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" preload="metadata" muted playsInline />
+                          cloudinaryVideoPoster(asset.url) ? (
+                            // Static poster <img> — paints reliably, unlike a <video> thumbnail
+                            <img src={cloudinaryVideoPoster(asset.url)} alt={asset.name || "Clip"} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                          ) : (
+                            <video src={asset.url} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" preload="metadata" muted playsInline />
+                          )
                         ) : asset.type === "audio" ? (
                           <div className="w-full h-full flex flex-col items-center justify-center bg-[#191D23] border border-[#B3FF00]/20 text-[#B3FF00] group-hover:bg-[#B3FF00]/10 transition-colors">
                             <Mic className="w-8 h-8 mb-2 opacity-80" />

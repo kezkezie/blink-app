@@ -585,6 +585,10 @@ export default function ContentDetailPage({
 
       const response = await triggerWorkflow("blink-generate-images", {
         client_id: clientId!,
+        // ✨ Brand isolation: a post belongs to a specific brand. Without this the
+        // workflow falls back to "first brand for this client" and bleeds another
+        // brand's name/style into the image. Prefer the post's own brand.
+        brand_id: activeBrand?.id || (content as { brand_id?: string | null }).brand_id || null,
         post_id: content.id,
         topic: finalTopic,
         content_type: content.content_type,

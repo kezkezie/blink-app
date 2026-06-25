@@ -86,8 +86,10 @@ export async function generateImagesForPosts(
     caption_short?: string | null;
     caption?: string | null;
     content_type: string;
+    brand_id?: string | null;
   }>,
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
+  brandId?: string | null
 ): Promise<void> {
   for (let i = 0; i < posts.length; i++) {
     const post = posts[i];
@@ -95,6 +97,8 @@ export async function generateImagesForPosts(
 
     await triggerWorkflow("blink-generate-images", {
       client_id: clientId,
+      // ✨ Brand isolation — keep generations scoped to the right brand
+      brand_id: post.brand_id || brandId || null,
       post_id: post.id,
       topic: post.caption_short || post.caption?.substring(0, 60) || "",
       content_type: post.content_type,

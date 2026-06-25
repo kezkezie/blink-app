@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ImageIcon } from "lucide-react";
+import { ImageIcon, Play } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PlatformIcon } from "@/components/shared/PlatformIcon";
-import { cn } from "@/lib/utils";
+import { cn, cloudinaryVideoPoster } from "@/lib/utils";
 import type { Content, ContentStatus, Platform } from "@/types/database";
 
 interface ContentCardProps {
@@ -88,6 +88,9 @@ export function ContentCard({ content }: ContentCardProps) {
   }
 
   const hasMedia = !!displayUrl;
+  // A still poster derived from the Cloudinary video. Rendered as a plain <img>
+  // (always paints a frame) instead of a <video>, which renders black until played.
+  const videoPoster = isVideo ? cloudinaryVideoPoster(displayUrl) : undefined;
   const platformsArray = parseArray(content.target_platforms) as Platform[];
 
   return (
@@ -99,14 +102,30 @@ export function ContentCard({ content }: ContentCardProps) {
         <div className="relative aspect-[4/3] bg-[#191D23] overflow-hidden shrink-0 border-b border-[#57707A]/20">
           {hasMedia ? (
             isVideo ? (
-              <video
-                src={`${displayUrl}#t=0.1`}
-                className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500 bg-black"
-                muted
-                loop
-                playsInline
-                preload="metadata"
-              />
+              videoPoster ? (
+                <>
+                  <img
+                    src={videoPoster}
+                    alt={content.caption_short || "Video Preview"}
+                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500 bg-black"
+                  />
+                  {/* Play badge so it reads as a video */}
+                  <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                    <div className="h-11 w-11 rounded-full bg-black/45 backdrop-blur-sm border border-white/20 flex items-center justify-center shadow-lg">
+                      <Play className="h-5 w-5 text-white fill-white ml-0.5" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <video
+                  src={`${displayUrl}#t=0.1`}
+                  className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500 bg-black"
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                />
+              )
             ) : (
               <>
                 {/* Shimmer shown until image fires onLoad */}
