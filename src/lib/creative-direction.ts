@@ -552,6 +552,8 @@ function buildNegativePrompt(archetype: keyof typeof ARCHETYPES, style: string):
     "busy cluttered background", "amateur photography", "HDR artifacts",
     "template flyer layout", "Canva aesthetic", "infographic layout",
     "rigid grid zones", "corporate PowerPoint design",
+    "3D extruded text", "beveled lettering", "embossed text",
+    "inflated puffy 3D letters", "chrome text", "balloon typography",
   ];
 
   const styleSpecific: Record<string, string[]> = {
@@ -663,18 +665,23 @@ function synthesizeTypographyLine(
   typographyBehavior: keyof typeof TYPOGRAPHY_BEHAVIORS | undefined,
   customTypography?: string,
 ): string | null {
+  // FLAT 2D enforcement appended to every typography directive. Keeps the bold
+  // graphic-design impact while killing the inflated 3D/extruded lettering the
+  // model defaults to. A subtle flat drop shadow for legibility is allowed.
+  const FLAT_2D = " RENDER ALL TEXT AS FLAT 2D GRAPHIC DESIGN: crisp clean vector lettering sitting flat on the surface — modern poster/social-graphic style with bold sans-serif type, optional flat layered echoes and rounded color label chips. STRICTLY NO 3D extruded, beveled, embossed, inflated, puffy, or chrome lettering.";
+
   if (customTypography) {
-    return `Typography: ${customTypography}. Type behaves as a physical object in the world — depth, shadow interaction, architectural weight. It belongs to the scene, not above it.`;
+    return `Typography: ${customTypography}.${FLAT_2D}`;
   }
   if (!typographyBehavior) return null;
   const map: Record<keyof typeof TYPOGRAPHY_BEHAVIORS, string> = {
-    oversized_display: "Typography at architectural scale — letterforms ARE the composition. Text and image are equal partners, inseparable.",
-    editorial_integration: "Type woven into the image space — words exist inside the world, sharing depth, shadow, and perspective with the subject.",
+    oversized_display: "Bold oversized display typography — clean flat vector letterforms ARE the composition, text and image as equal graphic partners.",
+    editorial_integration: "Editorial typography integrated into the layout — crisp flat lettering arranged with the subject like a designed magazine/social poster.",
     minimal_accent: "Brand name in one precise placement — small, high-contrast, absolute. Typographic restraint where less carries more.",
-    structural_grid: "The entire layout builds from the typography outward — type defines the compositional architecture.",
+    structural_grid: "The entire layout builds from the typography outward — flat type defines the compositional architecture.",
     ghost_presence: "Type barely visible — brand presence felt as texture, subliminal rather than read.",
   };
-  return map[typographyBehavior];
+  return map[typographyBehavior] + FLAT_2D;
 }
 
 // ── PROMPT ASSEMBLY ───────────────────────────────────────────────────────────

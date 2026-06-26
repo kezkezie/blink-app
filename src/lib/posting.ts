@@ -24,6 +24,8 @@ interface SchedulePostParams {
     clientId: string
     platforms: string[]
     scheduledAt?: string | null
+    /** Which caption variant to publish. Defaults to the long caption. */
+    captionChoice?: 'long' | 'short'
 }
 
 interface SchedulePostResult {
@@ -94,9 +96,13 @@ export async function schedulePost(params: SchedulePostParams): Promise<Schedule
             }
         }
 
-        // 4. Build the caption
+        // 4. Build the caption — honour the user's long/short choice, falling
+        // back to the long caption if the short one is empty.
+        const chosenBody = params.captionChoice === 'short'
+            ? ((content.caption_short as string | null) || (content.caption as string | null))
+            : (content.caption as string | null)
         const caption = buildCaption(
-            content.caption as string | null,
+            chosenBody,
             content.hashtags as string | null,
             content.call_to_action as string | null
         )

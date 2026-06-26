@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { contentId, clientId, scheduledAt, publishSettings: clientPublishSettings } = body;
+    const { contentId, clientId, scheduledAt, publishSettings: clientPublishSettings, captionChoice } = body;
 
     const apiKey = process.env.POSTFORME_API_KEY || process.env.NEXT_PUBLIC_POSTFORME_API_KEY;
 
@@ -153,9 +153,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Build the caption — Instagram hard limit is 2200 chars
-    const rawCaption = [content.caption || "", content.hashtags || ""]
-      .map((s) => s.trim())
+    // 5. Build the caption — honour the user's long/short choice (fall back to
+    // the long caption if short is empty). Instagram hard limit is 2200 chars.
+    const chosenBody = captionChoice === "short"
+      ? (content.caption_short || content.caption || "")
+      : (content.caption || "");
+    const rawCaption = [chosenBody, content.hashtags || ""]
+      .map((s: string) => s.trim())
       .filter(Boolean)
       .join("\n\n");
     const finalCaption = rawCaption.substring(0, 2200);

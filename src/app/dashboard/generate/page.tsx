@@ -46,7 +46,7 @@ const MARKETING_STYLES = [
   {
     id: "poster",
     label: "🔥 Editorial Ad Campaign",
-    promptAddon: `Reference: Apple launch photography, Mubi film poster art, Virgil Abloh design language. The poster is an event, not a flyer. Typography has mass, depth, and shadow — it belongs to the world of the image.`,
+    promptAddon: `Reference: Apple launch photography, Mubi film poster art, Virgil Abloh design language, modern social-media graphic design. The poster is an event, not a flyer. Typography is FLAT 2D graphic design — bold clean vector lettering, flat layered echoes, rounded color label chips. STRICTLY NO 3D extruded, beveled, embossed, or puffy text.`,
   },
   {
     id: "brand",

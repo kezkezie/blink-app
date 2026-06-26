@@ -147,6 +147,8 @@ export default function ContentDetailPage({
 
   const [caption, setCaption] = useState("");
   const [captionShort, setCaptionShort] = useState("");
+  // Which caption variant actually gets published (long by default)
+  const [captionChoice, setCaptionChoice] = useState<"long" | "short">("long");
   const [hashtags, setHashtags] = useState("");
   const [callToAction, setCallToAction] = useState("");
 
@@ -176,13 +178,24 @@ export default function ContentDetailPage({
     if (!content) return;
     setGeneratingCaption(length);
     try {
+      // Resolve the best media to analyze: a real image if present, otherwise the
+      // video (the API derives a keyframe from it). Story-sequence clips keep the
+      // video in video_urls, so without this they'd get a generic, blind caption.
+      const vids = parseArray(content.video_urls);
+      const imgs = parseArray(content.image_urls);
+      const isVid = (u: string) => /\.(mp4|mov|webm)/i.test(u) || u.includes("/video/upload/");
+      const imageCandidate = imgs.find((u) => !isVid(u));
+      const videoCandidate = vids.find(isVid) || imgs.find(isVid);
+      const mediaUrl = imageCandidate || videoCandidate || null;
+
       const res = await fetch("/api/content/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId: clientId, // ✨ SEND THE CLIENT ID FOR BILLING
           contentId: content.id,
-          imageUrl: parseArray(content.image_urls)[0] || null,
+          mediaUrl,
+          mediaType: mediaUrl && !imageCandidate ? "video/mp4" : "image/jpeg",
           lengthPreference: length,
           brandContext: brandContext
         }),
@@ -435,7 +448,8 @@ export default function ContentDetailPage({
           contentId: content.id,
           clientId: clientId!,
           scheduledAt: null,
-          publishSettings: publishSettings // Pass to backend scheduler
+          publishSettings: publishSettings, // Pass to backend scheduler
+          captionChoice, // ✨ long vs short caption to actually post
         }),
       });
 
@@ -1055,7 +1069,22 @@ export default function ContentDetailPage({
 
             <div className="pt-5 border-t border-[#57707A]/20 relative z-10">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Caption (Long)</label>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Caption (Long)</label>
+                  <button
+                    type="button"
+                    onClick={() => setCaptionChoice('long')}
+                    title="Publish the long caption"
+                    className={cn(
+                      "text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wide transition-colors",
+                      captionChoice === 'long'
+                        ? "bg-[#B3FF00]/15 border-[#B3FF00]/40 text-[#B3FF00]"
+                        : "border-[#57707A]/40 text-[#57707A] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40"
+                    )}
+                  >
+                    {captionChoice === 'long' ? '✓ Posting this' : 'Post this'}
+                  </button>
+                </div>
                 <Button
                   size="sm"
                   variant="outline"
@@ -1077,7 +1106,22 @@ export default function ContentDetailPage({
 
             <div className="relative z-10 mt-4">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Caption (Short)</label>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider">Caption (Short)</label>
+                  <button
+                    type="button"
+                    onClick={() => setCaptionChoice('short')}
+                    title="Publish the short caption"
+                    className={cn(
+                      "text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wide transition-colors",
+                      captionChoice === 'short'
+                        ? "bg-[#B3FF00]/15 border-[#B3FF00]/40 text-[#B3FF00]"
+                        : "border-[#57707A]/40 text-[#57707A] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40"
+                    )}
+                  >
+                    {captionChoice === 'short' ? '✓ Posting this' : 'Post this'}
+                  </button>
+                </div>
                 <Button
                   size="sm"
                   variant="outline"

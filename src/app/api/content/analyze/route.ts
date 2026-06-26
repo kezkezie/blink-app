@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { cloudinaryVideoPoster } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
   let clientIdForRefund = null;
@@ -26,7 +27,12 @@ export async function POST(req: NextRequest) {
 
     // ✨ Support payloads from BOTH the Upload Page and the Content Detail Page
     const mediaUrl = body.mediaUrl || body.imageUrl;
-    const mediaType = body.mediaType || (mediaUrl?.match(/\.(mp4|mov|webm)$/i) ? "video/mp4" : "image/jpeg");
+    const isVideo = !!mediaUrl && (/\.(mp4|mov|webm)(\?.*)?$/i.test(mediaUrl) || mediaUrl.includes("/video/upload/") || body.mediaType?.startsWith("video"));
+    // GPT-4o can't watch a video, but it can read a still frame. For Cloudinary
+    // videos we derive a representative keyframe so video posts get a caption that
+    // actually reflects what's on screen instead of a generic blurb.
+    const visionUrl = isVideo ? cloudinaryVideoPoster(mediaUrl) : mediaUrl;
+    const canSeeMedia = !!visionUrl;
     const lengthPreference = body.lengthPreference || "long";
     const voice = body.brandVoice || body.brandContext?.brandVoice || "Professional, engaging, and modern";
     const userContext = body.context || body.brandContext?.description || "";
@@ -68,44 +74,48 @@ export async function POST(req: NextRequest) {
     }
     // ────────────────────────────────────────
 
-    const isImage = mediaType.startsWith("image/");
-
     // ✨ Dynamic length instruction
     const lengthInstruction = lengthPreference === "short"
       ? "Write a punchy, 1-2 sentence hook or short caption."
       : "Write a detailed, engaging multi-paragraph social media caption. Tell a story.";
 
-    let prompt = `You are a world-class Social Media Manager. I need a highly engaging post for this media.
-    
-    BRAND RULES:
-    - Voice/Tone: ${voice}
-    - DOs: ${dos}
-    - DONTs: ${donts}
-    
-    MEDIA CONTEXT: 
-    ${userContext ? `The user described this as: "${userContext}"` : "Analyze the media visually."}
-    
-    CRITICAL INSTRUCTION:
-    ${lengthInstruction}
-    
-    You MUST return ONLY a valid JSON object. Do not include markdown formatting like \`\`\`json. 
-    The JSON object must have EXACTLY these 4 keys:
-    {
-      "caption_long": "The main engaging body of the post (if requested long, make it 2-3 paragraphs. If short, just repeat the short hook here).",
-      "caption_short": "A punchy 1-sentence hook or title.",
-      "hashtags": "A single string of 3-5 relevant hashtags (e.g., '#viral #trending').",
-      "call_to_action": "A 1-sentence Call to Action."
-    }`;
+    // The visual analysis directive is what makes the caption SPECIFIC to this
+    // exact post. Brand voice shapes the tone but must NOT override what's shown.
+    const visualDirective = canSeeMedia
+      ? `FIRST, look closely at the attached ${isVideo ? "video keyframe" : "image"} and note exactly what is shown — the real subject/product, the setting, colours, mood, and any visible text or logos. Your caption MUST be specific to what is actually in THIS visual: reference the real subject and concrete details you can see. Do NOT write a generic brand blurb that could apply to any post.`
+      : `No media preview is available, so write from the context below.`;
+
+    let prompt = `You are a world-class Social Media Manager writing a post for ONE specific piece of media.
+
+${visualDirective}
+
+BRAND VOICE (controls tone/style only — it must not replace what is in the media):
+- Voice/Tone: ${voice}
+- DOs: ${dos}
+- DONTs: ${donts}
+${userContext ? `\nSECONDARY CONTEXT (use only to support what you see, never instead of it): "${userContext}"` : ""}
+
+CRITICAL INSTRUCTION:
+${lengthInstruction}
+
+You MUST return ONLY a valid JSON object. Do not include markdown formatting like \`\`\`json.
+The JSON object must have EXACTLY these 4 keys:
+{
+  "caption_long": "The main engaging body of the post (if requested long, make it 2-3 paragraphs. If short, just repeat the short hook here).",
+  "caption_short": "A punchy 1-sentence hook or title.",
+  "hashtags": "A single string of 3-5 relevant hashtags (e.g., '#viral #trending').",
+  "call_to_action": "A 1-sentence Call to Action."
+}`;
 
     let messages: any[] = [];
 
-    if (isImage && mediaUrl) {
+    if (canSeeMedia) {
       messages = [
         {
           role: "user",
           content: [
             { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: mediaUrl } },
+            { type: "image_url", image_url: { url: visionUrl } },
           ],
         },
       ];
