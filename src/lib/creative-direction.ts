@@ -720,6 +720,17 @@ function assembleCreativeBrief(
   // Typography — only if relevant, behavioral not descriptive
   const typeDirective = synthesizeTypographyLine(direction.typographyBehavior, customTypography);
 
+  // ON-IMAGE TEXT CONTROL — only when this style actually renders text. Without
+  // this the model prints the entire scene brief verbatim as the headline (e.g.
+  // a full sentence describing the photo). The brief below is the SCENE to depict,
+  // NOT copy to typeset. The only words allowed as graphic text are the brand name,
+  // a tiny tagline, and short label chips.
+  const willRenderText = !!(typeDirective);
+  const brandName = brand.name?.trim() || "the brand";
+  const textContentRule = willRenderText
+    ? `ON-IMAGE TEXT CONTENT (critical): The description above is the SCENE to illustrate — do NOT typeset it as words in the image. Render as graphic text ONLY: (1) the brand name "${brandName}" as the hero headline, (2) optionally one short tagline of 3–6 words, (3) a few one-to-two-word label chips/pills. Never render full sentences, paragraphs, or the scene description as text. Keep total word count low and every word spelled correctly.`
+    : null;
+
   // Color anchor — only if brand has a primary color
   const colorNote = brand.primaryColor
     ? `Color: ${brand.primaryColor} absorbed across surfaces, light, and shadow — woven in, not applied.`
@@ -728,7 +739,7 @@ function assembleCreativeBrief(
   // Restraint — the most important directive
   const restraint = "Restraint: leave negative space intact. Not every surface needs rendering. Omission creates sophistication. Avoid AI over-density, competing focal points, and visual clutter.";
 
-  return [thesis, composition, lighting, camera, atmosphere, typeDirective, colorNote, restraint]
+  return [thesis, composition, lighting, camera, atmosphere, typeDirective, textContentRule, colorNote, restraint]
     .filter(Boolean)
     .join("\n\n");
 }

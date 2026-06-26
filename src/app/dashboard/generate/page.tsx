@@ -320,6 +320,14 @@ export default function ImageStudioPage() {
         negative_prompt: negativePrompt,
         custom_typography: customTypography.trim() || undefined,
         reference_image_urls: referenceUrls,
+        // ✨ The workflow routes on `kie_model` (NOT `imageEngine`). Without this the
+        // GPT Image 2 selection was silently ignored and everything ran as
+        // nano-banana-2 — which is why "GPT Image 2 · I2I" never followed the
+        // reference layout. Map the engine pill to the model the workflow expects.
+        kie_model: selectedImageEngine === "nb2" ? "nano-banana-2" : selectedImageEngine,
+        // For Image→Image, also pass the moodboard refs as input_urls (the GPT I2I
+        // node prefers input_urls; it falls back to reference_image_urls otherwise).
+        ...(selectedImageEngine === "gpt-image-2-image-to-image" ? { input_urls: referenceUrls } : {}),
         strict_brand_alignment: true,
         numImages: 1,
         style: selectedStyle,
