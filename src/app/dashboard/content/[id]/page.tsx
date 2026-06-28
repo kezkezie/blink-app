@@ -60,7 +60,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { triggerWorkflow } from "@/lib/workflows";
 import type { Content, ContentStatus } from "@/types/database";
 
-import { cn } from "@/lib/utils";
+import { cn, cloudinaryVideoPoster, cloudinaryStreamUrl } from "@/lib/utils";
 
 // ✨ Omni-Publishing State Types
 interface PlatformSettings {
@@ -784,12 +784,12 @@ export default function ContentDetailPage({
               ) : displayImage ? (
                 <>
                   {isVideo ? (
-                    <video
-                      src={`${displayImage}#t=0.1`}
+                    // Use the cheap poster image for the blurred backdrop instead of
+                    // loading the full video a second time (it competes with the player).
+                    <img
+                      src={cloudinaryVideoPoster(displayImage) || displayImage}
                       className="absolute inset-0 w-full h-full object-cover blur-[40px] opacity-30 scale-110 pointer-events-none"
-                      muted
-                      playsInline
-                      preload="metadata"
+                      alt=""
                     />
                   ) : (
                     <img
@@ -801,7 +801,8 @@ export default function ContentDetailPage({
                   <div className="relative z-10 h-full w-full group flex items-center justify-center p-4">
                     {isVideo ? (
                       <video
-                        src={displayImage}
+                        src={cloudinaryStreamUrl(displayImage)}
+                        poster={cloudinaryVideoPoster(displayImage)}
                         controls
                         playsInline
                         preload="metadata"

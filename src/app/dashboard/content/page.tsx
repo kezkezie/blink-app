@@ -44,7 +44,11 @@ export default function ContentPage() {
         .neq("content_type", "sequence_clip")
         .neq("content_type", "story_sequence")
         .neq("content_type", "storyboard")
-        .neq("content_type", "generated_audio");
+        .neq("content_type", "generated_audio")
+        // ✨ Hide intermediate storyboard Start/End frame images — they're saved as
+        // post_image (the DB constraint rejects a dedicated type) but they aren't
+        // finished posts, so keep them out of the main feed.
+        .not("caption", "ilike", "Storyboard: Scene%");
     } else if (activeTab === "sequences") {
       // ✨ FIXED: Use .in() to catch multiple variations of sequence naming!
       query = query.in("content_type", [

@@ -30,3 +30,22 @@ export function cloudinaryVideoPoster(url: string | null | undefined): string | 
   // Swap the video extension for .jpg so Cloudinary returns an image
   return withTransform.replace(/\.(mp4|mov|webm)(\?.*)?$/i, ".jpg$2");
 }
+
+/**
+ * Returns a browser-streamable delivery URL for a Cloudinary VIDEO.
+ *
+ * The raw uploaded file often has its moov atom at the END (no "faststart"),
+ * which means a browser must download the whole clip before it can play — the
+ * tell-tale "it only plays after I download it" symptom. Requesting any DERIVED
+ * (transformed) delivery makes Cloudinary re-mux with the moov atom at the front
+ * and pick a web-optimal codec, so it streams progressively. `f_auto,q_auto`
+ * also shrinks the file (smaller, faster start) without quality loss.
+ *
+ * Non-Cloudinary-video URLs are returned unchanged.
+ */
+export function cloudinaryStreamUrl(url: string | null | undefined): string {
+  if (!url || typeof url !== "string") return url || "";
+  if (!url.includes("res.cloudinary.com") || !url.includes("/video/upload/")) return url;
+  if (url.includes("/video/upload/f_") || url.includes("/video/upload/q_")) return url; // already transformed
+  return url.replace("/video/upload/", "/video/upload/f_auto,q_auto/");
+}
