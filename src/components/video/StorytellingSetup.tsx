@@ -51,6 +51,8 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  // Which engine renders the AI character sheet
+  const [castEngine, setCastEngine] = useState<"nb2" | "gpt-image-2-text-to-image">("nb2");
 
   const CHARACTER_SHEET_INJECTION = "Character reference sheet, identical character, multiple angles, front view, side view, back profile, white background, hyper-realistic, highly detailed.";
   const ANGLE_LABELS = ["Front Face", "Left Profile", "Right Profile", "Front Body", "Side Body", "Back Body"];
@@ -140,13 +142,16 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 
       const publicUrl = uploadData.secure_url;
 
-      const { data } = await supabase.from('assets').insert({
+      const { data, error } = await supabase.from('assets').insert({
         client_id: clientId,
-        asset_type: 'actor_profile',
-        file_url: publicUrl,
-        storage_provider: actorName
+        asset_type: 'image',            // DB constraint rejects 'actor_profile'
+        storage_provider: 'cloudinary', // constrained to cloudinary/supabase
+        purpose: 'actor_profile',       // marker used to fetch actors
+        file_name: actorName,           // actor display name
+        file_url: publicUrl
       }).select('id').single();
 
+      if (error) throw new Error(error.message);
       if (data) {
         onSaveActor({ id: data.id, name: actorName, stitchedSheetUrl: publicUrl });
       }
@@ -171,17 +176,20 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
     setIsGeneratingAI(true);
     try {
       const augmentedPrompt = `${CHARACTER_SHEET_INJECTION} ${aiPrompt}`;
-      const genData = await callN8n('generator', { prompt: augmentedPrompt, client_id: clientId });
+      const genData = await callN8n('generator', { prompt: augmentedPrompt, client_id: clientId, imageEngine: castEngine });
 
       if (!genData.url) throw new Error("AI did not return an image URL.");
 
-      const { data } = await supabase.from('assets').insert({
+      const { data, error } = await supabase.from('assets').insert({
         client_id: clientId,
-        asset_type: 'actor_profile',
-        file_url: genData.url,
-        storage_provider: actorName
+        asset_type: 'image',
+        storage_provider: 'cloudinary',
+        purpose: 'actor_profile',
+        file_name: actorName,
+        file_url: genData.url
       }).select('id').single();
 
+      if (error) throw new Error(error.message);
       if (data) {
         onSaveActor({ id: data.id, name: actorName, stitchedSheetUrl: genData.url });
       }
@@ -278,6 +286,30 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
                     className="h-32 resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-lg shadow-inner text-sm custom-scrollbar"
                   />
                   <p className="text-[10px] text-[#989DAA] mt-2 font-medium">We'll automatically generate a multi-angle character reference sheet from this description.</p>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Render Engine</label>
+                  <div className="flex gap-1 p-1 bg-[#191D23] border border-[#57707A]/30 rounded-lg shadow-inner">
+                    {([
+                      { id: "nb2", label: "Nano Banana 2" },
+                      { id: "gpt-image-2-text-to-image", label: "GPT Image 2" },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCastEngine(opt.id)}
+                        className={cn(
+                          "flex-1 py-2 px-3 rounded-md text-xs font-bold transition-all",
+                          castEngine === opt.id
+                            ? "bg-[#C5BAC4] text-[#191D23] shadow-sm"
+                            : "text-[#57707A] hover:text-[#989DAA] hover:bg-[#57707A]/10"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex gap-3 pt-5 border-t border-[#57707A]/20">
@@ -447,16 +479,21 @@ export function StorytellingSetup({
   useEffect(() => {
     if (!clientId) return;
     const fetchActors = async () => {
+      // Actors are stored as asset_type 'image' (the DB check constraint rejects
+      // 'actor_profile') with purpose='actor_profile' as the marker and the actor
+      // name in file_name. storage_provider must be 'cloudinary'/'supabase' (also
+      // constrained), so we can't stash the name there.
       const { data } = await supabase
         .from('assets')
         .select('*')
         .eq('client_id', clientId)
-        .eq('asset_type', 'actor_profile');
+        .eq('asset_type', 'image')
+        .eq('purpose', 'actor_profile');
 
       if (data) {
         setActors(data.map(d => ({
           id: d.id,
-          name: d.storage_provider || "Unknown Actor",
+          name: d.file_name || "Unknown Actor",
           stitchedSheetUrl: d.file_url
         })));
       }
@@ -735,7 +772,20 @@ export function StorytellingSetup({
     if (!promptToUse.trim()) return alert("Please write a visual prompt for this scene first.");
 
     const NO_TEXT_CONSTRAINT = " CRITICAL: Do NOT output a character reference sheet, split screen, or multiple angles. Output a SINGLE, unified, cinematic scene featuring this exact character integrated naturally into the described environment.";
-    const safePrompt = promptToUse + NO_TEXT_CONSTRAINT;
+
+    // ✨ Locked actors: let the user drive them by NAME in the prompt, and make the
+    // actor adopt the scene's genre/art style while keeping their identity.
+    const lockedActors = (enableCharacterLock
+      ? selectedActors.map(id => actors.find(a => a.id === id)).filter(Boolean)
+      : []) as ActorProfile[];
+    const genreLabel = VISUAL_STYLES.find(s => s.id === selectedStyle)?.label || "the scene's art style";
+    let characterInstruction = "";
+    if (lockedActors.length > 0) {
+      const roster = lockedActors.map(a => `"${a.name}"`).join(", ");
+      characterInstruction = ` CHARACTER LOCK: When the prompt names ${roster}, render that exact person from the provided character reference image — keep their identity, face, and proportions clearly recognizable — but FULLY RE-STYLE them into "${genreLabel}" so they match the scene's medium. Do NOT leave them photo-real if "${genreLabel}" is an illustrated, 3D, anime, or claymation style; the character must be rendered in that exact medium while still looking like the same person.`;
+    }
+
+    const safePrompt = promptToUse + characterInstruction + NO_TEXT_CONSTRAINT;
 
     setGeneratingSlot({ index: slotIndex, type, seedanceIndex, geminiIndex });
     try {
@@ -745,11 +795,7 @@ export function StorytellingSetup({
         previousUrl = scenes[slotIndex - 1].secondaryPreview || scenes[slotIndex - 1].primaryPreview;
       }
 
-      let characterSheetUrlA: string | null = null;
-      if (enableCharacterLock && selectedActors[0]) {
-        const actorA = actors.find(a => a.id === selectedActors[0]);
-        if (actorA) characterSheetUrlA = actorA.stitchedSheetUrl;
-      }
+      const characterSheetUrlA: string | null = lockedActors[0]?.stitchedSheetUrl ?? null;
 
       const sceneImageEngine = scene.imageEngine || 'nb2';
       const genData = await callN8n('generator', {
@@ -1649,7 +1695,7 @@ export function StorytellingSetup({
                                       <Wand2 className="h-3 w-3 mr-1" /> Re-Gen
                                     </Button>
                                   ) : (
-                                    <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary', scene.prompt, sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] rounded-lg transition-colors px-2">
+                                    <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary', sIdx)} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-8 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] rounded-lg transition-colors px-2">
                                       <Wand2 className="h-3 w-3 mr-1" /> Generate
                                     </Button>
                                   )}
@@ -1767,7 +1813,7 @@ export function StorytellingSetup({
                                       <Wand2 className="h-3 w-3" />
                                     </button>
                                   ) : (
-                                    <button type="button" title="Generate a reference image with AI" onClick={() => handleGenerateSlot(index, 'primary', scene.prompt, 0, undefined, imgIdx)} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-7 flex items-center justify-center rounded-lg border border-[#57707A]/40 text-[#989DAA] hover:text-[#00E5FF] hover:border-[#00E5FF]/40 bg-[#191D23] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                    <button type="button" title="Generate a reference image with AI" onClick={() => openRegenModal(scene, index, 'primary', undefined, imgIdx)} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-7 flex items-center justify-center rounded-lg border border-[#57707A]/40 text-[#989DAA] hover:text-[#00E5FF] hover:border-[#00E5FF]/40 bg-[#191D23] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                                       <Wand2 className="h-3 w-3" />
                                     </button>
                                   )}
@@ -1825,7 +1871,7 @@ export function StorytellingSetup({
                             {scene.primaryPreview ? (
                               <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
                             ) : (
-                              <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
+                              <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'primary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
                             )}
                             <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
                           </div>
@@ -1853,7 +1899,7 @@ export function StorytellingSetup({
                             {scene.secondaryPreview ? (
                               <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Re-Gen</Button>
                             ) : (
-                              <Button size="sm" variant="outline" onClick={() => handleGenerateSlot(index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
+                              <Button size="sm" variant="outline" onClick={() => openRegenModal(scene, index, 'secondary')} disabled={generatingSlot !== null || isGeneratingAllImages} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><Wand2 className="h-3.5 w-3.5 mr-1.5" /> Generate</Button>
                             )}
                             <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'secondary' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="flex-1 h-9 text-[10px] font-bold border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] hover:bg-[#2A2F38] px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> Library</Button>
                           </div>
@@ -2199,7 +2245,7 @@ export function StorytellingSetup({
         </div>
 
         {/* CARD 2: CASTING ROOM */}
-        <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative overflow-hidden">
+        <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative">
           <div className="flex items-center justify-between mb-5 pb-4 border-b border-[#57707A]/20">
             <label className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide">
               <Lock className="h-4 w-4 text-[#C5BAC4]" /> Consistency Lock
@@ -2406,8 +2452,8 @@ export function StorytellingSetup({
       <Dialog open={regenDialogState.isOpen} onOpenChange={(open) => !open && setRegenDialogState(prev => ({ ...prev, isOpen: false }))}>
         <DialogContent className="sm:max-w-[600px] bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl">
           <DialogHeader className="border-b border-[#57707A]/20 pb-4">
-            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl"><Wand2 className="h-5 w-5" /> Regenerate {regenDialogState.slotType === 'primary' ? 'Primary' : 'Secondary'} Image</DialogTitle>
-            <DialogDescription className="text-[#989DAA] font-medium mt-1.5">Edit the prompt below to refine the generation for this specific slot in Scene {regenDialogState.index !== null ? regenDialogState.index + 1 : ''}.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl"><Wand2 className="h-5 w-5" /> Scene Prompt · {regenDialogState.slotType === 'primary' ? 'Start Frame' : 'End Frame'}</DialogTitle>
+            <DialogDescription className="text-[#989DAA] font-medium mt-1.5">Write an individual prompt for this specific slot in Scene {regenDialogState.index !== null ? regenDialogState.index + 1 : ''}. Leave the master concept blank to control each frame precisely.</DialogDescription>
           </DialogHeader>
           <div className="py-5">
             <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Refined Prompt</label>
