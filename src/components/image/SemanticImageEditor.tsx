@@ -55,6 +55,9 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
     const [isGenerating, setIsGenerating] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [generatingStep, setGeneratingStep] = useState<string>("Rendering edit...");
+    // Which engine renders the JSON edit. nano-banana 2 honours the schema more
+    // surgically; GPT Image 2 re-renders image-to-image from the schema-as-prompt.
+    const [editEngine, setEditEngine] = useState<"nano-banana-2" | "gpt-image-2-image-to-image">("nano-banana-2");
 
     const [expandedObjectId, setExpandedObjectId] = useState<string | null>(null);
     const [replacementImages, setReplacementImages] = useState<Record<string, File>>({});
@@ -156,7 +159,8 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                     post_id: contentId,
                     primary_image_url: imageUrl,
                     json_schema: schema,
-                    replacements: uploadedReplacementUrls
+                    replacements: uploadedReplacementUrls,
+                    kie_model: editEngine
                 })
             });
 
@@ -369,6 +373,36 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                             <p className="text-xs font-medium leading-relaxed">{errorMessage}</p>
                         </div>
                     )}
+
+                    {/* ─── Render Engine tabs ─── */}
+                    {schema && (
+                        <div>
+                            <label className="text-[9px] font-bold text-[#57707A] uppercase tracking-widest mb-1.5 block">Render Engine</label>
+                            <div className="flex gap-1 p-1 bg-[#191D23] border border-[#57707A]/30 rounded-xl">
+                                {([
+                                    { id: "nano-banana-2", label: "Nano Banana 2", hint: "Surgical, schema-true" },
+                                    { id: "gpt-image-2-image-to-image", label: "GPT Image 2", hint: "Cleaner text & logos" },
+                                ] as const).map((opt) => (
+                                    <button
+                                        key={opt.id}
+                                        type="button"
+                                        onClick={() => setEditEngine(opt.id)}
+                                        disabled={isGenerating}
+                                        title={opt.hint}
+                                        className={cn(
+                                            "flex-1 px-3 py-2 rounded-lg text-[11px] font-bold transition-all disabled:opacity-50",
+                                            editEngine === opt.id
+                                                ? "bg-[#C5BAC4] text-[#191D23] shadow-sm"
+                                                : "text-[#989DAA] hover:text-[#DEDCDC] hover:bg-[#57707A]/20"
+                                        )}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <Button
                         onClick={handleApplyEdits}
                         disabled={!schema || isGenerating}

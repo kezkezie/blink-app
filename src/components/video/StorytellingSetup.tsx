@@ -2134,7 +2134,10 @@ export function StorytellingSetup({
       </div>
 
       {/* ── RIGHT PANE: DIRECTOR & PREVIEW ── */}
-      <div className="w-full xl:w-[400px] shrink-0 xl:sticky xl:top-6 flex flex-col gap-6 z-20">
+      {/* Pins beside the storyboard so it stays visible no matter how many scenes
+          exist; if the Director itself is taller than the viewport it scrolls
+          internally instead of forcing a full-page scroll. */}
+      <div className="w-full lg:w-[400px] shrink-0 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-100px)] lg:overflow-y-auto custom-scrollbar flex flex-col gap-6 z-20">
         {/* CARD 1: MASTER DIRECTOR */}
         <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 shadow-xl relative overflow-hidden">
           {/* Card header */}

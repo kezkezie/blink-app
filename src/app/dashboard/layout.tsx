@@ -42,6 +42,13 @@ export default function DashboardLayout({
     )?.[1] ||
     "Dashboard";
 
+  // Editor / workspace surfaces are app-like and should use the full viewport
+  // width instead of the centered reading column. Video = editor + storyteller;
+  // Calendar = drag-and-drop scheduling that needs the horizontal room.
+  const isFullBleed =
+    pathname.startsWith("/dashboard/video") ||
+    pathname.startsWith("/dashboard/calendar");
+
   return (
     <TooltipProvider delayDuration={0}>
       <div className="flex min-h-screen bg-[#2A2F38]/50">
@@ -49,7 +56,7 @@ export default function DashboardLayout({
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar pageTitle={pageTitle} />
           <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
-            <div className="mx-auto max-w-7xl">{children}</div>
+            <div className={isFullBleed ? "w-full" : "mx-auto max-w-7xl"}>{children}</div>
           </main>
         </div>
         <MobileNav />

@@ -740,7 +740,7 @@ export function VideoEditorUI() {
   if (zoom < 0.2) rulerStep = 60;
 
   return (
-    <div className="flex flex-col h-[850px] bg-[#191D23] border border-[#57707A]/25 rounded-3xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] select-none relative ring-1 ring-white/[0.03]">
+    <div className="flex flex-col h-[calc(100vh-200px)] min-h-[640px] bg-[#191D23] border border-[#57707A]/25 rounded-3xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] select-none relative ring-1 ring-white/[0.03]">
 
       {isRendering && (
         <div className="absolute inset-0 z-50 bg-[#191D23]/95 backdrop-blur-md flex flex-col items-center justify-center text-white animate-in fade-in duration-300">

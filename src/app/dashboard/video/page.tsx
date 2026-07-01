@@ -593,7 +593,7 @@ export default function VideoStudioPage() {
   }
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6 pb-20">
+    <div className="w-full space-y-6 pb-20">
       {/* ── HERO BANNER ── */}
       <div className="relative bg-[#2A2F38] rounded-2xl p-8 border border-[#57707A]/40 shadow-xl overflow-hidden">
         <div className="absolute top-0 right-0 w-72 h-72 bg-[#C5BAC4]/5 blur-[100px] rounded-full pointer-events-none" />

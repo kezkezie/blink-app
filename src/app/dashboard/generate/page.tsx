@@ -80,6 +80,7 @@ export default function ImageStudioPage() {
   const [selectedMode, setSelectedMode] = useState("standard");
   const [selectedStyle, setSelectedStyle] = useState("studio");
   const [selectedImageEngine, setSelectedImageEngine] = useState("nb2");
+  const [selectedAspect, setSelectedAspect] = useState("4:5");
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -325,6 +326,8 @@ export default function ImageStudioPage() {
         // nano-banana-2 — which is why "GPT Image 2 · I2I" never followed the
         // reference layout. Map the engine pill to the model the workflow expects.
         kie_model: selectedImageEngine === "nb2" ? "nano-banana-2" : selectedImageEngine,
+        // ✨ User-chosen output format (workflow falls back to 4:5 if absent)
+        aspect_ratio: selectedAspect,
         // For Image→Image, also pass the moodboard refs as input_urls (the GPT I2I
         // node prefers input_urls; it falls back to reference_image_urls otherwise).
         ...(selectedImageEngine === "gpt-image-2-image-to-image" ? { input_urls: referenceUrls } : {}),
@@ -600,6 +603,38 @@ export default function ImageStudioPage() {
                   Upload reference images in the Style Moodboard below — GPT Image 2 will transform them based on your prompt.
                 </p>
               )}
+            </div>
+
+            {/* Output format / aspect ratio */}
+            <div className="space-y-2 relative z-10">
+              <label className="text-sm font-bold text-[#DEDCDC]">Output Format</label>
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  { id: "1:1", label: "1:1", hint: "Square" },
+                  { id: "4:5", label: "4:5", hint: "Portrait" },
+                  { id: "3:4", label: "3:4", hint: "Portrait" },
+                  { id: "9:16", label: "9:16", hint: "Story / Reel" },
+                  { id: "16:9", label: "16:9", hint: "Landscape" },
+                  { id: "3:2", label: "3:2", hint: "Landscape" },
+                  { id: "2:3", label: "2:3", hint: "Portrait" },
+                ] as const).map((ar) => (
+                  <button
+                    key={ar.id}
+                    type="button"
+                    onClick={() => setSelectedAspect(ar.id)}
+                    title={ar.hint}
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all",
+                      selectedAspect === ar.id
+                        ? "bg-[#C5BAC4]/15 border-[#C5BAC4]/50 text-[#C5BAC4] shadow-sm"
+                        : "bg-[#191D23] border-[#57707A]/30 text-[#57707A] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/30"
+                    )}
+                  >
+                    {ar.label}
+                    <span className="text-[8px] font-medium text-[#57707A] uppercase tracking-wide leading-none hidden sm:inline">{ar.hint}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Typography specification — off by default, AI chooses freely */}

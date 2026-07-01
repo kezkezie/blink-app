@@ -1363,7 +1363,7 @@ export default function ContentDetailPage({
         open={!!previewImageUrl}
         onOpenChange={(open) => !open && setPreviewImageUrl(null)}
       >
-        <DialogContent className="max-w-5xl p-1 bg-[#191D23]/90 backdrop-blur-xl border border-[#57707A]/50 shadow-2xl flex flex-col items-center justify-center rounded-2xl">
+        <DialogContent className="max-w-[96vw] w-fit p-1 bg-[#191D23]/90 backdrop-blur-xl border border-[#57707A]/50 shadow-2xl flex flex-col items-center justify-center rounded-2xl">
           <DialogTitle className="sr-only">Media Preview</DialogTitle>
           <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none rounded-2xl"></div>
           {previewImageUrl &&
