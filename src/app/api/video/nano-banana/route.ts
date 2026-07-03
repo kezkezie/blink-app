@@ -1,4 +1,14 @@
 import { NextResponse } from 'next/server';
+import { Agent, fetch as undiciFetch } from 'undici';
+
+// Vercel: allow the function to run the full fluid-compute window (raise to 800 on Pro).
+export const maxDuration = 300;
+
+// n8n replies only when the whole generation finishes (5-9 min with multiple
+// character sheets under load). Node fetch's default headersTimeout is 300s,
+// which killed long runs with "fetch failed" even though n8n succeeded and the
+// asset landed in Cloudinary. Dedicated agent raises the ceiling to 15 min.
+const n8nAgent = new Agent({ headersTimeout: 900_000, bodyTimeout: 900_000 });
 
 const N8N_DIRECTOR_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/ai-director-prompts";
 const N8N_GENERATOR_URL = "https://n8n.srv1166077.hstgr.cloud/webhook/generate-single-frame";
@@ -36,11 +46,13 @@ export async function POST(req: Request) {
       }
     }
 
-    // ✨ THE FIX: We AWAIT everything. Vercel won't kill it, and n8n will reply instantly anyway.
-    const n8nRes = await fetch(targetUrl, {
+    // ✨ THE FIX: We AWAIT everything. undiciFetch + n8nAgent bypasses Node fetch's
+    // 300s headersTimeout so long generations don't die with "fetch failed".
+    const n8nRes = await undiciFetch(targetUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      dispatcher: n8nAgent
     });
 
     const rawText = await n8nRes.text();

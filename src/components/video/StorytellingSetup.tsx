@@ -176,9 +176,46 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
     setIsGeneratingAI(true);
     try {
       const augmentedPrompt = `${CHARACTER_SHEET_INJECTION} ${aiPrompt}`;
-      const genData = await callN8n('generator', { prompt: augmentedPrompt, client_id: clientId, imageEngine: castEngine });
 
-      if (!genData.url) throw new Error("AI did not return an image URL.");
+      // ✨ ASYNC PIPELINE (same as storyboard slots): create a tracking row,
+      // n8n responds {queued:true} instantly and writes the finished sheet URL
+      // to the row — we poll it instead of holding the HTTP connection open.
+      const { data: placeholder, error: phError } = await supabase.from('content').insert({
+        client_id: clientId,
+        content_type: 'post_image',
+        caption: `Casting Room: ${actorName} character sheet`,
+        status: 'draft',
+        generation_status_text: 'Queued...',
+        ai_model: castEngine === 'nb2' ? 'nano-banana-2' : castEngine
+      }).select('id').single();
+      if (phError || !placeholder) throw new Error('Could not create a tracking row for this generation.');
+
+      try {
+        await callN8n('generator', {
+          prompt: augmentedPrompt,
+          client_id: clientId,
+          post_id: placeholder.id,
+          imageEngine: castEngine,
+          actor_names: [actorName],
+        });
+      } catch (queueErr) {
+        await supabase.from('content').delete().eq('id', placeholder.id);
+        throw queueErr;
+      }
+
+      let sheetUrl: string | null = null;
+      for (let attempt = 0; attempt < 180; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        const { data: row } = await supabase.from('content')
+          .select('image_urls,status,generation_status_text')
+          .eq('id', placeholder.id).single();
+        if (row?.status === 'failed') throw new Error(row.generation_status_text || 'Generation failed. Credits refunded.');
+        const urls = (Array.isArray(row?.image_urls) ? row.image_urls : [row?.image_urls]).filter(Boolean);
+        if (urls.length > 0) { sheetUrl = urls[0]; break; }
+      }
+      if (!sheetUrl) throw new Error('The character sheet is taking unusually long — check your Library shortly before retrying.');
+
+      const genData = { url: sheetUrl };
 
       const { data, error } = await supabase.from('assets').insert({
         client_id: clientId,
@@ -421,6 +458,165 @@ const VISUAL_STYLES = [
   { id: "minimalist", label: "Minimalist Vector Art" }
 ];
 
+// ✨ MODEL-AWARE INJECT PRESETS — each engine gets snippets written in its own
+// prompting dialect (source of truth: AIS-OS references/video-model-prompting-rules.md).
+type InjectPreset = { label: string; value: string };
+type InjectSets = { camera: InjectPreset[]; sound: InjectPreset[]; physics: InjectPreset[]; timing: InjectPreset[] };
+
+const getModelFamily = (aiModel?: string): 'kling' | 'seedance' | 'pruna' | 'sora' | 'gemini' | 'auto' => {
+  const m = aiModel || '';
+  if (m.includes('kling')) return 'kling';
+  if (m.includes('seedance')) return 'seedance';
+  if (m.includes('p-video') || m.includes('pruna')) return 'pruna';
+  if (m.includes('sora')) return 'sora';
+  if (m.includes('gemini')) return 'gemini';
+  return 'auto';
+};
+
+const INJECT_PRESETS: Record<ReturnType<typeof getModelFamily>, InjectSets> = {
+  // Kling 3.0: shot sizes + named moves; native audio described in-prompt; timing beats
+  kling: {
+    camera: [
+      { label: "Tracking Medium Shot", value: " Tracking medium shot, " },
+      { label: "Slow Dolly-in", value: " The camera slowly dollies in, " },
+      { label: "Low-angle Wide", value: " Low-angle wide shot, " },
+      { label: "Close-up", value: " Close-up, " },
+      { label: "Camera Zooms In", value: " The camera zooms in, " },
+      { label: "Handheld Cinematic", value: " Cinematic handheld, " },
+    ],
+    sound: [
+      { label: "Room Ambience", value: " Faint ambient room tone in the background for a realistic vibe. " },
+      { label: "Soft Piano BGM", value: " Soft piano BGM underneath. " },
+      { label: "Street Ambience", value: " Busy street ambience, distant traffic hum. " },
+      { label: "Rain on Window", value: " Rain patters softly against the window. " },
+      { label: "Voiceover", value: ' Voiceover (warm voice, English, slow pace): "Type narration here". ' },
+    ],
+    physics: [
+      { label: "Epic Slow-Motion", value: " Extreme slow-motion, cinematic time-dilation. " },
+      { label: "Hyper Time-Lapse", value: " Hyper time-lapse, fast-moving clouds and shadows. " },
+      { label: "Natural Performance", value: " The character's movements and expressions are natural and lifelike. " },
+      { label: "Zero-Gravity", value: " Zero-gravity environment, objects floating gracefully. " },
+    ],
+    timing: [
+      { label: "At 4 Seconds", value: " At the 4th second, " },
+      { label: "At 8 Seconds", value: " At the 8th second, " },
+      { label: "Final 3 Seconds", value: " In the final 3 seconds, " },
+      { label: "Shot 2", value: "\nShot 2, " },
+      { label: "Shot 3", value: "\nShot 3, " },
+    ],
+  },
+  // Seedance 2: camera TYPE+SPEED+TRAJECTORY; physics forces; audio synced to beats; Cut to:
+  seedance: {
+    camera: [
+      { label: "Dolly-in (6s)", value: " Camera executes a slow dolly-in over 6 seconds, " },
+      { label: "Steadicam Glide", value: " Smooth steadicam glide forward, " },
+      { label: "360° Orbit", value: " 360-degree orbit around the subject at medium distance, " },
+      { label: "Handheld Tracking", value: " Handheld tracking shot with slight vertical bounce, " },
+      { label: "Rack Focus", value: " Rack focus from foreground to background, " },
+      { label: "Crane Up & Over", value: " Low-angle crane up and over, " },
+    ],
+    sound: [
+      { label: "Footsteps in Sync", value: " Footsteps crunch in sync with each step. " },
+      { label: "Impact on Beat", value: " The impact sound lands exactly on the visual hit. " },
+      { label: "Bass Drop", value: " [cinematic bass drop synced to the action climax] " },
+      { label: "Rising Ambience", value: " Ambient wind rises as the camera pulls back. " },
+    ],
+    physics: [
+      { label: "Visible Momentum", value: " Weight shifts visibly as momentum carries the motion, " },
+      { label: "Fabric in Wind", value: " Fabric billows and ripples, light material catching air before settling, heavier edges pulling downward, " },
+      { label: "Realistic Debris", value: " Fragments scatter outward with realistic momentum on impact, " },
+      { label: "Epic Slow-Motion", value: " Extreme slow-motion, cinematic time-dilation, " },
+      { label: "Underwater Physics", value: " Underwater physics, bubbles rising, distorted light rays, " },
+    ],
+    timing: [
+      { label: "Cut to Shot 2", value: "\n\nCut to: Shot 2: " },
+      { label: "Cut to Shot 3", value: "\n\nCut to: Shot 3: " },
+      { label: "Over 4 Seconds", value: " completing the movement over 4 seconds, " },
+      { label: "Over 8 Seconds", value: " completing the movement over 8 seconds, " },
+    ],
+  },
+  // Pruna P-Video: short, direct, present-tense, social energy — no film jargon
+  pruna: {
+    camera: [
+      { label: "Direct to Camera", value: " looks directly at camera, " },
+      { label: "Selfie Angle", value: " front-facing selfie angle, " },
+      { label: "Quick Zoom to Face", value: " quick zoom to face, " },
+    ],
+    sound: [
+      { label: "Upbeat Music", value: " upbeat background music, " },
+      { label: "Natural Room Audio", value: " natural room audio, " },
+    ],
+    physics: [
+      { label: "High Energy", value: " high-energy movement, fast-cut social feel, " },
+      { label: "Expressive Reaction", value: " reacts expressively with big gestures, " },
+    ],
+    timing: [
+      { label: "Then Quickly", value: " then quickly " },
+    ],
+  },
+  // Sora 2: one move + one action; sensory "we hear"; beats; atmosphere-led
+  sora: {
+    camera: [
+      { label: "Slow Push-in", value: " The camera pushes in slowly — one continuous move. " },
+      { label: "Static Camera", value: " Static camera; the scene breathes on its own. " },
+      { label: "Lateral Tracking", value: " Slow lateral tracking at eye level. " },
+    ],
+    sound: [
+      { label: "We Hear: City", value: " We hear: distant traffic and a low wind. " },
+      { label: "We Hear: Footsteps", value: " We hear: footsteps echoing on wet stone. " },
+      { label: "We Hear: Quiet Room", value: " We hear: the quiet hum of a still room. " },
+    ],
+    physics: [
+      { label: "Physical Weight", value: " Weight and texture feel physically real. " },
+      { label: "Shifting Light", value: " Natural light shifts subtly across the scene. " },
+    ],
+    timing: [
+      { label: "Hold Two Beats", value: " She holds for two beats, then " },
+      { label: "A Beat Later", value: " A beat later, " },
+    ],
+  },
+  // Gemini Omni: transformation language, creative-brief tone, no jargon
+  gemini: {
+    camera: [
+      { label: "Camera Holds Static", value: " Camera holds static throughout. " },
+      { label: "Gentle Push-in", value: " A gentle, slow push-in. " },
+    ],
+    sound: [],
+    physics: [
+      { label: "Still Comes to Life", value: " The stillness comes to life with subtle, natural motion. " },
+      { label: "Light Shift", value: " Lighting shifts smoothly toward warm golden-hour sun. " },
+    ],
+    timing: [],
+  },
+  // Auto / unknown: the original generic presets
+  auto: {
+    camera: [
+      { label: "Cinematic Tracking", value: " Cinematic tracking shot, " },
+      { label: "Drone Flyover", value: " Slow drone flyover, " },
+      { label: "Handheld Shaky", value: " Handheld shaky cam, " },
+      { label: "Medium Close-up", value: " Medium close-up, " },
+      { label: "Macro Close-up", value: " Extreme macro close-up, " },
+      { label: "Smooth Dolly-in", value: " Smooth dolly-in, " },
+      { label: "Slow Orbit", value: " Slow orbit around, " },
+    ],
+    sound: [
+      { label: "Street Noise", value: " [ambient street noise] " },
+      { label: "Rain & Thunder", value: " [heavy rain and thunder] " },
+      { label: "Bass Drop", value: " [cinematic bass drop] " },
+      { label: "Cafe Chatter", value: " [muffled cafe chatter] " },
+      { label: "Whoosh Transition", value: " [whoosh transition] " },
+    ],
+    physics: [
+      { label: "Zero-Gravity (Antigravity)", value: " Zero-gravity environment, objects floating gracefully in mid-air. " },
+      { label: "Epic Slow-Motion", value: " Extreme slow-motion, 120fps, cinematic time-dilation. " },
+      { label: "Hyper Time-Lapse", value: " Hyper time-lapse, fast-moving clouds and shadows. " },
+      { label: "Underwater Physics", value: " Underwater physics, bubbles rising, distorted light rays. " },
+      { label: "Reversed Time", value: " Reversed time, objects moving backwards perfectly. " },
+    ],
+    timing: [],
+  },
+};
+
 export function StorytellingSetup({
   bRollConcept,
   setBRollConcept,
@@ -448,6 +644,18 @@ export function StorytellingSetup({
   const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
   const [aiEnhance, setAiEnhance] = useState(true);
   const [localAspectRatio, setLocalAspectRatio] = useState("16:9");
+
+  // ✨ Live mirror of bRollScenes. During bulk generation the closure's scene
+  // array is a stale snapshot, so freshly generated frames from earlier scenes
+  // were invisible to later ones — every frame rendered in isolation, causing
+  // awkward scene-to-scene transitions. Continuity anchors read from this ref.
+  const scenesRef = useRef<StoryboardScene[]>(bRollScenes);
+  useEffect(() => { scenesRef.current = bRollScenes; }, [bRollScenes]);
+
+  // ✨ ACTOR GENRE-VARIANT CACHE — an actor's sheet is restyled into the active
+  // genre ONCE (5 credits), saved as an asset (purpose='actor_variant'), then
+  // reused for every scene and every future session. Keyed `${actorId}::${styleId}`.
+  const actorVariantCache = useRef<Record<string, string>>({});
 
   useEffect(() => {
     const savedScenes = localStorage.getItem('blink_storyboard_scenes');
@@ -682,13 +890,19 @@ export function StorytellingSetup({
 
       const updatedScenes = currentScenes.map((scene, i) => {
         const aiData = scenesData[i] || {};
+        // ✨ SPLIT PROMPTS: scene.prompt = motion/video prompt (Scene Director box),
+        // scene.imagePrompt = still-frame prompt (edited via the Re-Gen modal).
+        // The Director returns both; previously image_prompt was thrown away.
         const newVisualPrompt = aiData.video_prompt || aiData.image_prompt || "";
+        const newImagePrompt = aiData.image_prompt || aiData.video_prompt || "";
         const finalPrompt = scene.prompt?.trim() || newVisualPrompt;
+        const finalImagePrompt = scene.imagePrompt?.trim() || newImagePrompt;
         const finalModel = (aiData.aiModel || aiData.ai_model) ? (aiData.aiModel || aiData.ai_model) : scene.aiModel;
 
         return {
           ...scene,
           prompt: finalPrompt,
+          imagePrompt: finalImagePrompt,
           // ✨ FIX: Safely catch snake_case or camelCase keys from the AI
           aiModel: finalModel,
           duration: aiData.duration ? String(aiData.duration) : scene.duration,
@@ -700,7 +914,8 @@ export function StorytellingSetup({
       });
 
       setBRollScenes(updatedScenes);
-      generatedPrompts = updatedScenes.map(s => s.prompt);
+      // Bulk image generation should use the still-frame prompt when available
+      generatedPrompts = updatedScenes.map(s => s.imagePrompt || s.prompt);
       generatedScenes = updatedScenes;
 
     } catch (err: any) {
@@ -755,6 +970,72 @@ export function StorytellingSetup({
   };
 
 
+  // ✨ Get (or generate once) an actor's sheet re-styled into the active genre.
+  // Checks memory cache → Supabase assets → generates a single styled sheet and
+  // persists it, so switching back to a genre is free and every scene uses the
+  // SAME styled character instead of re-rolling per frame.
+  const getOrCreateActorVariant = async (actor: ActorProfile, styleId: string, styleLabel: string): Promise<string> => {
+    const cacheKey = `${actor.id}::${styleId}`;
+    if (actorVariantCache.current[cacheKey]) return actorVariantCache.current[cacheKey];
+
+    const { data: existing } = await supabase
+      .from('assets')
+      .select('file_url')
+      .eq('client_id', clientId)
+      .eq('asset_type', 'image')
+      .eq('purpose', 'actor_variant')
+      .eq('file_name', cacheKey)
+      .limit(1);
+    if (existing && existing[0]?.file_url) {
+      actorVariantCache.current[cacheKey] = existing[0].file_url;
+      return existing[0].file_url;
+    }
+
+    // One-time styled sheet generation from the identity anchor
+    const { data: placeholder, error: phError } = await supabase.from('content').insert({
+      client_id: clientId,
+      brand_id: activeBrand?.id ?? null,
+      content_type: 'post_image',
+      caption: `Actor Variant: ${actor.name} · ${styleLabel}`,
+      status: 'draft',
+      generation_status_text: 'Queued...',
+      ai_model: 'nano-banana-2'
+    }).select('id').single();
+    if (phError || !placeholder) throw new Error('Could not create tracking row for actor variant.');
+
+    await callN8n('generator', {
+      prompt: `Character reference sheet of "${actor.name}": full body, front view, side view and back view side by side on a clean neutral background. Preserve the exact same person from the reference image — same face, same skin tone, same ethnicity, same hair — fully re-rendered in ${styleLabel} style.`,
+      characterRefA: actor.stitchedSheetUrl,
+      client_id: clientId,
+      post_id: placeholder.id,
+      style_label: styleLabel,
+      actor_names: [actor.name],
+    });
+
+    let url: string | null = null;
+    for (let attempt = 0; attempt < 180; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const { data: row } = await supabase.from('content')
+        .select('image_urls,status,generation_status_text')
+        .eq('id', placeholder.id).single();
+      if (row?.status === 'failed') throw new Error(row.generation_status_text || `Styling ${actor.name} failed. Credits refunded.`);
+      const urls = ensureArray(row?.image_urls || []).filter(Boolean);
+      if (urls.length > 0) { url = urls[0]; break; }
+    }
+    if (!url) throw new Error(`Styling ${actor.name} into ${styleLabel} timed out — check your Library shortly.`);
+
+    await supabase.from('assets').insert({
+      client_id: clientId,
+      asset_type: 'image',            // DB constraint rejects custom types
+      storage_provider: 'cloudinary', // constrained to cloudinary/supabase
+      purpose: 'actor_variant',       // marker: styled genre variant of an actor
+      file_name: cacheKey,            // `${actorId}::${styleId}` — lookup key
+      file_url: url
+    });
+    actorVariantCache.current[cacheKey] = url;
+    return url;
+  };
+
   const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string, seedanceIndex: number = 0, scenesOverride?: StoryboardScene[], geminiIndex?: number) => {
     // scenesOverride lets bulk callers (handleGenerateAllImages) pass the just-fetched
     // AI Director scenes directly — bRollScenes here is a closure snapshot from the
@@ -767,9 +1048,12 @@ export function StorytellingSetup({
     // Gemini Omni stores its reference images in gptRefPreviews[geminiIndex] rather
     // than primaryPreview/seedancePreviews — route generation results there.
     const isGeminiRef = geminiIndex !== undefined;
-    const promptToUse = overridePrompt || scene.prompt || bRollConcept;
+    // Images prefer the still-frame prompt; scene.prompt stays the motion/video
+    // prompt. NEVER fall back to the raw master concept — it produced images
+    // driven by the Director's input instead of an actual scene description.
+    const promptToUse = overridePrompt || scene.imagePrompt || scene.prompt || "";
 
-    if (!promptToUse.trim()) return alert("Please write a visual prompt for this scene first.");
+    if (!promptToUse.trim()) return alert("This scene has no prompt yet. Hit \"Write Scenes\" to let the Director script it, or use Suggest / type a scene description first.");
 
     const NO_TEXT_CONSTRAINT = " CRITICAL: Do NOT output a character reference sheet, split screen, or multiple angles. Output a SINGLE, unified, cinematic scene featuring this exact character integrated naturally into the described environment.";
 
@@ -790,21 +1074,76 @@ export function StorytellingSetup({
     setGeneratingSlot({ index: slotIndex, type, seedanceIndex, geminiIndex });
     try {
       const styleRefUrl = await uploadRefImage();
-      let previousUrl = null;
-      if (slotIndex > 0) {
-        previousUrl = scenes[slotIndex - 1].secondaryPreview || scenes[slotIndex - 1].primaryPreview;
+      // ✨ CONTINUITY ANCHOR — read from live state, not the stale snapshot:
+      //  • end frame continues from THIS scene's start frame
+      //  • start frame continues from the PREVIOUS scene's last frame
+      const liveScenes = scenesRef.current?.length ? scenesRef.current : scenes;
+      let previousUrl: string | null = null;
+      if (type === 'secondary') {
+        previousUrl = liveScenes[slotIndex]?.primaryPreview || null;
+      }
+      if (!previousUrl && slotIndex > 0) {
+        previousUrl = liveScenes[slotIndex - 1]?.secondaryPreview || liveScenes[slotIndex - 1]?.primaryPreview || null;
       }
 
-      const characterSheetUrlA: string | null = lockedActors[0]?.stitchedSheetUrl ?? null;
+      // Resolve locked actors by slot (A/B/C) so multi-actor scenes keep every
+      // cast member. When a genre is active, use the cached genre variant of each
+      // actor (generated once, reused everywhere) instead of restyling per frame —
+      // saves credits and keeps the styled character identical across scenes.
+      const activeStyleLabel = selectedStyle !== 'none' ? (VISUAL_STYLES.find(s => s.id === selectedStyle)?.label || null) : null;
+      const resolveSheet = async (slot: number): Promise<string | null> => {
+        if (!enableCharacterLock) return null;
+        const actor = actors.find(a => a.id === selectedActors[slot]);
+        if (!actor) return null;
+        if (!activeStyleLabel) return actor.stitchedSheetUrl;
+        try {
+          return await getOrCreateActorVariant(actor, selectedStyle, activeStyleLabel);
+        } catch (e) {
+          console.error(`Variant styling failed for ${actor.name}; falling back to original sheet`, e);
+          return actor.stitchedSheetUrl;
+        }
+      };
+      const characterSheetUrlA: string | null = await resolveSheet(0);
+      const characterSheetUrlB: string | null = await resolveSheet(1);
+      const characterSheetUrlC: string | null = await resolveSheet(2);
+
+      // ✨ ASYNC PIPELINE: create a placeholder content row first. n8n responds
+      // instantly ({queued:true}) and writes the finished frame URL to this row.
+      // We poll the row instead of holding an HTTP connection open — the old
+      // sync pattern died at the browser's ~5-minute fetch cap ("Failed to fetch")
+      // even though n8n finished successfully.
+      const { data: placeholder, error: phError } = await supabase
+        .from("content")
+        .insert({
+          client_id: clientId,
+          brand_id: activeBrand?.id ?? null,
+          content_type: "post_image",
+          caption: `Storyboard: Scene ${slotIndex + 1} ${type === 'primary' ? 'Start' : 'End'} Frame`,
+          status: "draft",
+          generation_status_text: "Queued...",
+          ai_model: "nano-banana-2"
+        })
+        .select("id")
+        .single();
+      if (phError || !placeholder) throw new Error("Could not create a tracking row for this generation.");
 
       const sceneImageEngine = scene.imageEngine || 'nb2';
-      const genData = await callN8n('generator', {
+      try {
+        await callN8n('generator', {
         prompt: safePrompt,
         refImage: styleRefUrl || previousUrl || null,
         styleRefImage: styleRefUrl || null,
         previousFrameImage: previousUrl,
         characterRefA: characterSheetUrlA,
+        characterRefB: characterSheetUrlB,
+        characterRefC: characterSheetUrlC,
         client_id: clientId,
+        post_id: placeholder.id,
+        // Explicit genre + cast names so the n8n prompt builder can enforce the
+        // Render Engine style and preserve each actor's identity (skin tone,
+        // ethnicity, hair) through the GPT rewrite.
+        style_label: selectedStyle !== 'none' ? (VISUAL_STYLES.find(s => s.id === selectedStyle)?.label || null) : null,
+        actor_names: lockedActors.map(a => a.name),
         imageEngine: sceneImageEngine,
         gptRefImages: sceneImageEngine === 'gpt-image-2-image-to-image'
           ? ensureArray(scene.gptRefPreviews || []).filter(Boolean)
@@ -812,7 +1151,32 @@ export function StorytellingSetup({
         geminiRefImages: scene.aiModel === 'gemini-omni-video'
           ? ensureArray(scene.gptRefPreviews || []).filter(Boolean)
           : undefined,
-      });
+        });
+      } catch (queueErr) {
+        // Queueing failed (402 no credits, network) — the row will never be
+        // updated by n8n, so remove it instead of leaving a phantom draft.
+        await supabase.from('content').delete().eq('id', placeholder.id);
+        throw queueErr;
+      }
+
+      // Poll the placeholder row until n8n saves the result (15 min cap, like video)
+      let resultUrl: string | null = null;
+      for (let attempt = 0; attempt < 180; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        const { data: row } = await supabase
+          .from('content')
+          .select('image_urls,status,generation_status_text')
+          .eq('id', placeholder.id)
+          .single();
+        if (row?.status === 'failed') {
+          throw new Error(row.generation_status_text || 'Generation failed. Credits refunded.');
+        }
+        const urls = ensureArray(row?.image_urls || []).filter(Boolean);
+        if (urls.length > 0) { resultUrl = urls[0]; break; }
+      }
+      if (!resultUrl) throw new Error("This frame is taking unusually long. It may still finish — check your Library in a few minutes before regenerating.");
+
+      const genData = { url: resultUrl };
 
       if (genData.url) {
         if (isGeminiRef) {
@@ -857,17 +1221,8 @@ export function StorytellingSetup({
           updateScene(scene.id, "videoUrl", null);
         }
 
-        try {
-          await supabase.from("content").insert({
-            client_id: clientId,
-            brand_id: activeBrand?.id ?? null,
-            content_type: "post_image",
-            caption: `Storyboard: Scene ${slotIndex + 1} ${type === 'primary' ? 'Start' : 'End'} Frame`,
-            status: "approved",
-            image_urls: [genData.url],
-            ai_model: "nano-banana-2"
-          });
-        } catch (e) { console.error("Auto-save image failed", e); }
+        // Auto-save insert removed: the placeholder row created above is updated
+        // by n8n (Save Result to Supabase node) with the final URL + approved status.
       }
     } catch (err: any) {
       console.error(err);
@@ -888,8 +1243,13 @@ export function StorytellingSetup({
     // reading bRollScenes after that call would still see pre-Director values
     // (useEndFrame/aiModel = scene defaults) and silently skip slots.
     let scenesToUse: StoryboardScene[] = bRollScenes;
-    let currentPrompts = bRollScenes.map(s => s.prompt);
-    if (currentPrompts.every(p => !p?.trim())) {
+    let currentPrompts = bRollScenes.map(s => s.imagePrompt || s.prompt);
+    // ✨ Run the Director whenever ANY scene is missing its video prompt — not
+    // only when every prompt is empty. A leftover hidden imagePrompt (e.g. from
+    // localStorage) used to skip the Director entirely, generating images while
+    // the Scene Director boxes stayed blank. generateScript preserves any text
+    // the user already wrote.
+    if (bRollScenes.some(s => !s.prompt?.trim())) {
       try {
         const result = await generateScript();
         currentPrompts = result.prompts;
@@ -963,10 +1323,17 @@ export function StorytellingSetup({
         finalReferenceVideoUrl = supabase.storage.from("assets").getPublicUrl(vidPath).data.publicUrl;
       }
 
+      // Prefer the cached genre variant (populated during image generation) so
+      // the video engine sees the same styled character as the frames.
+      const variantOrAnchor = (slot: number): string | null => {
+        const actor = actors.find(a => a.id === selectedActors[slot]);
+        if (!actor) return null;
+        return actorVariantCache.current[`${actor.id}::${selectedStyle}`] || actor.stitchedSheetUrl;
+      };
       const characterSheetA = enableCharacterLock ? {
-        actor_1_sheet: actors.find(a => a.id === selectedActors[0])?.stitchedSheetUrl || null,
-        actor_2_sheet: actors.find(a => a.id === selectedActors[1])?.stitchedSheetUrl || null,
-        actor_3_sheet: actors.find(a => a.id === selectedActors[2])?.stitchedSheetUrl || null,
+        actor_1_sheet: variantOrAnchor(0),
+        actor_2_sheet: variantOrAnchor(1),
+        actor_3_sheet: variantOrAnchor(2),
       } : null;
 
       if (finalPrimaryUrl && finalPrimaryUrl.startsWith('data:')) {
@@ -1108,13 +1475,18 @@ export function StorytellingSetup({
   };
 
   const openRegenModal = (scene: any, index: number, slotType: 'primary' | 'secondary', seedanceIndex?: number, geminiIndex?: number) => {
-    setRegenDialogState({ isOpen: true, sceneId: scene.id, index: index, slotType: slotType, promptText: scene.prompt || bRollConcept || "", seedanceIndex, geminiIndex });
+    // Prefill ONLY with real scene prompts — never the master concept, which is
+    // Director input, not an image description.
+    setRegenDialogState({ isOpen: true, sceneId: scene.id, index: index, slotType: slotType, promptText: scene.imagePrompt || scene.prompt || "", seedanceIndex, geminiIndex });
   };
 
   const handleConfirmRegen = () => {
     const { sceneId, index, slotType, promptText, seedanceIndex, geminiIndex } = regenDialogState;
+    if (!promptText.trim()) return alert("Write an image prompt first — describe exactly what this frame should show.");
     if (sceneId && index !== null) {
-      updateScene(sceneId, "prompt", promptText);
+      // ✨ Save edits to the IMAGE prompt only — the Scene Director motion/video
+      // prompt (scene.prompt) is untouched so Kling/Seedance keep their own script.
+      updateScene(sceneId, "imagePrompt", promptText);
       handleGenerateSlot(index, slotType, promptText, seedanceIndex || 0, undefined, geminiIndex);
     }
     setRegenDialogState(prev => ({ ...prev, isOpen: false }));
@@ -2028,7 +2400,7 @@ export function StorytellingSetup({
                             <div className="flex flex-col flex-1 relative">
                               <Textarea
                                 value={scene.prompt}
-                                onChange={(e) => updateScene(scene.id, "prompt", e.target.value)}
+                                onChange={(e) => { updateScene(scene.id, "prompt", e.target.value); if (!e.target.value.trim()) updateScene(scene.id, "imagePrompt", ""); }}
                                 className="flex-1 w-full text-sm p-5 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[140px]"
                                 placeholder={
                                   scene.mode === 'ugc'
@@ -2048,8 +2420,11 @@ export function StorytellingSetup({
                             </div>
                           )}
 
-                          {/* ✨ DYNAMIC INJECTION TOOLBAR (NO ASPECT RATIO HERE) */}
-                          {!scene.videoUrl && (
+                          {/* ✨ MODEL-AWARE INJECTION TOOLBAR — presets follow the
+                              chosen engine's prompting dialect (see INJECT_PRESETS) */}
+                          {!scene.videoUrl && (() => {
+                            const injects = INJECT_PRESETS[getModelFamily(scene.aiModel)];
+                            return (
                             <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 bg-[#2A2F38] border-b border-[#57707A]/30 shrink-0">
                               <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider mr-1">Inject:</span>
 
@@ -2059,27 +2434,23 @@ export function StorytellingSetup({
                                 className="text-[10px] font-bold text-[#C5BAC4] bg-[#191D23] border border-[#C5BAC4]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#C5BAC4]/60 hover:bg-[#C5BAC4]/10 transition-colors appearance-none shadow-sm"
                               >
                                 <option value="" disabled hidden>🎥 Camera...</option>
-                                <option value=" Cinematic tracking shot, " className="bg-[#191D23]">Cinematic Tracking</option>
-                                <option value=" Slow drone flyover, " className="bg-[#191D23]">Drone Flyover</option>
-                                <option value=" Handheld shaky cam, " className="bg-[#191D23]">Handheld Shaky</option>
-                                <option value=" Medium close-up, " className="bg-[#191D23]">Medium Close-up</option>
-                                <option value=" Extreme macro close-up, " className="bg-[#191D23]">Macro Close-up</option>
-                                <option value=" Smooth dolly-in, " className="bg-[#191D23]">Smooth Dolly-in</option>
-                                <option value=" Slow orbit around, " className="bg-[#191D23]">Slow Orbit</option>
+                                {injects.camera.map(p => (
+                                  <option key={p.label} value={p.value} className="bg-[#191D23]">{p.label}</option>
+                                ))}
                               </select>
 
-                              <select
-                                value=""
-                                onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
-                                className="text-[10px] font-bold text-[#B3FF00] bg-[#191D23] border border-[#B3FF00]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#B3FF00]/60 hover:bg-[#B3FF00]/10 transition-colors appearance-none shadow-sm"
-                              >
-                                <option value="" disabled hidden>🔊 Sound FX...</option>
-                                <option value=" [ambient street noise] " className="bg-[#191D23]">Street Noise</option>
-                                <option value=" [heavy rain and thunder] " className="bg-[#191D23]">Rain & Thunder</option>
-                                <option value=" [cinematic bass drop] " className="bg-[#191D23]">Bass Drop</option>
-                                <option value=" [muffled cafe chatter] " className="bg-[#191D23]">Cafe Chatter</option>
-                                <option value=" [whoosh transition] " className="bg-[#191D23]">Whoosh Transition</option>
-                              </select>
+                              {injects.sound.length > 0 && (
+                                <select
+                                  value=""
+                                  onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
+                                  className="text-[10px] font-bold text-[#B3FF00] bg-[#191D23] border border-[#B3FF00]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#B3FF00]/60 hover:bg-[#B3FF00]/10 transition-colors appearance-none shadow-sm"
+                                >
+                                  <option value="" disabled hidden>🔊 Sound FX...</option>
+                                  {injects.sound.map(p => (
+                                    <option key={p.label} value={p.value} className="bg-[#191D23]">{p.label}</option>
+                                  ))}
+                                </select>
+                              )}
 
                               <select
                                 value=""
@@ -2087,32 +2458,32 @@ export function StorytellingSetup({
                                 className="text-[10px] font-bold text-[#00E5FF] bg-[#191D23] border border-[#00E5FF]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#00E5FF]/60 hover:bg-[#00E5FF]/10 transition-colors appearance-none shadow-sm"
                               >
                                 <option value="" disabled hidden>🌌 Physics...</option>
-                                <option value=" Zero-gravity environment, objects floating gracefully in mid-air. " className="bg-[#191D23]">Zero-Gravity (Antigravity)</option>
-                                <option value=" Extreme slow-motion, 120fps, cinematic time-dilation. " className="bg-[#191D23]">Epic Slow-Motion</option>
-                                <option value=" Hyper time-lapse, fast-moving clouds and shadows. " className="bg-[#191D23]">Hyper Time-Lapse</option>
-                                <option value=" Underwater physics, bubbles rising, distorted light rays. " className="bg-[#191D23]">Underwater Physics</option>
-                                <option value=" Reversed time, objects moving backwards perfectly. " className="bg-[#191D23]">Reversed Time</option>
+                                {injects.physics.map(p => (
+                                  <option key={p.label} value={p.value} className="bg-[#191D23]">{p.label}</option>
+                                ))}
                               </select>
 
-                              {(isKling || isSeedance2) && (
+                              {injects.timing.length > 0 && (
                                 <select
                                   value=""
                                   onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
                                   className="text-[10px] font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#FFB300]/60 hover:bg-[#FFB300]/10 transition-colors appearance-none shadow-sm"
-                                  title="Use for Multi-Shot narrative sequences"
+                                  title="Timing beats and shot cuts in this engine's syntax"
                                 >
                                   <option value="" disabled hidden>⏱️ Timing...</option>
-                                  <option value=" At the 4th second, " className="bg-[#191D23]">At 4 Seconds</option>
-                                  <option value=" At the 8th second, " className="bg-[#191D23]">At 8 Seconds</option>
-                                  <option value=" \n\nCut to Shot 2: " className="bg-[#191D23]">Cut to Shot 2</option>
-                                  <option value=" \n\nCut to Shot 3: " className="bg-[#191D23]">Cut to Shot 3</option>
+                                  {injects.timing.map(p => (
+                                    <option key={p.label} value={p.value} className="bg-[#191D23]">{p.label}</option>
+                                  ))}
                                 </select>
                               )}
 
                               <button
                                 onClick={() => {
-                                  const dialogueFormat = (isKling || isSeedance2)
-                                    ? '\nCharacter Name (confident, English): "Type exact dialogue here" '
+                                  const fam = getModelFamily(scene.aiModel);
+                                  const dialogueFormat =
+                                    fam === 'kling' ? '\nCharacter Name (confident tone, English): "Type exact dialogue here" '
+                                    : fam === 'seedance' ? '\nCharacter Name (confident, English): "Type exact dialogue here" '
+                                    : fam === 'sora' ? '\n\nDialogue:\nCharacter Name: "Type exact dialogue here" '
                                     : ' The character says "Type exact dialogue here" ';
                                   updateScene(scene.id, "prompt", (scene.prompt || "") + dialogueFormat);
                                 }}
@@ -2122,7 +2493,8 @@ export function StorytellingSetup({
                                 <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-[#57707A]" /> TTS Dialogue
                               </button>
                             </div>
-                          )}
+                            );
+                          })()}
 
                           {(() => {
                             return (
@@ -2452,8 +2824,8 @@ export function StorytellingSetup({
       <Dialog open={regenDialogState.isOpen} onOpenChange={(open) => !open && setRegenDialogState(prev => ({ ...prev, isOpen: false }))}>
         <DialogContent className="sm:max-w-[600px] bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl">
           <DialogHeader className="border-b border-[#57707A]/20 pb-4">
-            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl"><Wand2 className="h-5 w-5" /> Scene Prompt · {regenDialogState.slotType === 'primary' ? 'Start Frame' : 'End Frame'}</DialogTitle>
-            <DialogDescription className="text-[#989DAA] font-medium mt-1.5">Write an individual prompt for this specific slot in Scene {regenDialogState.index !== null ? regenDialogState.index + 1 : ''}. Leave the master concept blank to control each frame precisely.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl"><Wand2 className="h-5 w-5" /> Image Prompt · {regenDialogState.slotType === 'primary' ? 'Start Frame' : 'End Frame'}</DialogTitle>
+            <DialogDescription className="text-[#989DAA] font-medium mt-1.5">Controls the still image for this slot in Scene {regenDialogState.index !== null ? regenDialogState.index + 1 : ''} only. Your Scene Director motion prompt stays untouched — the video engine keeps its own script.</DialogDescription>
           </DialogHeader>
           <div className="py-5">
             <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Refined Prompt</label>
