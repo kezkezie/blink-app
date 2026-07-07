@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Zap } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,11 @@ export interface ActorProfile {
   id: string;
   name: string;
   stitchedSheetUrl: string;
+  // ✨ Style pinning: variant actors ("sam · 2D Anime") keep their own medium
+  // even when the scene's Render Engine genre differs — enables mixed media.
+  styleLocked?: boolean;
+  lockedStyleId?: string;
+  baseActorId?: string; // for variants: the profile they were styled from (cache key)
 }
 
 interface CastingRoomModalProps {
@@ -36,9 +41,11 @@ interface CastingRoomModalProps {
   callN8n: (mode: 'director' | 'generator' | 'manual' | 'scene_video_generator', body: any) => Promise<any>;
   clientId: string | null;
   onPreviewActor: (url: string) => void;
+  // ✨ Genre Studio: style a base actor into a genre variant, then refresh the list.
+  onCreateVariant: (actor: ActorProfile, styleId: string, styleLabel: string) => Promise<string>;
 }
 
-function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, selectedActors, onSelectActor, targetSlot, callN8n, clientId, onPreviewActor }: CastingRoomModalProps) {
+function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, selectedActors, onSelectActor, targetSlot, callN8n, clientId, onPreviewActor, onCreateVariant }: CastingRoomModalProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [isStitching, setIsStitching] = useState(false);
 
@@ -50,6 +57,25 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
   const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
   const [creationMode, setCreationMode] = useState<"manual" | "ai">("manual");
   const [aiPrompt, setAiPrompt] = useState("");
+
+  // ✨ Genre Studio: per-actor chosen style + which actor is currently styling
+  const [variantStyleByActor, setVariantStyleByActor] = useState<Record<string, string>>({});
+  const [stylingActorId, setStylingActorId] = useState<string | null>(null);
+
+  const handleStyleActor = async (actor: ActorProfile) => {
+    const styleId = variantStyleByActor[actor.id] || '3d_animation';
+    const styleLabel = VISUAL_STYLES.find(s => s.id === styleId)?.label || styleId;
+    const alreadyExists = actors.some(a => a.styleLocked && a.name === `${actor.name} · ${styleLabel}`);
+    setStylingActorId(actor.id);
+    try {
+      await onCreateVariant(actor, styleId, styleLabel);
+      if (alreadyExists) alert(`"${actor.name} · ${styleLabel}" is already in your cast.`);
+    } catch (err: any) {
+      alert(`Styling failed: ${err.message}`);
+    } finally {
+      setStylingActorId(null);
+    }
+  };
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   // Which engine renders the AI character sheet
   const [castEngine, setCastEngine] = useState<"nb2" | "gpt-image-2-text-to-image">("nb2");
@@ -79,6 +105,8 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 
   const handleSaveAndStitch = async () => {
     if (!actorName.trim()) return alert("Please name your actor.");
+    if (actors.some(a => !a.styleLocked && (a.name || '').trim().toLowerCase() === actorName.trim().toLowerCase()))
+      return alert(`An actor named "${actorName.trim()}" already exists. Pick a distinct name so the AI can tell them apart.`);
     if (angles.filter(a => a !== null).length === 0) return alert("Please upload at least one angle.");
     if (!clientId) return;
 
@@ -170,6 +198,8 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 
   const handleAIGenerate = async () => {
     if (!actorName.trim()) return alert("Please name your actor.");
+    if (actors.some(a => !a.styleLocked && (a.name || '').trim().toLowerCase() === actorName.trim().toLowerCase()))
+      return alert(`An actor named "${actorName.trim()}" already exists. Pick a distinct name so the AI can tell them apart.`);
     if (!aiPrompt.trim()) return alert("Please describe your character.");
     if (!clientId) return;
 
@@ -213,7 +243,12 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
         const urls = (Array.isArray(row?.image_urls) ? row.image_urls : [row?.image_urls]).filter(Boolean);
         if (urls.length > 0) { sheetUrl = urls[0]; break; }
       }
-      if (!sheetUrl) throw new Error('The character sheet is taking unusually long — check your Library shortly before retrying.');
+      if (!sheetUrl) {
+        // Mark the tracking row failed so it stops reading "Queued..." forever
+        // (n8n may still PATCH it later if it eventually finishes).
+        await supabase.from('content').update({ status: 'failed', generation_status_text: 'Timed out client-side — asset may still arrive in your Library.' }).eq('id', placeholder.id);
+        throw new Error('The character sheet is taking unusually long — check your Library shortly before retrying.');
+      }
 
       const genData = { url: sheetUrl };
 
@@ -230,6 +265,9 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
       if (data) {
         onSaveActor({ id: data.id, name: actorName, stitchedSheetUrl: genData.url });
       }
+      // Actor now lives in the Casting Room — drop the tracking row so the
+      // sheet doesn't appear as a post in the Content Grid.
+      await supabase.from('content').delete().eq('id', placeholder.id);
       setIsCreating(false);
       setActorName("");
       setAiPrompt("");
@@ -402,6 +440,36 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
                       >
                         {isSelected ? `✓ Actor ${targetSlot + 1}` : "Select"}
                       </button>
+
+                      {/* ✨ GENRE STUDIO — base actors only. Style into a genre once; reused free. */}
+                      {actor.styleLocked ? (
+                        <div className="text-[9px] font-bold text-center text-[#57707A] uppercase tracking-widest py-1 flex items-center justify-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Style Locked
+                        </div>
+                      ) : (
+                        <div className="flex gap-1.5 items-center">
+                          <select
+                            value={variantStyleByActor[actor.id] || '3d_animation'}
+                            onChange={(e) => setVariantStyleByActor(prev => ({ ...prev, [actor.id]: e.target.value }))}
+                            disabled={stylingActorId === actor.id}
+                            className="flex-1 min-w-0 text-[9px] font-bold text-[#DEDCDC] bg-[#2A2F38] border border-[#57707A]/30 rounded-lg px-1.5 py-1.5 cursor-pointer appearance-none focus:outline-none"
+                          >
+                            {VISUAL_STYLES.filter(s => s.id !== 'none').map(s => (
+                              <option key={s.id} value={s.id} className="bg-[#191D23]">{s.label}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleStyleActor(actor)}
+                            disabled={stylingActorId === actor.id}
+                            title="Generate this actor in the chosen genre (~60s, reused free afterwards)"
+                            className="shrink-0 text-[9px] font-bold text-[#191D23] bg-[#C5BAC4] hover:bg-white rounded-lg px-2 py-1.5 uppercase tracking-wider transition-colors disabled:opacity-60 flex items-center gap-1"
+                          >
+                            {stylingActorId === actor.id
+                              ? <><Loader2 className="w-2.5 h-2.5 animate-spin" /> …</>
+                              : <><Sparkles className="w-2.5 h-2.5" /> Style</>}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -431,6 +499,9 @@ type StoryboardScene = any & {
   seedancePreviews?: (string | null)[];
   referenceVideoFile?: File | null;
   referenceVideoPreview?: string | null;
+  // Remix (GPT Image 2 · Image→Image) source images — dedicated storage so it
+  // never collides with Gemini's own reference slots (which use gptRefPreviews).
+  remixSources?: (string | null)[];
 };
 
 // ✨ We extend the props locally to safely accept the universal Aspect Ratio
@@ -471,6 +542,14 @@ const getModelFamily = (aiModel?: string): 'kling' | 'seedance' | 'pruna' | 'sor
   if (m.includes('sora')) return 'sora';
   if (m.includes('gemini')) return 'gemini';
   return 'auto';
+};
+
+// Stable short id for a style-reference URL — used as the cache/style key for
+// custom-style actor variants (`${actorId}::custom-<hash>`). djb2 → base36.
+const shortHash = (s: string): string => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
 };
 
 const INJECT_PRESETS: Record<ReturnType<typeof getModelFamily>, InjectSets> = {
@@ -639,6 +718,13 @@ export function StorytellingSetup({
   const [enableCharacterLock, setEnableCharacterLock] = useState(false);
   const [isCharacterLockModalOpen, setIsCharacterLockModalOpen] = useState(false);
   const [selectedActors, setSelectedActors] = useState<string[]>(["", "", ""]);
+  // ✨ Custom Style Mode cast interplay: do locked actors get re-styled into the
+  // reference image, or keep their own look (mixed media)? Asked once via popup,
+  // then remembered as a flip-able toggle. `castStyleAsked` marks combos we've
+  // already prompted so the dialog never nags.
+  const [castFollowsCustomStyle, setCastFollowsCustomStyle] = useState(true);
+  const castStyleAsked = useRef<Record<string, boolean>>({});
+  const [castStylePrompt, setCastStylePrompt] = useState(false);
   const [castingTargetSlot, setCastingTargetSlot] = useState(0);
 
   const [modelConsistency, setModelConsistency] = useState<"dynamic" | "consistent">("dynamic"); // ✨ NEW STATE
@@ -656,37 +742,115 @@ export function StorytellingSetup({
   // genre ONCE (5 credits), saved as an asset (purpose='actor_variant'), then
   // reused for every scene and every future session. Keyed `${actorId}::${styleId}`.
   const actorVariantCache = useRef<Record<string, string>>({});
+  // In-flight variant generations, keyed `${actorId}::${styleId}`, so concurrent
+  // callers share one generation instead of double-spending credits.
+  const variantInFlight = useRef<Record<string, Promise<string> | undefined>>({});
 
+  // ✨ localStorage namespaced by active brand so Brand A's storyboard + env-lock
+  // never leak into Brand B; switching brands resets the workspace. Legacy
+  // un-namespaced keys migrate into the current brand once, then are removed.
+  const brandKeySuffix = activeBrand?.id || 'default';
+  const ENV_LOCK_KEY = `blink_environment_lock::${brandKeySuffix}`;
+  const SCENES_KEY = `blink_storyboard_scenes::${brandKeySuffix}`;
+  const STYLE_LOCK_KEY = `blink_style_lock::${brandKeySuffix}`;
+
+  const makeDefaultScenes = () => Array.from({ length: 4 }).map((_, i) => ({
+    id: crypto.randomUUID(),
+    scene_number: i + 1,
+    aiModel: "auto",
+    useEndFrame: false,
+    primaryFile: null,
+    primaryPreview: null,
+    secondaryFile: null,
+    secondaryPreview: null,
+    seedanceImages: [null],
+    seedancePreviews: [null],
+    referenceVideoFile: null,
+    referenceVideoPreview: null,
+    prompt: "",
+    videoUrl: null,
+    isGeneratingVideo: false
+  }));
+
+  // ✨ ENVIRONMENT LOCK — one location anchored across every scene so the story
+  // doesn't teleport between backgrounds. Persisted per brand; clearable.
+  const [environmentLockUrl, setEnvironmentLockUrl] = useState<string | null>(null);
   useEffect(() => {
-    const savedScenes = localStorage.getItem('blink_storyboard_scenes');
-    if (savedScenes) {
-      try { setBRollScenes(JSON.parse(savedScenes)); } catch (e) { }
-    } else if (bRollScenes.length === 0) {
-      const defaultScenes = Array.from({ length: 4 }).map((_, i) => ({
-        id: crypto.randomUUID(),
-        scene_number: i + 1,
-        aiModel: "auto",
-        useEndFrame: false,
-        primaryFile: null,
-        primaryPreview: null,
-        secondaryFile: null,
-        secondaryPreview: null,
-        seedanceImages: [null],
-        seedancePreviews: [null],
-        referenceVideoFile: null,
-        referenceVideoPreview: null,
-        prompt: "",
-        videoUrl: null,
-        isGeneratingVideo: false
-      }));
-      setBRollScenes(defaultScenes);
+    let saved = localStorage.getItem(ENV_LOCK_KEY);
+    if (!saved) {
+      const legacy = localStorage.getItem('blink_environment_lock');
+      if (legacy) { localStorage.setItem(ENV_LOCK_KEY, legacy); localStorage.removeItem('blink_environment_lock'); saved = legacy; }
     }
-  }, []);
+    setEnvironmentLockUrl(saved || null);
+  }, [ENV_LOCK_KEY]);
+  const handleEnvironmentSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !clientId) return;
+    const ext = file.name.split('.').pop();
+    const path = `videos/${clientId}/env_lock_${Date.now()}.${ext}`;
+    await supabase.storage.from('assets').upload(path, file);
+    const url = supabase.storage.from('assets').getPublicUrl(path).data.publicUrl;
+    setEnvironmentLockUrl(url);
+    localStorage.setItem(ENV_LOCK_KEY, url);
+  };
+  const clearEnvironmentLock = () => {
+    setEnvironmentLockUrl(null);
+    localStorage.removeItem(ENV_LOCK_KEY);
+  };
 
-  // ✨ Fetch saved actors from Supabase on mount
+  // ✨ CUSTOM STYLE MODE — when Render Engine is "None", the Global Style
+  // Reference image IS the genre. The uploaded URL is persisted per brand so a
+  // single upload is reused across every scene and survives reloads.
+  const [styleLockUrl, setStyleLockUrl] = useState<string | null>(null);
   useEffect(() => {
+    setStyleLockUrl(localStorage.getItem(STYLE_LOCK_KEY) || null);
+  }, [STYLE_LOCK_KEY]);
+
+  // ✨ Start-frame-only: skip end frames (half the image credits; end frames often
+  // don't improve outcome). Persisted per brand. Comic panel animation always uses
+  // start-frame-only regardless of this toggle.
+  const STARTFRAME_KEY = `blink_startframe_only::${brandKeySuffix}`;
+  const [startFrameOnly, setStartFrameOnly] = useState(false);
+  useEffect(() => {
+    setStartFrameOnly(localStorage.getItem(STARTFRAME_KEY) === '1');
+  }, [STARTFRAME_KEY]);
+  const toggleStartFrameOnly = () => {
+    setStartFrameOnly(prev => {
+      const next = !prev;
+      localStorage.setItem(STARTFRAME_KEY, next ? '1' : '0');
+      // Turning ON immediately clears end frames from every scene.
+      if (next) setBRollScenes(scenes => scenes.map(s => ({ ...s, useEndFrame: false })));
+      return next;
+    });
+  };
+
+  // ✨ Fresh start: clears scenes + concept so a new story never inherits ghost
+  // prompts from the previous one. Environment Lock and actors are kept.
+  const handleNewStoryboard = () => {
+    if (!confirm("Start a new storyboard? This clears the current scenes and concept. Your Environment Lock and saved actors stay.")) return;
+    setBRollConcept("");
+    setBRollScenes(makeDefaultScenes());
+    localStorage.removeItem(SCENES_KEY);
+  };
+
+  // Load this brand's storyboard (or scaffold defaults); re-runs on brand switch.
+  useEffect(() => {
+    let savedScenes = localStorage.getItem(SCENES_KEY);
+    if (!savedScenes) {
+      const legacy = localStorage.getItem('blink_storyboard_scenes');
+      if (legacy) { localStorage.setItem(SCENES_KEY, legacy); localStorage.removeItem('blink_storyboard_scenes'); savedScenes = legacy; }
+    }
+    if (savedScenes) {
+      try { setBRollScenes(JSON.parse(savedScenes)); return; } catch (e) { }
+    }
+    setBRollScenes(makeDefaultScenes());
+  }, [SCENES_KEY]);
+
+  // ✨ Fetch saved actors from Supabase — reusable so the Casting Room can
+  // refresh the list after creating a new genre variant.
+  const refreshActors = useCallback(async () => {
     if (!clientId) return;
-    const fetchActors = async () => {
+    {
       // Actors are stored as asset_type 'image' (the DB check constraint rejects
       // 'actor_profile') with purpose='actor_profile' as the marker and the actor
       // name in file_name. storage_provider must be 'cloudinary'/'supabase' (also
@@ -696,18 +860,47 @@ export function StorytellingSetup({
         .select('*')
         .eq('client_id', clientId)
         .eq('asset_type', 'image')
-        .eq('purpose', 'actor_profile');
+        .in('purpose', ['actor_profile', 'actor_variant']);
 
       if (data) {
-        setActors(data.map(d => ({
+        const profiles = data.filter(d => d.purpose === 'actor_profile');
+        const variants = data.filter(d => d.purpose === 'actor_variant');
+        const profileById: Record<string, any> = Object.fromEntries(profiles.map(p => [p.id, p]));
+
+        const baseActors = profiles.map(d => ({
           id: d.id,
           name: d.file_name || "Unknown Actor",
-          stitchedSheetUrl: d.file_url
-        })));
+          stitchedSheetUrl: d.file_url,
+          styleLocked: false
+        }));
+
+        // ✨ Styled genre variants live in the Casting Room too — named
+        // "Actor · Style" and selectable like any actor. file_name is
+        // `${actorId}::${styleId}`; skip orphans whose base actor was deleted.
+        // styleLocked=true keeps their medium fixed regardless of scene genre.
+        const variantActors = variants.map(v => {
+          const [baseId, styleId] = String(v.file_name || '').split('::');
+          const base = profileById[baseId];
+          if (!base) return null;
+          const styleLabel = styleId?.startsWith('custom-')
+            ? 'Custom Style'
+            : (VISUAL_STYLES.find(s => s.id === styleId)?.label || styleId || 'Styled');
+          return {
+            id: v.id,
+            name: `${base.file_name || 'Actor'} · ${styleLabel}`,
+            stitchedSheetUrl: v.file_url,
+            styleLocked: true,
+            lockedStyleId: styleId,
+            baseActorId: baseId
+          };
+        }).filter(Boolean) as ActorProfile[];
+
+        setActors([...baseActors, ...variantActors]);
       }
-    };
-    fetchActors();
+    }
   }, [clientId]);
+
+  useEffect(() => { refreshActors(); }, [refreshActors]);
 
   useEffect(() => {
     if (bRollScenes.length > 0) {
@@ -731,17 +924,20 @@ export function StorytellingSetup({
           referenceVideoFile: null
         }));
 
-        localStorage.setItem('blink_storyboard_scenes', JSON.stringify(lightScenesToSave));
+        localStorage.setItem(SCENES_KEY, JSON.stringify(lightScenesToSave));
       } catch (e) {
         console.error("Failed to save scenes to localStorage. It might still be too large:", e);
       }
     }
-  }, [bRollScenes]);
+  }, [bRollScenes, SCENES_KEY]);
 
 
 
   const [generatingSlot, setGeneratingSlot] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number, geminiIndex?: number } | null>(null);
-  const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number, geminiIndex?: number } | null>(null);
+  // ✨ Slots whose last generation failed (e.g. a 429 that exhausted retries) —
+  // keyed `${index}-${type}` — so we can surface a per-scene Retry button.
+  const [failedSlots, setFailedSlots] = useState<Set<string>>(new Set());
+  const [libraryTarget, setLibraryTarget] = useState<{ index: number, type: 'primary' | 'secondary', seedanceIndex?: number, geminiIndex?: number, remixIndex?: number, kind?: 'motionVideo' } | null>(null);
   const [suggestingPromptIndex, setSuggestingPromptIndex] = useState<number | null>(null);
 
   const [regenDialogState, setRegenDialogState] = useState<{ isOpen: boolean; sceneId: string | null; index: number | null; slotType: 'primary' | 'secondary'; promptText: string; seedanceIndex?: number; geminiIndex?: number }>({
@@ -755,6 +951,19 @@ export function StorytellingSetup({
   const [frameReferenceFile, setFrameReferenceFile] = useState<File | null>(null);
   const [frameReferencePreview, setFrameReferencePreview] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState("cinematic");
+
+  // ✨ Ask once, the first time a custom style image and a locked actor coexist,
+  // whether the cast should match the style. Keyed so a given style+cast combo
+  // never re-prompts; the answer lives on as a toggle in the Character Lock panel.
+  useEffect(() => {
+    if (selectedStyle !== 'none' || !styleLockUrl || !enableCharacterLock) return;
+    const lockedIds = selectedActors.filter(Boolean);
+    if (lockedIds.length === 0) return;
+    const key = `${styleLockUrl}::${lockedIds.join(',')}`;
+    if (castStyleAsked.current[key]) return;
+    castStyleAsked.current[key] = true;
+    setCastStylePrompt(true);
+  }, [selectedStyle, styleLockUrl, enableCharacterLock, selectedActors]);
 
   const moveSceneUp = (index: number) => {
     if (index <= 0) return;
@@ -826,12 +1035,24 @@ export function StorytellingSetup({
     return data;
   };
 
+  // Prefer the already-uploaded persisted style URL (one upload reused across all
+  // scenes + reloads). Only upload if a fresh file exists but wasn't persisted yet.
   const uploadRefImage = async (): Promise<string | null> => {
+    if (styleLockUrl) return styleLockUrl;
     if (!frameReferenceFile || !clientId) return null;
-    const ext = frameReferenceFile.name.split(".").pop();
+    return persistStyleFile(frameReferenceFile);
+  };
+
+  // Upload a style-reference file, persist its URL per brand, and return it.
+  const persistStyleFile = async (file: File): Promise<string | null> => {
+    if (!clientId) return null;
+    const ext = file.name.split(".").pop();
     const path = `videos/${clientId}/story_ref_${Date.now()}.${ext}`;
-    await supabase.storage.from("assets").upload(path, frameReferenceFile);
-    return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+    await supabase.storage.from("assets").upload(path, file);
+    const url = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+    setStyleLockUrl(url);
+    localStorage.setItem(STYLE_LOCK_KEY, url);
+    return url;
   };
 
   const base64ToBlob = (base64: string, mimeType: string) => {
@@ -852,7 +1073,8 @@ export function StorytellingSetup({
         prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into a dynamic sequence of scenes. For each scene, write the "image_prompt" and "video_prompt". ALSO, intelligently select the best 'aiModel' ('bytedance/seedance-2', 'kling-3.0/video', 'replicate:openai/sora-2', or 'replicate:prunaai/p-video'), a 'duration' (5, 10, or 15), and whether to 'useEndFrame' (true/false) based on the specific action required.`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         sceneConfigs: bRollScenes.map(scene => ({ aiModel: scene.aiModel })),
-        consistencyMode: modelConsistency // ✨ PASS PREFERENCE TO AI
+        consistencyMode: modelConsistency, // ✨ PASS PREFERENCE TO AI
+        startFrameOnly // Director shouldn't plan end-frame transitions when true
       });
 
       const scenesData = directorData.scenes || [];
@@ -897,19 +1119,22 @@ export function StorytellingSetup({
         const newImagePrompt = aiData.image_prompt || aiData.video_prompt || "";
         const finalPrompt = scene.prompt?.trim() || newVisualPrompt;
         const finalImagePrompt = scene.imagePrompt?.trim() || newImagePrompt;
+        // ✨ Dedicated end-frame still prompt (scene's final moment, same set) so
+        // end frames progress the action instead of re-rolling the start frame.
+        const finalEndFramePrompt = scene.endFramePrompt?.trim() || aiData.end_frame_prompt || "";
         const finalModel = (aiData.aiModel || aiData.ai_model) ? (aiData.aiModel || aiData.ai_model) : scene.aiModel;
 
         return {
           ...scene,
           prompt: finalPrompt,
           imagePrompt: finalImagePrompt,
+          endFramePrompt: finalEndFramePrompt,
           // ✨ FIX: Safely catch snake_case or camelCase keys from the AI
           aiModel: finalModel,
           duration: aiData.duration ? String(aiData.duration) : scene.duration,
           // ✨ Auto-enable End Frame for keyframe-capable engines (Kling/Sora/Pruna).
-          // Seedance/Gemini stay false. This makes the toggle reflect on "Write
-          // Scenes" and lets the bulk image generator produce the end frame too.
-          useEndFrame: modelSupportsEndFrame(finalModel)
+          // Seedance/Gemini stay false. Start-frame-only forces it off everywhere.
+          useEndFrame: startFrameOnly ? false : modelSupportsEndFrame(finalModel)
         };
       });
 
@@ -974,10 +1199,14 @@ export function StorytellingSetup({
   // Checks memory cache → Supabase assets → generates a single styled sheet and
   // persists it, so switching back to a genre is free and every scene uses the
   // SAME styled character instead of re-rolling per frame.
-  const getOrCreateActorVariant = async (actor: ActorProfile, styleId: string, styleLabel: string): Promise<string> => {
+  // customStyleUrl set → style the actor into the medium of that reference IMAGE
+  // (Custom Style mode) instead of a named genre label.
+  const getOrCreateActorVariant = async (actor: ActorProfile, styleId: string, styleLabel: string, customStyleUrl?: string): Promise<string> => {
     const cacheKey = `${actor.id}::${styleId}`;
     if (actorVariantCache.current[cacheKey]) return actorVariantCache.current[cacheKey];
+    if (variantInFlight.current[cacheKey]) return variantInFlight.current[cacheKey];
 
+    const work = (async (): Promise<string> => {
     const { data: existing } = await supabase
       .from('assets')
       .select('file_url')
@@ -1003,12 +1232,18 @@ export function StorytellingSetup({
     }).select('id').single();
     if (phError || !placeholder) throw new Error('Could not create tracking row for actor variant.');
 
+    // Custom mode styles from a reference image (no named label); genre mode
+    // styles from the label. Both preserve identity from the actor's own sheet.
+    const styleTail = customStyleUrl
+      ? `fully re-rendered in the exact art style, medium and color palette of the provided style reference image.`
+      : `fully re-rendered in ${styleLabel} style.`;
     await callN8n('generator', {
-      prompt: `Character reference sheet of "${actor.name}": full body, front view, side view and back view side by side on a clean neutral background. Preserve the exact same person from the reference image — same face, same skin tone, same ethnicity, same hair — fully re-rendered in ${styleLabel} style.`,
+      prompt: `Character reference sheet of "${actor.name}": full body, front view, side view and back view side by side on a clean neutral background. Preserve the exact same person from the reference image — same face, same skin tone, same ethnicity, same hair — ${styleTail}`,
       characterRefA: actor.stitchedSheetUrl,
+      styleRefImage: customStyleUrl || undefined,
       client_id: clientId,
       post_id: placeholder.id,
-      style_label: styleLabel,
+      style_label: customStyleUrl ? null : styleLabel,
       actor_names: [actor.name],
     });
 
@@ -1022,7 +1257,10 @@ export function StorytellingSetup({
       const urls = ensureArray(row?.image_urls || []).filter(Boolean);
       if (urls.length > 0) { url = urls[0]; break; }
     }
-    if (!url) throw new Error(`Styling ${actor.name} into ${styleLabel} timed out — check your Library shortly.`);
+    if (!url) {
+      await supabase.from('content').update({ status: 'failed', generation_status_text: 'Timed out client-side — asset may still arrive in your Library.' }).eq('id', placeholder.id);
+      throw new Error(`Styling ${actor.name} into ${styleLabel} timed out — check your Library shortly.`);
+    }
 
     await supabase.from('assets').insert({
       client_id: clientId,
@@ -1032,8 +1270,14 @@ export function StorytellingSetup({
       file_name: cacheKey,            // `${actorId}::${styleId}` — lookup key
       file_url: url
     });
+    // Variant now lives in the Casting Room (assets) — remove the tracking row
+    // so it doesn't clutter the Content Grid.
+    await supabase.from('content').delete().eq('id', placeholder.id);
     actorVariantCache.current[cacheKey] = url;
     return url;
+    })();
+    variantInFlight.current[cacheKey] = work;
+    try { return await work; } finally { delete variantInFlight.current[cacheKey]; }
   };
 
   const handleGenerateSlot = async (slotIndex: number, type: 'primary' | 'secondary' = 'primary', overridePrompt?: string, seedanceIndex: number = 0, scenesOverride?: StoryboardScene[], geminiIndex?: number) => {
@@ -1051,7 +1295,10 @@ export function StorytellingSetup({
     // Images prefer the still-frame prompt; scene.prompt stays the motion/video
     // prompt. NEVER fall back to the raw master concept — it produced images
     // driven by the Director's input instead of an actual scene description.
-    const promptToUse = overridePrompt || scene.imagePrompt || scene.prompt || "";
+    // End frames prefer their dedicated end-frame prompt (scene's final moment).
+    const promptToUse = overridePrompt
+      || (type === 'secondary' ? scene.endFramePrompt : "")
+      || scene.imagePrompt || scene.prompt || "";
 
     if (!promptToUse.trim()) return alert("This scene has no prompt yet. Hit \"Write Scenes\" to let the Director script it, or use Suggest / type a scene description first.");
 
@@ -1062,18 +1309,45 @@ export function StorytellingSetup({
     const lockedActors = (enableCharacterLock
       ? selectedActors.map(id => actors.find(a => a.id === id)).filter(Boolean)
       : []) as ActorProfile[];
-    const genreLabel = VISUAL_STYLES.find(s => s.id === selectedStyle)?.label || "the scene's art style";
+    // ✨ Custom Style mode: the dropped image is the genre. "Keep their look"
+    // (castFollowsCustomStyle=false) forces every base actor to be pinned (mixed
+    // media); "Match the style" styles them into the reference image (resolveSheet).
+    const customStyleActive = selectedStyle === 'none' && !!styleLockUrl;
+    const customStyleUrl = customStyleActive ? styleLockUrl : null;
+    const forceAllPinned = customStyleActive && !castFollowsCustomStyle;
+    const genreLabel = customStyleActive
+      ? "the reference style"
+      : (VISUAL_STYLES.find(s => s.id === selectedStyle)?.label || "the scene's art style");
+    // ✨ Split cast: genre-following actors adopt the scene's Render Engine style;
+    // style-pinned variant actors (and all base actors in "keep their look") keep
+    // their OWN medium (intentional mixed media).
+    const pinnedActors = lockedActors.filter(a => a.styleLocked || forceAllPinned);
+    const genreActors = lockedActors.filter(a => !pinnedActors.includes(a));
     let characterInstruction = "";
-    if (lockedActors.length > 0) {
-      const roster = lockedActors.map(a => `"${a.name}"`).join(", ");
-      characterInstruction = ` CHARACTER LOCK: When the prompt names ${roster}, render that exact person from the provided character reference image — keep their identity, face, and proportions clearly recognizable — but FULLY RE-STYLE them into "${genreLabel}" so they match the scene's medium. Do NOT leave them photo-real if "${genreLabel}" is an illustrated, 3D, anime, or claymation style; the character must be rendered in that exact medium while still looking like the same person.`;
+    if (genreActors.length > 0) {
+      const roster = genreActors.map(a => `"${a.name}"`).join(", ");
+      characterInstruction += ` CHARACTER LOCK: When the prompt names ${roster}, render that exact person from the provided character reference image — keep their identity, face, and proportions clearly recognizable — but FULLY RE-STYLE them into "${genreLabel}" so they match the scene's medium. Do NOT leave them photo-real if "${genreLabel}" is an illustrated, 3D, anime, or claymation style; the character must be rendered in that exact medium while still looking like the same person.`;
+    }
+    if (pinnedActors.length > 0) {
+      const pinnedRoster = pinnedActors.map(a => `"${a.name}"`).join(", ");
+      characterInstruction += ` MIXED-MEDIA LOCK: Render ${pinnedRoster} EXACTLY in the art style of their own reference sheet, preserving that exact medium even though the surrounding scene is "${genreLabel}". This mismatch is intentional — keep their identity, face and proportions, and do NOT convert them into the scene's medium.`;
     }
 
-    const safePrompt = promptToUse + characterInstruction + NO_TEXT_CONSTRAINT;
+    // ✨ End frames must show story progression, not a re-roll of the start frame
+    const endFrameInstruction = type === 'secondary'
+      ? " END FRAME: depict the FINAL moment of this scene — the action visibly progressed from the start frame: new pose, new camera angle or new subject position. Same location, wardrobe and lighting. Do NOT replicate the start frame composition."
+      : "";
+
+    const safePrompt = promptToUse + characterInstruction + endFrameInstruction + NO_TEXT_CONSTRAINT;
 
     setGeneratingSlot({ index: slotIndex, type, seedanceIndex, geminiIndex });
     try {
       const styleRefUrl = await uploadRefImage();
+      // ✨ Either/or: the style image only drives generation in Custom Style mode
+      // (Render Engine = None). Under a named genre the image is ignored (zone is
+      // greyed), so the label and the image never fight in n8n.
+      const isCustomStyle = selectedStyle === 'none' && !!styleRefUrl;
+      const effectiveStyleRef = isCustomStyle ? styleRefUrl : null;
       // ✨ CONTINUITY ANCHOR — read from live state, not the stale snapshot:
       //  • end frame continues from THIS scene's start frame
       //  • start frame continues from the PREVIOUS scene's last frame
@@ -1095,6 +1369,20 @@ export function StorytellingSetup({
         if (!enableCharacterLock) return null;
         const actor = actors.find(a => a.id === selectedActors[slot]);
         if (!actor) return null;
+        // Style-pinned variants already ARE their final medium — use as-is, never
+        // restyle into the scene genre (that's the mixed-media point).
+        if (actor.styleLocked) return actor.stitchedSheetUrl;
+        // Custom Style mode + "Match the style": style this base actor into the
+        // reference IMAGE, cached once as `${actorId}::custom-<hash>`.
+        if (customStyleActive && castFollowsCustomStyle && customStyleUrl) {
+          const customId = 'custom-' + shortHash(customStyleUrl);
+          try {
+            return await getOrCreateActorVariant(actor, customId, 'Custom Style', customStyleUrl);
+          } catch (e) {
+            console.error(`Custom styling failed for ${actor.name}; using original sheet`, e);
+            return actor.stitchedSheetUrl;
+          }
+        }
         if (!activeStyleLabel) return actor.stitchedSheetUrl;
         try {
           return await getOrCreateActorVariant(actor, selectedStyle, activeStyleLabel);
@@ -1103,6 +1391,24 @@ export function StorytellingSetup({
           return actor.stitchedSheetUrl;
         }
       };
+
+      // ✨ Dead-URL guard: a locked actor whose Cloudinary sheet expired crashes
+      // n8n at the vision step (the Amina incident). HEAD-check each locked sheet
+      // and abort BEFORE spending credits or generating a variant.
+      if (enableCharacterLock) {
+        for (const slot of [0, 1, 2]) {
+          const actor = actors.find(a => a.id === selectedActors[slot]);
+          if (!actor) continue;
+          let reachable = false;
+          try { reachable = (await fetch(actor.stitchedSheetUrl, { method: 'HEAD' })).ok; } catch { reachable = false; }
+          if (!reachable) {
+            alert(`"${actor.name}"'s reference sheet is unreachable — it may have expired. Recreate them in the Casting Room before generating.`);
+            setGeneratingSlot(null);
+            return;
+          }
+        }
+      }
+
       const characterSheetUrlA: string | null = await resolveSheet(0);
       const characterSheetUrlB: string | null = await resolveSheet(1);
       const characterSheetUrlC: string | null = await resolveSheet(2);
@@ -1131,12 +1437,14 @@ export function StorytellingSetup({
       try {
         await callN8n('generator', {
         prompt: safePrompt,
-        refImage: styleRefUrl || previousUrl || null,
-        styleRefImage: styleRefUrl || null,
+        refImage: effectiveStyleRef || previousUrl || null,
+        styleRefImage: effectiveStyleRef,
         previousFrameImage: previousUrl,
         characterRefA: characterSheetUrlA,
         characterRefB: characterSheetUrlB,
         characterRefC: characterSheetUrlC,
+        environmentRefImage: environmentLockUrl,
+        frame_role: type === 'secondary' ? 'end' : 'start',
         client_id: clientId,
         post_id: placeholder.id,
         // Explicit genre + cast names so the n8n prompt builder can enforce the
@@ -1144,9 +1452,12 @@ export function StorytellingSetup({
         // ethnicity, hair) through the GPT rewrite.
         style_label: selectedStyle !== 'none' ? (VISUAL_STYLES.find(s => s.id === selectedStyle)?.label || null) : null,
         actor_names: lockedActors.map(a => a.name),
+        // Pinned (style-locked) actors keep their own medium; n8n splits the
+        // identity clause so these aren't re-rendered into the scene genre.
+        pinned_actor_names: pinnedActors.map(a => a.name),
         imageEngine: sceneImageEngine,
         gptRefImages: sceneImageEngine === 'gpt-image-2-image-to-image'
-          ? ensureArray(scene.gptRefPreviews || []).filter(Boolean)
+          ? getRemixSources(scene).filter(Boolean)
           : undefined,
         geminiRefImages: scene.aiModel === 'gemini-omni-video'
           ? ensureArray(scene.gptRefPreviews || []).filter(Boolean)
@@ -1174,7 +1485,10 @@ export function StorytellingSetup({
         const urls = ensureArray(row?.image_urls || []).filter(Boolean);
         if (urls.length > 0) { resultUrl = urls[0]; break; }
       }
-      if (!resultUrl) throw new Error("This frame is taking unusually long. It may still finish — check your Library in a few minutes before regenerating.");
+      if (!resultUrl) {
+        await supabase.from('content').update({ status: 'failed', generation_status_text: 'Timed out client-side — asset may still arrive in your Library.' }).eq('id', placeholder.id);
+        throw new Error("This frame is taking unusually long. It may still finish — check your Library in a few minutes before regenerating.");
+      }
 
       const genData = { url: resultUrl };
 
@@ -1224,8 +1538,11 @@ export function StorytellingSetup({
         // Auto-save insert removed: the placeholder row created above is updated
         // by n8n (Save Result to Supabase node) with the final URL + approved status.
       }
+      // Success — clear any prior failure marker for this slot.
+      setFailedSlots(prev => { const n = new Set(prev); n.delete(`${slotIndex}-${type}`); return n; });
     } catch (err: any) {
       console.error(err);
+      setFailedSlots(prev => new Set(prev).add(`${slotIndex}-${type}`));
       alert(`Generation failed for Scene ${slotIndex + 1}: ${err.message}`);
     } finally {
       setGeneratingSlot(null);
@@ -1278,6 +1595,10 @@ export function StorytellingSetup({
           await handleGenerateSlot(i, 'secondary', currentPrompts[i], 0, scenesToUse);
         }
       }
+      // ✨ Stagger between scenes so 6 frames don't hit the GPT-4o Vision endpoint
+      // inside one OpenAI TPM window (the 429 that failed whole frames). Combined
+      // with the n8n retry-with-backoff, this keeps bulk runs from throttling.
+      if (i < scenesToUse.length - 1) await new Promise(r => setTimeout(r, 1500));
     }
 
     setIsGeneratingAllImages(false);
@@ -1293,6 +1614,12 @@ export function StorytellingSetup({
     }
 
     const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
+
+    // Guard: never fall back to the raw master concept as the motion prompt —
+    // the Director's input is not a scene description (mirrors the image path).
+    if (!scene.prompt?.trim()) {
+      return alert("This scene has no motion prompt. Run \"Write Scenes\" or describe the scene in the Scene Director box first.");
+    }
 
     if (scene.useEndFrame && !scene.secondaryPreview && !isSeedance2) {
       return alert("You enabled the End Frame toggle. Please generate or upload an End Frame before animating.");
@@ -1321,14 +1648,23 @@ export function StorytellingSetup({
         const vidPath = `videos/${clientId}/scene_ref_video_${Date.now()}.${mimeExt}`;
         await supabase.storage.from("assets").upload(vidPath, scene.referenceVideoFile);
         finalReferenceVideoUrl = supabase.storage.from("assets").getPublicUrl(vidPath).data.publicUrl;
+      } else if (scene.referenceVideoPreview?.startsWith('http')) {
+        // Picked from the Library — already hosted, no re-upload needed.
+        finalReferenceVideoUrl = scene.referenceVideoPreview;
       }
 
-      // Prefer the cached genre variant (populated during image generation) so
-      // the video engine sees the same styled character as the frames.
+      // Prefer the cached variant (populated during image generation) so the
+      // video engine sees the same styled character as the frames. Style-pinned
+      // variant actors keep their own sheet. In Custom Style mode the cache key
+      // is the custom hash, not the genre id.
+      const videoStyleKey = (selectedStyle === 'none' && styleLockUrl)
+        ? 'custom-' + shortHash(styleLockUrl)
+        : selectedStyle;
       const variantOrAnchor = (slot: number): string | null => {
         const actor = actors.find(a => a.id === selectedActors[slot]);
         if (!actor) return null;
-        return actorVariantCache.current[`${actor.id}::${selectedStyle}`] || actor.stitchedSheetUrl;
+        if (actor.styleLocked) return actor.stitchedSheetUrl;
+        return actorVariantCache.current[`${actor.id}::${videoStyleKey}`] || actor.stitchedSheetUrl;
       };
       const characterSheetA = enableCharacterLock ? {
         actor_1_sheet: variantOrAnchor(0),
@@ -1380,7 +1716,7 @@ export function StorytellingSetup({
         ...(scene.seed !== null && scene.seed !== undefined ? { seed: scene.seed } : {}),
         referenceVideoUrl: finalReferenceVideoUrl,
         scene_data: {
-          visual_prompt: scene.prompt?.trim() || bRollConcept,
+          visual_prompt: scene.prompt.trim(),
           ai_enhance: aiEnhance,
           video_mode: scene.mode,
           duration: scene.duration || "5",
@@ -1476,27 +1812,112 @@ export function StorytellingSetup({
 
   const openRegenModal = (scene: any, index: number, slotType: 'primary' | 'secondary', seedanceIndex?: number, geminiIndex?: number) => {
     // Prefill ONLY with real scene prompts — never the master concept, which is
-    // Director input, not an image description.
-    setRegenDialogState({ isOpen: true, sceneId: scene.id, index: index, slotType: slotType, promptText: scene.imagePrompt || scene.prompt || "", seedanceIndex, geminiIndex });
+    // Director input, not an image description. End frames use their own prompt.
+    const prefill = slotType === 'secondary'
+      ? (scene.endFramePrompt || scene.imagePrompt || scene.prompt || "")
+      : (scene.imagePrompt || scene.prompt || "");
+    setRegenDialogState({ isOpen: true, sceneId: scene.id, index: index, slotType: slotType, promptText: prefill, seedanceIndex, geminiIndex });
   };
 
   const handleConfirmRegen = () => {
     const { sceneId, index, slotType, promptText, seedanceIndex, geminiIndex } = regenDialogState;
     if (!promptText.trim()) return alert("Write an image prompt first — describe exactly what this frame should show.");
     if (sceneId && index !== null) {
-      // ✨ Save edits to the IMAGE prompt only — the Scene Director motion/video
-      // prompt (scene.prompt) is untouched so Kling/Seedance keep their own script.
-      updateScene(sceneId, "imagePrompt", promptText);
+      // ✨ Save edits to the matching field — end frames to endFramePrompt, start
+      // frames to imagePrompt. The Scene Director motion prompt (scene.prompt) is
+      // untouched so Kling/Seedance keep their own script.
+      updateScene(sceneId, slotType === 'secondary' ? "endFramePrompt" : "imagePrompt", promptText);
       handleGenerateSlot(index, slotType, promptText, seedanceIndex || 0, undefined, geminiIndex);
     }
     setRegenDialogState(prev => ({ ...prev, isOpen: false }));
+  };
+
+  // Remix sources live in scene.remixSources. Backward-compat: older saved scenes
+  // stored them in gptRefPreviews, but NEVER read that on Gemini scenes (there it
+  // is Gemini's own reference-slot storage).
+  const getRemixSources = (scene: StoryboardScene): (string | null)[] => {
+    const isGemini = scene.aiModel === 'gemini-omni-video';
+    return ensureArray(scene.remixSources ?? (isGemini ? [] : scene.gptRefPreviews) ?? []);
+  };
+
+  // ✨ Remix Sources panel — one block reused by every scene layout (Seedance,
+  // Gemini and default) so the Remix engine works everywhere, not just default.
+  const renderRemixPanel = (scene: StoryboardScene, index: number) => {
+    const writeSource = (rIdx: number, val: string | null) => {
+      const p = [0, 1, 2, 3, 4].map(i => getRemixSources(scene)[i] ?? null);
+      p[rIdx] = val;
+      updateScene(scene.id, "remixSources", p);
+    };
+    return (
+      <div className="mt-4 pt-4 border-t border-[#57707A]/20">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-[10px] font-bold text-[#C5BAC4] uppercase tracking-wider">
+            Remix Sources <span className="text-[9px] text-[#57707A] normal-case font-medium">(up to 5)</span>
+          </label>
+        </div>
+        <div className="grid grid-cols-3 gap-2.5">
+          {[0, 1, 2, 3, 4].map((rIdx) => {
+            const preview = getRemixSources(scene)[rIdx] || null;
+            return (
+              <div key={rIdx} className="flex flex-col gap-1">
+                <div className={cn(
+                  "relative aspect-square rounded-xl overflow-hidden bg-[#0F1115] border-2 flex items-center justify-center transition-all group/ri shadow-inner",
+                  preview ? "border-[#C5BAC4]/40" : "border-dashed border-[#57707A]/30 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 cursor-pointer"
+                )}>
+                  {preview ? (
+                    <>
+                      <img src={preview} className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => writeSource(rIdx, null)} className="absolute top-1 right-1 z-20 p-1 bg-red-500/90 text-white rounded-md opacity-0 group-hover/ri:opacity-100 transition-all">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </>
+                  ) : (
+                    <label htmlFor={`remixsrc-${scene.id}-${rIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors gap-1">
+                      <ImageIcon className="h-4 w-4" />
+                      <p className="text-[9px] font-bold">{rIdx + 1}</p>
+                    </label>
+                  )}
+                  <input
+                    id={`remixsrc-${scene.id}-${rIdx}`}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => writeSource(rIdx, ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }}
+                    onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                  />
+                </div>
+                <button type="button" title="Pick from library" onClick={() => setLibraryTarget({ index, type: 'primary', remixIndex: rIdx })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="h-6 flex items-center justify-center rounded-lg border border-[#57707A]/40 text-[#989DAA] hover:text-[#DEDCDC] hover:border-[#DEDCDC]/40 bg-[#191D23] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  <FolderOpen className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[9px] text-[#57707A] mt-2 font-medium">Upload images to remix or transform · Max 30MB each · JPEG, PNG, WebP</p>
+      </div>
+    );
   };
 
   const handleLibrarySelect = (url: string) => {
     if (!libraryTarget) return;
     const scene = bRollScenes[libraryTarget.index];
 
-    if (libraryTarget.geminiIndex !== undefined) {
+    if (libraryTarget.kind === 'motionVideo') {
+      updateScene(scene.id, "referenceVideoPreview", url);
+      updateScene(scene.id, "referenceVideoFile", null);
+      setLibraryTarget(null);
+      return;
+    } else if (libraryTarget.remixIndex !== undefined) {
+      const p = [0, 1, 2, 3, 4].map(i => getRemixSources(scene)[i] ?? null);
+      p[libraryTarget.remixIndex] = url;
+      updateScene(scene.id, "remixSources", p);
+    } else if (libraryTarget.geminiIndex !== undefined) {
       const refPreviews = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
       refPreviews[libraryTarget.geminiIndex] = url;
       updateScene(scene.id, "gptRefPreviews", refPreviews);
@@ -1662,6 +2083,7 @@ export function StorytellingSetup({
     if (!file) return;
     setFrameReferenceFile(file);
     setFrameReferencePreview(URL.createObjectURL(file));
+    persistStyleFile(file); // upload + persist so custom-style mode has a URL immediately
   };
 
   const handleRefDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -1671,6 +2093,7 @@ export function StorytellingSetup({
       const file = e.dataTransfer.files[0];
       setFrameReferenceFile(file);
       setFrameReferencePreview(URL.createObjectURL(file));
+      persistStyleFile(file);
     }
   };
 
@@ -1704,6 +2127,12 @@ export function StorytellingSetup({
         actors={actors}
         onSaveActor={(newActor) => setActors([...actors, newActor])}
         onDeleteActor={async (id) => {
+          // Dropping a variant must also evict its cached URL, else a later
+          // generation reuses a now-dead Cloudinary link.
+          const gone = actors.find(a => a.id === id);
+          if (gone?.styleLocked && gone.baseActorId && gone.lockedStyleId) {
+            delete actorVariantCache.current[`${gone.baseActorId}::${gone.lockedStyleId}`];
+          }
           setActors(actors.filter(a => a.id !== id));
           setSelectedActors(prev => prev.map(s => s === id ? "" : s));
           await supabase.from('assets').delete().eq('id', id);
@@ -1714,7 +2143,28 @@ export function StorytellingSetup({
         callN8n={callN8n as any}
         clientId={clientId}
         onPreviewActor={setPreviewModalImg}
+        onCreateVariant={async (actor, styleId, styleLabel) => {
+          const url = await getOrCreateActorVariant(actor, styleId, styleLabel);
+          await refreshActors(); // surface the new "Actor · Style" in the list
+          return url;
+        }}
       />
+
+      {/* ✨ CUSTOM STYLE — cast interplay prompt (fires once per style+cast combo) */}
+      <Dialog open={castStylePrompt} onOpenChange={setCastStylePrompt}>
+        <DialogContent className="sm:max-w-[460px] bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-lg"><Palette className="w-5 h-5" /> Style your cast too?</DialogTitle>
+            <DialogDescription className="text-[#989DAA] text-sm leading-relaxed pt-1">
+              You're driving the look from a custom style image. Should your locked actors be re-rendered in that style (one-time ~5 credits each, reused forever) — or keep their current look for an intentional mixed-media world?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => { setCastFollowsCustomStyle(false); setCastStylePrompt(false); }} className="border-[#57707A]/40 text-[#DEDCDC] hover:text-[#191D23] hover:bg-[#C5BAC4] bg-[#191D23]">Keep their look</Button>
+            <Button onClick={() => { setCastFollowsCustomStyle(true); setCastStylePrompt(false); }} className="bg-[#C5BAC4] text-[#191D23] hover:bg-white">Match the style</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── LEFT PANE: STORYBOARD ROWS ── */}
       <div className="flex-1 w-full flex flex-col gap-6 relative">
@@ -1791,13 +2241,14 @@ export function StorytellingSetup({
                       {/* Image Engine — pill buttons */}
                       <div className="flex gap-1 mt-0.5">
                         {([
-                          { id: 'nb2', label: 'NB2' },
-                          { id: 'gpt-image-2-text-to-image', label: 'GPT·T2I' },
-                          { id: 'gpt-image-2-image-to-image', label: 'GPT·I2I' },
+                          { id: 'nb2', label: 'NB2', title: 'Default — best all-round scene generation' },
+                          { id: 'gpt-image-2-text-to-image', label: 'GPT·T2I', title: 'Text-only generation, no reference images' },
+                          { id: 'gpt-image-2-image-to-image', label: 'Remix', title: 'Transform your own images — product shots, restyles' },
                         ] as const).map(opt => (
                           <button
                             key={opt.id}
                             type="button"
+                            title={opt.title}
                             onClick={() => updateScene(scene.id, "imageEngine", opt.id)}
                             className={cn(
                               "text-[9px] font-bold px-2 py-1 rounded-lg border transition-all uppercase tracking-wide",
@@ -1938,6 +2389,19 @@ export function StorytellingSetup({
                         <ChevronDown className="h-4 w-4" />
                       </button>
                     </div>
+
+                    {(failedSlots.has(`${index}-primary`) || failedSlots.has(`${index}-secondary`)) && generatingSlot === null && (
+                      <button
+                        onClick={() => {
+                          if (failedSlots.has(`${index}-primary`)) handleGenerateSlot(index, 'primary');
+                          if (failedSlots.has(`${index}-secondary`)) handleGenerateSlot(index, 'secondary');
+                        }}
+                        title="This scene's last image failed — retry it"
+                        className="flex items-center gap-1 text-[10px] font-bold text-amber-300 hover:text-[#191D23] px-2.5 py-2 rounded-xl transition-colors bg-amber-500/10 border border-amber-400/40 hover:bg-amber-400 shadow-sm ml-1"
+                      >
+                        <Wand2 className="h-3.5 w-3.5" /> Retry
+                      </button>
+                    )}
 
                     {bRollScenes.length > 1 && (
                       <button onClick={() => removeScene(scene.id)} title="Delete Scene" className="text-[#57707A] hover:text-white p-2.5 rounded-xl transition-colors bg-[#191D23] border border-[#57707A]/30 hover:bg-red-500/80 hover:border-red-500 shadow-sm ml-1">
@@ -2100,8 +2564,14 @@ export function StorytellingSetup({
                             )}
                             <input id={`refvideo-${scene.id}`} type="file" accept="video/mp4, video/quicktime" className="hidden" onChange={(e) => handleRefVideoSelect(e, scene.id)} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
                           </div>
-                          <p className="text-[9px] text-[#57707A] mt-2 font-medium">Upload a video to guide camera and character movement. Use <strong className="text-[#b488d4]">@Video1</strong> in your prompt.</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary', kind: 'motionVideo' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="h-8 text-[10px] font-bold border-[#b488d4]/40 text-[#b488d4]/80 hover:text-[#b488d4] hover:border-[#b488d4]/60 bg-[#191D23] hover:bg-[#b488d4]/5 px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> From Library</Button>
+                            <p className="text-[9px] text-[#57707A] font-medium flex-1">Guides camera + motion. Use <strong className="text-[#b488d4]">@Video1</strong> in your prompt.</p>
+                          </div>
                         </div>
+
+                        {/* Remix works on Seedance scenes too */}
+                        {isGptImg2Img && renderRemixPanel(scene, index)}
                       </div>
                     ) : isGeminiOmniVideo ? (
                       // ── GEMINI OMNI VIDEO LAYOUT: optional reference images + optional video ──
@@ -2218,7 +2688,11 @@ export function StorytellingSetup({
                             )}
                             <input id={`gemvid-ref-${scene.id}`} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={(e) => handleRefVideoSelect(e, scene.id)} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
                           </div>
+                          <Button size="sm" variant="outline" onClick={() => setLibraryTarget({ index, type: 'primary', kind: 'motionVideo' })} disabled={generatingSlot !== null || isGeneratingAllImages || !!scene.videoUrl} className="w-full mt-2 h-8 text-[10px] font-bold border-[#b488d4]/40 text-[#b488d4]/80 hover:text-[#b488d4] hover:border-[#b488d4]/60 bg-[#191D23] hover:bg-[#b488d4]/5 px-3 rounded-lg transition-colors"><FolderOpen className="h-3.5 w-3.5 mr-1.5" /> From Library</Button>
                         </div>
+
+                        {/* Remix works on Gemini scenes too — separate from Gemini's own reference slots */}
+                        {isGptImg2Img && renderRemixPanel(scene, index)}
                       </div>
                     ) : (
                       // STANDARD LAYOUT
@@ -2277,65 +2751,8 @@ export function StorytellingSetup({
                           </div>
                         </div>
 
-                        {/* GPT Image 2 · Image→Image reference inputs */}
-                        {isGptImg2Img && (
-                          <div className="mt-4 pt-4 border-t border-[#57707A]/20">
-                            <div className="flex items-center justify-between mb-2">
-                              <label className="text-[10px] font-bold text-[#C5BAC4] uppercase tracking-wider">
-                                Reference Images <span className="text-[9px] text-[#57707A] normal-case font-medium">(input_urls · up to 5)</span>
-                              </label>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2.5">
-                              {[0, 1, 2, 3, 4].map((rIdx) => {
-                                const refPreviews: (string | null)[] = ensureArray(scene.gptRefPreviews || Array(5).fill(null));
-                                const preview = refPreviews[rIdx] || null;
-                                return (
-                                  <div key={rIdx} className={cn(
-                                    "relative aspect-square rounded-xl overflow-hidden bg-[#0F1115] border-2 flex items-center justify-center transition-all group/ri shadow-inner",
-                                    preview ? "border-[#C5BAC4]/40" : "border-dashed border-[#57707A]/30 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 cursor-pointer"
-                                  )}>
-                                    {preview ? (
-                                      <>
-                                        <img src={preview} className="w-full h-full object-cover" />
-                                        <button type="button" onClick={() => {
-                                          const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
-                                          p[rIdx] = null;
-                                          updateScene(scene.id, "gptRefPreviews", p);
-                                        }} className="absolute top-1 right-1 z-20 p-1 bg-red-500/90 text-white rounded-md opacity-0 group-hover/ri:opacity-100 transition-all">
-                                          <X className="w-3 h-3" />
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <label htmlFor={`gptref-${scene.id}-${rIdx}`} className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors gap-1">
-                                        <ImageIcon className="h-4 w-4" />
-                                        <p className="text-[9px] font-bold">{rIdx + 1}</p>
-                                      </label>
-                                    )}
-                                    <input
-                                      id={`gptref-${scene.id}-${rIdx}`}
-                                      type="file"
-                                      accept="image/jpeg,image/png,image/webp,image/jpg"
-                                      className="hidden"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (!file) return;
-                                        const reader = new FileReader();
-                                        reader.onload = (ev) => {
-                                          const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))];
-                                          p[rIdx] = ev.target?.result as string;
-                                          updateScene(scene.id, "gptRefPreviews", p);
-                                        };
-                                        reader.readAsDataURL(file);
-                                      }}
-                                      onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
-                                    />
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <p className="text-[9px] text-[#57707A] mt-2 font-medium">Upload images to remix or transform · Max 30MB each · JPEG, PNG, WebP</p>
-                          </div>
-                        )}
+                        {/* Remix (GPT Image 2 · Image→Image) reference inputs */}
+                        {isGptImg2Img && renderRemixPanel(scene, index)}
 
                         {/* GPT Image 2 info badge */}
                         {isGptImage2 && (
@@ -2344,7 +2761,7 @@ export function StorytellingSetup({
                             <p className="text-[9px] text-[#989DAA] leading-relaxed font-medium">
                               {isGptImg2Txt
                                 ? <><strong className="text-[#C5BAC4]">GPT Image 2 · Text → Image:</strong> Describe what you want in the Scene Director prompt. Supports up to 20,000 characters.</>
-                                : <><strong className="text-[#C5BAC4]">GPT Image 2 · Image → Image:</strong> Upload reference images above, then describe the transformation in the Scene Director prompt.</>
+                                : <><strong className="text-[#C5BAC4]">Remix mode:</strong> upload 1–5 source images, then tell the Scene Director what to do with them — e.g. "Place this exact product on a marble kitchen counter at golden hour. Keep the label sharp and legible."</>
                               }
                             </p>
                           </div>
@@ -2403,11 +2820,13 @@ export function StorytellingSetup({
                                 onChange={(e) => { updateScene(scene.id, "prompt", e.target.value); if (!e.target.value.trim()) updateScene(scene.id, "imagePrompt", ""); }}
                                 className="flex-1 w-full text-sm p-5 resize-none bg-transparent border-b border-[#57707A]/30 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-0 leading-relaxed custom-scrollbar rounded-none min-h-[140px]"
                                 placeholder={
-                                  scene.mode === 'ugc'
-                                    ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
-                                    : isNativeAudio
-                                      ? "Describe your scene...\n\nExample: A wide shot of a neon city. A man turns and says \"This is incredible!\""
-                                      : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
+                                  isGptImg2Img
+                                    ? "Describe the transformation of your uploaded images...\n\nExample: Place this exact product on a marble kitchen counter at golden hour. Keep the label sharp and legible."
+                                    : scene.mode === 'ugc'
+                                      ? "UGC Action: Describe the influencer (e.g., holding product, looking shocked, pointing at text)..."
+                                      : isNativeAudio
+                                        ? "Describe your scene...\n\nExample: A wide shot of a neon city. A man turns and says \"This is incredible!\""
+                                        : "Describe your scene...\n\nExample: Cinematic tracking shot following a woman through a sunlit forest..."
                                 }
                               />
                             </div>
@@ -2423,7 +2842,9 @@ export function StorytellingSetup({
                           {/* ✨ MODEL-AWARE INJECTION TOOLBAR — presets follow the
                               chosen engine's prompting dialect (see INJECT_PRESETS) */}
                           {!scene.videoUrl && (() => {
-                            const injects = INJECT_PRESETS[getModelFamily(scene.aiModel)];
+                            const fam = getModelFamily(scene.aiModel);
+                            const injects = INJECT_PRESETS[fam];
+                            const famLabel = ({ kling: 'Kling', seedance: 'Seedance', pruna: 'P-Video', sora: 'Sora', gemini: 'Gemini', auto: 'Auto' } as const)[fam];
                             return (
                             <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 bg-[#2A2F38] border-b border-[#57707A]/30 shrink-0">
                               <span className="text-[9px] font-bold text-[#989DAA] uppercase tracking-wider mr-1">Inject:</span>
@@ -2433,7 +2854,7 @@ export function StorytellingSetup({
                                 onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
                                 className="text-[10px] font-bold text-[#C5BAC4] bg-[#191D23] border border-[#C5BAC4]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#C5BAC4]/60 hover:bg-[#C5BAC4]/10 transition-colors appearance-none shadow-sm"
                               >
-                                <option value="" disabled hidden>🎥 Camera...</option>
+                                <option value="" disabled hidden>🎥 Camera · {famLabel}</option>
                                 {injects.camera.map(p => (
                                   <option key={p.label} value={p.value} className="bg-[#191D23]">{p.label}</option>
                                 ))}
@@ -2445,7 +2866,7 @@ export function StorytellingSetup({
                                   onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
                                   className="text-[10px] font-bold text-[#B3FF00] bg-[#191D23] border border-[#B3FF00]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#B3FF00]/60 hover:bg-[#B3FF00]/10 transition-colors appearance-none shadow-sm"
                                 >
-                                  <option value="" disabled hidden>🔊 Sound FX...</option>
+                                  <option value="" disabled hidden>🔊 Sound · {famLabel}</option>
                                   {injects.sound.map(p => (
                                     <option key={p.label} value={p.value} className="bg-[#191D23]">{p.label}</option>
                                   ))}
@@ -2457,7 +2878,7 @@ export function StorytellingSetup({
                                 onChange={(e) => { if (e.target.value) { updateScene(scene.id, "prompt", (scene.prompt || "") + e.target.value); e.target.value = ""; } }}
                                 className="text-[10px] font-bold text-[#00E5FF] bg-[#191D23] border border-[#00E5FF]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#00E5FF]/60 hover:bg-[#00E5FF]/10 transition-colors appearance-none shadow-sm"
                               >
-                                <option value="" disabled hidden>🌌 Physics...</option>
+                                <option value="" disabled hidden>🌌 Physics · {famLabel}</option>
                                 {injects.physics.map(p => (
                                   <option key={p.label} value={p.value} className="bg-[#191D23]">{p.label}</option>
                                 ))}
@@ -2470,7 +2891,7 @@ export function StorytellingSetup({
                                   className="text-[10px] font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-lg cursor-pointer hover:border-[#FFB300]/60 hover:bg-[#FFB300]/10 transition-colors appearance-none shadow-sm"
                                   title="Timing beats and shot cuts in this engine's syntax"
                                 >
-                                  <option value="" disabled hidden>⏱️ Timing...</option>
+                                  <option value="" disabled hidden>⏱️ Timing · {famLabel}</option>
                                   {injects.timing.map(p => (
                                     <option key={p.label} value={p.value} className="bg-[#191D23]">{p.label}</option>
                                   ))}
@@ -2575,7 +2996,16 @@ export function StorytellingSetup({
           <div className="p-6">
           <div className="flex flex-col gap-4 mb-2">
             <div className="relative">
-              <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Master Story Concept</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider block">Master Story Concept</label>
+                <button
+                  onClick={handleNewStoryboard}
+                  title="Clear scenes and concept to start a fresh story (keeps actors + Environment Lock)"
+                  className="flex items-center gap-1 text-[9px] font-bold text-[#57707A] hover:text-[#C5BAC4] uppercase tracking-wider transition-colors"
+                >
+                  <Plus className="w-3 h-3" /> New Storyboard
+                </button>
+              </div>
               <Textarea value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder="Describe the full story flow AND dialogue..." className="flex-1 w-full resize-none h-40 text-sm p-4 bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner custom-scrollbar" />
             </div>
 
@@ -2620,7 +3050,7 @@ export function StorytellingSetup({
         <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 p-6 shadow-xl relative">
           <div className="flex items-center justify-between mb-5 pb-4 border-b border-[#57707A]/20">
             <label className="text-sm font-bold text-[#DEDCDC] flex items-center gap-2 font-display tracking-wide">
-              <Lock className="h-4 w-4 text-[#C5BAC4]" /> Consistency Lock
+              <Lock className="h-4 w-4 text-[#C5BAC4]" /> Character Lock
             </label>
             <div className="flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer bg-[#191D23] px-2.5 py-1.5 border border-[#57707A]/50 rounded-lg hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm">
@@ -2674,6 +3104,20 @@ export function StorytellingSetup({
             </div>
           )}
 
+          {/* ✨ Custom Style cast toggle — only in Custom Style mode with a locked cast */}
+          {enableCharacterLock && selectedStyle === 'none' && styleLockUrl && selectedActors.some(Boolean) && (
+            <button
+              onClick={() => setCastFollowsCustomStyle(v => !v)}
+              title="Toggle whether locked actors are re-rendered in your custom style image or keep their own look"
+              className="w-full mt-3 flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#191D23] border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-all"
+            >
+              <span className="text-[9px] font-bold text-[#57707A] uppercase tracking-wider flex items-center gap-1.5"><Palette className="w-3 h-3 text-[#C5BAC4]" /> Cast</span>
+              <span className={cn("text-[10px] font-bold px-2 py-1 rounded-lg", castFollowsCustomStyle ? "bg-[#C5BAC4] text-[#191D23]" : "bg-[#2A2F38] text-[#989DAA] border border-[#57707A]/40")}>
+                {castFollowsCustomStyle ? "✓ Matches style" : "Keeps own look"}
+              </span>
+            </button>
+          )}
+
           <Button onClick={() => setIsCastingOpen(true)} variant="outline" className="w-full mt-4 h-11 text-xs font-bold border-[#57707A]/40 text-[#DEDCDC] hover:text-[#191D23] hover:bg-[#C5BAC4] hover:border-[#C5BAC4] bg-[#191D23] transition-all rounded-xl shadow-sm">
             <Users className="w-4 h-4 mr-2" /> Open Casting Room
           </Button>
@@ -2691,23 +3135,61 @@ export function StorytellingSetup({
             </select>
           </div>
 
-          <div className="mb-6">
-            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 flex items-center gap-1.5"><Upload className="h-3.5 w-3.5 text-[#C5BAC4]" /> Global Style Reference</label>
-            <div onDragOver={handleDragOver} onDrop={handleRefDrop} className="h-28 relative w-full rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 transition-all overflow-hidden group/ref flex flex-col shadow-inner">
-              {frameReferencePreview ? (
+          {(() => {
+            const isCustomStyleMode = selectedStyle === 'none';
+            const stylePreview = frameReferencePreview || styleLockUrl;
+            return (
+            <div className="mb-6">
+              <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 flex items-center gap-1.5"><Upload className="h-3.5 w-3.5 text-[#C5BAC4]" /> Custom Style Reference</label>
+              {!isCustomStyleMode ? (
+                // Named genre active — image path is disabled (either/or).
+                <div className="h-28 w-full rounded-xl border-2 border-dashed border-[#57707A]/25 bg-[#191D23]/30 flex flex-col items-center justify-center text-center px-3 opacity-60">
+                  <ImageIcon className="h-5 w-5 mb-1.5 text-[#57707A]" />
+                  <span className="text-[9px] font-bold text-[#57707A] leading-relaxed">Switch Render Engine to <span className="text-[#989DAA]">None</span> to drive the style from an image.</span>
+                </div>
+              ) : (
                 <>
-                  <img src={frameReferencePreview} className="w-full h-full object-cover opacity-90" />
-                  <button onClick={() => { setFrameReferenceFile(null); setFrameReferencePreview(null); }} className="absolute top-2 right-2 p-2 bg-red-500/90 text-white rounded-full shadow-md opacity-0 group-hover/ref:opacity-100 transition-all hover:scale-110 hover:bg-red-500 z-20"><X className="h-3 w-3" /></button>
-                  <div className="absolute bottom-0 inset-x-0 bg-black/80 backdrop-blur-sm text-[9px] text-[#C5BAC4] text-center py-1.5 font-bold tracking-widest uppercase z-10">Style Locked</div>
+                  <div onDragOver={handleDragOver} onDrop={handleRefDrop} className="h-28 relative w-full rounded-xl border-2 border-dashed border-[#C5BAC4]/50 bg-[#C5BAC4]/5 hover:border-[#C5BAC4]/70 transition-all overflow-hidden group/ref flex flex-col shadow-inner">
+                    {stylePreview ? (
+                      <>
+                        <img src={stylePreview} className="w-full h-full object-cover opacity-90" />
+                        <button onClick={() => { setFrameReferenceFile(null); setFrameReferencePreview(null); setStyleLockUrl(null); localStorage.removeItem(STYLE_LOCK_KEY); }} className="absolute top-2 right-2 p-2 bg-red-500/90 text-white rounded-full shadow-md opacity-0 group-hover/ref:opacity-100 transition-all hover:scale-110 hover:bg-red-500 z-20"><X className="h-3 w-3" /></button>
+                        <div className="absolute bottom-0 inset-x-0 bg-black/80 backdrop-blur-sm text-[9px] text-[#C5BAC4] text-center py-1.5 font-bold tracking-widest uppercase z-10">Style Active</div>
+                      </>
+                    ) : (
+                      <label htmlFor="sidebar-ref-upload" className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors">
+                        <ImageIcon className="h-6 w-6 mb-2" />
+                        <span className="text-[10px] font-bold text-center uppercase tracking-widest">Drop a Style<br />Image = Your Genre</span>
+                      </label>
+                    )}
+                    <input id="sidebar-ref-upload" type="file" accept="image/*" className="hidden" onChange={handleFrameReferenceSelect} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                  </div>
+                  <p className="text-[9px] text-[#57707A] font-medium mt-1.5 leading-relaxed">Drop any reference (a painting, screenshot, mood board) — every frame renders in that exact style. No genre name needed.</p>
+                </>
+              )}
+            </div>
+            );
+          })()}
+
+          {/* ✨ ENVIRONMENT LOCK — one location anchored across every scene */}
+          <div className="mb-6">
+            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 flex items-center gap-1.5"><Lock className="h-3.5 w-3.5 text-[#C5BAC4]" /> Environment Lock</label>
+            <div className="h-28 relative w-full rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 transition-all overflow-hidden group/env flex flex-col shadow-inner">
+              {environmentLockUrl ? (
+                <>
+                  <img src={environmentLockUrl} className="w-full h-full object-cover opacity-90" />
+                  <button onClick={clearEnvironmentLock} className="absolute top-2 right-2 p-2 bg-red-500/90 text-white rounded-full shadow-md opacity-0 group-hover/env:opacity-100 transition-all hover:scale-110 hover:bg-red-500 z-20"><X className="h-3 w-3" /></button>
+                  <div className="absolute bottom-0 inset-x-0 bg-black/80 backdrop-blur-sm text-[9px] text-[#C5BAC4] text-center py-1.5 font-bold tracking-widest uppercase z-10">Location Locked</div>
                 </>
               ) : (
-                <label htmlFor="sidebar-ref-upload" className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors">
+                <label htmlFor="env-lock-upload" className="flex flex-col items-center justify-center w-full h-full cursor-pointer text-[#57707A] hover:text-[#C5BAC4] transition-colors">
                   <ImageIcon className="h-6 w-6 mb-2" />
-                  <span className="text-[10px] font-bold text-center uppercase tracking-widest">Click or Drop<br />Image Here</span>
+                  <span className="text-[10px] font-bold text-center uppercase tracking-widest">Lock a Location<br />Across All Scenes</span>
                 </label>
               )}
-              <input id="sidebar-ref-upload" type="file" accept="image/*" className="hidden" onChange={handleFrameReferenceSelect} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+              <input id="env-lock-upload" type="file" accept="image/*" className="hidden" onChange={handleEnvironmentSelect} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
             </div>
+            <p className="text-[9px] text-[#57707A] font-medium mt-1.5 leading-relaxed">Every frame keeps this location's terrain, landmarks and lighting. Clear it to let scenes roam.</p>
           </div>
 
           <div className="flex flex-col gap-3">
@@ -2743,7 +3225,7 @@ export function StorytellingSetup({
 
       </div>
 
-      <AssetSelectionModal open={libraryTarget !== null} onClose={() => setLibraryTarget(null)} onSelect={handleLibrarySelect} />
+      <AssetSelectionModal open={libraryTarget !== null} onClose={() => setLibraryTarget(null)} onSelect={handleLibrarySelect} mediaType={libraryTarget?.kind === 'motionVideo' ? 'video' : 'image'} />
 
       {previewModalImg && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#191D23]/90 backdrop-blur-md animate-in fade-in" onClick={() => setPreviewModalImg(null)}>

@@ -18,17 +18,20 @@ interface AssetSelectionModalProps {
     open: boolean;
     onClose: () => void;
     onSelect: (url: string) => void;
+    // ✨ 'video' shows generated scene videos (from video_urls) as playable thumbnails
+    mediaType?: 'image' | 'video';
 }
 
 interface AssetRow {
     id: string;
     caption: string | null;
     image_urls: string[] | null;
+    video_urls: string[] | null;
     content_type: string;
     created_at: string;
 }
 
-export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionModalProps) {
+export function AssetSelectionModal({ open, onClose, onSelect, mediaType = 'image' }: AssetSelectionModalProps) {
     const { clientId } = useClient();
     const { activeBrand } = useBrandStore(); // ✨ 2. Get active brand
 
@@ -47,16 +50,17 @@ export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionM
             try {
                 const { data, error } = await supabase
                     .from("content")
-                    .select("id, caption, image_urls, content_type, created_at")
+                    .select("id, caption, image_urls, video_urls, content_type, created_at")
                     .eq("client_id", clientId)
                     .eq("brand_id", activeBrand!.id) // ✨ 4. Isolate by Brand!
-                    .not("image_urls", "is", null)
                     .order("created_at", { ascending: false })
                     .limit(100);
 
                 if (!cancelled && data) {
-                    // Only keep rows that actually have image URLs
-                    setAssets(data.filter((r: AssetRow) => r.image_urls && r.image_urls.length > 0));
+                    // Keep rows that carry the media kind we're selecting for
+                    setAssets(data.filter((r: AssetRow) => mediaType === 'video'
+                        ? (r.video_urls && r.video_urls.length > 0)
+                        : (r.image_urls && r.image_urls.length > 0)));
                 }
                 if (error) console.error("AssetSelectionModal fetch error:", error);
             } catch (err) {
@@ -68,25 +72,29 @@ export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionM
 
         fetchAssets();
         return () => { cancelled = true; };
-    }, [open, clientId, activeBrand?.id]); // ✨ 5. Add activeBrand.id to dependency array
+    }, [open, clientId, activeBrand?.id, mediaType]); // ✨ 5. Add activeBrand.id to dependency array
 
-    // Flatten all image URLs from all content rows
+    // Flatten media URLs — images (skip audio/video) or videos, by mediaType
     const allImages = useMemo(() => {
         const imgs: { url: string; caption: string; contentType: string }[] = [];
         for (const asset of assets) {
-            for (const url of asset.image_urls || []) {
-                // Only include image-like URLs (skip audio, video files)
-                const lower = url.toLowerCase();
-                if (lower.endsWith(".mp3") || lower.endsWith(".mp4") || lower.endsWith(".wav") || lower.endsWith(".webm")) continue;
-                imgs.push({
-                    url,
-                    caption: asset.caption || "",
-                    contentType: asset.content_type,
-                });
+            if (mediaType === 'video') {
+                for (const url of asset.video_urls || []) {
+                    const lower = url.toLowerCase();
+                    if (!(lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov"))) continue;
+                    imgs.push({ url, caption: asset.caption || "", contentType: asset.content_type });
+                }
+            } else {
+                for (const url of asset.image_urls || []) {
+                    // Only include image-like URLs (skip audio, video files)
+                    const lower = url.toLowerCase();
+                    if (lower.endsWith(".mp3") || lower.endsWith(".mp4") || lower.endsWith(".wav") || lower.endsWith(".webm")) continue;
+                    imgs.push({ url, caption: asset.caption || "", contentType: asset.content_type });
+                }
             }
         }
         return imgs;
-    }, [assets]);
+    }, [assets, mediaType]);
 
     // Filter by search term
     const filtered = useMemo(() => {
@@ -112,10 +120,10 @@ export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionM
                 <DialogHeader className="border-b border-[#57707A]/20 pb-4">
                     <DialogTitle className="flex items-center gap-2 text-xl font-display text-[#DEDCDC]">
                         <FolderOpen className="h-5 w-5 text-[#C5BAC4]" />
-                        Select from Library
+                        {mediaType === 'video' ? 'Select a Video' : 'Select from Library'}
                     </DialogTitle>
                     <DialogDescription className="text-[#989DAA] font-medium">
-                        Choose an image from your uploaded assets.
+                        {mediaType === 'video' ? 'Choose a generated video from your library.' : 'Choose an image from your uploaded assets.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -160,11 +168,21 @@ export function AssetSelectionModal({ open, onClose, onSelect }: AssetSelectionM
                                         "focus:outline-none focus:ring-2 focus:ring-[#C5BAC4] focus:ring-offset-2 focus:ring-offset-[#2A2F38]"
                                     )}
                                 >
-                                    <img
-                                        src={img.url}
-                                        alt={img.caption || "Asset"}
-                                        className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
-                                    />
+                                    {mediaType === 'video' ? (
+                                        <video
+                                            src={img.url}
+                                            muted
+                                            playsInline
+                                            preload="metadata"
+                                            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
+                                        />
+                                    ) : (
+                                        <img
+                                            src={img.url}
+                                            alt={img.caption || "Asset"}
+                                            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
+                                        />
+                                    )}
                                     {/* Hover overlay */}
                                     <div className="absolute inset-0 bg-gradient-to-t from-[#191D23]/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3">
                                         <span className="text-[10px] font-bold text-[#DEDCDC] leading-tight line-clamp-2 drop-shadow-md">
