@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useReducer, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import { Sparkles, Image as ImageIcon, Box, LayoutGrid, UploadCloud, X, Loader2, Wand2, RefreshCw, Eraser, CheckCircle, Layers, Download, Share2, Briefcase, Info, FolderOpen } from "lucide-react";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
@@ -14,9 +14,25 @@ import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
+import { checkReferenceEngineCompatibility, willAttachReference } from "@/lib/image-generation-guards";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
+import { useAssistedCreationStore } from "@/app/store/useAssistedCreationStore";
 import { selectCreativeDirection, assemblePrompt } from "@/lib/creative-direction";
+import { AssistedCreation } from "@/components/creation/AssistedCreation";
+import { ImageGenerationStatus } from "@/components/creation/ImageGenerationStatus";
+import { IMAGE_STUDIO_ALLOWED_FORMATS, type AssistedCreativeDirection } from "@/lib/assisted-creation";
+import {
+  imageGenerationReducer,
+  initialImageGenerationStatus,
+  isActive,
+  isTerminal,
+  leavePageWarning,
+  type BillingState,
+} from "@/lib/image-generation-state";
+import { mintIdempotencyKey, submitGenerationJob } from "@/lib/generation-job-client";
+import { clearActiveImageJob, durableImageJobsEnabled, persistActiveImageJob, readActiveImageJob } from "@/lib/durable-image-jobs";
+import { useObservedGenerationJob } from "@/lib/use-observed-generation-job";
 
 // --- Configuration ---
 const IMAGE_MODES = [
@@ -51,7 +67,7 @@ const MARKETING_STYLES = [
   {
     id: "brand",
     label: "✨ Brand Integrated (Logo)",
-    promptAddon: `Reference: Supreme box logo integration, Hermès leather embossing. CRITICAL: Render the provided logo with exact fidelity — do not redraw or reinterpret letterforms. Logo appears as a physical material application.`,
+    promptAddon: `Image 1 is the brand's own logo and must be used as the identity reference. Integrate it naturally into the scene as a printed mark, embossed detail, label, packaging graphic, or surface application. Preserve its proportions, recognizable shapes, and brand colors. Do not invent another logo, brand name, or lettering. Keep the mark clear, undistorted, and appropriately sized within the composition. Build the surrounding product scene, lighting, materials, and atmosphere around this supplied brand asset.`,
   },
   {
     id: "abstract",
@@ -75,6 +91,10 @@ interface GeneratedResult {
 export default function ImageStudioPage() {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore(); // ✨ Hooked into activeBrand to force re-renders
+  const assistedDraft = useAssistedCreationStore((state) => state.draft);
+  const assistedHydrated = useAssistedCreationStore((state) => state.hasHydrated);
+  const revealAssistedAdvanced = useAssistedCreationStore((state) => state.revealAdvanced);
+  const setAssistedHandoff = useAssistedCreationStore((state) => state.setHandoff);
 
   // --- State: Core ---
   const [selectedMode, setSelectedMode] = useState("standard");
@@ -85,8 +105,74 @@ export default function ImageStudioPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [numImages, setNumImages] = useState(1);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [genStatus, dispatchGen] = useReducer(imageGenerationReducer, initialImageGenerationStatus);
+  const isGenerating = isActive(genStatus);
   const [generatedResults, setGeneratedResults] = useState<GeneratedResult[]>([]);
+
+  // --- Slice 5 Increment 3: durable job seam (OFF by default; the synchronous
+  //     path below remains the compatibility fallback until live n8n async
+  //     acknowledgement/status-writing is authorized). ---
+  const [durableEnabled] = useState(() => durableImageJobsEnabled());
+  const [observedContentId, setObservedContentId] = useState<string | null>(null);
+  const submittingRef = useRef(false);          // one submission per action
+  const actionKeyRef = useRef<string | null>(null); // stable idempotency key within an action
+  const lastJobContentIdRef = useRef<string | null>(null); // retry-parent lineage
+  const durablePromptRef = useRef<string>("");
+
+  // Warn before leaving the page while a generation is in flight.
+  useEffect(() => {
+    if (leavePageWarning(genStatus) === null) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [genStatus]);
+
+  // Observe exactly one durable job (Increment 3). Snapshots are authoritative and
+  // are synced into the existing unified status; a durable terminal stops observation.
+  useObservedGenerationJob(observedContentId, {
+    onSnapshot: (snapshot) => {
+      dispatchGen({ type: "sync", status: snapshot.status });
+      if (snapshot.status.generationState === "succeeded" && snapshot.imageUrls.length > 0) {
+        setGeneratedResults((prev) => {
+          const fresh = snapshot.imageUrls.map((url, index) => ({
+            id: `${snapshot.contentId}:${index}`, url, prompt: durablePromptRef.current, mode: selectedMode,
+          }));
+          const others = prev.filter((result) => !result.id.startsWith(`${snapshot.contentId}:`));
+          return [...fresh, ...others];
+        });
+      }
+      // Honest local timeout keeps observing; a DURABLE terminal ends it.
+      if (!snapshot.observationTimedOut && isTerminal(snapshot.status)) {
+        clearActiveImageJob(snapshot.contentId);
+        setObservedContentId(null);
+      }
+    },
+    onError: (error) => {
+      if (error.code === "unauthorized") toast.error("Your session expired. Please sign in again.");
+    },
+  });
+
+  // Restore an in-flight durable job after refresh/navigation — OBSERVE the
+  // existing job, never resubmit it. Guarded and idempotent.
+  useEffect(() => {
+    if (!durableEnabled || !activeBrand || !clientId) return;
+    if (observedContentId || submittingRef.current || isActive(genStatus)) return;
+    const restored = readActiveImageJob(activeBrand.id);
+    if (restored) {
+      // Reveal the studio surface so the restored job's status/results are visible
+      // (the status panel lives inside the advanced controls).
+      revealAssistedAdvanced(activeBrand.id);
+      // Establish the restored job as the retry parent: if it later resolves
+      // failed/refunded and the user retries, the new placeholder must carry
+      // retry_of_content_id === this restored id (lineage survives navigation).
+      lastJobContentIdRef.current = restored;
+      setObservedContentId(restored);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [durableEnabled, activeBrand?.id, clientId]);
 
   // --- State: Brand Context ---
   const [brandContext, setBrandContext] = useState<any>(null);
@@ -103,6 +189,34 @@ export default function ImageStudioPage() {
   const [isRefining, setIsRefining] = useState(false);
 
   const activeConfig = IMAGE_MODES.find(m => m.id === selectedMode)!;
+
+  const revealAdvancedControls = () => {
+    if (activeBrand) revealAssistedAdvanced(activeBrand.id);
+    window.setTimeout(() => document.getElementById("advanced-creation-controls")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+
+  const handoffAssistedDirection = (direction: AssistedCreativeDirection) => {
+    if (activeBrand) setAssistedHandoff(activeBrand.id, direction);
+    setPrompt(direction.summary);
+    setSelectedStyle(direction.style);
+    setSelectedMode("standard");
+    revealAdvancedControls();
+    toast.success("Creative direction is ready in the existing studio controls.");
+  };
+
+  const currentAssistedDraft = assistedDraft?.brandId === activeBrand?.id ? assistedDraft : null;
+  const showAdvancedControls = currentAssistedDraft?.advancedRevealed === true;
+
+  useEffect(() => {
+    if (!assistedHydrated || !currentAssistedDraft?.handoff) return;
+    // Format-honesty quarantine: a legacy handoff derived from a video/carousel
+    // direction must not silently populate image generation controls.
+    const handoffDirection = currentAssistedDraft.direction;
+    if (handoffDirection && !IMAGE_STUDIO_ALLOWED_FORMATS.includes(handoffDirection.outputType)) return;
+    setPrompt(currentAssistedDraft.handoff.prompt);
+    setSelectedStyle(currentAssistedDraft.handoff.style);
+    setSelectedMode(currentAssistedDraft.handoff.mode);
+  }, [assistedHydrated, currentAssistedDraft?.handoff, currentAssistedDraft?.direction]);
 
   // --- Load Brand Context on Mount & Brand Switch ---
   useEffect(() => {
@@ -169,7 +283,7 @@ export default function ImageStudioPage() {
         setPrompt(data.suggestion);
       }
     } catch (err: any) {
-      alert(`Prompt helper failed: ${err.message}`);
+      toast.error(`Prompt helper failed: ${err.message}`);
     } finally {
       setIsHelpLoading(false);
     }
@@ -221,14 +335,126 @@ export default function ImageStudioPage() {
   };
 
   // --- Main Generation Logic ---
-  const handleGenerate = async () => {
+  // Durable path (guarded): placeholder → submit → observe. Preserves retry-parent
+  // lineage, prevents duplicate submissions, and leaves the synchronous path below
+  // untouched. Only reached when durable jobs are enabled.
+  const handleGenerateDurable = async (opts?: { retry?: boolean }) => {
+    if (submittingRef.current) return; // one submission per action (closes the click/rerender race)
+    submittingRef.current = true;
+    dispatchGen({ type: opts?.retry ? "retry" : "start" });
+    try {
+      let activePrompt = prompt.trim();
+      if (activePrompt.length < 10) {
+        try {
+          const helperRes = await fetch("/api/ai/prompt-helper", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: activePrompt, brandContext, useBrand: !!activeBrand, mode: selectedMode, style: MARKETING_STYLES.find((s) => s.id === selectedStyle) }),
+          });
+          const helperData = await helperRes.json();
+          if (helperData.suggestion) { activePrompt = helperData.suggestion; setPrompt(helperData.suggestion); }
+        } catch { /* non-fatal */ }
+      }
+
+      const idempotencyKey = actionKeyRef.current ?? mintIdempotencyKey();
+      actionKeyRef.current = idempotencyKey; // stable within this action
+      const retryOfContentId = opts?.retry ? lastJobContentIdRef.current ?? undefined : undefined;
+
+      const placeholder = await submitGenerationJob({
+        brandId: activeBrand!.id,
+        mode: selectedMode,
+        aspectRatio: selectedAspect,
+        idempotencyKey,
+        retryOfContentId,
+      });
+      if (!placeholder.ok) {
+        dispatchGen({ type: "failed", errorCode: placeholder.code, message: "Couldn't start generation. Please try again.", billing: "not_charged" });
+        return;
+      }
+      lastJobContentIdRef.current = placeholder.contentId;
+      persistActiveImageJob(activeBrand!.id, placeholder.contentId);
+
+      // Assemble (reusing the pure director/prompt builders) and submit ONCE.
+      // Live async n8n status-writing is separately gated, so this is fire-and-forget:
+      // durable state is read from the job row via the observer, not this response.
+      const referenceUrls = [...libraryUrls];
+      if (selectedStyle === "brand" && brandContext?.logoUrl) referenceUrls.unshift(brandContext.logoUrl);
+      const activeStyleObj = MARKETING_STYLES.find((s) => s.id === selectedStyle);
+      const brandConstraint = brandContext?.name
+        ? `CRITICAL BRAND CONSTRAINT: This content belongs to the brand "${brandContext.name}". Do NOT invent fictional brand names, fake website URLs, placeholder logos, or generic company names.`
+        : "";
+      const creativeDirection = selectCreativeDirection(brandContext ?? {}, { topic: activePrompt, style: selectedStyle, mode: selectedMode, customTypography: customTypography.trim() || undefined });
+      const { prompt: finalPrompt, negativePrompt } = assemblePrompt(activePrompt, creativeDirection, brandContext ?? {}, activeStyleObj?.promptAddon ?? "", brandConstraint, customTypography.trim() || undefined);
+      durablePromptRef.current = finalPrompt;
+
+      void triggerWorkflow("blink-generate-images", {
+        client_id: clientId,
+        brand_id: activeBrand!.id,
+        // Durable correlation contract (Slice 5, Increment 3): these three fields
+        // tie this async submission to the placeholder the future n8n status writer
+        // must update. All derive from the SUCCESSFUL placeholder response/action —
+        // none is independently generated, and none carries tenant or billing
+        // authority (post_id ownership is re-verified server-side).
+        //   post_id         — the durable placeholder content row (== observed == persisted id)
+        //   job_id          — explicit alias of post_id for the job-oriented status writer
+        //   idempotency_key — the once-per-action key that created the placeholder
+        post_id: placeholder.contentId,
+        job_id: placeholder.jobId,
+        idempotency_key: idempotencyKey,
+        mode: selectedMode,
+        prompt: activePrompt,
+        assembled_prompt: finalPrompt,
+        negative_prompt: negativePrompt,
+        reference_image_urls: referenceUrls,
+        kie_model: selectedImageEngine === "nb2" ? "nano-banana-2" : selectedImageEngine,
+        aspect_ratio: selectedAspect,
+        style: selectedStyle,
+        imageEngine: selectedImageEngine,
+        logo_url: brandContext?.logoUrl ?? undefined,
+        is_sync: false,
+      }).catch(() => { /* durable state is observed from the job row */ });
+
+      setObservedContentId(placeholder.contentId); // observe → drives status + results
+    } catch {
+      dispatchGen({ type: "failed", errorCode: "generation_error", message: "Couldn't start generation. Please try again.", billing: "not_charged" });
+    } finally {
+      submittingRef.current = false;
+      actionKeyRef.current = null;
+    }
+  };
+
+  const handleGenerate = async (opts?: { retry?: boolean }) => {
+    // Never start a second request while one is in flight — a retry must not
+    // duplicate a running generation.
+    if (isActive(genStatus)) return;
     if (!clientId) return toast.error("Session lost. Please refresh.");
     if (!activeBrand) return toast.error("Please select a brand workspace first.");
     const totalRefs = files.length + libraryUrls.length;
     if (activeConfig.requiresUpload && totalRefs === 0) return toast.error("Please upload or pick an image from your content grid.");
     if ((selectedMode === "grid" || selectedMode === "organic_blend") && totalRefs < 2) return toast.error("This mode requires at least 2 images.");
 
-    setIsGenerating(true);
+    // Reject an incompatible engine/reference combination BEFORE the workflow charges credits.
+    // Brand Integrated attaches the logo; a text-to-image engine cannot use it and would only
+    // deduct, fail at the provider, then need a refund.
+    const engineCheck = checkReferenceEngineCompatibility({
+      engine: selectedImageEngine,
+      willAttachReference: willAttachReference({
+        style: selectedStyle,
+        hasBrandLogo: !!brandContext?.logoUrl,
+        uploadCount: files.length,
+        libraryCount: libraryUrls.length,
+      }),
+    });
+    if (!engineCheck.ok) return toast.error(engineCheck.reason);
+
+    // Guarded rollout seam: when durable jobs are enabled, take the placeholder →
+    // submit → observe path and NEVER also run the synchronous path below.
+    if (durableEnabled) {
+      void handleGenerateDurable(opts);
+      return;
+    }
+
+    dispatchGen({ type: opts?.retry ? "retry" : "start" });
 
     const { addTask, removeTask } = useWorkflowStore.getState();
     const taskId = `img-gen-${Date.now()}`;
@@ -346,17 +572,22 @@ export default function ImageStudioPage() {
         is_sync: true,
       };
 
+      dispatchGen({ type: "generating" });
       const settled = await Promise.allSettled(
         Array.from({ length: totalImages }).map(() => triggerWorkflow("blink-generate-images", workflowPayload))
       );
 
       const newUrls: string[] = [];
       let safetyMessage: string | null = null;
+      // Billing truth from the workflow, when it reports it. A safety refusal
+      // refunds; an explicit `refunded: false` means charged-but-failed.
+      let failureBilling: BillingState | null = null;
       for (const result of settled) {
         if (result.status === "fulfilled" && result.value) {
           const r = result.value as any;
           if (r.success === false) {
             if (r.message) safetyMessage = r.message;
+            if (typeof r.refunded === "boolean") failureBilling = r.refunded ? "refunded" : "charged";
             continue;
           }
           const urls: string[] = Array.isArray(r.imageUrls) ? r.imageUrls : r.imageUrls ? [r.imageUrls] : [];
@@ -364,8 +595,16 @@ export default function ImageStudioPage() {
         }
       }
 
-      if (newUrls.length === 0) throw new Error(safetyMessage || "No images were returned from the generator.");
+      if (newUrls.length === 0) {
+        const message = safetyMessage || "No images were returned from the generator.";
+        // Absent an explicit flag, a returned safety refusal is refunded by n8n.
+        const billing: BillingState = failureBilling ?? (safetyMessage ? "refunded" : "refund_pending");
+        dispatchGen({ type: "failed", errorCode: safetyMessage ? "safety_blocked" : "no_images", message, billing });
+        toast.error(`Generation failed: ${message}`);
+        return;
+      }
 
+      dispatchGen({ type: "saving" });
       const newResults: GeneratedResult[] = [];
       for (const url of newUrls) {
         const { data: contentRecord, error } = await supabase
@@ -387,14 +626,21 @@ export default function ImageStudioPage() {
       }
 
       setGeneratedResults(prev => [...newResults, ...prev]);
+      dispatchGen({ type: "succeeded" });
       toast.success(`${newResults.length} image${newResults.length !== 1 ? "s" : ""} generated and saved.`);
 
     } catch (error: any) {
       console.error(error);
-      toast.error(`Generation failed: ${error.message || "Unknown error"}`);
+      const message = error?.message || "Unknown error";
+      const timedOut = error?.name === "AbortError" || /timed out/i.test(message);
+      if (timedOut) {
+        dispatchGen({ type: "timed_out", message });
+      } else {
+        dispatchGen({ type: "failed", errorCode: "generation_error", message, billing: "refund_pending" });
+      }
+      toast.error(`Generation failed: ${message}`);
     } finally {
       removeTask(taskId);
-      setIsGenerating(false);
     }
   };
 
@@ -511,7 +757,14 @@ export default function ImageStudioPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <AssistedCreation
+        brandId={activeBrand.id}
+        brandName={brandContext?.name || activeBrand.brand_name || "your brand"}
+        onCustomize={revealAdvancedControls}
+        onContinue={handoffAssistedDirection}
+      />
+
+      {showAdvancedControls && <div id="advanced-creation-controls" className="grid grid-cols-1 lg:grid-cols-12 gap-6 scroll-mt-20">
         {/* LEFT COLUMN: Controls */}
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-[#2A2F38] rounded-xl border border-[#57707A]/30 p-5 shadow-lg space-y-4">
@@ -778,7 +1031,7 @@ export default function ImageStudioPage() {
 
             <div className="mt-auto pt-6 border-t border-[#57707A]/30 flex justify-end relative z-10">
               <Button
-                onClick={handleGenerate}
+                onClick={() => handleGenerate()}
                 disabled={isGenerating || (activeConfig.requiresUpload && (files.length + libraryUrls.length) === 0) || isHelpLoading || (selectedStyle === 'brand' && !brandContext?.logoUrl)}
                 className="bg-[#C5BAC4] hover:bg-white text-[#191D23] h-12 px-8 font-bold shadow-lg shadow-[#C5BAC4]/20 transition-all relative overflow-hidden rounded-xl disabled:opacity-50"
               >
@@ -794,6 +1047,9 @@ export default function ImageStudioPage() {
               </Button>
             </div>
           </div>
+
+          {/* PERSISTENT GENERATION STATUS — unified generation/billing/retry contract */}
+          <ImageGenerationStatus status={genStatus} onRetry={() => handleGenerate({ retry: true })} />
 
           {/* RESULTS AREA */}
           {(isGenerating || generatedResults.length > 0) && (
@@ -851,7 +1107,7 @@ export default function ImageStudioPage() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* ✨ FULLY FUNCTIONAL REFINEMENT MODAL ✨ */}
       <Dialog open={!!selectedResult} onOpenChange={(open) => !open && setSelectedResult(null)}>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { testModeEnabled } from '@/lib/test-mode'
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,8 +55,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    // For testing mode: immediately sign in the user after signup
-    if (process.env.NEXT_PUBLIC_TESTING_MODE === 'true' && data.user) {
+    // For non-production test mode only: immediately sign in the user after signup.
+    // Never runs in a production build (see testModeEnabled: NODE_ENV gate).
+    if (testModeEnabled() && data.user) {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,

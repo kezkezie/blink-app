@@ -76,10 +76,9 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    client_id: clientId,
                     mode: "scene_video_generator",
                     video_mode: "xray_image",
-                    primary_image_url: imageUrl
+                    content_id: contentId
                 })
             });
 
@@ -92,8 +91,8 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
             } else {
                 throw new Error("Invalid schema format returned from AI.");
             }
-        } catch (err: any) {
-            setErrorMessage(`X-Ray failed: ${err.message}`);
+        } catch (err: unknown) {
+            setErrorMessage(`X-Ray failed: ${err instanceof Error ? err.message : "Unknown error"}`);
         } finally {
             setIsExtracting(false);
         }
@@ -135,7 +134,7 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
 
     // 🧠 2. APPLY EDITS
     const handleApplyEdits = async () => {
-        if (!schema || !imageUrl) return;
+        if (!schema || !imageUrl || !clientId) return;
         setIsGenerating(true);
         setErrorMessage(null);
 
@@ -143,7 +142,9 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
             setGeneratingStep("Uploading replacements...");
             const uploadedReplacementUrls: Record<string, string> = {};
             for (const [objId, file] of Object.entries(replacementImages)) {
-                const path = `edits/replacement_${Date.now()}_${file.name}`;
+                const extension = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+                const safeObjectId = objId.replace(/[^A-Za-z0-9._:-]/g, "_").slice(0, 64);
+                const path = `edits/${clientId}/${contentId}/replacement_${Date.now()}_${safeObjectId}.${extension}`;
                 await supabase.storage.from("assets").upload(path, file);
                 uploadedReplacementUrls[objId] = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
             }
@@ -155,9 +156,7 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
                 body: JSON.stringify({
                     mode: "scene_video_generator",
                     video_mode: "json_image_edit",
-                    client_id: clientId,
-                    post_id: contentId,
-                    primary_image_url: imageUrl,
+                    content_id: contentId,
                     json_schema: schema,
                     replacements: uploadedReplacementUrls,
                     kie_model: editEngine
@@ -170,8 +169,8 @@ export function SemanticImageEditor({ contentId, initialImageUrl }: SemanticImag
             setGeneratingStep("Done! Redirecting...");
             setTimeout(() => router.push(`/dashboard/content/${contentId}?processing=true`), 800);
 
-        } catch (err: any) {
-            setErrorMessage(`Edit failed: ${err.message}`);
+        } catch (err: unknown) {
+            setErrorMessage(`Edit failed: ${err instanceof Error ? err.message : "Unknown error"}`);
             setIsGenerating(false);
         }
     };

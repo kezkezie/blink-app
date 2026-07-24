@@ -493,6 +493,7 @@ type StoryboardScene = any & {
   aiModel?: string;
   useEndFrame?: boolean;
   duration?: string;
+  location?: string; // ✨ scene location label from the Director (Env Lock is scene 1's location)
   prunaDraft?: boolean;
   audioPrompt?: string;
   seedanceImages?: (File | null)[];
@@ -805,6 +806,18 @@ export function StorytellingSetup({
   useEffect(() => {
     setStyleLockUrl(localStorage.getItem(STYLE_LOCK_KEY) || null);
   }, [STYLE_LOCK_KEY]);
+
+  // ✨ COMIC MODE — one 2×2 four-panel comic image tells the whole story,
+  // coherent by construction (one generation = consistent character/outfit/style +
+  // readable plot). Shareable on its own; any panel can be animated into a
+  // start-frame-only video. Persisted per brand.
+  const COMIC_KEY = `blink_comic::${brandKeySuffix}`;
+  const [studioMode, setStudioMode] = useState<'storyboard' | 'comic'>('storyboard');
+  const [comicUrl, setComicUrl] = useState<string | null>(null);
+  const [isGeneratingComic, setIsGeneratingComic] = useState(false);
+  useEffect(() => {
+    setComicUrl(localStorage.getItem(COMIC_KEY) || null);
+  }, [COMIC_KEY]);
 
   // ✨ Start-frame-only: skip end frames (half the image credits; end frames often
   // don't improve outcome). Persisted per brand. Comic panel animation always uses
@@ -1129,6 +1142,7 @@ export function StorytellingSetup({
           prompt: finalPrompt,
           imagePrompt: finalImagePrompt,
           endFramePrompt: finalEndFramePrompt,
+          location: aiData.location || "",
           // ✨ FIX: Safely catch snake_case or camelCase keys from the AI
           aiModel: finalModel,
           duration: aiData.duration ? String(aiData.duration) : scene.duration,
@@ -1360,6 +1374,19 @@ export function StorytellingSetup({
         previousUrl = liveScenes[slotIndex - 1]?.secondaryPreview || liveScenes[slotIndex - 1]?.primaryPreview || null;
       }
 
+      // ✨ Location-aware Environment Lock: the lock is the story's STARTING
+      // location (scene 1). It applies only while the story stays there; when the
+      // plot moves elsewhere, release the lock AND drop the cross-cut continuity
+      // frame so a new location renders clean (no forest-in-prison blend).
+      const lockLocation = (liveScenes[0]?.location || '').trim().toLowerCase();
+      const sceneLocation = (liveScenes[slotIndex]?.location || scene.location || '').trim().toLowerCase();
+      const envMatchesLock = !lockLocation || !sceneLocation || sceneLocation === lockLocation;
+      const effectiveEnvLock = envMatchesLock ? environmentLockUrl : null;
+      if (type === 'primary' && slotIndex > 0) {
+        const prevLocation = (liveScenes[slotIndex - 1]?.location || '').trim().toLowerCase();
+        if (prevLocation && sceneLocation && prevLocation !== sceneLocation) previousUrl = null;
+      }
+
       // Resolve locked actors by slot (A/B/C) so multi-actor scenes keep every
       // cast member. When a genre is active, use the cached genre variant of each
       // actor (generated once, reused everywhere) instead of restyling per frame —
@@ -1443,7 +1470,7 @@ export function StorytellingSetup({
         characterRefA: characterSheetUrlA,
         characterRefB: characterSheetUrlB,
         characterRefC: characterSheetUrlC,
-        environmentRefImage: environmentLockUrl,
+        environmentRefImage: effectiveEnvLock,
         frame_role: type === 'secondary' ? 'end' : 'start',
         client_id: clientId,
         post_id: placeholder.id,
@@ -1602,6 +1629,111 @@ export function StorytellingSetup({
     }
 
     setIsGeneratingAllImages(false);
+  };
+
+  // ✨ COMIC MODE — one coherent 2×2 comic image instead of N chained frames.
+  const handleGenerateComic = async () => {
+    if (!clientId) return;
+    if (!activeBrand?.id) return alert("Please select a brand workspace first.");
+    if (!bRollConcept.trim()) return alert("Write your story in the Master Story Concept box first.");
+    setIsGeneratingComic(true);
+    try {
+      // 1. Director → 4 coherent beats (reuses plot / wardrobe / dialogue rules).
+      const directorData = await callN8n('director', {
+        clientId,
+        prompt: `Concept: ${bRollConcept}\n\nBreak this into EXACTLY 4 sequential story beats (establish, develop, turn, resolve) for a 4-panel comic. For each beat write a short 'image_prompt' describing the panel visually, plus key spoken 'dialogue'.`,
+        style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
+        consistencyMode: modelConsistency,
+        startFrameOnly: true
+      });
+      const beats = ensureArray(directorData.scenes || []).slice(0, 4);
+      if (beats.length === 0) throw new Error("The Director didn't return any panels — try rephrasing your concept.");
+      const panelLines = beats.map((b: any, i: number) =>
+        `Panel ${i + 1}: ${b.image_prompt || b.video_prompt || ''}${b.dialogue ? ` Caption: "${b.dialogue}"` : ''}`
+      ).join(' ');
+
+      // 2. Locked character refs so identity holds across every panel.
+      const lockedActors = (enableCharacterLock
+        ? selectedActors.map(id => actors.find(a => a.id === id)).filter(Boolean)
+        : []) as ActorProfile[];
+      const styleLabel = selectedStyle !== 'none' ? (VISUAL_STYLES.find(s => s.id === selectedStyle)?.label || null) : null;
+      const customStyle = selectedStyle === 'none' && styleLockUrl ? styleLockUrl : null;
+
+      const comicPrompt = `A single 2x2 four-panel comic strip telling a short story, read left-to-right then top-to-bottom. Clear white panel gutters separating four distinct panels. Legible comic captions and speech bubbles. The SAME character(s) and the SAME complete outfit in every panel — consistent faces, proportions and wardrobe across all four panels. ${panelLines}`;
+
+      // 3. One async generation (placeholder row + poll) — same contract as frames.
+      const { data: placeholder, error: phError } = await supabase.from('content').insert({
+        client_id: clientId, brand_id: activeBrand?.id ?? null, content_type: 'post_image',
+        caption: `Comic: ${bRollConcept.slice(0, 60)}`, status: 'draft', generation_status_text: 'Queued...', ai_model: 'nano-banana-2'
+      }).select('id').single();
+      if (phError || !placeholder) throw new Error("Could not create a tracking row for the comic.");
+
+      try {
+        await callN8n('generator', {
+          prompt: comicPrompt,
+          characterRefA: lockedActors[0]?.stitchedSheetUrl || null,
+          characterRefB: lockedActors[1]?.stitchedSheetUrl || null,
+          characterRefC: lockedActors[2]?.stitchedSheetUrl || null,
+          styleRefImage: customStyle,
+          client_id: clientId, post_id: placeholder.id,
+          style_label: styleLabel,
+          actor_names: lockedActors.map(a => a.name),
+          imageEngine: 'nb2',
+        });
+      } catch (queueErr) {
+        await supabase.from('content').delete().eq('id', placeholder.id);
+        throw queueErr;
+      }
+
+      let url: string | null = null;
+      for (let attempt = 0; attempt < 180; attempt++) {
+        await new Promise(r => setTimeout(r, 5000));
+        const { data: row } = await supabase.from('content').select('image_urls,status,generation_status_text').eq('id', placeholder.id).single();
+        if (row?.status === 'failed') throw new Error(row.generation_status_text || 'Comic generation failed. Credits refunded.');
+        const urls = ensureArray(row?.image_urls || []).filter(Boolean);
+        if (urls.length > 0) { url = urls[0]; break; }
+      }
+      if (!url) {
+        await supabase.from('content').update({ status: 'failed', generation_status_text: 'Timed out client-side — the comic may still arrive in your Library.' }).eq('id', placeholder.id);
+        throw new Error("The comic is taking unusually long — check your Library shortly.");
+      }
+      setComicUrl(url);
+      localStorage.setItem(COMIC_KEY, url);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Comic generation failed: ${err.message}`);
+    } finally {
+      setIsGeneratingComic(false);
+    }
+  };
+
+  // ✨ Crop one panel of the 2×2 comic and seed it as a new start-frame-only scene.
+  const animateComicPanel = async (panelIndex: number) => {
+    if (!comicUrl || !clientId) return;
+    try {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error("Could not load the comic image.")); img.src = comicUrl; });
+      const pw = Math.floor(img.naturalWidth / 2), ph = Math.floor(img.naturalHeight / 2);
+      const sx = (panelIndex % 2) * pw, sy = Math.floor(panelIndex / 2) * ph;
+      const canvas = document.createElement('canvas');
+      canvas.width = pw; canvas.height = ph;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error("Canvas unavailable.");
+      ctx.drawImage(img, sx, sy, pw, ph, 0, 0, pw, ph);
+      const blob = await new Promise<Blob>((res, rej) => canvas.toBlob(b => b ? res(b) : rej(new Error("Crop failed")), 'image/png'));
+      const path = `videos/${clientId}/comic_panel_${Date.now()}.png`;
+      await supabase.storage.from('assets').upload(path, blob);
+      const panelUrl = supabase.storage.from('assets').getPublicUrl(path).data.publicUrl;
+
+      const newScene = { ...makeDefaultScenes()[0], primaryPreview: panelUrl, useEndFrame: false, prompt: '' };
+      setBRollScenes(prev => [...prev, newScene]);
+      setStudioMode('storyboard');
+      alert(`Panel ${panelIndex + 1} added as a new scene's start frame. Pick a video model, write its motion prompt, then Generate Scene Video.`);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Could not animate panel: ${err.message}`);
+    }
   };
 
   const handleGenerateSingleVideo = async (slotIndex: number) => {
@@ -2118,7 +2250,7 @@ export function StorytellingSetup({
   };
 
   return (
-    <div className="flex flex-row gap-6 animate-in fade-in duration-500 w-full items-start pb-10">
+    <div className="flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500 w-full items-start pb-10">
 
       {/* ✨ RENDER CASTING ROOM MODAL */}
       <CastingRoomModal
@@ -2167,26 +2299,72 @@ export function StorytellingSetup({
       </Dialog>
 
       {/* ── LEFT PANE: STORYBOARD ROWS ── */}
-      <div className="flex-1 w-full flex flex-col gap-6 relative">
+      {/* min-w-0 lets flex-1 actually shrink; without it content min-width forces
+          horizontal overflow and pushes the right pane off-screen on laptops. */}
+      <div className="flex-1 min-w-0 w-full flex flex-col gap-6 relative">
 
         {/* Storyboard Header */}
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xl font-bold text-[#DEDCDC] flex items-center gap-2 font-display">
-              <Film className="h-5 w-5 text-[#C5BAC4]" /> Visual Storyboard
+              <Film className="h-5 w-5 text-[#C5BAC4]" /> {studioMode === 'comic' ? 'Comic Studio' : 'Visual Storyboard'}
             </h3>
-            <p className="text-sm text-[#989DAA] mt-1 font-medium">Write prompts, pick images, and generate videos.</p>
+            <p className="text-sm text-[#989DAA] mt-1 font-medium">{studioMode === 'comic' ? 'One coherent comic image tells the whole story — then animate any panel.' : 'Write prompts, pick images, and generate videos.'}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              "text-xs font-bold px-3.5 py-1.5 rounded-lg border uppercase tracking-wider",
-              hasAnyImages ? "bg-[#B3FF00]/10 border-[#B3FF00]/30 text-[#B3FF00] shadow-sm" : "bg-[#2A2F38] border-[#57707A]/30 text-[#57707A]"
-            )}>
-              {filledImageSlots}/{totalImageSlots} Images
-            </span>
+          <div className="flex items-center gap-3">
+            {/* ✨ Mode toggle: Storyboard | Comic */}
+            <div className="flex items-center bg-[#191D23] p-1 rounded-xl border border-[#57707A]/40 shadow-inner">
+              <button onClick={() => setStudioMode('storyboard')} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all", studioMode === 'storyboard' ? "bg-[#C5BAC4] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>Storyboard</button>
+              <button onClick={() => setStudioMode('comic')} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all", studioMode === 'comic' ? "bg-[#C5BAC4] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>Comic</button>
+            </div>
+            {studioMode === 'storyboard' && (
+              <span className={cn(
+                "text-xs font-bold px-3.5 py-1.5 rounded-lg border uppercase tracking-wider",
+                hasAnyImages ? "bg-[#B3FF00]/10 border-[#B3FF00]/30 text-[#B3FF00] shadow-sm" : "bg-[#2A2F38] border-[#57707A]/30 text-[#57707A]"
+              )}>
+                {filledImageSlots}/{totalImageSlots} Images
+              </span>
+            )}
           </div>
         </div>
 
+        {/* ✨ COMIC CANVAS — one image, whole story */}
+        {studioMode === 'comic' && (
+          <div className="flex flex-col gap-5">
+            <div className="relative w-full aspect-video rounded-2xl border-2 border-dashed border-[#57707A]/40 bg-[#191D23]/50 overflow-hidden flex items-center justify-center shadow-inner">
+              {comicUrl ? (
+                <img src={comicUrl} className="w-full h-full object-contain" />
+              ) : isGeneratingComic ? (
+                <div className="flex flex-col items-center gap-3 text-[#989DAA]">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#C5BAC4]" />
+                  <span className="text-xs font-bold uppercase tracking-widest">Drawing your comic…</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-[#57707A] px-8 text-center">
+                  <Images className="w-8 h-8" />
+                  <span className="text-xs font-bold uppercase tracking-widest">Your 4-panel comic appears here</span>
+                  <span className="text-[10px] text-[#57707A]">Write your story in Master Story Concept, then Generate Comic.</span>
+                </div>
+              )}
+            </div>
+
+            {comicUrl && !isGeneratingComic && (
+              <div className="grid grid-cols-2 gap-2.5">
+                {[0, 1, 2, 3].map(i => (
+                  <button key={i} onClick={() => animateComicPanel(i)} className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] hover:text-[#191D23] hover:bg-[#C5BAC4] hover:border-[#C5BAC4] text-[11px] font-bold transition-all">
+                    <Video className="w-3.5 h-3.5" /> Animate Panel {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <Button onClick={handleGenerateComic} disabled={isGeneratingComic} className="w-full h-12 bg-[#B3FF00] text-[#191D23] hover:bg-[#B3FF00]/90 font-bold rounded-xl shadow-lg text-sm disabled:opacity-60">
+              {isGeneratingComic ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating…</>) : (<><Sparkles className="w-4 h-4 mr-2" /> {comicUrl ? 'Regenerate Comic' : 'Generate Comic'}</>)}
+            </Button>
+          </div>
+        )}
+
+        {studioMode === 'storyboard' && (<>
         {/* Scenes List */}
         <div className="flex flex-col space-y-8">
           {bRollScenes.map((scene, index) => {
@@ -2359,7 +2537,7 @@ export function StorytellingSetup({
                       </label>
                     )}
 
-                    {!isSeedance2 && !isGeminiOmniVideo && (
+                    {!isSeedance2 && !isGeminiOmniVideo && !startFrameOnly && (
                       <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
                         <input
                           type="checkbox"
@@ -2970,13 +3148,14 @@ export function StorytellingSetup({
         <Button onClick={addEmptyScene} variant="outline" className="w-full mt-2 border-dashed border-2 border-[#57707A]/50 bg-[#191D23]/50 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/50 hover:bg-[#2A2F38]/80 py-8 rounded-2xl font-bold transition-all shadow-inner text-sm">
           <Plus className="mr-2 h-5 w-5" /> Add Another Scene
         </Button>
+        </>)}
       </div>
 
       {/* ── RIGHT PANE: DIRECTOR & PREVIEW ── */}
       {/* Pins beside the storyboard so it stays visible no matter how many scenes
           exist; if the Director itself is taller than the viewport it scrolls
           internally instead of forcing a full-page scroll. */}
-      <div className="w-full lg:w-[400px] shrink-0 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-100px)] lg:overflow-y-auto custom-scrollbar flex flex-col gap-6 z-20">
+      <div className="w-full xl:w-[400px] shrink-0 xl:sticky xl:top-6 xl:self-start xl:max-h-[calc(100vh-100px)] xl:overflow-y-auto custom-scrollbar flex flex-col gap-6 z-20">
         {/* CARD 1: MASTER DIRECTOR */}
         <div className="bg-[#2A2F38] rounded-2xl border border-[#57707A]/30 shadow-xl relative overflow-hidden">
           {/* Card header */}
@@ -3134,6 +3313,18 @@ export function StorytellingSetup({
               {VISUAL_STYLES.map(s => <option key={s.id} value={s.id} className="bg-[#191D23]">{s.label}</option>)}
             </select>
           </div>
+
+          {/* ✨ Start-frame-only — skip end frames to halve image credits */}
+          <button
+            onClick={toggleStartFrameOnly}
+            title="Skip end frames. Halves image credits; end frames rarely improve the outcome. Turn off for morph/reveal shots."
+            className="w-full mb-5 flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-[#191D23] border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-all"
+          >
+            <span className="text-[10px] font-bold text-[#989DAA] uppercase tracking-wider">Start frame only</span>
+            <span className={cn("relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0", startFrameOnly ? "bg-[#C5BAC4]" : "bg-[#57707A]/40")}>
+              <span className={cn("inline-block h-3.5 w-3.5 transform rounded-full bg-[#191D23] transition-transform", startFrameOnly ? "translate-x-4" : "translate-x-1")} />
+            </span>
+          </button>
 
           {(() => {
             const isCustomStyleMode = selectedStyle === 'none';

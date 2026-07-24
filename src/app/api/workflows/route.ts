@@ -1,77 +1,95 @@
-// app/api/workflows/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import {
+  authenticateExecutionRequest,
+  authorizeGenericExecutionPayload,
+  authorizeImageWorkflow,
+  isExecutionBodySizeAllowed,
+  parseImageWorkflowRequest,
+} from "@/lib/execution-security";
 
-const ALLOWED_PATHS = [
-  'blink-generate-images',
-  'blink-generate-video-v1',
-  'blink-approval-response',
-  'blink-brand-extract-001',
-  'blink-suggest-visual',
-];
+const ALLOWED_PATHS = new Set([
+  "blink-generate-images",
+  "blink-generate-video-v1",
+  "blink-approval-response",
+  "blink-brand-extract-001",
+  "blink-suggest-visual",
+]);
+
+function securityResponse(result: { status: number; error: string }) {
+  return NextResponse.json({ error: result.error }, { status: result.status });
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll() { return req.cookies.getAll(); }, setAll() {} } }
-    );
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authenticated = await authenticateExecutionRequest(req);
+    if (!authenticated.ok) return securityResponse(authenticated);
 
-    // Get the target workflow path from the URL
     const path = req.nextUrl.searchParams.get("path");
-    if (!path)
-      return NextResponse.json(
-        { error: "Missing workflow path" },
-        { status: 400 }
-      );
+    if (!path) return NextResponse.json({ error: "Missing workflow path" }, { status: 400 });
+    if (!ALLOWED_PATHS.has(path)) return NextResponse.json({ error: "Invalid workflow path" }, { status: 400 });
+    if (!isExecutionBodySizeAllowed(req)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-    if (!ALLOWED_PATHS.includes(path))
-      return NextResponse.json({ error: "Invalid workflow path" }, { status: 400 });
-
-    // Ensure this matches your live n8n URL
-    const n8nBaseUrl =
-      process.env.NEXT_PUBLIC_N8N_WEBHOOK_BASE ||
-      "https://n8n.srv1166077.hstgr.cloud/webhook";
+    const n8nBaseUrl = process.env.N8N_WEBHOOK_BASE
+      || process.env.NEXT_PUBLIC_N8N_WEBHOOK_BASE
+      || "https://n8n.srv1166077.hstgr.cloud/webhook";
     const targetUrl = `${n8nBaseUrl}/${path}`;
-
     const contentType = req.headers.get("content-type") || "";
-    let response;
+    let response: Response;
 
     if (contentType.includes("multipart/form-data")) {
-      // Forward Image Uploads (FormData)
+      if (path === "blink-generate-images") {
+        return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+      }
       const formData = await req.formData();
-      response = await fetch(targetUrl, {
-        method: "POST",
-        body: formData,
-      });
+      const identityFields: Record<string, string> = {};
+      for (const key of ["client_id", "clientId", "brand_id", "brandId", "post_id", "postId"]) {
+        const value = formData.get(key);
+        if (typeof value === "string") identityFields[key] = value;
+      }
+      const authorized = await authorizeGenericExecutionPayload(authenticated.value, identityFields);
+      if (!authorized.ok) return securityResponse(authorized);
+      for (const key of ["client_id", "clientId", "brand_id", "brandId", "post_id", "postId"]) {
+        const value = authorized.value[key];
+        if (typeof value === "string") formData.set(key, value);
+      }
+      response = await fetch(targetUrl, { method: "POST", body: formData });
     } else {
-      // Forward Data (JSON)
-      const body = await req.json();
+      if (!contentType.includes("application/json")) {
+        return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+      }
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+      }
+
+      let payload: Record<string, unknown>;
+      if (path === "blink-generate-images") {
+        const parsed = parseImageWorkflowRequest(body);
+        if (!parsed) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+        const authorized = await authorizeImageWorkflow(authenticated.value, parsed);
+        if (!authorized.ok) return securityResponse(authorized);
+        payload = authorized.value;
+      } else {
+        const authorized = await authorizeGenericExecutionPayload(authenticated.value, body);
+        if (!authorized.ok) return securityResponse(authorized);
+        payload = authorized.value;
+      }
+
       response = await fetch(targetUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
     }
 
     if (!response.ok) {
-      console.error(`n8n responded with status: ${response.status}`);
-      return NextResponse.json(
-        { error: `n8n error: ${response.status}` },
-        { status: response.status }
-      );
+      return NextResponse.json({ error: "Generation service request failed" }, { status: 502 });
     }
-
     const data = await response.json().catch(() => ({ success: true }));
     return NextResponse.json(data);
-  } catch (error) {
-    console.error("Proxy Error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

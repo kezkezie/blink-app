@@ -196,9 +196,30 @@ export interface SocialAccount {
   connected_at: string;
 }
 
+// Slice 3 durable state dimensions (kept distinct in storage; see Slice 4 migration).
+export type GenerationStateValue =
+  | "idle"
+  | "preparing"
+  | "queued"
+  | "generating"
+  | "saving"
+  | "succeeded"
+  | "failed"
+  | "timed_out";
+export type BillingStateValue =
+  | "not_charged"
+  | "charged"
+  | "refund_pending"
+  | "refunded"
+  | "refund_failed";
+export type RetryStateValue = "none" | "retry_available" | "retrying";
+
 export interface Content {
   id: string;
   client_id: string;
+  // Reconciles the documented type/schema drift (plan §15): live code and the
+  // generation envelope both scope content by brand.
+  brand_id: string | null;
   content_type: ContentType;
   caption: string | null;
   caption_short: string | null;
@@ -219,6 +240,21 @@ export interface Content {
   rejection_reason: string | null;
   variant_group: string | null;
   variant_label: string | null;
+  // --- Slice 4: minimum durable image-generation job envelope ---
+  generation_state: GenerationStateValue | null;
+  billing_state: BillingStateValue | null;
+  retry_state: RetryStateValue | null;
+  generation_status_text: string | null;
+  generation_error_code: string | null;
+  provider_task_id: string | null;
+  credit_cost: number | null;
+  generation_idempotency_key: string | null;
+  generation_attempt: number | null;
+  retry_of_content_id: string | null;
+  creation_metadata_version: number | null;
+  creation_metadata: Record<string, unknown> | null;
+  generation_started_at: string | null;
+  generation_completed_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,21 +1,33 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authorizeSocialScope, hasOnlyKeys } from "@/lib/postforme-route-auth";
 
-export async function POST(req: Request) {
+const ALLOWED_PLATFORMS = new Set([
+  "instagram", "facebook", "linkedin", "tiktok", "youtube", "pinterest", "threads", "bluesky", "x",
+]);
+
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
-    // ✨ FIXED: Changed 'const' to 'let' so we can safely reassign 'platform'
-    let { platform, clientId } = body;
+    if (!hasOnlyKeys(body, ["platform", "clientId", "brandId"])) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+    let { platform } = body;
+    const { clientId, brandId } = body;
 
     if (platform === "twitter") {
       platform = "x";
     }
 
-    if (!platform || !clientId) {
+    if (typeof platform !== "string" || !ALLOWED_PLATFORMS.has(platform)) {
       return NextResponse.json(
-        { error: "Platform and clientId are required" },
+        { error: "Invalid platform" },
         { status: 400 }
       );
+    }
+
+    const authorization = await authorizeSocialScope(req, clientId, brandId);
+    if (!authorization.ok) {
+      return NextResponse.json({ error: authorization.error }, { status: authorization.status });
     }
 
     const apiKey = process.env.POSTFORME_API_KEY;
@@ -29,7 +41,7 @@ export async function POST(req: Request) {
     }
 
     // platform_data is required by PostForMe for Instagram, Facebook, and LinkedIn
-    const platformData: Record<string, any> = {};
+    const platformData: Record<string, Record<string, string>> = {};
     if (platform === "instagram") {
       platformData.instagram = { connection_type: "facebook" };
     } else if (platform === "facebook") {
@@ -39,9 +51,9 @@ export async function POST(req: Request) {
     }
 
     // redirect_url is set statically in the PostForMe dashboard (Quickstart Projects block runtime overrides)
-    const requestBody: Record<string, any> = {
+    const requestBody: Record<string, unknown> = {
       platform: platform,
-      external_id: clientId,
+      external_id: authorization.scope.clientId,
       permissions: ["posts", "feeds"],
     };
 
@@ -65,9 +77,8 @@ export async function POST(req: Request) {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error("Post For Me Error:", data);
       return NextResponse.json(
-        { error: data.message || "Failed to generate connection link" },
+        { error: "Failed to generate connection link" },
         { status: response.status }
       );
     }

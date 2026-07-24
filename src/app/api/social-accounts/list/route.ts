@@ -1,15 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authorizeSocialScope } from "@/lib/postforme-route-auth";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    if ([...searchParams.keys()].some((key) => key !== "clientId")) {
+      return NextResponse.json({ error: "Invalid query parameters" }, { status: 400 });
+    }
     const clientId = searchParams.get("clientId");
 
-    if (!clientId) {
-      return NextResponse.json(
-        { error: "clientId is required" },
-        { status: 400 }
-      );
+    const authorization = await authorizeSocialScope(req, clientId);
+    if (!authorization.ok) {
+      return NextResponse.json({ error: authorization.error }, { status: authorization.status });
     }
 
     const apiKey = process.env.POSTFORME_API_KEY;
@@ -19,7 +21,7 @@ export async function GET(req: Request) {
 
     // Fetch the live list of connected accounts for this specific client
     const response = await fetch(
-      `https://api.postforme.dev/v1/social-accounts?external_id=${clientId}`,
+      `https://api.postforme.dev/v1/social-accounts?external_id=${encodeURIComponent(authorization.scope.clientId)}`,
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -38,8 +40,12 @@ export async function GET(req: Request) {
     }
 
     // Return the array of accounts
-    return NextResponse.json({ accounts: data.data });
-  } catch (error) {
+    const accounts = Array.isArray(data.data)
+      ? data.data.filter((account: { external_id?: unknown }) => account.external_id === authorization.scope.clientId)
+      : [];
+
+    return NextResponse.json({ accounts });
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

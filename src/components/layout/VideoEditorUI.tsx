@@ -928,7 +928,7 @@ export function VideoEditorUI() {
           </div>
 
           <div className="flex-1 overflow-hidden p-6 flex items-center justify-center bg-[url('/checkers.png')] relative before:absolute before:inset-0 before:bg-[#191D23]/90">
-            <div ref={canvasRef} className="relative w-full max-w-3xl aspect-video bg-[#000000] rounded-lg shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden ring-1 ring-[#57707A]/50 z-10">
+            <div ref={canvasRef} className="relative aspect-video max-w-full max-h-full h-full w-auto mx-auto bg-[#000000] rounded-lg shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden ring-1 ring-[#57707A]/50 z-10">
 
               {videoClips.sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
                 const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart);
