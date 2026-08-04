@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow } from "@/lib/workflows";
+import { toast } from "sonner";
+import { AUTO_VIDEO_MODEL, VIDEO_MODEL_REGISTRY } from "@/lib/video-model-registry";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 
@@ -280,7 +282,7 @@ export default function VideoStudioPage() {
   }
 
   async function handleGenerateScenes() {
-    if (!bRollConcept.trim()) return alert("Please enter a concept first.");
+    if (!bRollConcept.trim()) { toast.warning("Please enter a concept first."); return; }
     setIsSuggesting(true);
     try {
       const res = await fetch("/api/video/storyboard", {
@@ -316,7 +318,7 @@ export default function VideoStudioPage() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to auto-generate sequence.");
+      toast.error("Failed to auto-generate sequence.");
     } finally {
       setIsSuggesting(false);
     }
@@ -354,11 +356,11 @@ export default function VideoStudioPage() {
   async function handleGenerate() {
     const safeClientId = hookClientId;
     if (!safeClientId) {
-      alert("User session not found. Please refresh the page and try again.");
+      toast.error("User session not found. Please refresh the page and try again.");
       return;
     }
     if (!activeBrand) {
-      alert("Please select a brand workspace first.");
+      toast.warning("Please select a brand workspace first.");
       return;
     }
 
@@ -367,7 +369,6 @@ export default function VideoStudioPage() {
     setProgressText("Uploading assets and queuing task...");
 
     const strictBrandAlignment = true; // Active brand is explicitly set
-    const brandName = activeBrand.brand_name || businessInfo.name;
 
     const { addTask, removeTask } = useWorkflowStore.getState();
     const taskId = `vid-gen-${Date.now()}`;
@@ -444,8 +445,6 @@ export default function VideoStudioPage() {
             secondary_image_url: sUrl,
             user_prompt: scene.prompt,
             is_sequence: false,
-            brand_name: brandName,
-            brand_info: businessInfo.desc,
             ai_model_override: targetModel,
             duration: scene.duration || duration,
             strict_brand_alignment: strictBrandAlignment,
@@ -557,8 +556,6 @@ export default function VideoStudioPage() {
         secondary_image_url: secondaryUrl,
         user_prompt: prompt,
         is_sequence: false,
-        brand_name: brandName,
-        brand_info: businessInfo.desc,
         ai_model_override: targetModel,
         strict_brand_alignment: strictBrandAlignment,
         aspect_ratio: aspectRatio,
@@ -783,13 +780,11 @@ export default function VideoStudioPage() {
                       Master AI Engine
                     </label>
                     <div className="flex flex-wrap rounded-lg border border-[#57707A]/40 bg-[#191D23]/60 p-0.5 gap-0.5">
+                      {/* Registry-driven: registering a model in
+                          `video-model-registry.ts` adds it here automatically. */}
                       {[
-                        { value: "auto", label: "🌟 Auto" },
-                        { value: "replicate:prunaai/p-video", label: "⚡ Pruna AI (Fast)" },
-                        { value: "replicate:openai/sora-2", label: "Sora 2 (Replicate)" },
-                        { value: "kling-3.0/video", label: "Kling 3.0" },
-                        { value: "bytedance/seedance-2", label: "Seedance 2 (Cinematic)" },
-                        { value: "bytedance/seedance-2-fast", label: "Seedance 2 (Fast)" },
+                        { value: AUTO_VIDEO_MODEL, label: "🌟 Auto" },
+                        ...Object.values(VIDEO_MODEL_REGISTRY).map((m) => ({ value: m.id, label: m.label })),
                       ].map((engine) => (
                         <button
                           key={engine.value}

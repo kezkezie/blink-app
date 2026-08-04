@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { PostHogProvider } from '@/providers/PostHogProvider';
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -58,6 +59,18 @@ export default function RootLayout({
       >
         <PostHogProvider>
           {children}
+          {/* Non-blocking notifications. `sonner` was already a dependency and
+              Image Studio already called `toast.*`, but no <Toaster/> was ever
+              mounted — so those messages were silently dropped. Mounting it here
+              is a prerequisite for replacing the video surfaces' blocking
+              alert() calls, and repairs the existing image notifications too. */}
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            theme="dark"
+            toastOptions={{ style: { background: "#2A2F38", color: "#DEDCDC", border: "1px solid rgba(87,112,122,0.4)" } }}
+          />
         </PostHogProvider>
       </body>
     </html>

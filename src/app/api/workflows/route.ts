@@ -6,9 +6,13 @@ import {
   isExecutionBodySizeAllowed,
   parseImageWorkflowRequest,
 } from "@/lib/execution-security";
+import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
+import { parseVideoWorkflowRequest } from "@/lib/video-execution";
+import { loadOwnedBrandCreativeContext, toVideoWorkflowFields } from "@/lib/brand-creative-context";
 
 const ALLOWED_PATHS = new Set([
   "blink-generate-images",
+  "blink-generate-images-async", // durable async lane (Slice 5) — same image contract
   "blink-generate-video-v1",
   "blink-approval-response",
   "blink-brand-extract-001",
@@ -52,7 +56,11 @@ export async function POST(req: NextRequest) {
         const value = authorized.value[key];
         if (typeof value === "string") formData.set(key, value);
       }
-      response = await fetch(targetUrl, { method: "POST", body: formData });
+      response = await fetch(targetUrl, {
+        method: "POST",
+        headers: process.env.N8N_WEBHOOK_SECRET ? { "x-blink-webhook-secret": process.env.N8N_WEBHOOK_SECRET } : {},
+        body: formData,
+      });
     } else {
       if (!contentType.includes("application/json")) {
         return NextResponse.json({ error: "Invalid request" }, { status: 400 });
@@ -65,12 +73,56 @@ export async function POST(req: NextRequest) {
       }
 
       let payload: Record<string, unknown>;
-      if (path === "blink-generate-images") {
+      if (path === "blink-generate-images" || path === "blink-generate-images-async") {
         const parsed = parseImageWorkflowRequest(body);
         if (!parsed) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
         const authorized = await authorizeImageWorkflow(authenticated.value, parsed);
         if (!authorized.ok) return securityResponse(authorized);
         payload = authorized.value;
+      } else if (path === "blink-generate-video-v1") {
+        // Strict, bounded video payload validation BEFORE any quota or n8n work,
+        // then canonical tenant/ownership resolution. Rejects unknown fields,
+        // unknown modes/models, invalid durations/aspects, and unsafe URLs.
+        const parsed = parseVideoWorkflowRequest(body);
+        if (!parsed) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+        const rateLimit = await consumeExecutionRateLimit(authenticated.value, "video_job");
+        if (!rateLimit.ok) {
+          return NextResponse.json(
+            { error: "Video service is temporarily unavailable" },
+            { status: 503, headers: { "Retry-After": "30", "Cache-Control": "no-store" } }
+          );
+        }
+        if (!rateLimit.allowed) {
+          return NextResponse.json(
+            { error: "Too many video requests. Please try again later.", retryAt: rateLimit.resetAt },
+            { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds), "Cache-Control": "no-store" } }
+          );
+        }
+        // Re-attach the format-validated identity fields so ownership is
+        // verified and only the canonical server-derived ids are forwarded.
+        const authorized = await authorizeGenericExecutionPayload(authenticated.value, {
+          ...parsed.payload,
+          ...(parsed.requestedClientId ? { client_id: parsed.requestedClientId } : {}),
+          ...(parsed.requestedBrandId ? { brand_id: parsed.requestedBrandId } : {}),
+          ...(parsed.postId ? { post_id: parsed.postId } : {}),
+        });
+        if (!authorized.ok) return securityResponse(authorized);
+        payload = authorized.value;
+
+        // V6: brand identity is server-owned. Whatever `brand_name`/`brand_info`
+        // the browser sent is DISCARDED and replaced with the canonical Brand
+        // Creative Context v1 for the ownership-verified brand, so no surface can
+        // send a brand's name or description on its behalf.
+        const canonicalBrandId = typeof payload.brand_id === "string" ? payload.brand_id : null;
+        if (canonicalBrandId) {
+          const brandContext = await loadOwnedBrandCreativeContext(authenticated.value, canonicalBrandId);
+          if (!brandContext.ok) return securityResponse({ status: brandContext.status, error: brandContext.error });
+          payload = { ...payload, ...toVideoWorkflowFields(brandContext.context) };
+        } else {
+          // No brand in scope: never forward browser-authored brand identity.
+          delete payload.brand_name;
+          delete payload.brand_info;
+        }
       } else {
         const authorized = await authorizeGenericExecutionPayload(authenticated.value, body);
         if (!authorized.ok) return securityResponse(authorized);
@@ -79,7 +131,10 @@ export async function POST(req: NextRequest) {
 
       response = await fetch(targetUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.N8N_WEBHOOK_SECRET ? { "x-blink-webhook-secret": process.env.N8N_WEBHOOK_SECRET } : {}),
+        },
         body: JSON.stringify(payload),
       });
     }

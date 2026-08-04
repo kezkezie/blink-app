@@ -41,10 +41,10 @@ beforeEach(() => {
   vi.stubGlobal("fetch", mocks.providerFetch);
   mocks.authenticate.mockResolvedValue({ ok: true, value: "user-1" });
   mocks.bodySizeAllowed.mockReturnValue(true);
-  mocks.parseJob.mockReturnValue({ brandId: BRAND_ID, idempotencyKey: "studio-abc123-def456", mode: "standard" });
+  mocks.parseJob.mockReturnValue({ brandId: BRAND_ID, idempotencyKey: "studio-abc123-def456", mode: "standard", imageEngine: "nb2" });
   mocks.createPlaceholder.mockResolvedValue({
     ok: true,
-    value: { id: "content-1", generationState: "queued", billingState: "not_charged", retryState: "none", attempt: 1, idempotent: false },
+    value: { id: "content-1", generationState: "queued", billingState: "not_charged", retryState: "none", attempt: 1, creditCost: 8, idempotent: false },
   });
   mocks.loadOwnedJob.mockResolvedValue({
     ok: true,
@@ -107,6 +107,7 @@ describe("POST /api/image-jobs", () => {
       billing_state: "not_charged",
       retry_state: "none",
       attempt: 1,
+      credit_cost: 8,
       idempotent: false,
     });
     expect(mocks.providerFetch).not.toHaveBeenCalled();
@@ -115,7 +116,7 @@ describe("POST /api/image-jobs", () => {
   it("returns 200 when the idempotency key returns an existing placeholder", async () => {
     mocks.createPlaceholder.mockResolvedValue({
       ok: true,
-      value: { id: "content-1", generationState: "queued", billingState: "not_charged", retryState: "retrying", attempt: 2, idempotent: true },
+      value: { id: "content-1", generationState: "queued", billingState: "not_charged", retryState: "retrying", attempt: 2, creditCost: 8, idempotent: true },
     });
     const response = await POST(request({ brand_id: BRAND_ID }));
     expect(response.status).toBe(200);

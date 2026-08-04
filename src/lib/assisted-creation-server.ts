@@ -1,10 +1,15 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
+import {
+  buildBrandCreativeContext,
+  loadOwnedBrandCreativeContext,
+  toAssistedBrandContext,
+} from "@/lib/brand-creative-context";
 import { CREATIVE_FORMATS, parseConcepts, type CreativeConcept, type CreativeFormat } from "@/lib/assisted-creation";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type AssistedCreationRequest =
-  | { operation: "concepts"; brandId: string; idea: string; allowedFormats?: readonly CreativeFormat[] }
+  | { operation: "concepts"; brandId: string; idea: string; inspirationImageUrl?: string; allowedFormats?: readonly CreativeFormat[] }
   | { operation: "direction"; brandId: string; idea: string; concept: CreativeConcept; allowedFormats?: readonly CreativeFormat[] };
 
 /**
@@ -70,63 +75,100 @@ export function parseAssistedCreationRequest(value: unknown): AssistedCreationRe
   const operation = input.operation;
   const brandId = clean(input.brandId, 36);
   const idea = clean(input.idea, 500);
-  if (!UUID_PATTERN.test(brandId) || !idea) return null;
+  // brandId is always required. `idea` is required for text-driven flows, but an
+  // image-driven concepts request may omit it (enforced per-operation below).
+  if (!UUID_PATTERN.test(brandId)) return null;
 
   const allowedFormats = parseAllowedFormats(input.allowedFormats);
   if (allowedFormats === null) return null;
   const capability = allowedFormats ? { allowedFormats } : {};
 
   if (operation === "concepts") {
-    return hasOnlyKeys(input, ["operation", "brandId", "idea", "allowedFormats"])
-      ? { operation, brandId, idea, ...capability }
-      : null;
+    if (!hasOnlyKeys(input, ["operation", "brandId", "idea", "inspirationImageUrl", "allowedFormats"])) return null;
+    // Optional inspiration image: a bounded https URL. Ownership is verified in the
+    // route (needs the DB); here we only validate shape. Concepts require an idea
+    // OR an inspiration image — an image alone is a valid, image-driven request.
+    const inspirationImageUrl = parseInspirationImageUrl(input.inspirationImageUrl);
+    if (inspirationImageUrl === null) return null;
+    if (!idea && !inspirationImageUrl) return null;
+    return { operation, brandId, idea, ...(inspirationImageUrl ? { inspirationImageUrl } : {}), ...capability };
   }
   if (operation !== "direction" || !hasOnlyKeys(input, ["operation", "brandId", "idea", "concept", "allowedFormats"])) return null;
+  if (!idea) return null; // developing a direction always has the originating idea
   const concept = parseConcepts({ concepts: [input.concept, input.concept, input.concept] })?.[0];
   return concept ? { operation, brandId, idea, concept, ...capability } : null;
 }
 
+/**
+ * Validate the OPTIONAL inspiration image URL's shape only (ownership is checked in
+ * the route against the DB). Returns `undefined` when absent, a bounded https URL
+ * string when valid, or `null` when malformed (caller rejects the whole request).
+ */
+export function parseInspirationImageUrl(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || value.length > 2048) return null;
+  let url: URL;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== "https:") return null;
+  return value;
+}
+
+/**
+ * Verify an inspiration image URL belongs to the authenticated client: it must be
+ * either a client-scoped Supabase asset path (`images|references|edits/<clientId>/…`)
+ * or a URL already stored on one of the client's own content rows. Prevents feeding
+ * an arbitrary/other-tenant image into the (billed) vision analysis.
+ */
+export async function verifyOwnedInspirationImage(
+  clientId: string,
+  url: string,
+): Promise<boolean> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (supabaseUrl) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.origin === new URL(supabaseUrl).origin) {
+        const path = decodeURIComponent(parsed.pathname);
+        const root = "/storage/v1/object/public/assets/";
+        if (path.startsWith(root)) {
+          const objectPath = path.slice(root.length);
+          if (["images/", "references/", "edits/"].some((p) => objectPath.startsWith(`${p}${clientId}/`))) {
+            return true;
+          }
+        }
+      }
+    } catch { /* fall through to owned-content check */ }
+  }
+  // Otherwise the URL must appear on one of the client's own content rows.
+  const { data, error } = await supabaseAdmin
+    .from("content")
+    .select("image_urls")
+    .eq("client_id", clientId)
+    .limit(1000);
+  if (error || !data) return false;
+  for (const row of data) {
+    const urls = Array.isArray(row.image_urls) ? row.image_urls : [];
+    if (urls.some((u) => typeof u === "string" && u === url)) return true;
+  }
+  return false;
+}
+
+/**
+ * V6: assembly now delegates to the shared Brand Creative Context v1 service.
+ * The returned shape is unchanged (`toAssistedBrandContext` is a byte-identical
+ * projection), so Image Studio behaviour and its prompt are untouched.
+ */
 export function buildAssistedBrandContext(client: CanonicalClient, brand: CanonicalBrand): AssistedBrandContext {
-  return {
-    name: clean(brand.brand_name, 80) || clean(brand.company_name, 80) || clean(client.company_name, 80),
-    companyName: clean(brand.company_name, 80) || clean(client.company_name, 80),
-    industry: clean(brand.industry, 80) || clean(client.industry, 80),
-    description: clean(brand.description, 600),
-    websiteUrl: clean(brand.website_url, 240) || clean(client.website_url, 240),
-    brandVoice: clean(brand.brand_voice, 240),
-    toneKeywords: stringList(brand.tone_keywords),
-    imageStyle: clean(brand.image_style, 240),
-    visualStyleGuide: clean(brand.visual_style_guide, 800),
-    compositionNotes: clean(brand.composition_notes, 400),
-    primaryColor: clean(brand.primary_color, 32),
-    secondaryColor: clean(brand.secondary_color, 32),
-    accentColor: clean(brand.accent_color, 32),
-    primaryFont: clean(brand.primary_font, 100),
-    secondaryFont: clean(brand.secondary_font, 100),
-    vocabularyNotes: clean(brand.vocabulary_notes, 400),
-    dos: clean(brand.dos, 400),
-    donts: clean(brand.donts, 400),
-  };
+  return toAssistedBrandContext(buildBrandCreativeContext(client, brand, ""));
 }
 
 export async function loadOwnedAssistedBrandContext(userId: string, brandId: string): Promise<BrandContextResult> {
-  const { data: client, error: clientError } = await supabaseAdmin
-    .from("clients")
-    .select("id, company_name, industry, website_url")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (clientError) return { ok: false, status: 500, error: "Unable to resolve brand context" };
-  if (!client) return { ok: false, status: 404, error: "Brand not found" };
-
-  const { data: brand, error: brandError } = await supabaseAdmin
-    .from("brand_profiles")
-    .select("brand_name, company_name, industry, description, website_url, brand_voice, tone_keywords, image_style, visual_style_guide, composition_notes, primary_color, secondary_color, accent_color, primary_font, secondary_font, vocabulary_notes, dos, donts")
-    .eq("id", brandId)
-    .eq("client_id", client.id)
-    .maybeSingle();
-
-  if (brandError) return { ok: false, status: 500, error: "Unable to resolve brand context" };
-  if (!brand) return { ok: false, status: 404, error: "Brand not found" };
-  return { ok: true, clientId: client.id, context: buildAssistedBrandContext(client, brand) };
+  // V6: one shared, server-owned loader for every creative surface.
+  const result = await loadOwnedBrandCreativeContext(userId, brandId);
+  if (!result.ok) return { ok: false, status: result.status, error: result.error };
+  return {
+    ok: true,
+    clientId: result.context.clientId,
+    context: toAssistedBrandContext(result.context),
+  };
 }

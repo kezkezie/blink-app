@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, Loader2, RefreshCw, RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, FolderOpen, ImageIcon, Loader2, RefreshCw, RotateCcw, Sparkles, UploadCloud, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { IMAGE_STUDIO_ALLOWED_FORMATS, type AssistedCreativeDirection, type CreativeConcept } from "@/lib/assisted-creation";
 import { useAssistedCreationStore } from "@/app/store/useAssistedCreationStore";
+import { useClient } from "@/hooks/useClient";
+import { supabase } from "@/lib/supabase";
+import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
+
+// A small fixed fee for the image → concepts vision call (mirrors the server).
+const INSPIRATION_ANALYSIS_COST = 1;
 
 /** Image Studio executes images only for now; video/carousel return via Create. */
 const isSupportedConcept = (concept: CreativeConcept) => IMAGE_STUDIO_ALLOWED_FORMATS.includes(concept.format);
@@ -29,6 +35,32 @@ export function AssistedCreation({ brandId, brandName, onCustomize, onContinue }
   const [error, setError] = useState<string | null>(null);
   const [confirmingStartOver, setConfirmingStartOver] = useState(false);
   const startOverConfirmRef = useRef<HTMLDivElement | null>(null);
+
+  // Inspiration image: an OPTIONAL reference the AI turns into 3 concepts (a paid
+  // GPT-4o vision call). The URL is an owned, scoped asset (upload or Content Grid).
+  const { clientId } = useClient();
+  const [inspirationUrl, setInspirationUrl] = useState<string | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function uploadInspiration(file: File) {
+    if (!clientId) { setError("Session lost. Please refresh."); return; }
+    setError(null);
+    setAttaching(true);
+    try {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `images/${clientId}/inspiration_${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("assets").upload(path, file);
+      if (uploadError) throw uploadError;
+      const url = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      setInspirationUrl(url);
+    } catch {
+      setError("Couldn't upload that image. Please try another.");
+    } finally {
+      setAttaching(false);
+    }
+  }
 
   // Bring the inline confirmation into view and move focus to its safe default
   // (keyboard and screen-reader users land on "Keep my draft").
@@ -67,6 +99,7 @@ export function AssistedCreation({ brandId, brandName, onCustomize, onContinue }
           idea: idea.trim(),
           allowedFormats: IMAGE_STUDIO_ALLOWED_FORMATS,
           ...(concept ? { concept } : {}),
+          ...(operation === "concepts" && inspirationUrl ? { inspirationImageUrl: inspirationUrl } : {}),
         }),
       });
       const data = await response.json();
@@ -133,10 +166,72 @@ export function AssistedCreation({ brandId, brandName, onCustomize, onContinue }
             placeholder="e.g. Create an ad that makes our soft blankets feel like the best part of coming home."
             className="min-h-28 bg-[#191D23] border-[#57707A]/45 text-[#DEDCDC] placeholder:text-[#57707A] rounded-xl"
           />
+
+          {/* Inspiration image → 3 concepts. Optional. Costs 1 credit (vision call). */}
+          <div className="rounded-xl border border-[#57707A]/30 bg-[#191D23]/40 p-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              aria-hidden="true"
+              tabIndex={-1}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void uploadInspiration(file);
+                event.target.value = "";
+              }}
+            />
+            {inspirationUrl ? (
+              <div className="flex items-center gap-3">
+                <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-[#C5BAC4]/40 shrink-0 bg-[#191D23]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={inspirationUrl} alt="Selected inspiration image" className="w-full h-full object-cover" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-[#DEDCDC] flex items-center gap-1.5"><ImageIcon className="h-4 w-4 text-[#C5BAC4]" aria-hidden="true" /> Inspiration image ready</p>
+                  <p className="text-[11px] text-[#989DAA] mt-0.5">Creating concepts from this image uses {INSPIRATION_ANALYSIS_COST} credit.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInspirationUrl(null)}
+                  aria-label="Remove inspiration image"
+                  className="ml-auto text-[#989DAA] hover:text-[#DEDCDC] p-1.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5BAC4]"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span id="inspiration-hint" className="text-[11px] text-[#989DAA] mr-1">
+                  Or start from an image — BlinkSpot reads it and gives you 3 concepts (uses {INSPIRATION_ANALYSIS_COST} credit).
+                </span>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={attaching || loading !== null}
+                  aria-describedby="inspiration-hint"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border border-[#57707A]/40 text-[#DEDCDC] hover:border-[#C5BAC4]/50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5BAC4]"
+                >
+                  {attaching ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <UploadCloud className="h-3.5 w-3.5" aria-hidden="true" />} Upload image
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  disabled={attaching || loading !== null}
+                  aria-describedby="inspiration-hint"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border border-[#57707A]/40 text-[#DEDCDC] hover:border-[#C5BAC4]/50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5BAC4]"
+                >
+                  <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /> Choose from Grid
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => request("concepts")} disabled={idea.trim().length < 8 || loading !== null} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-xl">
-              {loading === "concepts" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
-              {concepts.length ? "Create 3 new concepts" : "Develop my idea"}
+            <Button onClick={() => request("concepts")} disabled={(idea.trim().length < 8 && !inspirationUrl) || attaching || loading !== null} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-xl">
+              {loading === "concepts" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : inspirationUrl ? <ImageIcon className="h-4 w-4 mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
+              {inspirationUrl ? "Create concepts from image" : concepts.length ? "Create 3 new concepts" : "Develop my idea"}
             </Button>
             <button type="button" onClick={customize} className="text-xs font-bold text-[#989DAA] hover:text-[#DEDCDC] flex items-center gap-1.5 px-2 py-2">
               Customize advanced details <ChevronDown className="h-3.5 w-3.5" />
@@ -251,6 +346,13 @@ export function AssistedCreation({ brandId, brandName, onCustomize, onContinue }
           </div>
         </div>
       )}
+
+      <AssetSelectionModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(url) => { setInspirationUrl(url); setPickerOpen(false); }}
+        mediaType="image"
+      />
     </section>
   );
 }

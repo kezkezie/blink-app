@@ -14,12 +14,13 @@ import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
-import { checkReferenceEngineCompatibility, willAttachReference } from "@/lib/image-generation-guards";
+import { checkReferenceEngineCompatibility, isReferenceCapableEngine, willAttachReference } from "@/lib/image-generation-guards";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { useAssistedCreationStore } from "@/app/store/useAssistedCreationStore";
 import { selectCreativeDirection, assemblePrompt } from "@/lib/creative-direction";
 import { AssistedCreation } from "@/components/creation/AssistedCreation";
+import { LogoGenerator } from "@/components/creation/LogoGenerator";
 import { ImageGenerationStatus } from "@/components/creation/ImageGenerationStatus";
 import { IMAGE_STUDIO_ALLOWED_FORMATS, type AssistedCreativeDirection } from "@/lib/assisted-creation";
 import {
@@ -189,6 +190,19 @@ export default function ImageStudioPage() {
   const [isRefining, setIsRefining] = useState(false);
 
   const activeConfig = IMAGE_MODES.find(m => m.id === selectedMode)!;
+
+  // Reference/inspiration → engine compatibility (reactive, non-blocking guidance).
+  // A reference image (upload, Content Grid pick, or Brand logo) can only be used by
+  // a reference-capable engine; GPT Image 2 · T2I is text-only. We surface this
+  // inline and offer an explicit switch — we never silently drop the image or bill.
+  const willAttachInspiration = willAttachReference({
+    style: selectedStyle,
+    hasBrandLogo: !!brandContext?.logoUrl,
+    uploadCount: files.length,
+    libraryCount: libraryUrls.length,
+  });
+  const engineIsReferenceCapable = isReferenceCapableEngine(selectedImageEngine);
+  const showEngineIncompatibleGuidance = willAttachInspiration && !engineIsReferenceCapable;
 
   const revealAdvancedControls = () => {
     if (activeBrand) revealAssistedAdvanced(activeBrand.id);
@@ -363,6 +377,7 @@ export default function ImageStudioPage() {
       const placeholder = await submitGenerationJob({
         brandId: activeBrand!.id,
         mode: selectedMode,
+        imageEngine: selectedImageEngine,
         aspectRatio: selectedAspect,
         idempotencyKey,
         retryOfContentId,
@@ -377,7 +392,17 @@ export default function ImageStudioPage() {
       // Assemble (reusing the pure director/prompt builders) and submit ONCE.
       // Live async n8n status-writing is separately gated, so this is fire-and-forget:
       // durable state is read from the job row via the observer, not this response.
-      const referenceUrls = [...libraryUrls];
+      // Upload any user-provided files so durable jobs support upload-based modes
+      // (Product Drop, Grid, Organic) and inspiration uploads — not just library picks.
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const ext = file.name.split(".").pop() || "png";
+        const path = `images/${clientId}/studio_ref_${Date.now()}_${i}.${ext}`;
+        await supabase.storage.from("assets").upload(path, file);
+        uploadedUrls.push(supabase.storage.from("assets").getPublicUrl(path).data.publicUrl);
+      }
+      const referenceUrls = [...uploadedUrls, ...libraryUrls];
       if (selectedStyle === "brand" && brandContext?.logoUrl) referenceUrls.unshift(brandContext.logoUrl);
       const activeStyleObj = MARKETING_STYLES.find((s) => s.id === selectedStyle);
       const brandConstraint = brandContext?.name
@@ -387,7 +412,9 @@ export default function ImageStudioPage() {
       const { prompt: finalPrompt, negativePrompt } = assemblePrompt(activePrompt, creativeDirection, brandContext ?? {}, activeStyleObj?.promptAddon ?? "", brandConstraint, customTypography.trim() || undefined);
       durablePromptRef.current = finalPrompt;
 
-      void triggerWorkflow("blink-generate-images", {
+      // Durable jobs route to the dedicated async lane (Slice 5, #2): ack → atomic
+      // claim_and_charge → generate → status writes → claim_and_refund.
+      void triggerWorkflow("blink-generate-images-async", {
         client_id: clientId,
         brand_id: activeBrand!.id,
         // Durable correlation contract (Slice 5, Increment 3): these three fields
@@ -406,6 +433,8 @@ export default function ImageStudioPage() {
         assembled_prompt: finalPrompt,
         negative_prompt: negativePrompt,
         reference_image_urls: referenceUrls,
+        // GPT Image 2 · I2I consumes references via input_urls (matches the sync path).
+        ...(selectedImageEngine === "gpt-image-2-image-to-image" ? { input_urls: referenceUrls } : {}),
         kie_model: selectedImageEngine === "nb2" ? "nano-banana-2" : selectedImageEngine,
         aspect_ratio: selectedAspect,
         style: selectedStyle,
@@ -832,6 +861,7 @@ export default function ImageStudioPage() {
                   { id: "nb2", label: "Nano Banana 2", badge: "default" },
                   { id: "gpt-image-2-text-to-image", label: "GPT Image 2 · T2I", badge: "new" },
                   { id: "gpt-image-2-image-to-image", label: "GPT Image 2 · I2I", badge: "new" },
+                  { id: "z-image", label: "Z-Image", badge: "new" },
                 ] as const).map((engine) => (
                   <button
                     key={engine.id}
@@ -853,8 +883,32 @@ export default function ImageStudioPage() {
               </div>
               {selectedImageEngine === "gpt-image-2-image-to-image" && (
                 <p className="text-[10px] text-[#989DAA] leading-relaxed mt-1">
-                  Upload reference images in the Style Moodboard below — GPT Image 2 will transform them based on your prompt.
+                  GPT Image 2 · I2I transforms the inspiration images you add below, guided by your prompt.
                 </p>
+              )}
+              {selectedImageEngine === "gpt-image-2-text-to-image" && (
+                <p className="text-[10px] text-[#989DAA] leading-relaxed mt-1">
+                  GPT Image 2 · T2I is text-only — it generates purely from your prompt and cannot use an inspiration image.
+                </p>
+              )}
+              {/* Non-blocking: an inspiration image is attached but the engine can't use it. */}
+              {showEngineIncompatibleGuidance && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex flex-col gap-2 mt-2 bg-[#B3FF00]/8 border border-[#B3FF00]/30 rounded-xl px-3 py-2.5"
+                >
+                  <p className="text-[11px] text-[#DEDCDC] leading-relaxed">
+                    You added an inspiration image, but <b>GPT Image 2 · T2I is text-only</b> and can&apos;t use it. Switch to a reference-capable engine (Nano Banana 2 or GPT Image 2 · I2I) to use your image, or remove it to generate from your prompt alone.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedImageEngine("nb2")}
+                    className="self-start text-[11px] font-bold px-3 py-1.5 rounded-lg bg-[#C5BAC4] text-[#191D23] hover:bg-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5BAC4] focus-visible:ring-offset-2 focus-visible:ring-offset-[#2A2F38]"
+                  >
+                    Switch to Nano Banana 2
+                  </button>
+                </div>
               )}
             </div>
 
@@ -958,30 +1012,44 @@ export default function ImageStudioPage() {
             <div className="space-y-3 relative z-10">
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-sm font-bold text-[#DEDCDC]">
-                    Style Moodboard {activeConfig.requiresUpload && <span className="text-red-400 ml-1">*</span>}
-                  </label>
-                  <p className="text-[10px] text-[#57707A] mt-0.5 font-medium">
+                  <label id="inspiration-label" className="text-sm font-bold text-[#DEDCDC]">
                     {activeConfig.requiresUpload
                       ? activeConfig.id === "product_drop"
-                        ? "Upload the product you want placed into a scene"
-                        : "Upload the images you want composed together"
-                      : "Optional — upload images whose look, vibe, or composition you want the AI to recreate"}
+                        ? "Product image"
+                        : "Images to compose"
+                      : "Add an inspiration image"}
+                    {activeConfig.requiresUpload && <span className="text-red-400 ml-1" aria-hidden="true">*</span>}
+                    {activeConfig.requiresUpload && <span className="sr-only"> (required)</span>}
+                  </label>
+                  <p id="inspiration-help" className="text-[11px] text-[#989DAA] mt-1 font-medium leading-relaxed max-w-xl">
+                    {activeConfig.requiresUpload
+                      ? activeConfig.id === "product_drop"
+                        ? "Upload the product you want placed into a scene."
+                        : "Upload the images you want composed together."
+                      : "Optional — upload an existing design or choose one from your Content Grid. BlinkSpot can use its colors, composition, lighting, and overall visual direction as inspiration."}
                   </p>
                 </div>
-                <span className="text-xs text-[#989DAA] font-bold px-2 py-0.5 bg-[#191D23] rounded-md border border-[#57707A]/30 shrink-0 ml-3">{files.length} / {activeConfig.maxUploads}</span>
+                <span className="text-xs text-[#989DAA] font-bold px-2 py-0.5 bg-[#191D23] rounded-md border border-[#57707A]/30 shrink-0 ml-3" aria-label={`${files.length + libraryUrls.length} of ${activeConfig.maxUploads} images added`}>{files.length + libraryUrls.length} / {activeConfig.maxUploads}</span>
               </div>
+
+              {!activeConfig.requiresUpload && (
+                <ul className="text-[10px] text-[#989DAA] leading-relaxed space-y-1 list-disc pl-4 marker:text-[#57707A]">
+                  <li>Your image is a <b className="text-[#DEDCDC]">visual reference</b>, not an exact-copy instruction.</li>
+                  <li>In the <b className="text-[#DEDCDC]">Director&apos;s Prompt</b> above, say what to keep and what to change.</li>
+                  <li>Inspiration images need <b className="text-[#DEDCDC]">Nano Banana 2</b> or <b className="text-[#DEDCDC]">GPT Image 2 · I2I</b>. GPT Image 2 · T2I is text-only.</li>
+                </ul>
+              )}
 
               <div className="flex flex-wrap gap-4">
                 {/* Uploaded file previews */}
                 {previews.map((src, idx) => (
                   <div key={`file-${idx}`} className="relative w-24 h-24 rounded-xl border border-[#57707A]/40 overflow-hidden group shadow-sm bg-[#191D23]">
-                    <img src={src} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="upload preview" />
+                    <img src={src} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt={`Uploaded inspiration image ${idx + 1}`} />
                     {selectedMode === 'product_drop' && (
                       <div className="absolute inset-0 bg-black/40 pointer-events-none" style={{ backgroundImage: 'linear-gradient(45deg, #333 25%, transparent 25%), linear-gradient(-45deg, #333 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #333 75%), linear-gradient(-45deg, transparent 75%, #333 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px', zIndex: -1 }}></div>
                     )}
-                    <button onClick={() => removeFile(idx)} className="absolute top-1.5 right-1.5 bg-red-500/90 backdrop-blur-sm text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md hover:bg-red-500 hover:scale-110">
-                      <X className="w-3 h-3" />
+                    <button type="button" onClick={() => removeFile(idx)} aria-label={`Remove uploaded image ${idx + 1}`} className="absolute top-1.5 right-1.5 bg-red-500/90 backdrop-blur-sm text-white p-1 rounded-full opacity-90 hover:opacity-100 transition-all shadow-md hover:bg-red-500 hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:opacity-100">
+                      <X className="w-3 h-3" aria-hidden="true" />
                     </button>
                   </div>
                 ))}
@@ -989,44 +1057,61 @@ export default function ImageStudioPage() {
                 {/* Library-picked image previews */}
                 {libraryUrls.map((src, idx) => (
                   <div key={`lib-${idx}`} className="relative w-24 h-24 rounded-xl border border-[#C5BAC4]/40 overflow-hidden group shadow-sm bg-[#191D23]">
-                    <img src={src} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="library pick" />
+                    <img src={src} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt={`Content Grid inspiration image ${idx + 1}`} />
                     <div className="absolute bottom-1 left-1 bg-[#C5BAC4] text-[#191D23] text-[8px] font-bold px-1.5 py-0.5 rounded-full leading-none">Grid</div>
-                    <button onClick={() => removeLibraryUrl(idx)} className="absolute top-1.5 right-1.5 bg-red-500/90 backdrop-blur-sm text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md hover:bg-red-500 hover:scale-110">
-                      <X className="w-3 h-3" />
+                    <button type="button" onClick={() => removeLibraryUrl(idx)} aria-label={`Remove Content Grid image ${idx + 1}`} className="absolute top-1.5 right-1.5 bg-red-500/90 backdrop-blur-sm text-white p-1 rounded-full opacity-90 hover:opacity-100 transition-all shadow-md hover:bg-red-500 hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:opacity-100">
+                      <X className="w-3 h-3" aria-hidden="true" />
                     </button>
                   </div>
                 ))}
 
-                {/* Upload drop zone */}
+                {/* Upload drop zone (keyboard-operable via react-dropzone root) */}
                 {(files.length + libraryUrls.length) < activeConfig.maxUploads && (
                   <div
-                    {...getRootProps()}
+                    {...getRootProps({
+                      role: "button",
+                      "aria-label": activeConfig.requiresUpload ? "Upload an image" : "Upload an inspiration image",
+                      "aria-describedby": "inspiration-help",
+                    })}
                     className={cn(
-                      "w-24 h-24 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all",
+                      "w-24 h-24 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5BAC4] focus-visible:ring-offset-2 focus-visible:ring-offset-[#2A2F38]",
                       isDragActive ? "border-[#C5BAC4] bg-[#C5BAC4]/10 text-[#C5BAC4] scale-105" : "border-[#57707A]/50 bg-[#191D23]/50 text-[#57707A] hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 hover:text-[#989DAA]"
                     )}
                   >
                     <input {...getInputProps()} />
-                    <UploadCloud className="w-6 h-6 mb-1.5" />
+                    <UploadCloud className="w-6 h-6 mb-1.5" aria-hidden="true" />
                     <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight px-1">
-                      {isDragActive ? "Drop Here" : "Drag & Drop"}
+                      {isDragActive ? "Drop here" : "Upload image"}
                     </span>
                   </div>
                 )}
 
-                {/* From Content Library button */}
+                {/* Choose from Content Grid */}
                 {(files.length + libraryUrls.length) < activeConfig.maxUploads && (
                   <button
+                    type="button"
                     onClick={() => setIsLibraryOpen(true)}
-                    className="w-24 h-24 rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 text-[#57707A] hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 hover:text-[#989DAA] flex flex-col items-center justify-center cursor-pointer transition-all"
+                    aria-label="Choose an image from your Content Grid"
+                    aria-describedby="inspiration-help"
+                    className="w-24 h-24 rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23]/50 text-[#57707A] hover:border-[#C5BAC4]/50 hover:bg-[#57707A]/20 hover:text-[#989DAA] flex flex-col items-center justify-center cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5BAC4] focus-visible:ring-offset-2 focus-visible:ring-offset-[#2A2F38]"
                   >
-                    <FolderOpen className="w-6 h-6 mb-1.5" />
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight px-1">From Grid</span>
+                    <FolderOpen className="w-6 h-6 mb-1.5" aria-hidden="true" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight px-1">Choose from Grid</span>
                   </button>
                 )}
               </div>
               {selectedMode === 'product_drop' && <p className="text-[10px] text-[#B3FF00] font-bold mt-2 flex items-center gap-1.5 bg-[#B3FF00]/10 border border-[#B3FF00]/20 px-2 py-1.5 rounded-md w-fit"><CheckCircle className="w-3.5 h-3.5" /> Pro Tip: Use transparent PNGs for best results.</p>}
-              {selectedStyle === 'brand' && !brandContext?.logoUrl && <p className="text-[10px] text-red-400 font-bold mt-2 bg-red-500/10 border border-red-500/20 px-2 py-1.5 rounded-md w-fit">⚠️ Warning: No logo found in your Brand Profile. Please upload one in the settings.</p>}
+              {selectedStyle === 'brand' && !brandContext?.logoUrl && (
+                <>
+                  <p className="text-[10px] text-red-400 font-bold mt-2 bg-red-500/10 border border-red-500/20 px-2 py-1.5 rounded-md w-fit">⚠️ No logo found in your Brand Profile — upload one in settings, or generate one below.</p>
+                  {activeBrand && (
+                    <LogoGenerator
+                      brandId={activeBrand.id}
+                      onSaved={(logoUrl) => setBrandContext({ ...(brandContext ?? {}), logoUrl })}
+                    />
+                  )}
+                </>
+              )}
             </div>
 
             <div className="mt-auto pt-6 border-t border-[#57707A]/30 flex justify-end relative z-10">

@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
+import { LogoGenerator } from "@/components/creation/LogoGenerator";
 
 const parseArray = (data: any): any[] => {
   if (Array.isArray(data)) return data;
@@ -404,10 +405,18 @@ export default function BrandIdentityPage() {
                   <button onClick={removeLogo} className="absolute top-2 right-2 p-1.5 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="h-4 w-4 text-white" /></button>
                 </div>
               ) : (
-                <label className="h-40 w-full rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23] flex flex-col items-center justify-center cursor-pointer hover:border-[#C5BAC4]">
-                  <Plus className="h-8 w-8 text-[#57707A]" /><span className="text-xs font-bold text-[#989DAA] mt-2">UPLOAD LOGO</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadImage(e, "logo")} />
-                </label>
+                <>
+                  <label className="h-40 w-full rounded-xl border-2 border-dashed border-[#57707A]/50 bg-[#191D23] flex flex-col items-center justify-center cursor-pointer hover:border-[#C5BAC4]">
+                    <Plus className="h-8 w-8 text-[#57707A]" /><span className="text-xs font-bold text-[#989DAA] mt-2">UPLOAD LOGO</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadImage(e, "logo")} />
+                  </label>
+                  {activeBrand && (
+                    <LogoGenerator
+                      brandId={activeBrand.id}
+                      onSaved={(logoUrl) => setBrandProfile((prev) => ({ ...prev, logo_url: logoUrl }))}
+                    />
+                  )}
+                </>
               )}
             </div>
             <div className="rounded-2xl border border-[#57707A]/30 bg-[#2A2F38] p-8 shadow-lg">

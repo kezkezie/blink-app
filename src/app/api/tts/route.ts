@@ -1,41 +1,45 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateExecutionRequest } from "@/lib/execution-security";
+import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
+import { parseTtsRequest } from "@/lib/video-execution";
+import { openAiSpeech } from "@/lib/openai-proxy";
 
-export async function POST(req: Request) {
-    try {
-        const { text, voice = "onyx" } = await req.json();
+export async function POST(req: NextRequest) {
+  const authenticated = await authenticateExecutionRequest(req);
+  if (!authenticated.ok) return NextResponse.json({ error: authenticated.error }, { status: authenticated.status });
 
-        if (!text) return new NextResponse("Missing text", { status: 400 });
-        if (!process.env.OPENAI_API_KEY) return new NextResponse("Missing OpenAI API Key in env", { status: 500 });
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+  const input = parseTtsRequest(body);
+  if (!input) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-        const response = await fetch("https://api.openai.com/v1/audio/speech", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                model: "tts-1",
-                input: text,
-                voice: voice,
-            }),
-        });
+  const rateLimit = await consumeExecutionRateLimit(authenticated.value, "video_tts");
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: "Narration is temporarily unavailable" },
+      { status: 503, headers: { "Retry-After": "30", "Cache-Control": "no-store" } }
+    );
+  }
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many narration requests. Please try again later.", retryAt: rateLimit.resetAt },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds), "Cache-Control": "no-store" } }
+    );
+  }
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText);
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-
-        return new NextResponse(buffer, {
-            headers: {
-                "Content-Type": "audio/mpeg",
-                "Content-Disposition": `attachment; filename="narration.mp3"`,
-            },
-        });
-    } catch (error: any) {
-        console.error("TTS API Error:", error);
-        return new NextResponse(error.message, { status: 500 });
-    }
+  try {
+    const audio = await openAiSpeech(input.text, input.voice);
+    return new NextResponse(audio, {
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Content-Disposition": `attachment; filename="narration.mp3"`,
+      },
+    });
+  } catch {
+    return NextResponse.json({ error: "Failed to generate narration" }, { status: 502 });
+  }
 }

@@ -13,6 +13,35 @@ import { cn } from "@/lib/utils";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
 import type { VideoSetupProps } from "./types";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import type { SceneSpec } from "@/lib/scene-spec";
+import {
+  sceneSpecFromStoryboardScene,
+  sceneSpecsFromDirectorOutput,
+  sceneSpecsFromStoredSheetPanels,
+} from "@/lib/scene-spec-adapters";
+import { mintIdempotencyKey, submitVideoJob } from "@/lib/generation-job-client";
+import type { ImageGenerationStatus } from "@/lib/image-generation-state";
+import { summarizeSequence } from "@/lib/video-sequence-state";
+import { observeSceneSet, type SceneSetObserver, type SceneSnapshot } from "@/lib/video-job-observer";
+import {
+  modelSupportsEndFrame as registryModelSupportsEndFrame,
+  videoModelFamily,
+} from "@/lib/video-model-registry";
+import {
+  clearActiveSceneJob,
+  persistActiveSceneJob,
+  readActiveSceneJobs,
+  type PersistedSceneJob,
+} from "@/lib/durable-video-jobs";
+
+/** How long one scene may be observed before it is presented as stale. The job
+ *  is NOT cancelled — observation continues and a later durable terminal state
+ *  replaces the stale presentation. */
+const SCENE_STALE_MS = 15 * 60 * 1000;
+
+/** A generate call awaits either a durable terminal snapshot or "stale". */
+type SceneSettlement = SceneSnapshot | "stale";
 
 // ============================================================================
 // ✨ 1. ACTOR PROFILE TYPES & CASTING ROOM MODAL
@@ -69,9 +98,9 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
     setStylingActorId(actor.id);
     try {
       await onCreateVariant(actor, styleId, styleLabel);
-      if (alreadyExists) alert(`"${actor.name} · ${styleLabel}" is already in your cast.`);
+      if (alreadyExists) toast.warning(`"${actor.name} · ${styleLabel}" is already in your cast.`);
     } catch (err: any) {
-      alert(`Styling failed: ${err.message}`);
+      toast.error(`Styling failed: ${err.message}`);
     } finally {
       setStylingActorId(null);
     }
@@ -104,10 +133,10 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
   };
 
   const handleSaveAndStitch = async () => {
-    if (!actorName.trim()) return alert("Please name your actor.");
+    if (!actorName.trim()) { toast.warning("Please name your actor."); return; }
     if (actors.some(a => !a.styleLocked && (a.name || '').trim().toLowerCase() === actorName.trim().toLowerCase()))
-      return alert(`An actor named "${actorName.trim()}" already exists. Pick a distinct name so the AI can tell them apart.`);
-    if (angles.filter(a => a !== null).length === 0) return alert("Please upload at least one angle.");
+      { toast.warning(`An actor named "${actorName.trim()}" already exists. Pick a distinct name so the AI can tell them apart.`); return; }
+    if (angles.filter(a => a !== null).length === 0) { toast.warning("Please upload at least one angle."); return; }
     if (!clientId) return;
 
     setIsStitching(true);
@@ -190,17 +219,17 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
 
     } catch (err: any) {
       console.error(err);
-      alert("Failed to stitch actor sheet: " + err.message);
+      toast.error("Failed to stitch actor sheet: " + err.message);
     } finally {
       setIsStitching(false);
     }
   };
 
   const handleAIGenerate = async () => {
-    if (!actorName.trim()) return alert("Please name your actor.");
+    if (!actorName.trim()) { toast.warning("Please name your actor."); return; }
     if (actors.some(a => !a.styleLocked && (a.name || '').trim().toLowerCase() === actorName.trim().toLowerCase()))
-      return alert(`An actor named "${actorName.trim()}" already exists. Pick a distinct name so the AI can tell them apart.`);
-    if (!aiPrompt.trim()) return alert("Please describe your character.");
+      { toast.warning(`An actor named "${actorName.trim()}" already exists. Pick a distinct name so the AI can tell them apart.`); return; }
+    if (!aiPrompt.trim()) { toast.warning("Please describe your character."); return; }
     if (!clientId) return;
 
     setIsGeneratingAI(true);
@@ -274,7 +303,7 @@ function CastingRoomModal({ open, onClose, onSaveActor, onDeleteActor, actors, s
       setCreationMode("manual");
     } catch (err: any) {
       console.error(err);
-      alert("AI generation failed: " + err.message);
+      toast.error("AI generation failed: " + err.message);
     } finally {
       setIsGeneratingAI(false);
     }
@@ -505,6 +534,18 @@ type StoryboardScene = any & {
   remixSources?: (string | null)[];
 };
 
+type DirectorSheetBeat = {
+  image_prompt?: string;
+  video_prompt?: string;
+  dialogue?: string;
+  audio_prompt?: string;
+  audioPrompt?: string;
+  location?: string;
+  aiModel?: string;
+  ai_model?: string;
+  duration?: string | number;
+};
+
 // ✨ We extend the props locally to safely accept the universal Aspect Ratio
 export interface StorytellingSetupProps extends VideoSetupProps {
   bRollConcept: string;
@@ -535,15 +576,10 @@ const VISUAL_STYLES = [
 type InjectPreset = { label: string; value: string };
 type InjectSets = { camera: InjectPreset[]; sound: InjectPreset[]; physics: InjectPreset[]; timing: InjectPreset[] };
 
-const getModelFamily = (aiModel?: string): 'kling' | 'seedance' | 'pruna' | 'sora' | 'gemini' | 'auto' => {
-  const m = aiModel || '';
-  if (m.includes('kling')) return 'kling';
-  if (m.includes('seedance')) return 'seedance';
-  if (m.includes('p-video') || m.includes('pruna')) return 'pruna';
-  if (m.includes('sora')) return 'sora';
-  if (m.includes('gemini')) return 'gemini';
-  return 'auto';
-};
+// Prompt dialect family now comes from the single model registry, so a new
+// model gets the right INJECT_PRESETS by being registered — nothing to edit here.
+const getModelFamily = (aiModel?: string): 'kling' | 'seedance' | 'pruna' | 'sora' | 'gemini' | 'auto' =>
+  videoModelFamily(aiModel);
 
 // Stable short id for a style-reference URL — used as the cache/style key for
 // custom-style actor variants (`${actorId}::custom-<hash>`). djb2 → base36.
@@ -742,6 +778,13 @@ export function StorytellingSetup({
   // ✨ ACTOR GENRE-VARIANT CACHE — an actor's sheet is restyled into the active
   // genre ONCE (5 credits), saved as an asset (purpose='actor_variant'), then
   // reused for every scene and every future session. Keyed `${actorId}::${styleId}`.
+  // V3: the last durable placeholder created per scene. A re-generate passes it
+  // as the retry parent so attempt lineage survives across attempts.
+  const sceneJobIds = useRef<Record<string, string>>({});
+  // V4: per-scene generation/billing/retry state, keyed by scene id. The
+  // sequence aggregate below is derived from this — no separate "is anything
+  // running" flag that could disagree with the per-scene truth.
+  const [sceneJobs, setSceneJobs] = useState<Record<string, ImageGenerationStatus>>({});
   const actorVariantCache = useRef<Record<string, string>>({});
   // In-flight variant generations, keyed `${actorId}::${styleId}`, so concurrent
   // callers share one generation instead of double-spending credits.
@@ -807,20 +850,31 @@ export function StorytellingSetup({
     setStyleLockUrl(localStorage.getItem(STYLE_LOCK_KEY) || null);
   }, [STYLE_LOCK_KEY]);
 
-  // ✨ COMIC MODE — one 2×2 four-panel comic image tells the whole story,
-  // coherent by construction (one generation = consistent character/outfit/style +
-  // readable plot). Shareable on its own; any panel can be animated into a
-  // start-frame-only video. Persisted per brand.
+  // ✨ STORYBOARD SHEET — one 2×2 production sheet supplies four coherent start
+  // frames from a single image generation. Each crop retains its Director beat so
+  // it can become a complete scene rather than an image with an empty prompt.
   const COMIC_KEY = `blink_comic::${brandKeySuffix}`;
+  const COMIC_PANELS_KEY = `blink_comic_panels::${brandKeySuffix}`;
   const [studioMode, setStudioMode] = useState<'storyboard' | 'comic'>('storyboard');
   const [comicUrl, setComicUrl] = useState<string | null>(null);
+  // V2: panels are SceneSpec v1. Sheets saved by the earlier bounded repair used
+  // an ad-hoc panel shape; they are adapted on read so previously saved sheets
+  // keep working without a migration.
+  const [storyboardSheetPanels, setStoryboardSheetPanels] = useState<SceneSpec[]>([]);
   const [isGeneratingComic, setIsGeneratingComic] = useState(false);
   useEffect(() => {
-    setComicUrl(localStorage.getItem(COMIC_KEY) || null);
-  }, [COMIC_KEY]);
+    const savedUrl = localStorage.getItem(COMIC_KEY) || null;
+    setComicUrl(savedUrl);
+    try {
+      const savedPanels = JSON.parse(localStorage.getItem(COMIC_PANELS_KEY) || "[]");
+      setStoryboardSheetPanels(sceneSpecsFromStoredSheetPanels(savedPanels, savedUrl || ""));
+    } catch {
+      setStoryboardSheetPanels([]);
+    }
+  }, [COMIC_KEY, COMIC_PANELS_KEY]);
 
   // ✨ Start-frame-only: skip end frames (half the image credits; end frames often
-  // don't improve outcome). Persisted per brand. Comic panel animation always uses
+  // don't improve outcome). Persisted per brand. Storyboard Sheet animation always uses
   // start-frame-only regardless of this toggle.
   const STARTFRAME_KEY = `blink_startframe_only::${brandKeySuffix}`;
   const [startFrameOnly, setStartFrameOnly] = useState(false);
@@ -997,12 +1051,9 @@ export function StorytellingSetup({
   // Which video engines can transition between a start and an end keyframe.
   // Seedance uses sequential reference images (not an end frame) and Gemini Omni
   // has its own reference model, so both are excluded.
-  const modelSupportsEndFrame = (model?: string) =>
-    model === 'kling-3.0/video' ||
-    model === 'replicate:openai/sora-2' ||
-    model === 'replicate:prunaai/p-video' ||
-    model === 'auto' ||
-    !model; // default scenes start as "auto" → Kling
+  // Capability comes from the registry (auto is treated as capable, matching the
+  // previous behaviour: default scenes start as "auto").
+  const modelSupportsEndFrame = (model?: string) => registryModelSupportsEndFrame(model);
 
   const totalImageSlots = bRollScenes.reduce((count, scene) => {
     const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
@@ -1022,6 +1073,123 @@ export function StorytellingSetup({
 
   const hasAnyImages = filledImageSlots > 0;
   const allVideosGenerated = bRollScenes.length > 0 && bRollScenes.every(s => s.videoUrl);
+
+  // V4: record one scene's job state. Scenes absent from the map are treated as
+  // idle by the aggregate below, so an untouched storyboard reads "ready to
+  // generate" rather than claiming progress it has not made.
+  const setSceneJob = useCallback((sceneId: string, next: Partial<ImageGenerationStatus>) => {
+    setSceneJobs(prev => {
+      const base: ImageGenerationStatus = prev[sceneId] ?? {
+        generationState: "idle",
+        billingState: "not_charged",
+        retryState: "none",
+        message: null,
+        errorCode: null,
+        attempt: 1,
+      };
+      return { ...prev, [sceneId]: { ...base, ...next } };
+    });
+  }, []);
+
+  // ── V5: observation, restoration and settlement ──────────────────────────
+  // One observer handle per observed scene, plus the resolver a generate call
+  // awaits. Refs (not state) so re-renders never restart observation.
+  const sceneObservers = useRef<Map<string, SceneSetObserver>>(new Map());
+  const sceneSettlers = useRef<Map<string, (outcome: SceneSettlement) => void>>(new Map());
+  const restoredForBrand = useRef<string | null>(null);
+
+  /** Stop observing one scene and drop it from the restoration set. */
+  const stopObservingScene = useCallback((sceneId: string) => {
+    sceneObservers.current.get(sceneId)?.dispose();
+    sceneObservers.current.delete(sceneId);
+    if (activeBrand?.id) clearActiveSceneJob(activeBrand.id, sceneId);
+  }, [activeBrand?.id]);
+
+  /**
+   * Observe one durable scene job. Safe to call for a brand-new submission or
+   * for a scene restored after a refresh — it only ever OBSERVES, never submits,
+   * so restoration can never create a second job (or a second n8n deduction).
+   */
+  const startObservingScene = useCallback((job: PersistedSceneJob) => {
+    if (sceneObservers.current.has(job.sceneId)) return; // already watching
+    if (activeBrand?.id) persistActiveSceneJob(activeBrand.id, job);
+    // Retry lineage must survive restoration: a restored scene that later fails
+    // and is retried should reference this placeholder as its parent.
+    sceneJobIds.current[job.sceneId] = job.contentId;
+
+    const handle = observeSceneSet({
+      scenes: [job],
+      observationTimeoutMs: SCENE_STALE_MS,
+      onSceneSnapshot: (snap) => {
+        setSceneJob(snap.sceneId, snap.status);
+        if (snap.videoUrl) updateScene(snap.sceneId, "videoUrl", snap.videoUrl);
+        if (snap.observationTimedOut) {
+          sceneSettlers.current.get(snap.sceneId)?.("stale");
+          sceneSettlers.current.delete(snap.sceneId);
+        }
+      },
+      onSceneSettled: (snap) => {
+        // A durable terminal state: stop watching, release the restoration slot,
+        // and resolve whatever generate call is awaiting this scene.
+        stopObservingScene(snap.sceneId);
+        updateScene(snap.sceneId, "isGeneratingVideo", false);
+        sceneSettlers.current.get(snap.sceneId)?.(snap);
+        sceneSettlers.current.delete(snap.sceneId);
+      },
+      onSceneError: (sceneId, error) => {
+        // Transient read problems are not failures; surface nothing louder than
+        // the status panel already shows.
+        console.warn(`[scene ${sceneId}] observation issue:`, error.code);
+      },
+    });
+    sceneObservers.current.set(job.sceneId, handle);
+  }, [activeBrand?.id, setSceneJob, updateScene, stopObservingScene]);
+
+  /** Resolve when a scene reaches a durable terminal state, or "stale" first. */
+  const waitForSceneSettlement = useCallback((sceneId: string): Promise<SceneSettlement> => {
+    return new Promise<SceneSettlement>((resolve) => {
+      sceneSettlers.current.set(sceneId, resolve);
+    });
+  }, []);
+
+  // Restore in-flight scenes after a refresh or navigation. Observation only —
+  // nothing is resubmitted, so no duplicate job and no second deduction.
+  useEffect(() => {
+    const brandId = activeBrand?.id;
+    if (!brandId || !clientId) return;
+    if (restoredForBrand.current === brandId) return;
+    restoredForBrand.current = brandId;
+    for (const job of readActiveSceneJobs(brandId)) startObservingScene(job);
+  }, [activeBrand?.id, clientId, startObservingScene]);
+
+  // Dispose every observer on unmount so timers and channels never leak.
+  useEffect(() => {
+    const observers = sceneObservers.current;
+    return () => {
+      for (const handle of observers.values()) handle.dispose();
+      observers.clear();
+    };
+  }, []);
+
+  // The single source of truth for "how is this sequence doing?". Derived, never
+  // stored, so it can never drift from the per-scene states.
+  const sequenceStatus = summarizeSequence(
+    bRollScenes.map((s, i) => ({
+      sceneId: s.id,
+      sceneNumber: i + 1,
+      status: sceneJobs[s.id] ?? {
+        // A scene that already holds a video from an earlier session reads as
+        // ready, so returning users are not told to regenerate finished work.
+        generationState: s.videoUrl ? "succeeded" : "idle",
+        billingState: "not_charged",
+        retryState: "none",
+        message: null,
+        errorCode: null,
+        attempt: 1,
+      },
+      assetUrl: s.videoUrl ?? null,
+    }))
+  );
 
   const getLabels = (mode: string) => {
     switch (mode) {
@@ -1158,7 +1326,7 @@ export function StorytellingSetup({
       generatedScenes = updatedScenes;
 
     } catch (err: any) {
-      alert(`Script generation failed: ${err.message}`);
+      toast.error(`Script generation failed: ${err.message}`);
       throw err;
     } finally {
       setIsWritingScript(false);
@@ -1167,7 +1335,7 @@ export function StorytellingSetup({
   };
 
   const handleWriteScript = async () => {
-    if (!bRollConcept.trim()) return alert("Please enter a concept first.");
+    if (!bRollConcept.trim()) { toast.warning("Please enter a concept first."); return; }
     await generateScript();
   };
 
@@ -1177,7 +1345,7 @@ export function StorytellingSetup({
     const fallbackConcept = bRollConcept.trim();
 
     if (!currentScenePrompt.trim() && !fallbackConcept) {
-      return alert("Please write a rough idea in this scene's prompt box, or fill out the Master Story Concept first.");
+      { toast.warning("Please write a rough idea in this scene's prompt box, or fill out the Master Story Concept first."); return; }
     }
 
     setSuggestingPromptIndex(index);
@@ -1202,7 +1370,7 @@ export function StorytellingSetup({
 
     } catch (err) {
       console.error(err);
-      alert("Failed to suggest prompt. Check console for details.");
+      toast.error("Failed to suggest prompt. Check console for details.");
     } finally {
       setSuggestingPromptIndex(null);
     }
@@ -1314,7 +1482,7 @@ export function StorytellingSetup({
       || (type === 'secondary' ? scene.endFramePrompt : "")
       || scene.imagePrompt || scene.prompt || "";
 
-    if (!promptToUse.trim()) return alert("This scene has no prompt yet. Hit \"Write Scenes\" to let the Director script it, or use Suggest / type a scene description first.");
+    if (!promptToUse.trim()) { toast.warning("This scene has no prompt yet. Hit \"Write Scenes\" to let the Director script it, or use Suggest / type a scene description first."); return; }
 
     const NO_TEXT_CONSTRAINT = " CRITICAL: Do NOT output a character reference sheet, split screen, or multiple angles. Output a SINGLE, unified, cinematic scene featuring this exact character integrated naturally into the described environment.";
 
@@ -1429,7 +1597,7 @@ export function StorytellingSetup({
           let reachable = false;
           try { reachable = (await fetch(actor.stitchedSheetUrl, { method: 'HEAD' })).ok; } catch { reachable = false; }
           if (!reachable) {
-            alert(`"${actor.name}"'s reference sheet is unreachable — it may have expired. Recreate them in the Casting Room before generating.`);
+            toast.error(`"${actor.name}"'s reference sheet is unreachable — it may have expired. Recreate them in the Casting Room before generating.`);
             setGeneratingSlot(null);
             return;
           }
@@ -1570,14 +1738,14 @@ export function StorytellingSetup({
     } catch (err: any) {
       console.error(err);
       setFailedSlots(prev => new Set(prev).add(`${slotIndex}-${type}`));
-      alert(`Generation failed for Scene ${slotIndex + 1}: ${err.message}`);
+      toast.error(`Generation failed for Scene ${slotIndex + 1}: ${err.message}`);
     } finally {
       setGeneratingSlot(null);
     }
   };
 
   const handleGenerateAllImages = async () => {
-    if (!bRollConcept.trim()) return alert("Please enter a concept first.");
+    if (!bRollConcept.trim()) { toast.warning("Please enter a concept first."); return; }
     setIsGeneratingAllImages(true);
 
     // Default to the closure's bRollScenes — but if we have to run the AI
@@ -1631,25 +1799,35 @@ export function StorytellingSetup({
     setIsGeneratingAllImages(false);
   };
 
-  // ✨ COMIC MODE — one coherent 2×2 comic image instead of N chained frames.
+  // ✨ STORYBOARD SHEET — one coherent 2×2 production image instead of four
+  // separately billed frame generations. Visual style is unrestricted.
   const handleGenerateComic = async () => {
     if (!clientId) return;
-    if (!activeBrand?.id) return alert("Please select a brand workspace first.");
-    if (!bRollConcept.trim()) return alert("Write your story in the Master Story Concept box first.");
+    if (!activeBrand?.id) { toast.warning("Please select a brand workspace first."); return; }
+    if (!bRollConcept.trim()) { toast.warning("Write your story in the Master Story Concept box first."); return; }
     setIsGeneratingComic(true);
     try {
-      // 1. Director → 4 coherent beats (reuses plot / wardrobe / dialogue rules).
+      // 1. Director → 4 coherent production beats (reuses continuity rules).
       const directorData = await callN8n('director', {
         clientId,
-        prompt: `Concept: ${bRollConcept}\n\nBreak this into EXACTLY 4 sequential story beats (establish, develop, turn, resolve) for a 4-panel comic. For each beat write a short 'image_prompt' describing the panel visually, plus key spoken 'dialogue'.`,
+        prompt: `Concept: ${bRollConcept}\n\nBreak this into EXACTLY 4 sequential video scenes (establish, develop, turn, resolve) for a production storyboard sheet. For each scene return a detailed still-frame "image_prompt", an animation-ready "video_prompt", optional "dialogue", "audio_prompt", "location", the best "aiModel", and a duration. This is NOT a 2D comic: the chosen visual style must control the medium.`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         consistencyMode: modelConsistency,
         startFrameOnly: true
       });
-      const beats = ensureArray(directorData.scenes || []).slice(0, 4);
+      const beats = ensureArray(directorData.scenes || []).slice(0, 4) as DirectorSheetBeat[];
       if (beats.length === 0) throw new Error("The Director didn't return any panels — try rephrasing your concept.");
-      const panelLines = beats.map((b: any, i: number) =>
-        `Panel ${i + 1}: ${b.image_prompt || b.video_prompt || ''}${b.dialogue ? ` Caption: "${b.dialogue}"` : ''}`
+      // V2: Director beats become validated SceneSpecs (snake_case/camelCase both
+      // handled by the adapter). Provenance is attached once the sheet URL exists.
+      const panels = sceneSpecsFromDirectorOutput(beats, {
+        sourceIdea: bRollConcept,
+        aspectRatio,
+      });
+      if (panels.some(panel => !panel.imagePrompt || !panel.videoPrompt)) {
+        throw new Error("The Director returned an incomplete scene. Try generating the sheet again.");
+      }
+      const panelLines = beats.map((b, i) =>
+        `Quadrant ${i + 1}: ${b.image_prompt || b.video_prompt || ''}`
       ).join(' ');
 
       // 2. Locked character refs so identity holds across every panel.
@@ -1659,14 +1837,17 @@ export function StorytellingSetup({
       const styleLabel = selectedStyle !== 'none' ? (VISUAL_STYLES.find(s => s.id === selectedStyle)?.label || null) : null;
       const customStyle = selectedStyle === 'none' && styleLockUrl ? styleLockUrl : null;
 
-      const comicPrompt = `A single 2x2 four-panel comic strip telling a short story, read left-to-right then top-to-bottom. Clear white panel gutters separating four distinct panels. Legible comic captions and speech bubbles. The SAME character(s) and the SAME complete outfit in every panel — consistent faces, proportions and wardrobe across all four panels. ${panelLines}`;
+      const styleInstruction = styleLabel
+        ? `Render every shot in ${styleLabel}.`
+        : "Follow the requested medium in the story; photorealism, live action, 3D, animation, or illustration are all valid.";
+      const comicPrompt = `Create one professional 2x2 VIDEO STORYBOARD CONTACT SHEET containing exactly four equal rectangular shots, read left-to-right then top-to-bottom. This is a production reference sheet, NOT comic-book artwork. ${styleInstruction} Each quadrant must be a clean ${aspectRatio} cinematic composition with no overlap across boundaries. Keep the same characters, faces, products, complete wardrobe, locations, lighting logic, and visual style consistent across all four shots. IMPORTANT: no captions, no speech bubbles, no words, no letters, no numbers, no logos added by the model, no comic ink treatment, and no decorative borders. Use only thin clean separation lines between quadrants. ${panelLines}`;
 
       // 3. One async generation (placeholder row + poll) — same contract as frames.
       const { data: placeholder, error: phError } = await supabase.from('content').insert({
         client_id: clientId, brand_id: activeBrand?.id ?? null, content_type: 'post_image',
-        caption: `Comic: ${bRollConcept.slice(0, 60)}`, status: 'draft', generation_status_text: 'Queued...', ai_model: 'nano-banana-2'
+        caption: `Storyboard Sheet: ${bRollConcept.slice(0, 60)}`, status: 'draft', generation_status_text: 'Queued...', ai_model: 'nano-banana-2'
       }).select('id').single();
-      if (phError || !placeholder) throw new Error("Could not create a tracking row for the comic.");
+      if (phError || !placeholder) throw new Error("Could not create a tracking row for the Storyboard Sheet.");
 
       try {
         await callN8n('generator', {
@@ -1679,6 +1860,7 @@ export function StorytellingSetup({
           style_label: styleLabel,
           actor_names: lockedActors.map(a => a.name),
           imageEngine: 'nb2',
+          aspect_ratio: aspectRatio,
         });
       } catch (queueErr) {
         await supabase.from('content').delete().eq('id', placeholder.id);
@@ -1689,31 +1871,41 @@ export function StorytellingSetup({
       for (let attempt = 0; attempt < 180; attempt++) {
         await new Promise(r => setTimeout(r, 5000));
         const { data: row } = await supabase.from('content').select('image_urls,status,generation_status_text').eq('id', placeholder.id).single();
-        if (row?.status === 'failed') throw new Error(row.generation_status_text || 'Comic generation failed. Credits refunded.');
+        if (row?.status === 'failed') throw new Error(row.generation_status_text || 'Storyboard Sheet generation failed. Credits refunded.');
         const urls = ensureArray(row?.image_urls || []).filter(Boolean);
         if (urls.length > 0) { url = urls[0]; break; }
       }
       if (!url) {
-        await supabase.from('content').update({ status: 'failed', generation_status_text: 'Timed out client-side — the comic may still arrive in your Library.' }).eq('id', placeholder.id);
-        throw new Error("The comic is taking unusually long — check your Library shortly.");
+        await supabase.from('content').update({ status: 'failed', generation_status_text: 'Timed out client-side — the Storyboard Sheet may still arrive in your Library.' }).eq('id', placeholder.id);
+        throw new Error("The Storyboard Sheet is taking unusually long — check your Library shortly.");
       }
+      // Attach sheet provenance now that the generated sheet URL is known, so a
+      // scene prepared from a panel always knows which sheet and quadrant it came from.
+      const panelsWithProvenance: SceneSpec[] = panels.map((panel, index) => ({
+        ...panel,
+        storyboardSheet: { sheetUrl: url as string, panelNumber: index + 1 },
+      }));
       setComicUrl(url);
+      setStoryboardSheetPanels(panelsWithProvenance);
       localStorage.setItem(COMIC_KEY, url);
+      localStorage.setItem(COMIC_PANELS_KEY, JSON.stringify(panelsWithProvenance));
     } catch (err: any) {
       console.error(err);
-      alert(`Comic generation failed: ${err.message}`);
+      toast.error(`Storyboard Sheet generation failed: ${err.message}`);
     } finally {
       setIsGeneratingComic(false);
     }
   };
 
-  // ✨ Crop one panel of the 2×2 comic and seed it as a new start-frame-only scene.
+  // ✨ Crop one panel and restore its Director metadata into a ready-to-animate scene.
   const animateComicPanel = async (panelIndex: number) => {
     if (!comicUrl || !clientId) return;
+    const panel = storyboardSheetPanels[panelIndex];
+    if (!panel) { toast.warning("This saved sheet has no scene metadata. Regenerate it once before animating a panel."); return; }
     try {
       const img = new window.Image();
       img.crossOrigin = 'anonymous';
-      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error("Could not load the comic image.")); img.src = comicUrl; });
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error("Could not load the Storyboard Sheet image.")); img.src = comicUrl; });
       const pw = Math.floor(img.naturalWidth / 2), ph = Math.floor(img.naturalHeight / 2);
       const sx = (panelIndex % 2) * pw, sy = Math.floor(panelIndex / 2) * ph;
       const canvas = document.createElement('canvas');
@@ -1723,16 +1915,34 @@ export function StorytellingSetup({
       ctx.drawImage(img, sx, sy, pw, ph, 0, 0, pw, ph);
       const blob = await new Promise<Blob>((res, rej) => canvas.toBlob(b => b ? res(b) : rej(new Error("Crop failed")), 'image/png'));
       const path = `videos/${clientId}/comic_panel_${Date.now()}.png`;
-      await supabase.storage.from('assets').upload(path, blob);
+      const { error: uploadError } = await supabase.storage.from('assets').upload(path, blob);
+      if (uploadError) throw uploadError;
       const panelUrl = supabase.storage.from('assets').getPublicUrl(path).data.publicUrl;
 
-      const newScene = { ...makeDefaultScenes()[0], primaryPreview: panelUrl, useEndFrame: false, prompt: '' };
+      const newScene = {
+        ...makeDefaultScenes()[0],
+        scene_number: bRollScenes.length + 1,
+        primaryPreview: panelUrl,
+        useEndFrame: false,
+        prompt: panel.videoPrompt || "",
+        imagePrompt: panel.imagePrompt || "",
+        audioPrompt: panel.audioDirection || panel.dialogue || "",
+        location: panel.locationLabel || "",
+        aiModel: panel.selectedModel || "auto",
+        duration: panel.durationSeconds || "5",
+        aspectRatio,
+        storyboardSheetUrl: panel.storyboardSheet?.sheetUrl || comicUrl,
+        storyboardSheetPanel: panel.storyboardSheet?.panelNumber ?? panelIndex + 1,
+        // Carry the originating SceneSpec so narrative/direction metadata the
+        // scene object has no field for survives into the generated clip.
+        sceneSpec: panel,
+      };
       setBRollScenes(prev => [...prev, newScene]);
       setStudioMode('storyboard');
-      alert(`Panel ${panelIndex + 1} added as a new scene's start frame. Pick a video model, write its motion prompt, then Generate Scene Video.`);
+      toast.success(`Scene ${panelIndex + 1} is ready with its start frame and motion prompt. Review it, then Generate Scene Video.`);
     } catch (err: any) {
       console.error(err);
-      alert(`Could not animate panel: ${err.message}`);
+      toast.error(`Could not prepare this storyboard scene: ${err.message}`);
     }
   };
 
@@ -1742,7 +1952,7 @@ export function StorytellingSetup({
     // Guard: without an active brand the row would be saved with brand_id=null and
     // then never appear in the brand-scoped Story Sequences tab or editor library.
     if (!activeBrand?.id) {
-      return alert("Please select a brand workspace before generating videos.");
+      { toast.warning("Please select a brand workspace before generating videos."); return; }
     }
 
     const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
@@ -1750,11 +1960,11 @@ export function StorytellingSetup({
     // Guard: never fall back to the raw master concept as the motion prompt —
     // the Director's input is not a scene description (mirrors the image path).
     if (!scene.prompt?.trim()) {
-      return alert("This scene has no motion prompt. Run \"Write Scenes\" or describe the scene in the Scene Director box first.");
+      { toast.warning("This scene has no motion prompt. Run \"Write Scenes\" or describe the scene in the Scene Director box first."); return; }
     }
 
     if (scene.useEndFrame && !scene.secondaryPreview && !isSeedance2) {
-      return alert("You enabled the End Frame toggle. Please generate or upload an End Frame before animating.");
+      { toast.warning("You enabled the End Frame toggle. Please generate or upload an End Frame before animating."); return; }
     }
 
     updateScene(scene.id, "isGeneratingVideo", true);
@@ -1822,21 +2032,53 @@ export function StorytellingSetup({
         finalSecondaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
       }
 
-      const { data: insertData, error: insertError } = await supabase
-        .from('content')
-        .insert({
-          client_id: clientId,
-          brand_id: activeBrand?.id ?? null,
-          content_type: "sequence_clip",
-          caption: `🎬 Scene ${slotIndex + 1} Video`,
-          status: "draft",
-          ai_model: scene.aiModel || "auto"
-        })
-        .select('id')
-        .single();
+      // V2: build the validated SceneSpec so scene intent survives the row (§13).
+      const sceneSpec = sceneSpecFromStoryboardScene(
+        {
+          ...scene,
+          scene_number: slotIndex + 1,
+          primaryPreview: finalPrimaryUrl,
+          secondaryPreview: finalSecondaryUrl,
+        },
+        { sourceIdea: bRollConcept, aspectRatio }
+      );
 
-      if (insertError || !insertData) throw new Error(`Database Error: Failed to create placeholder row.`);
-      const postId = insertData.id;
+      // V3: the placeholder is now created through the owned, DB-idempotent
+      // video-job endpoint instead of a direct browser insert. The server
+      // verifies client + brand ownership, re-validates the spec, and writes the
+      // Slice-4 envelope (state triplet, attempt, idempotency key, retry
+      // lineage). One key per attempt means a double submit returns the SAME
+      // placeholder, so n8n can never be asked to deduct twice.
+      // One freshly-minted key per ATTEMPT (never reused, or a genuine re-run
+      // would idempotently return the previous placeholder). The key protects
+      // against a duplicate delivery of the SAME attempt; re-entry from a second
+      // click is blocked by the scene's `isGeneratingVideo` flag above.
+      const idempotencyKey = mintIdempotencyKey("scene");
+      // Re-generating a scene is a retry of its previous attempt: passing the
+      // last placeholder as the parent preserves lineage and increments attempt.
+      const previousJobId = sceneJobIds.current[scene.id];
+
+      const submission = await submitVideoJob({
+        brandId: activeBrand.id,
+        idempotencyKey,
+        contentType: "sequence_clip",
+        sceneSpec,
+        ...(previousJobId ? { retryOfContentId: previousJobId } : {}),
+      });
+
+      if (submission.ok) {
+        sceneJobIds.current[scene.id] = submission.contentId;
+        setSceneJob(scene.id, { generationState: "queued", retryState: "none", message: null, errorCode: null, attempt: submission.attempt });
+      }
+      if (!submission.ok) {
+        throw new Error(
+          submission.code === "unauthorized" ? "Your session expired — sign in again to generate this scene."
+          : submission.code === "not_found" ? "That brand is no longer available for this workspace."
+          : submission.code === "invalid_request" ? "This scene is missing something the generator needs. Review its prompt, model and duration."
+          : "Could not queue this scene. Please try again."
+        );
+      }
+      const postId = submission.contentId;
 
       await callN8n('scene_video_generator', {
         post_id: postId,
@@ -1866,52 +2108,33 @@ export function StorytellingSetup({
         }
       });
 
-      let attempts = 0;
-      const maxAttempts = 180; // 15 minutes
-      let foundVideoUrl = null;
+      // V5: observation replaces the old inline 15-minute poll loop. The scene is
+      // registered for durable restoration and watched by the SHARED observer
+      // (Realtime-first, authenticated polling fallback, terminal latch,
+      // forward-progress protection, honest local timeout). A refresh or
+      // navigation re-attaches to exactly this row instead of losing it.
+      // Register the awaiter BEFORE observation starts, otherwise a job that
+      // settles immediately could resolve before anything is listening.
+      const settlement = waitForSceneSettlement(scene.id);
+      startObservingScene({ sceneId: scene.id, sceneNumber: slotIndex + 1, contentId: postId });
 
-      while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        attempts++;
+      const outcome = await settlement;
 
-        console.log(`[Scene ${slotIndex + 1}] Polling attempt ${attempts}...`);
-
-        const { data, error } = await supabase.from('content').select('*').eq('id', postId).single();
-
-        if (error) {
-          console.error(`[Scene ${slotIndex + 1}] Supabase error:`, error);
-          continue; // Ignore network blips and keep trying
-        }
-
-        if (data) {
-          if (data.status === 'failed') {
-            throw new Error(data.error_message || "n8n Video Engine reported a failure.");
-          }
-
-          let urls: string[] = [];
-          if (Array.isArray(data.video_urls) && data.video_urls.length > 0) {
-            urls = data.video_urls;
-          } else if (typeof data.video_urls === 'string') {
-            try { urls = JSON.parse(data.video_urls); } catch (e) { urls = [data.video_urls]; }
-          }
-
-          // Safely find the first valid HTTP URL
-          const validUrl = urls.find((u: string) => typeof u === 'string' && u.startsWith('http'));
-
-          if (validUrl) {
-            console.log(`[Scene ${slotIndex + 1}] SUCCESS! Video found:`, validUrl);
-            foundVideoUrl = validUrl;
-            break; // Exit the loop!
-          }
-        }
+      if (outcome === "stale") {
+        // Not a failure: the job may still finish. Observation continues in the
+        // background and the panel shows honest "still working" copy, so the
+        // bulk loop can move on to the next scene instead of blocking forever.
+        toast.warning(`Scene ${slotIndex + 1} is taking longer than usual — it may still finish. We'll update it here.`);
+        updateScene(scene.id, "isGeneratingVideo", false);
+        return;
       }
 
-      if (!foundVideoUrl) {
-        throw new Error("Video generation timed out after 15 minutes.");
+      if (outcome.status.generationState !== "succeeded") {
+        throw new Error(outcome.status.message || "The video engine reported a failure.");
       }
 
       // 1. Update the URL first
-      updateScene(scene.id, "videoUrl", foundVideoUrl);
+      if (outcome.videoUrl) updateScene(scene.id, "videoUrl", outcome.videoUrl);
 
       // 2. Give React 50ms to flush the state batch before turning off the loader
       setTimeout(() => {
@@ -1920,7 +2143,27 @@ export function StorytellingSetup({
 
     } catch (err: any) {
       console.error(`Failed to generate video for scene ${slotIndex + 1}:`, err);
-      alert(`Failed to retrieve video: ${err.message}`);
+      // Only mark failed if we did not already record an honest timeout above.
+      setSceneJobs(prev => {
+        const current = prev[scene.id];
+        if (current?.generationState === "timed_out") return prev;
+        return {
+          ...prev,
+          [scene.id]: {
+            generationState: "failed",
+            // Billing truth is unknown from the client: n8n refunds on failure,
+            // but this path also covers submit/queue errors where nothing was
+            // charged. `refund_pending` says "we don't yet know" without
+            // claiming money back that may never have left.
+            billingState: current?.billingState === "not_charged" ? "not_charged" : "refund_pending",
+            retryState: "retry_available",
+            message: err?.message ?? "Scene generation failed.",
+            errorCode: "scene_generation_failed",
+            attempt: current?.attempt ?? 1,
+          },
+        };
+      });
+      toast.error(`Scene ${slotIndex + 1} failed: ${err.message}`);
       updateScene(scene.id, "isGeneratingVideo", false);
     }
     // No finally block — success and failure are handled cleanly above!
@@ -1953,7 +2196,7 @@ export function StorytellingSetup({
 
   const handleConfirmRegen = () => {
     const { sceneId, index, slotType, promptText, seedanceIndex, geminiIndex } = regenDialogState;
-    if (!promptText.trim()) return alert("Write an image prompt first — describe exactly what this frame should show.");
+    if (!promptText.trim()) { toast.warning("Write an image prompt first — describe exactly what this frame should show."); return; }
     if (sceneId && index !== null) {
       // ✨ Save edits to the matching field — end frames to endFramePrompt, start
       // frames to imagePrompt. The Scene Director motion prompt (scene.prompt) is
@@ -2244,7 +2487,7 @@ export function StorytellingSetup({
         updateScene(sceneId, "seedancePreviews", [...currentPreviews, null]);
         updateScene(sceneId, "seedanceImages", [...currentFiles, null]);
       } else {
-        alert("Seedance 2 supports a maximum of 5 reference images.");
+        toast.warning("Seedance 2 supports a maximum of 5 reference images.");
       }
     }
   };
@@ -2307,15 +2550,15 @@ export function StorytellingSetup({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xl font-bold text-[#DEDCDC] flex items-center gap-2 font-display">
-              <Film className="h-5 w-5 text-[#C5BAC4]" /> {studioMode === 'comic' ? 'Comic Studio' : 'Visual Storyboard'}
+              <Film className="h-5 w-5 text-[#C5BAC4]" /> {studioMode === 'comic' ? 'Storyboard Sheet' : 'Visual Storyboard'}
             </h3>
-            <p className="text-sm text-[#989DAA] mt-1 font-medium">{studioMode === 'comic' ? 'One coherent comic image tells the whole story — then animate any panel.' : 'Write prompts, pick images, and generate videos.'}</p>
+            <p className="text-sm text-[#989DAA] mt-1 font-medium">{studioMode === 'comic' ? 'Create four consistent scene references with one image generation, then animate any shot.' : 'Write prompts, pick images, and generate videos.'}</p>
           </div>
           <div className="flex items-center gap-3">
-            {/* ✨ Mode toggle: Storyboard | Comic */}
+            {/* ✨ Mode toggle: individual scene frames | one credit-saving sheet */}
             <div className="flex items-center bg-[#191D23] p-1 rounded-xl border border-[#57707A]/40 shadow-inner">
               <button onClick={() => setStudioMode('storyboard')} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all", studioMode === 'storyboard' ? "bg-[#C5BAC4] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>Storyboard</button>
-              <button onClick={() => setStudioMode('comic')} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all", studioMode === 'comic' ? "bg-[#C5BAC4] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>Comic</button>
+              <button onClick={() => setStudioMode('comic')} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all", studioMode === 'comic' ? "bg-[#C5BAC4] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>4-Shot Sheet</button>
             </div>
             {studioMode === 'storyboard' && (
               <span className={cn(
@@ -2328,22 +2571,22 @@ export function StorytellingSetup({
           </div>
         </div>
 
-        {/* ✨ COMIC CANVAS — one image, whole story */}
+        {/* ✨ STORYBOARD SHEET CANVAS — one image generation, four scene references */}
         {studioMode === 'comic' && (
           <div className="flex flex-col gap-5">
             <div className="relative w-full aspect-video rounded-2xl border-2 border-dashed border-[#57707A]/40 bg-[#191D23]/50 overflow-hidden flex items-center justify-center shadow-inner">
               {comicUrl ? (
-                <img src={comicUrl} className="w-full h-full object-contain" />
+                <img src={comicUrl} alt="Four-shot storyboard sheet" className="w-full h-full object-contain" />
               ) : isGeneratingComic ? (
                 <div className="flex flex-col items-center gap-3 text-[#989DAA]">
                   <Loader2 className="w-8 h-8 animate-spin text-[#C5BAC4]" />
-                  <span className="text-xs font-bold uppercase tracking-widest">Drawing your comic…</span>
+                  <span className="text-xs font-bold uppercase tracking-widest">Building your storyboard sheet…</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 text-[#57707A] px-8 text-center">
                   <Images className="w-8 h-8" />
-                  <span className="text-xs font-bold uppercase tracking-widest">Your 4-panel comic appears here</span>
-                  <span className="text-[10px] text-[#57707A]">Write your story in Master Story Concept, then Generate Comic.</span>
+                  <span className="text-xs font-bold uppercase tracking-widest">Your four scene references appear here</span>
+                  <span className="text-[10px] text-[#57707A]">Supports cinematic realism, live action, 3D, anime, illustration, and custom styles.</span>
                 </div>
               )}
             </div>
@@ -2352,14 +2595,14 @@ export function StorytellingSetup({
               <div className="grid grid-cols-2 gap-2.5">
                 {[0, 1, 2, 3].map(i => (
                   <button key={i} onClick={() => animateComicPanel(i)} className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#191D23] border border-[#57707A]/40 text-[#DEDCDC] hover:text-[#191D23] hover:bg-[#C5BAC4] hover:border-[#C5BAC4] text-[11px] font-bold transition-all">
-                    <Video className="w-3.5 h-3.5" /> Animate Panel {i + 1}
+                    <Video className="w-3.5 h-3.5" /> Prepare Scene {i + 1}
                   </button>
                 ))}
               </div>
             )}
 
             <Button onClick={handleGenerateComic} disabled={isGeneratingComic} className="w-full h-12 bg-[#B3FF00] text-[#191D23] hover:bg-[#B3FF00]/90 font-bold rounded-xl shadow-lg text-sm disabled:opacity-60">
-              {isGeneratingComic ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating…</>) : (<><Sparkles className="w-4 h-4 mr-2" /> {comicUrl ? 'Regenerate Comic' : 'Generate Comic'}</>)}
+              {isGeneratingComic ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating…</>) : (<><Sparkles className="w-4 h-4 mr-2" /> {comicUrl ? 'Regenerate Storyboard Sheet' : 'Generate Storyboard Sheet'}</>)}
             </Button>
           </div>
         )}
@@ -3404,6 +3647,34 @@ export function StorytellingSetup({
                   <p className="text-[9px] text-[#B3FF00] font-bold uppercase tracking-wider text-center animate-pulse">
                     Videos rendering in background. You can safely leave this page.
                   </p>
+                )}
+
+                {/* V4: one honest sequence status. Partial success is visible —
+                    finished scenes are never hidden behind a single failure, and
+                    only failed scenes are offered for retry. */}
+                {sequenceStatus.hasProgress && (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    data-testid="sequence-status"
+                    className={cn(
+                      "rounded-lg border p-3 text-[11px] font-semibold leading-relaxed",
+                      sequenceStatus.state === "succeeded" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+                      sequenceStatus.state === "running" && "border-[#C5BAC4]/30 bg-[#C5BAC4]/10 text-[#DEDCDC]",
+                      sequenceStatus.state === "partial_success" && "border-amber-500/30 bg-amber-500/10 text-amber-200",
+                      sequenceStatus.state === "failed" && "border-red-500/30 bg-red-500/10 text-red-300",
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      {sequenceStatus.isActive && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+                      <span>{sequenceStatus.message}</span>
+                    </div>
+                    {sequenceStatus.retryableSceneNumbers.length > 0 && (
+                      <p className="mt-1.5 text-[10px] font-medium opacity-80">
+                        Use each scene&apos;s Generate Scene Video button to retry — finished scenes are left untouched.
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {/* <Button onClick={() => { }} disabled={!allVideosGenerated} className={cn("w-full h-12 justify-center text-sm font-bold rounded-lg transition-all shadow-md border-none", allVideosGenerated ? "bg-gradient-to-r from-[#B3FF00]/80 to-[#B3FF00] hover:from-[#B3FF00] hover:to-[#B3FF00] text-[#191D23]" : "bg-[#191D23] text-[#57707A] cursor-not-allowed border border-[#57707A]/30")}>

@@ -28,6 +28,27 @@ vi.mock("undici", () => ({
   fetch: mocks.undiciFetch,
 }));
 
+// The video routes now consume the durable execution limiter, which transitively
+// imports the admin Supabase client. Mock it so this boundary suite (focused on
+// execution-security) does not construct a real client at import time. Off by
+// default in production, so bypass (allowed) is the faithful stub here.
+// V6: the video routes now consume the shared brand context service, which
+// imports the admin Supabase client at module scope. Stub it so this
+// execution-security-focused suite builds no real client at import time.
+vi.mock("@/lib/brand-creative-context", () => ({
+  loadOwnedBrandCreativeContext: vi.fn().mockResolvedValue({
+    ok: true,
+    context: { schemaVersion: 1, name: "Canonical Brand", logoUrl: "" },
+  }),
+  toVideoWorkflowFields: () => ({ brand_name: "Canonical Brand", brand_context_version: 1 }),
+}));
+
+vi.mock("@/lib/execution-rate-limit", () => ({
+  consumeExecutionRateLimit: vi.fn().mockResolvedValue({
+    ok: true, allowed: true, remaining: 9, resetAt: new Date(Date.now() + 3600_000).toISOString(), retryAfterSeconds: 3600,
+  }),
+}));
+
 import { POST as workflowsPost } from "@/app/api/workflows/route";
 import { POST as nanoBananaPost } from "@/app/api/video/nano-banana/route";
 

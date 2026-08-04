@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateExecutionRequest } from "@/lib/execution-security";
+import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
+import { parseVideoSuggestRequest } from "@/lib/video-execution";
+import { hasOpenAiKey, openAiChat } from "@/lib/openai-proxy";
 
 // Fallback suggestions served when OpenAI is unavailable (quota, network, etc.)
 const FALLBACKS: Record<string, string[]> = {
@@ -28,49 +31,51 @@ const FALLBACKS: Record<string, string[]> = {
   ],
 };
 
-function pickFallback(mode?: string): string {
-  const pool = FALLBACKS[mode ?? "standard"] ?? FALLBACKS.standard;
+function pickFallback(mode: string): string {
+  const pool = FALLBACKS[mode] ?? FALLBACKS.standard;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-export async function POST(req: Request) {
-  // Parse body first so it's available in the catch block
-  let mode = "showcase";
-  let companyName = "";
-  let industry = "";
-  let description = "";
-  let userConcept = "";
+function tooMany(retryAfterSeconds: number, resetAt: string) {
+  return NextResponse.json(
+    { error: "Too many suggestion requests. Please try again later.", retryAt: resetAt },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds), "Cache-Control": "no-store" } }
+  );
+}
 
+export async function POST(req: NextRequest) {
+  const authenticated = await authenticateExecutionRequest(req);
+  if (!authenticated.ok) return NextResponse.json({ error: authenticated.error }, { status: authenticated.status });
+
+  let body: unknown;
   try {
-    const body = await req.json();
-    mode        = body.mode        ?? "showcase";
-    companyName = body.companyName ?? "";
-    industry    = body.industry    ?? "";
-    description = body.description ?? "";
-    userConcept = body.userConcept ?? "";
+    body = await req.json();
   } catch {
-    return NextResponse.json({ suggestion: pickFallback(mode) });
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+  const input = parseVideoSuggestRequest(body);
+  if (!input) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+
+  const rateLimit = await consumeExecutionRateLimit(authenticated.value, "video_suggest");
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: "Suggestions are temporarily unavailable" },
+      { status: 503, headers: { "Retry-After": "30", "Cache-Control": "no-store" } }
+    );
+  }
+  if (!rateLimit.allowed) return tooMany(rateLimit.retryAfterSeconds, rateLimit.resetAt);
+
+  if (!hasOpenAiKey()) {
+    return NextResponse.json({ suggestion: pickFallback(input.mode) });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    console.warn("[suggest] OPENAI_API_KEY not set — serving fallback");
-    return NextResponse.json({ suggestion: pickFallback(mode) });
-  }
+  const promptContext = input.userConcept.trim()
+    ? `The user typed this rough idea: "${input.userConcept}". Polish it into a clean, short concept.`
+    : `Suggest a generic short concept suitable for a ${input.industry || "general"} brand.`;
 
   try {
-    const openai = new OpenAI({ apiKey });
-
-    const promptContext = userConcept.trim()
-      ? `The user typed this rough idea: "${userConcept}". Polish it into a clean, short concept.`
-      : `Suggest a generic short concept suitable for a ${industry || "general"} brand.`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `You are a helpful assistant for a SaaS video platform. Write a SHORT "Visual Concept" (max 15 words) for the user's video.
+    const content = await openAiChat({
+      system: `You are a helpful assistant for a SaaS video platform. Write a SHORT "Visual Concept" (max 15 words) for the user's video.
 
 RULES:
 1. NO camera instructions (no "4k", "pan", "macro lens", "dolly").
@@ -78,26 +83,13 @@ RULES:
 3. Maximum 15 words.
 4. Describe only the basic subject, action, or setting.
 
-Brand: ${companyName || "A brand"} (${industry || "General"})
+Brand: ${input.companyName || "A brand"} (${input.industry || "General"})
 ${promptContext}`,
-        },
-      ],
+      user: promptContext,
     });
-
-    return NextResponse.json({
-      suggestion: completion.choices[0].message.content?.trim() ?? pickFallback(mode),
-    });
-  } catch (error: any) {
-    const status: number = error?.status ?? 0;
-    const code: string   = error?.code   ?? "";
-
-    if (status === 429 || code === "insufficient_quota") {
-      console.warn("[suggest] OpenAI quota exceeded — serving fallback suggestion");
-      return NextResponse.json({ suggestion: pickFallback(mode) });
-    }
-
-    // All other errors (auth, network, model unavailable) — never 500 the UI
-    console.error("[suggest] OpenAI error:", status, code, error?.message);
-    return NextResponse.json({ suggestion: pickFallback(mode) });
+    return NextResponse.json({ suggestion: content.trim() || pickFallback(input.mode) });
+  } catch {
+    // Never surface provider errors to the UI — serve a safe fallback.
+    return NextResponse.json({ suggestion: pickFallback(input.mode) });
   }
 }

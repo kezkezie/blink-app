@@ -11,6 +11,7 @@
  */
 
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { resolveImageEngine } from "@/lib/image-engine-pricing";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 // A client-generated creation token. Bounded and mirrored by the DB CHECK.
@@ -23,6 +24,10 @@ export type ImageJobRequest = {
   brandId: string;
   idempotencyKey: string;
   mode: string;
+  // Gate 0: the browser sends only the engine ALIAS; the server derives the
+  // canonical model + credit cost from the pricing registry. No price is trusted
+  // from the client.
+  imageEngine: string;
   aspectRatio?: string;
   retryOfContentId?: string;
 };
@@ -33,6 +38,9 @@ export interface ImageJobPlaceholder {
   billingState: string;
   retryState: string;
   attempt: number;
+  // Server-derived, persisted at creation. On an idempotent replay this is the
+  // ORIGINAL stored cost — a later pricing change never reprices an existing job.
+  creditCost: number | null;
   idempotent: boolean;
 }
 
@@ -52,13 +60,17 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
 
 export function parseImageJobRequest(value: unknown): ImageJobRequest | null {
   if (!isRecord(value)) return null;
-  if (!hasOnlyKeys(value, ["brand_id", "idempotency_key", "mode", "aspect_ratio", "retry_of_content_id"])) {
+  if (!hasOnlyKeys(value, ["brand_id", "idempotency_key", "mode", "image_engine", "aspect_ratio", "retry_of_content_id"])) {
     return null;
   }
 
   if (typeof value.brand_id !== "string" || !UUID_PATTERN.test(value.brand_id)) return null;
   if (typeof value.idempotency_key !== "string" || !IDEMPOTENCY_KEY_PATTERN.test(value.idempotency_key)) return null;
   if (typeof value.mode !== "string" || !JOB_MODES.has(value.mode)) return null;
+  // The engine alias MUST resolve in the server-owned pricing registry — an
+  // unknown/unsupported engine (or a browser trying to send anything else) is
+  // rejected here, before any tenant work. A numeric price is never accepted.
+  if (resolveImageEngine(value.image_engine) === null) return null;
 
   let aspectRatio: string | undefined;
   if (value.aspect_ratio !== undefined && value.aspect_ratio !== null) {
@@ -76,6 +88,7 @@ export function parseImageJobRequest(value: unknown): ImageJobRequest | null {
     brandId: value.brand_id,
     idempotencyKey: value.idempotency_key,
     mode: value.mode,
+    imageEngine: value.image_engine as string,
     ...(aspectRatio ? { aspectRatio } : {}),
     ...(retryOfContentId ? { retryOfContentId } : {}),
   };
@@ -159,11 +172,12 @@ function mapRow(row: Record<string, unknown>, idempotent: boolean): ImageJobPlac
     billingState: String(row.billing_state),
     retryState: String(row.retry_state),
     attempt: typeof row.generation_attempt === "number" ? row.generation_attempt : 1,
+    creditCost: typeof row.credit_cost === "number" ? row.credit_cost : null,
     idempotent,
   };
 }
 
-const PLACEHOLDER_SELECT = "id, generation_state, billing_state, retry_state, generation_attempt";
+const PLACEHOLDER_SELECT = "id, generation_state, billing_state, retry_state, generation_attempt, credit_cost";
 
 /**
  * Create (or idempotently return) a durable generation placeholder for the
@@ -180,6 +194,12 @@ export async function createImageJobPlaceholder(
 
   const brand = await verifyBrandOwned(clientId, input.brandId);
   if (!brand.ok) return brand;
+
+  // Server-owned pricing: resolve the canonical model + verified credit cost from
+  // the engine alias. parseImageJobRequest already rejected an unresolvable engine,
+  // so this is defensive (never trust the amount from anywhere but the registry).
+  const pricing = resolveImageEngine(input.imageEngine);
+  if (!pricing) return { ok: false, status: 400, error: "Invalid request" };
 
   let attempt = 1;
   let retryState: "none" | "retrying" = "none";
@@ -202,10 +222,16 @@ export async function createImageJobPlaceholder(
     generation_status_text: "Queued",
     generation_attempt: attempt,
     generation_idempotency_key: input.idempotencyKey,
+    // Authoritative, server-derived cost — the billing RPC charges this value and
+    // requires it non-null. Persisted once at creation; never repriced.
+    credit_cost: pricing.creditCost,
     creation_metadata_version: 1,
     creation_metadata: {
       operation: input.mode,
       mode: input.mode,
+      image_engine: pricing.engine,
+      image_model: pricing.model,
+      credit_cost: pricing.creditCost,
       ...(input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
     },
     ...(input.retryOfContentId ? { retry_of_content_id: input.retryOfContentId } : {}),

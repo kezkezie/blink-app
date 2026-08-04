@@ -9,9 +9,9 @@ const IMAGE_MODES = new Set([
   "generate", "style_transfer", "gpt_image_2_t2i", "gpt_image_2_i2i",
 ]);
 const IMAGE_MODELS = new Set([
-  "nano-banana-2", "gpt-image-2-text-to-image", "gpt-image-2-image-to-image",
+  "nano-banana-2", "gpt-image-2-text-to-image", "gpt-image-2-image-to-image", "z-image",
 ]);
-const IMAGE_ENGINES = new Set(["nb2", "gpt-image-2-text-to-image", "gpt-image-2-image-to-image"]);
+const IMAGE_ENGINES = new Set(["nb2", "gpt-image-2-text-to-image", "gpt-image-2-image-to-image", "z-image"]);
 const IMAGE_STYLES = new Set([
   "studio", "lifestyle", "cinematic", "poster", "brand", "abstract", "flatlay",
   "realistic", "3d_render", "illustrative", "2d_flat",

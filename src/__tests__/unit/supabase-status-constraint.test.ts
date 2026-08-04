@@ -4,10 +4,17 @@
  * Verifies that all auto-saving scripts insert rows with status: "draft",
  * not "success", to comply with the content_status_check DB constraint.
  *
- * The content_status_check constraint only allows:
- *   'draft', 'pending_review', 'approved', 'rejected', 'scheduled', 'published'
+ * The allowlist below was CORRECTED on 2026-08-04 against the LIVE database.
+ * It previously omitted 'failed', which made this suite fail on legitimate code
+ * and produced a false conclusion that the video workflow's failure write was
+ * being rejected by Postgres.
  *
- * Using "success" will cause a constraint violation error.
+ * Live evidence (disposable row, since deleted):
+ *   PATCH content SET status='failed'             -> HTTP 204 (accepted)
+ *   PATCH content SET status='totally_invalid_xyz'-> HTTP 400, code 23514
+ * So a CHECK constraint DOES exist and it DOES include 'failed'.
+ *
+ * Values like "success" still violate it.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -18,7 +25,8 @@ import path from 'path';
 // Source file scan: ensure status: "draft" is used everywhere
 // ────────────────────────────────────────────────────────────────
 
-const VALID_STATUSES = ['draft', 'pending_review', 'approved', 'rejected', 'scheduled', 'published'];
+// 'failed' verified accepted by the live constraint (2026-08-04); see header.
+const VALID_STATUSES = ['draft', 'pending_review', 'approved', 'rejected', 'scheduled', 'published', 'failed'];
 
 /**
  * Scans a source file for Supabase .insert() calls and checks

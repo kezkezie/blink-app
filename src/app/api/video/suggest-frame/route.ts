@@ -1,16 +1,40 @@
-import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateExecutionRequest } from "@/lib/execution-security";
+import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
+import { parseVideoSuggestFrameRequest } from "@/lib/video-execution";
+import { openAiChat } from "@/lib/openai-proxy";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+export async function POST(req: NextRequest) {
+  const authenticated = await authenticateExecutionRequest(req);
+  if (!authenticated.ok) return NextResponse.json({ error: authenticated.error }, { status: authenticated.status });
 
-export async function POST(req: Request) {
+  let body: unknown;
   try {
-    const { concept } = await req.json();
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+  const input = parseVideoSuggestFrameRequest(body);
+  if (!input) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-    const systemPrompt = `
+  const rateLimit = await consumeExecutionRateLimit(authenticated.value, "video_suggest_frame");
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: "Prompt formatting is temporarily unavailable" },
+      { status: 503, headers: { "Retry-After": "30", "Cache-Control": "no-store" } }
+    );
+  }
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many prompt requests. Please try again later.", retryAt: rateLimit.resetAt },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds), "Cache-Control": "no-store" } }
+    );
+  }
+
+  const systemPrompt = `
     You are an AI Prompt Engineer specializing in formatting prompts for the "Nano Banana 2" image generation model.
     The user will provide a basic concept or a piece of a story storyboard.
-    
+
     You must rewrite their concept into a highly detailed image generation prompt using strict bracketed categories.
     Do not add conversational filler. Output ONLY the formatted prompt.
 
@@ -24,26 +48,14 @@ export async function POST(req: Request) {
     [AESTHETIC: Cinematic photography, 8k resolution, photorealistic] [SUBJECT: A young woman with curly brown hair wearing a green velvet blazer] [ACTION/SETTING: Sitting in a modern cafe, drinking espresso, looking thoughtfully out the window] [COLOR PALETTE: Warm golden hour sunlight, deep teal shadows]
     `;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Format this concept for an image frame: ${concept}`,
-        },
-      ],
-      max_tokens: 200,
+  try {
+    const content = await openAiChat({
+      system: systemPrompt,
+      user: `Format this concept for an image frame: ${input.concept}`,
+      maxTokens: 200,
     });
-
-    const suggestion = response.choices[0].message.content?.trim() || "";
-
-    return NextResponse.json({ suggestion });
-  } catch (error: any) {
-    console.error("Frame prompt format error:", error);
-    return NextResponse.json(
-      { error: "Failed to format prompt" },
-      { status: 500 }
-    );
+    return NextResponse.json({ suggestion: content.trim() });
+  } catch {
+    return NextResponse.json({ error: "Failed to format prompt" }, { status: 502 });
   }
 }

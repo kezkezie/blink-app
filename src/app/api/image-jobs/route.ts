@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
         billing_state: result.value.billingState,
         retry_state: result.value.retryState,
         attempt: result.value.attempt,
+        credit_cost: result.value.creditCost,
         idempotent: result.value.idempotent,
       },
       { status: result.value.idempotent ? 200 : 201, headers: { "Cache-Control": "no-store" } },
