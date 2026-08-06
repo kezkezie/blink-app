@@ -95,9 +95,13 @@ describe("parseVideoWorkflowRequest (blink-generate-video-v1)", () => {
     expect(parsed!.requestedBrandId).toBeUndefined();
   });
 
-  it("accepts gemini durations and the Kling premium 300", () => {
+  it("accepts a duration the selected model can render, and REJECTS the old fictional 300", () => {
     expect(parseVideoWorkflowRequest({ ...valid, ai_model_override: "gemini-omni-video", duration: "8" })).not.toBeNull();
-    expect(parseVideoWorkflowRequest({ ...valid, duration: "300" })).not.toBeNull();
+    // "300" ("5 Min Premium") used to be accepted here. No provider can render it:
+    // it was billed at 300s and clamped to 15s. It must now be refused before
+    // reaching n8n. Corrected 2026-08-06.
+    expect(parseVideoWorkflowRequest({ ...valid, ai_model_override: "kling-3.0/video", duration: "300" })).toBeNull();
+    expect(parseVideoWorkflowRequest({ ...valid, duration: "300" })).toBeNull();
   });
 
   it("rejects unknown fields (closed key set)", () => {
@@ -110,7 +114,11 @@ describe("parseVideoWorkflowRequest (blink-generate-video-v1)", () => {
     expect(parseVideoWorkflowRequest({ ...valid, ai_model_override: "gpt-secret" })).toBeNull();
   });
   it("rejects an invalid duration and aspect ratio", () => {
-    expect(parseVideoWorkflowRequest({ ...valid, duration: "7" })).toBeNull();
+    // 16s exceeds every model's provider maximum (Kling/Seedance cap at 15).
+    // NOTE: "7" is no longer invalid — Kling renders 3-15s and Seedance 4-15s, so
+    // 7s is genuinely renderable even though no picker offers it as a button.
+    expect(parseVideoWorkflowRequest({ ...valid, duration: "16" })).toBeNull();
+    expect(parseVideoWorkflowRequest({ ...valid, duration: "0" })).toBeNull();
     expect(parseVideoWorkflowRequest({ ...valid, aspect_ratio: "5:5" })).toBeNull();
   });
   it("rejects a non-https / malformed image URL", () => {

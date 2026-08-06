@@ -19,8 +19,17 @@
  *   if (model.includes('seedance'))    perSecCost = 20;
  *   else if (model.includes('kling') || model.includes('sora')) perSecCost = 12;
  *   else if (model.includes('pruna'))  perSecCost = 4;
+ *   else if (model.includes('gemini')) perSecCost = 20;   // re-mirrored 2026-08-06
  *   if (hasAudioUrl || hasAudioScript || promptHasDialogue) perSecCost += 4;
  *   const totalCost = duration * perSecCost;
+ *
+ *   The gemini branch was missing from this mirror until 2026-08-06, so the
+ *   registry advertised 12/sec while the workflow charged 20/sec — and the drift
+ *   test asserted the wrong number, hiding it. See GEMINI_CREDITS_PER_SECOND.
+ *
+ *   Billing uses the VALIDATED duration. The workflow no longer clamps a
+ *   too-long duration down to a renderable one while charging for the requested
+ *   length; unsupported durations are rejected before any deduction.
  *
  *   Auto-selection (same node):
  *     videoMode 'ugc'      -> kling-3.0/video
@@ -52,8 +61,18 @@ export interface VideoModelSpec {
   providerMatch: string;
   /** Verified per-second credit cost (before the audio surcharge). */
   creditsPerSecond: number;
-  /** Durations this model may be asked for, in seconds (string form, as the UI/payload use). */
+  /** Durations the UI OFFERS, in seconds (string form, as the UI/payload use).
+   *  Must be a subset of what the provider can render — enforced by a drift test. */
   durations: readonly string[];
+  /**
+   * What the PROVIDER can actually render. This, not `durations`, is the
+   * rejection gate: `durations` is only what we choose to offer, and other
+   * surfaces (Director, storyboard scenes) legitimately request in-range values
+   * we do not list as UI options. Exactly one of these is set per model.
+   */
+  providerDurationRange?: readonly [number, number];
+  /** For models that accept only discrete lengths (Gemini snaps to 4/6/8/10). */
+  providerDurationValues?: readonly number[];
   /** Aspect ratios this model supports. */
   aspectRatios: readonly string[];
   /** Resolutions, only where the UI exposes a choice. */
@@ -74,6 +93,26 @@ export const AUDIO_SURCHARGE_PER_SECOND = 4;
 /** Fallback per-second cost n8n uses for an unrecognised model. */
 export const DEFAULT_CREDITS_PER_SECOND = 12;
 
+/**
+ * Gemini Omni Video's per-second rate — the ONE place this decision lives.
+ *
+ * Canonical value: 20 credits/sec. Evidence (2026-08-06):
+ *  - Live n8n has always charged 20/sec (`Parse Inputs & Calculate Cost` has an
+ *    explicit `includes('gemini') -> 20` branch), so 20 is the rate customers
+ *    have actually paid.
+ *  - Provider cost is ~$0.10/sec at 720p. Pruna is 4 credits/sec at ~$0.02/sec,
+ *    i.e. ~200 credits per provider dollar; 0.10 x 200 = 20. So 20 preserves the
+ *    same margin ratio and 12 would have been sold below the Pruna ratio.
+ *  - 12 was never a pricing decision: it was `DEFAULT_CREDITS_PER_SECOND`
+ *    leaking into the registry entry because no gemini branch was mirrored here.
+ *  - `estimateVideoCredits` had no callers, so no customer was ever *shown*
+ *    12/sec. Adopting 20 therefore creates no historical billing exposure.
+ *
+ * Changing the price is a business decision: edit this constant and the drift
+ * test will force the mirrored n8n rule to agree.
+ */
+export const GEMINI_CREDITS_PER_SECOND = 20;
+
 const STANDARD_ASPECTS = ["16:9", "9:16", "1:1", "21:9"] as const;
 
 /**
@@ -89,12 +128,17 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     family: "kling",
     providerMatch: "kling",
     creditsPerSecond: 12,
-    durations: ["5", "10", "15", "300"],
+    // Kie docs (2026-08-06): Kling 3.0 supports 3-15s; multi-shot totals must also
+    // stay <= 15s. The old "300" ("5 Min Premium") option was never achievable —
+    // the provider cannot render it, and the workflow silently clamped it to 15s
+    // while billing 300s (3600 credits for a 15s video). Removed.
+    durations: ["5", "10", "15"],
+    providerDurationRange: [3, 15], // Kie docs 2026-08-06: Kling 3.0 supports 3-15s
     aspectRatios: STANDARD_ASPECTS,
     supportsEndFrame: true,
     supportsNativeAudio: true,
     referenceSlots: 1,
-    notes: "Multi-shot notation and native audio; 300s is the premium long-form option.",
+    notes: "Multi-shot notation and native audio. Provider maximum is 15s.",
   },
   "bytedance/seedance-2": {
     id: "bytedance/seedance-2",
@@ -103,6 +147,7 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     providerMatch: "seedance",
     creditsPerSecond: 20,
     durations: ["5", "10", "15"],
+    providerDurationRange: [4, 15], // Seedance 2 accepts 4-15s
     aspectRatios: STANDARD_ASPECTS,
     supportsEndFrame: false,
     supportsNativeAudio: true,
@@ -116,6 +161,7 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     providerMatch: "seedance",
     creditsPerSecond: 20,
     durations: ["5", "10", "15"],
+    providerDurationRange: [4, 15],
     aspectRatios: STANDARD_ASPECTS,
     supportsEndFrame: false,
     supportsNativeAudio: true,
@@ -127,12 +173,15 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     family: "sora",
     providerMatch: "sora",
     creditsPerSecond: 12,
-    durations: ["5", "10", "15"],
+    // Replicate docs (2026-08-06): Sora 2 generates 4-12s. "15" was unreachable —
+    // the workflow clamped it to 12s while billing 15s. Removed.
+    durations: ["5", "10"],
+    providerDurationRange: [4, 12], // Replicate docs 2026-08-06: Sora 2 generates 4-12s
     aspectRatios: STANDARD_ASPECTS,
     supportsEndFrame: true,
     supportsNativeAudio: true,
     referenceSlots: 1,
-    notes: "Prefers shorter clips; dialogue belongs in its own block.",
+    notes: "Provider maximum is 12s; dialogue belongs in its own block.",
   },
   "replicate:prunaai/p-video": {
     id: "replicate:prunaai/p-video",
@@ -141,6 +190,7 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     providerMatch: "pruna",
     creditsPerSecond: 4,
     durations: ["5", "10"],
+    providerDurationRange: [1, 10], // Replicate docs 2026-08-06: p-video duration 1-10s
     aspectRatios: STANDARD_ASPECTS,
     supportsEndFrame: true,
     supportsNativeAudio: false,
@@ -152,15 +202,16 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     label: "Gemini Omni Video",
     family: "gemini",
     providerMatch: "gemini",
-    creditsPerSecond: DEFAULT_CREDITS_PER_SECOND,
+    creditsPerSecond: GEMINI_CREDITS_PER_SECOND,
     durations: ["4", "6", "8", "10"],
+    providerDurationValues: [4, 6, 8, 10], // discrete only; nothing between snaps
     aspectRatios: ["16:9", "9:16"],
     resolutions: ["720p", "1080p", "4k"],
     supportsEndFrame: false,
     supportsNativeAudio: false,
     referenceSlots: 1,
     notes:
-      "Not matched by any n8n pricing branch, so it bills at the default 12/sec. Reference-driven transformation; 4/6/8/10s and 16:9 or 9:16 only.",
+      "Billed at GEMINI_CREDITS_PER_SECOND (20/sec) — n8n has an explicit gemini pricing branch. Reference-driven transformation; 4/6/8/10s and 16:9 or 9:16 only.",
   },
 });
 
@@ -218,6 +269,31 @@ function unionOf(pick: (spec: VideoModelSpec) => readonly string[]): string[] {
 export function allVideoDurations(): string[] {
   return unionOf((s) => s.durations);
 }
+
+/**
+ * Every duration ANY model can actually render — the correct coarse filter for
+ * the security boundary.
+ *
+ * `allVideoDurations()` is the union of UI *option lists*, which is narrower than
+ * provider capability: Sora renders 12s but no model offers 12s as a button, so
+ * filtering on the option union rejected a renderable request. The boundary's job
+ * is to reject values no model could ever render; the per-model gate
+ * (`validateVideoModelOptions`) then rejects values this model cannot render.
+ */
+export function allProviderRenderableDurations(): string[] {
+  const all = new Set<number>();
+  for (const spec of Object.values(VIDEO_MODEL_REGISTRY)) {
+    if (spec.providerDurationValues) {
+      for (const v of spec.providerDurationValues) all.add(v);
+    } else if (spec.providerDurationRange) {
+      const [min, max] = spec.providerDurationRange;
+      for (let v = min; v <= max; v += 1) all.add(v);
+    } else {
+      for (const v of spec.durations) all.add(Number(v));
+    }
+  }
+  return [...all].sort((a, b) => a - b).map(String);
+}
 export function allVideoAspectRatios(): string[] {
   return unionOf((s) => s.aspectRatios);
 }
@@ -242,11 +318,14 @@ export function resolveAutoModel(videoMode: string | null | undefined): string {
 export function estimateVideoCredits(
   modelId: string | null | undefined,
   durationSeconds: string | number,
-  options: { hasAudio?: boolean } = {},
+  options: { hasAudio?: boolean; videoMode?: string | null } = {},
 ): number | null {
   const duration = typeof durationSeconds === "number" ? durationSeconds : Number(durationSeconds);
   if (!Number.isFinite(duration) || duration <= 0) return null;
-  const resolvedId = !modelId || modelId === AUTO_VIDEO_MODEL ? resolveAutoModel(null) : modelId;
+  // `auto` must resolve with the SAME videoMode n8n uses, or the estimate quotes a
+  // different model than the one that runs (ugc -> Kling 12/sec vs the default
+  // Seedance 20/sec is a 40% error on a 5s clip).
+  const resolvedId = resolveEffectiveVideoModel(modelId, options.videoMode ?? null);
   const spec = resolveVideoModel(resolvedId);
   const perSecond = (spec?.creditsPerSecond ?? DEFAULT_CREDITS_PER_SECOND)
     + (options.hasAudio ? AUDIO_SURCHARGE_PER_SECOND : 0);
@@ -263,5 +342,113 @@ export function n8nPerSecondCost(modelId: string): number {
   if (modelId.includes("seedance")) return 20;
   if (modelId.includes("kling") || modelId.includes("sora")) return 12;
   if (modelId.includes("pruna")) return 4;
+  // n8n has an explicit gemini branch; omitting it here is what let the registry
+  // advertise 12/sec while the workflow charged 20/sec (found 2026-08-06).
+  if (modelId.includes("gemini")) return GEMINI_CREDITS_PER_SECOND;
   return DEFAULT_CREDITS_PER_SECOND;
+}
+
+// ── Per-model option validation ───────────────────────────────────────────────
+//
+// The security allowlists in `video-execution.ts` only reject values no model
+// could ever use. These functions are the per-model gate, and they are now
+// ENFORCED server-side rather than being advisory: a duration a model cannot
+// actually render must be rejected before any credit is deducted, never silently
+// clamped to something cheaper to render but billed at the requested length.
+
+/** Resolve `auto`/absent to the concrete model n8n would pick, so validation and
+ *  billing always reason about the model that will really run. */
+export function resolveEffectiveVideoModel(
+  modelId: string | null | undefined,
+  videoMode?: string | null,
+): string {
+  if (!modelId || modelId === AUTO_VIDEO_MODEL) return resolveAutoModel(videoMode ?? null);
+  return modelId;
+}
+
+/**
+ * True when this duration is RENDERABLE by this model.
+ *
+ * Deliberately checked against the provider's capability, not the UI option list:
+ * the Director and storyboard scenes legitimately ask for in-range lengths we do
+ * not offer as buttons (e.g. Seedance at 8s), and rejecting those would break
+ * working flows. What must never pass is a length the provider cannot render.
+ */
+export function isDurationAllowedFor(modelId: string | null | undefined, duration: string | number): boolean {
+  const spec = resolveVideoModel(modelId);
+  if (!spec) return false;
+  const seconds = typeof duration === "number" ? duration : Number(String(duration).trim());
+  if (!Number.isInteger(seconds) || seconds <= 0) return false;
+  if (spec.providerDurationValues) return spec.providerDurationValues.includes(seconds);
+  if (spec.providerDurationRange) {
+    const [min, max] = spec.providerDurationRange;
+    return seconds >= min && seconds <= max;
+  }
+  // No provider capability recorded — fall back to the offered options rather
+  // than accepting anything.
+  return spec.durations.includes(String(seconds));
+}
+
+/** Human-readable description of what a model can render, for rejection messages. */
+export function describeAllowedDurations(spec: VideoModelSpec): string {
+  if (spec.providerDurationValues) return `${spec.providerDurationValues.join(", ")}s`;
+  if (spec.providerDurationRange) return `${spec.providerDurationRange[0]}-${spec.providerDurationRange[1]}s`;
+  return `${spec.durations.join(", ")}s`;
+}
+
+/** True when this aspect ratio is offered for this model. */
+export function isAspectRatioAllowedFor(modelId: string | null | undefined, aspectRatio: string): boolean {
+  const spec = resolveVideoModel(modelId);
+  if (!spec) return false;
+  return spec.aspectRatios.includes(aspectRatio);
+}
+
+/** True when this resolution is offered for this model (models without a
+ *  resolution choice accept none — the workflow fixes their resolution). */
+export function isResolutionAllowedFor(modelId: string | null | undefined, resolution: string): boolean {
+  const spec = resolveVideoModel(modelId);
+  if (!spec?.resolutions) return false;
+  return spec.resolutions.includes(resolution);
+}
+
+export type VideoOptionRejection = { field: "model" | "duration" | "aspect_ratio" | "video_resolution"; reason: string };
+
+/**
+ * The single validation used by the execution boundary AND mirrored in n8n.
+ * Returns null when the combination is renderable, otherwise the first problem.
+ */
+export function validateVideoModelOptions(input: {
+  model?: string | null;
+  videoMode?: string | null;
+  duration?: string | number | null;
+  aspectRatio?: string | null;
+  videoResolution?: string | null;
+}): VideoOptionRejection | null {
+  const effective = resolveEffectiveVideoModel(input.model, input.videoMode);
+  const spec = resolveVideoModel(effective);
+  if (!spec) return { field: "model", reason: `Unknown video model: ${effective}` };
+
+  if (input.duration !== undefined && input.duration !== null && String(input.duration) !== "") {
+    if (!isDurationAllowedFor(effective, input.duration)) {
+      return {
+        field: "duration",
+        reason: `${spec.label} cannot render ${input.duration}s (supported: ${describeAllowedDurations(spec)})`,
+      };
+    }
+  }
+  if (input.aspectRatio && !isAspectRatioAllowedFor(effective, input.aspectRatio)) {
+    return {
+      field: "aspect_ratio",
+      reason: `${spec.label} does not support ${input.aspectRatio} (supported: ${spec.aspectRatios.join(", ")})`,
+    };
+  }
+  // Only enforce resolution where the model actually exposes a choice; the
+  // storyboard image path sends 1K/2K/4K on the same payload for frame images.
+  if (input.videoResolution && spec.resolutions && !isResolutionAllowedFor(effective, input.videoResolution)) {
+    return {
+      field: "video_resolution",
+      reason: `${spec.label} does not support ${input.videoResolution} (supported: ${spec.resolutions.join(", ")})`,
+    };
+  }
+  return null;
 }

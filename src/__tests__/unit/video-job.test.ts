@@ -77,7 +77,8 @@ describe("parseVideoJobRequest", () => {
   it("rejects an invalid SceneSpec (strict V2 validation applies here)", () => {
     expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, schemaVersion: 99 } })).toBeNull();
     expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, selectedModel: "secret-model" } })).toBeNull();
-    expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, durationSeconds: "7" } })).toBeNull();
+    // 16s exceeds every provider maximum ("7" is renderable — 2026-08-06 slice).
+    expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, durationSeconds: "16" } })).toBeNull();
     expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, videoPrompt: "x".repeat(8001) } })).toBeNull();
     expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, startFrameRef: "http://insecure/x.png" } })).toBeNull();
     expect(parseVideoJobRequest({ ...valid, scene_spec: null })).toBeNull();

@@ -8,9 +8,10 @@
 // after parsing.
 
 import {
+  allProviderRenderableDurations,
   allVideoAspectRatios,
-  allVideoDurations,
   allVideoResolutions,
+  validateVideoModelOptions,
   videoModelIds,
 } from "@/lib/video-model-registry";
 
@@ -34,12 +35,13 @@ export const NANO_VIDEO_MODES = new Set([...VIDEO_MODES, "motion_brush", "motion
 // at the execution boundary (and nowhere else needs editing).
 export const VIDEO_MODELS = new Set(videoModelIds());
 
-// Durations / aspect ratios accepted at the execution boundary — the UNION of
-// what any registered model allows. A scene names its own model, so the tighter
-// per-model check is capability gating (registry `allowedDurationsFor` etc.),
-// not the security allowlist: this boundary's job is to reject values no model
-// could ever use.
-export const VIDEO_DURATIONS = new Set(allVideoDurations());
+// Durations / aspect ratios accepted at the execution boundary. Coarse filter:
+// every duration ANY model can actually RENDER — deliberately not the union of UI
+// option lists, which is narrower (Sora renders 12s that no picker offers). This
+// rejects values no model could ever use; the per-model gate in each parser
+// (`validateVideoModelOptions`) then rejects values THIS model cannot render, so
+// an unrenderable length can never reach billing and be clamped after payment.
+export const VIDEO_DURATIONS = new Set(allProviderRenderableDurations());
 export const VIDEO_ASPECT_RATIOS = new Set(allVideoAspectRatios());
 // Resolutions: registry values (gemini 720p/1080p/4k) plus the GPT-Image-2
 // frame resolutions (1K/2K/4K) the storyboard image path sends on the same payload.
@@ -219,6 +221,22 @@ export function parseVideoWorkflowRequest(value: unknown): VideoWorkflowInput | 
     }
   }
 
+  // PER-MODEL gate. The allowlists above only reject values no model could ever
+  // use; this rejects combinations THIS model cannot render — before any credit is
+  // deducted. Previously a too-long duration passed here, was billed in full, and
+  // was then silently clamped for the provider (Kling 300s billed 3600 credits for
+  // a 15s video). `auto` is resolved first so we validate the model that will run.
+  if (
+    validateVideoModelOptions({
+      model: typeof payload.ai_model_override === "string" ? payload.ai_model_override : null,
+      videoMode: typeof payload.video_mode === "string" ? payload.video_mode : null,
+      duration: typeof payload.duration === "string" ? payload.duration : null,
+      aspectRatio: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : null,
+    })
+  ) {
+    return null;
+  }
+
   return {
     ...(requestedClientId ? { requestedClientId } : {}),
     ...(requestedBrandId ? { requestedBrandId } : {}),
@@ -269,6 +287,27 @@ export function validateNanoVideoPayload(raw: Record<string, unknown>): boolean 
       if (!isRecord(frames)) return false;
       if (safeUrlOrAbsent(frames.start_frame) === false) return false;
       if (safeUrlOrAbsent(frames.end_frame) === false) return false;
+    }
+  }
+
+  // PER-MODEL gate for the scene-video path (same rule as parseVideoWorkflowRequest).
+  // The scene's own duration wins where present, because that is what n8n bills.
+  const sceneRecord = isRecord(raw.scene_data) ? raw.scene_data : null;
+  const effectiveDuration = sceneRecord?.duration ?? raw.duration;
+  const effectiveMode = (typeof sceneRecord?.video_mode === "string" ? sceneRecord.video_mode : null)
+    ?? (typeof raw.video_mode === "string" ? raw.video_mode : null);
+  // Only gate a request that actually names a duration; Director/frame helper
+  // calls carry no duration and must keep working.
+  if (effectiveDuration !== undefined && effectiveDuration !== null && String(effectiveDuration) !== "") {
+    if (
+      validateVideoModelOptions({
+        model: typeof raw.ai_model_override === "string" ? raw.ai_model_override : null,
+        videoMode: effectiveMode,
+        duration: String(effectiveDuration),
+        aspectRatio: typeof raw.aspect_ratio === "string" ? raw.aspect_ratio : null,
+      })
+    ) {
+      return false;
     }
   }
   return true;

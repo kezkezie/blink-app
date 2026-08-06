@@ -232,3 +232,63 @@ describe("V6: brand identity is server-owned on the video path", () => {
     expect("brand_info" in forwarded).toBe(false);
   });
 });
+
+describe("BILLING INTEGRITY: per-model options are enforced before any n8n/billing work", () => {
+  const url = "http://localhost/api/workflows?path=blink-generate-video-v1";
+
+  // A direct API caller must not be able to buy a duration the provider cannot
+  // render. Before 2026-08-06 these passed validation, were billed in full, and
+  // were then silently clamped for the provider.
+  const REJECTED: Array<[string, Record<string, unknown>]> = [
+    ["Kling at 300s (billed 3600 for a 15s video)", { ai_model_override: "kling-3.0/video", duration: "300" }],
+    ["Pruna at 300s", { ai_model_override: "replicate:prunaai/p-video", duration: "300" }],
+    ["Pruna above its 10s maximum", { ai_model_override: "replicate:prunaai/p-video", duration: "15" }],
+    ["Sora above its 12s maximum", { ai_model_override: "replicate:openai/sora-2", duration: "15" }],
+    ["Gemini off its discrete set", { ai_model_override: "gemini-omni-video", duration: "5" }],
+    ["Gemini with an unsupported aspect", { ai_model_override: "gemini-omni-video", duration: "4", aspect_ratio: "21:9" }],
+  ];
+
+  for (const [label, override] of REJECTED) {
+    it(`rejects ${label} with no rate-limit, ownership, brand or provider work`, async () => {
+      const res = await workflowsPost(request(url, { ...VIDEO_WORKFLOW_BODY, ...override }));
+      expect(res.status).toBe(400);
+      expect(mocks.consume).not.toHaveBeenCalled();
+      expect(mocks.authorizeGeneric).not.toHaveBeenCalled();
+      expect(mocks.loadBrandContext).not.toHaveBeenCalled();
+      expect(mocks.providerFetch).not.toHaveBeenCalled();
+    });
+  }
+
+  const ACCEPTED: Array<[string, Record<string, unknown>]> = [
+    ["Kling at its 15s maximum", { ai_model_override: "kling-3.0/video", duration: "15" }],
+    ["Pruna at its 10s maximum", { ai_model_override: "replicate:prunaai/p-video", duration: "10" }],
+    ["Sora at its 12s maximum", { ai_model_override: "replicate:openai/sora-2", duration: "12" }],
+    ["Gemini on its discrete set", { ai_model_override: "gemini-omni-video", duration: "8", aspect_ratio: "16:9" }],
+    ["Seedance at an in-range duration the UI does not offer", { ai_model_override: "bytedance/seedance-2", duration: "8" }],
+  ];
+
+  for (const [label, override] of ACCEPTED) {
+    it(`still accepts ${label}`, async () => {
+      const res = await workflowsPost(request(url, { ...VIDEO_WORKFLOW_BODY, ...override }));
+      expect(res.status).toBe(200);
+      expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it("validates the model auto resolves to, not the sentinel", async () => {
+    // auto + clothing -> Pruna (10s max), so 15s must be refused.
+    const res = await workflowsPost(request(url, {
+      ...VIDEO_WORKFLOW_BODY, ai_model_override: "auto", video_mode: "clothing", duration: "15",
+    }));
+    expect(res.status).toBe(400);
+    expect(mocks.providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("allows auto where the resolved model supports the duration", async () => {
+    // auto + ugc -> Kling, which renders 15s.
+    const res = await workflowsPost(request(url, {
+      ...VIDEO_WORKFLOW_BODY, ai_model_override: "auto", video_mode: "ugc", duration: "15",
+    }));
+    expect(res.status).toBe(200);
+  });
+});

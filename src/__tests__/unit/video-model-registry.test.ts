@@ -3,15 +3,19 @@ import {
   AUDIO_SURCHARGE_PER_SECOND,
   AUTO_VIDEO_MODEL,
   DEFAULT_CREDITS_PER_SECOND,
+  GEMINI_CREDITS_PER_SECOND,
   VIDEO_MODEL_REGISTRY,
   allVideoAspectRatios,
   allVideoDurations,
   allowedDurationsFor,
   estimateVideoCredits,
+  isDurationAllowedFor,
   modelSupportsEndFrame,
   n8nPerSecondCost,
   resolveAutoModel,
+  resolveEffectiveVideoModel,
   resolveVideoModel,
+  validateVideoModelOptions,
   videoModelFamily,
   videoModelIds,
 } from "@/lib/video-model-registry";
@@ -58,8 +62,15 @@ describe("DRIFT: registry prices must equal the n8n cost rules", () => {
     expect(n8nPerSecondCost("kling-3.0/video")).toBe(12);
     expect(n8nPerSecondCost("replicate:openai/sora-2")).toBe(12);
     expect(n8nPerSecondCost("replicate:prunaai/p-video")).toBe(4);
-    // Unmatched models fall to the workflow default.
-    expect(n8nPerSecondCost("gemini-omni-video")).toBe(DEFAULT_CREDITS_PER_SECOND);
+    // Gemini has its OWN branch in the live workflow (`includes('gemini') -> 20`).
+    // This assertion previously pinned DEFAULT_CREDITS_PER_SECOND (12), which was
+    // wrong AND kept the suite green while the workflow charged 20/sec — the test
+    // was actively hiding the drift. Corrected 2026-08-06.
+    expect(n8nPerSecondCost("gemini-omni-video")).toBe(GEMINI_CREDITS_PER_SECOND);
+    expect(GEMINI_CREDITS_PER_SECOND).toBe(20);
+    // The default must remain distinct from Gemini's rate, or this test would
+    // pass again if the branch were dropped.
+    expect(GEMINI_CREDITS_PER_SECOND).not.toBe(DEFAULT_CREDITS_PER_SECOND);
   });
 
   it("prices the app's fully-qualified id the same as n8n's short id", () => {
@@ -100,7 +111,11 @@ describe("DRIFT: execution allowlists are derived from the registry", () => {
 
   it("keeps the values the shipped UI actually emits", () => {
     // Regression guard: these were the hard-coded allowlists before the registry.
-    for (const d of ["4", "5", "6", "8", "10", "15", "300"]) expect(allVideoDurations()).toContain(d);
+    // "300" was deliberately DROPPED on 2026-08-06: no provider can render it, and
+    // offering it billed 300s while asking the provider for 15s. Re-adding it here
+    // to keep this assertion green would restore a 3585-credit over-charge.
+    for (const d of ["4", "5", "6", "8", "10", "15"]) expect(allVideoDurations()).toContain(d);
+    expect(allVideoDurations()).not.toContain("300");
     for (const a of ["1:1", "9:16", "16:9", "21:9"]) expect(allVideoAspectRatios()).toContain(a);
   });
 });
@@ -131,8 +146,12 @@ describe("capabilities", () => {
   it("gates durations per model, and unions them for auto", () => {
     expect(allowedDurationsFor("gemini-omni-video")).toEqual(["4", "6", "8", "10"]);
     expect(allowedDurationsFor("replicate:prunaai/p-video")).toEqual(["5", "10"]);
-    expect(allowedDurationsFor("kling-3.0/video")).toContain("300");
-    expect(allowedDurationsFor(AUTO_VIDEO_MODEL)).toEqual(expect.arrayContaining(["4", "5", "300"]));
+    // Kling's real provider maximum is 15s (Kie docs). The previous assertion
+    // required "300", which no provider supports — corrected 2026-08-06.
+    expect(allowedDurationsFor("kling-3.0/video")).toEqual(["5", "10", "15"]);
+    expect(allowedDurationsFor("kling-3.0/video")).not.toContain("300");
+    expect(allowedDurationsFor(AUTO_VIDEO_MODEL)).toEqual(expect.arrayContaining(["4", "5", "15"]));
+    expect(allowedDurationsFor(AUTO_VIDEO_MODEL)).not.toContain("300");
   });
 });
 
@@ -156,5 +175,165 @@ describe("estimateVideoCredits (display only — n8n is the billing authority)",
 
   it("falls back to the n8n default rate for an unregistered model", () => {
     expect(estimateVideoCredits("unknown-model", "5")).toBe(DEFAULT_CREDITS_PER_SECOND * 5);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BILLING INTEGRITY (2026-08-06)
+//
+// Invariant: the duration used for UI display, validation, credit calculation,
+// deduction and the provider payload is ONE validated duration. Unsupported
+// values are rejected before deduction — never silently clamped.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The duration rules embedded in the live n8n `Parse Inputs & Calculate Cost`
+ *  node. Kept here so a change on either side fails this suite. */
+const N8N_DURATION_RULES: Record<string, { min?: number; max?: number; values?: number[] }> = {
+  kling: { min: 3, max: 15 },
+  seedance: { min: 4, max: 15 },
+  sora: { min: 4, max: 12 },
+  pruna: { min: 1, max: 10 },
+  gemini: { values: [4, 6, 8, 10] },
+};
+
+describe("DRIFT: UI options, provider capability and n8n rules must agree", () => {
+  it("every offered duration is renderable by that model", () => {
+    for (const spec of SPECS) {
+      for (const offered of spec.durations) {
+        expect(
+          isDurationAllowedFor(spec.id, offered),
+          `${spec.id} offers ${offered}s in the UI but the provider cannot render it`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("every model declares its provider duration capability", () => {
+    for (const spec of SPECS) {
+      expect(
+        Boolean(spec.providerDurationRange) || Boolean(spec.providerDurationValues),
+        `${spec.id} has no provider duration capability, so nothing can reject an unrenderable value`,
+      ).toBe(true);
+    }
+  });
+
+  it("registry capability matches the rules embedded in the live workflow", () => {
+    for (const spec of SPECS) {
+      const key = Object.keys(N8N_DURATION_RULES).find((k) => spec.id.includes(k));
+      expect(key, `${spec.id} has no matching n8n duration rule`).toBeTruthy();
+      const rule = N8N_DURATION_RULES[key!];
+      if (rule.values) {
+        expect(spec.providerDurationValues, `${spec.id} discrete durations`).toEqual(rule.values);
+      } else {
+        expect(spec.providerDurationRange, `${spec.id} duration range`).toEqual([rule.min, rule.max]);
+      }
+    }
+  });
+
+  it("the removed fictional options stay removed", () => {
+    // Kling "5 Min Premium" (300s) was billed at 300s and clamped to 15s.
+    expect(allVideoDurations()).not.toContain("300");
+    expect(isDurationAllowedFor("kling-3.0/video", 300)).toBe(false);
+    // Sora 15s was billed at 15s and clamped to 12s.
+    expect(isDurationAllowedFor("replicate:openai/sora-2", 15)).toBe(false);
+    expect(VIDEO_MODEL_REGISTRY["replicate:openai/sora-2"].durations).not.toContain("15");
+  });
+});
+
+describe("REJECTION: unsupported combinations are refused, not clamped", () => {
+  it("rejects Kling at 300s", () => {
+    const r = validateVideoModelOptions({ model: "kling-3.0/video", duration: "300" });
+    expect(r?.field).toBe("duration");
+    expect(r?.reason).toContain("cannot render 300s");
+  });
+
+  it("rejects Sora above its 12s provider maximum", () => {
+    expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "15" })?.field).toBe("duration");
+    expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "13" })?.field).toBe("duration");
+    // 12 is the documented maximum and must still be accepted.
+    expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "12" })).toBeNull();
+  });
+
+  it("rejects Pruna at 300s and above its 10s maximum", () => {
+    expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "300" })?.field).toBe("duration");
+    expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "11" })?.field).toBe("duration");
+    expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "10" })).toBeNull();
+  });
+
+  it("rejects Gemini durations outside its discrete set", () => {
+    for (const bad of ["5", "7", "12", "300"]) {
+      expect(validateVideoModelOptions({ model: "gemini-omni-video", duration: bad })?.field, bad).toBe("duration");
+    }
+    for (const good of ["4", "6", "8", "10"]) {
+      expect(validateVideoModelOptions({ model: "gemini-omni-video", duration: good }), good).toBeNull();
+    }
+  });
+
+  it("rejects unsupported aspect ratios where registry rules exist", () => {
+    expect(validateVideoModelOptions({ model: "gemini-omni-video", duration: "4", aspectRatio: "21:9" })?.field)
+      .toBe("aspect_ratio");
+    expect(validateVideoModelOptions({ model: "gemini-omni-video", duration: "4", aspectRatio: "16:9" })).toBeNull();
+  });
+
+  it("rejects unsupported resolutions where the model exposes a choice", () => {
+    expect(validateVideoModelOptions({ model: "gemini-omni-video", duration: "4", videoResolution: "8k" })?.field)
+      .toBe("video_resolution");
+    expect(validateVideoModelOptions({ model: "gemini-omni-video", duration: "4", videoResolution: "1080p" })).toBeNull();
+  });
+
+  it("rejects an unknown model rather than defaulting it", () => {
+    expect(validateVideoModelOptions({ model: "totally-made-up", duration: "5" })?.field).toBe("model");
+  });
+
+  it("resolves auto to a concrete model BEFORE validating duration", () => {
+    // auto + clothing resolves to Pruna (max 10s), so 15s must be rejected even
+    // though other models allow it.
+    expect(resolveEffectiveVideoModel("auto", "clothing")).toBe("replicate:prunaai/p-video");
+    expect(validateVideoModelOptions({ model: "auto", videoMode: "clothing", duration: "15" })?.field).toBe("duration");
+    // auto + ugc resolves to Kling, where 15s IS renderable.
+    expect(validateVideoModelOptions({ model: "auto", videoMode: "ugc", duration: "15" })).toBeNull();
+    // auto with no mode resolves to Seedance.
+    expect(validateVideoModelOptions({ model: "auto", duration: "15" })).toBeNull();
+  });
+
+  it("accepts in-range durations the UI does not offer as buttons", () => {
+    // The Director and storyboard scenes legitimately request these; rejecting
+    // them would break working flows. Only unrenderable values must fail.
+    expect(validateVideoModelOptions({ model: "bytedance/seedance-2", duration: "8" })).toBeNull();
+    expect(validateVideoModelOptions({ model: "kling-3.0/video", duration: "7" })).toBeNull();
+    expect(VIDEO_MODEL_REGISTRY["bytedance/seedance-2"].durations).not.toContain("8");
+  });
+});
+
+describe("COST: one validated duration drives display, validation and billing", () => {
+  it("UI estimate equals the mirrored n8n deduction for every offered duration", () => {
+    for (const spec of SPECS) {
+      for (const secs of spec.durations) {
+        const estimate = estimateVideoCredits(spec.id, secs);
+        const n8nWouldCharge = Number(secs) * n8nPerSecondCost(spec.id);
+        expect(estimate, `${spec.id} @ ${secs}s`).toBe(n8nWouldCharge);
+      }
+    }
+  });
+
+  it("applies the audio surcharge identically to n8n", () => {
+    for (const spec of SPECS) {
+      const withAudio = estimateVideoCredits(spec.id, "5", { hasAudio: true });
+      expect(withAudio).toBe(5 * (n8nPerSecondCost(spec.id) + AUDIO_SURCHARGE_PER_SECOND));
+    }
+  });
+
+  it("quotes Gemini at the canonical rate", () => {
+    expect(estimateVideoCredits("gemini-omni-video", "10")).toBe(10 * GEMINI_CREDITS_PER_SECOND);
+    expect(estimateVideoCredits("gemini-omni-video", "10")).toBe(200);
+    // The pre-fix behaviour under-quoted by 80 credits on a 10s clip.
+    expect(estimateVideoCredits("gemini-omni-video", "10")).not.toBe(10 * DEFAULT_CREDITS_PER_SECOND);
+  });
+
+  it("estimates `auto` using the model n8n will actually pick", () => {
+    // ugc -> Kling (12/sec), not the default Seedance (20/sec).
+    expect(estimateVideoCredits("auto", "5", { videoMode: "ugc" })).toBe(60);
+    expect(estimateVideoCredits("auto", "5", { videoMode: "clothing" })).toBe(20);
+    expect(estimateVideoCredits("auto", "5", { videoMode: "showcase" })).toBe(100);
   });
 });

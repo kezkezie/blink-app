@@ -25,7 +25,10 @@ import type { ImageGenerationStatus } from "@/lib/image-generation-state";
 import { summarizeSequence } from "@/lib/video-sequence-state";
 import { observeSceneSet, type SceneSetObserver, type SceneSnapshot } from "@/lib/video-job-observer";
 import {
+  allowedDurationsFor,
+  estimateVideoCredits,
   modelSupportsEndFrame as registryModelSupportsEndFrame,
+  resolveEffectiveVideoModel,
   videoModelFamily,
 } from "@/lib/video-model-registry";
 import {
@@ -2617,6 +2620,14 @@ export function StorytellingSetup({
             const isNativeAudio = isSeedance2 || scene.aiModel === 'replicate:openai/sora-2' || scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'replicate:prunaai/p-video' || scene.aiModel === 'auto' || isGeminiOmniVideo;
             const isPruna = scene.aiModel === 'replicate:prunaai/p-video';
             const isKling = scene.aiModel === 'kling-3.0/video' || scene.aiModel === 'auto';
+            // `auto` is resolved the same way n8n resolves it, so the duration
+            // options and the cost estimate describe the model that will actually
+            // run rather than a union across every model.
+            const effectiveModel = resolveEffectiveVideoModel(scene.aiModel, scene.mode);
+            const estimatedCredits = estimateVideoCredits(scene.aiModel, scene.duration || "5", {
+              videoMode: scene.mode,
+              hasAudio: Boolean(scene.dialogue || scene.audioUrl),
+            });
             const imageEngine = scene.imageEngine || 'nb2';
             const isGptImg2Txt = imageEngine === 'gpt-image-2-text-to-image';
             const isGptImg2Img = imageEngine === 'gpt-image-2-image-to-image';
@@ -2705,25 +2716,16 @@ export function StorytellingSetup({
                         onChange={(e) => updateScene(scene.id, "duration", e.target.value)}
                         className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
                       >
-                        {isGeminiOmniVideo ? (
-                          <>
-                            <option value="4" className="bg-[#191D23]">4 Secs</option>
-                            <option value="6" className="bg-[#191D23]">6 Secs</option>
-                            <option value="8" className="bg-[#191D23]">8 Secs</option>
-                            <option value="10" className="bg-[#191D23]">10 Secs</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="5" className="bg-[#191D23]">5 Secs</option>
-                            <option value="10" className="bg-[#191D23]">10 Secs</option>
-                            {(isKling || isSeedance2 || scene.aiModel === 'replicate:openai/sora-2') && (
-                              <option value="15" className="bg-[#191D23]">15 Secs</option>
-                            )}
-                            {isKling && (
-                              <option value="300" className="bg-[#191D23]">5 Min ✦ Premium</option>
-                            )}
-                          </>
-                        )}
+                        {/* Registry-derived: the model registry is the single source
+                            for which durations a model offers. The previous
+                            hardcoded list drifted from it and offered Kling "5 Min"
+                            (300s), which the provider cannot render — it was billed
+                            at 300s and clamped to 15s. */}
+                        {allowedDurationsFor(effectiveModel).map((secs) => (
+                          <option key={secs} value={secs} className="bg-[#191D23]">
+                            {secs} Secs
+                          </option>
+                        ))}
                       </select>
                     )}
 
@@ -2762,10 +2764,16 @@ export function StorytellingSetup({
                         className="text-[10px] font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2.5 px-3 bg-[#2A2F38] text-[#DEDCDC] w-28 focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/50 placeholder:text-[#57707A] [appearance:textfield]"
                       />
                     )}
-                    {scene.duration === "300" && isKling && (
-                      <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-[#1E2329] border border-[#C5BAC4]/20 rounded-xl p-2.5 shadow-xl">
-                        <p className="text-[9px] text-[#989DAA] leading-relaxed">Long-form rendering takes up to tens of minutes. You can safely browse away — Content Grid updates live when complete.</p>
-                      </div>
+                    {/* Estimated cost, shown BEFORE submission. Mirrors the n8n
+                        billing formula (per-second rate x validated duration, plus
+                        the audio surcharge). n8n remains the billing authority. */}
+                    {estimatedCredits !== null && (
+                      <span
+                        className="text-[10px] font-bold rounded-xl border border-[#B3FF00]/30 bg-[#2A2F38] text-[#B3FF00] py-2 px-2.5 uppercase tracking-wider whitespace-nowrap"
+                        title={`Estimated ${estimatedCredits} credits — ${scene.duration || "5"}s on ${effectiveModel}. Final amount is calculated at generation time.`}
+                      >
+                        ≈ {estimatedCredits} cr
+                      </span>
                     )}
 
                     {isPruna && (
