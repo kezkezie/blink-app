@@ -24,10 +24,12 @@ import { mintIdempotencyKey, submitVideoJob } from "@/lib/generation-job-client"
 import type { ImageGenerationStatus } from "@/lib/image-generation-state";
 import { summarizeSequence } from "@/lib/video-sequence-state";
 import { observeSceneSet, type SceneSetObserver, type SceneSnapshot } from "@/lib/video-job-observer";
+import { N8N_IMAGE_DEFAULT_COST, resolveImageEngine } from "@/lib/image-engine-pricing";
 import {
   allowedAspectRatiosFor,
   allowedDurationsFor,
   estimateVideoCredits,
+  isEndFrameAllowedFor,
   modelSupportsEndFrame as registryModelSupportsEndFrame,
   resolveEffectiveVideoModel,
   videoModelFamily,
@@ -1255,7 +1257,7 @@ export function StorytellingSetup({
     try {
       const directorData = await callN8n('director', {
         clientId: clientId,
-        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into a dynamic sequence of scenes. For each scene, write the "image_prompt" and "video_prompt". ALSO, intelligently select the best 'aiModel' ('bytedance/seedance-2', 'kling-3.0/video', 'replicate:openai/sora-2', or 'replicate:prunaai/p-video'), a 'duration' (5, 10, or 15), and whether to 'useEndFrame' (true/false) based on the specific action required.`,
+        prompt: `Concept: ${bRollConcept}\n\nCRITICAL: Break this concept into a dynamic sequence of scenes. For each scene, write the "image_prompt" and "video_prompt". ALSO, intelligently select the best 'aiModel' ('bytedance/seedance-2', 'kling-3.0/video', 'replicate:openai/sora-2', or 'replicate:prunaai/p-video'), a 'duration' (5, 10, or 15). Do NOT choose an end frame: end frames cost an extra paid image and are the user's explicit choice.`,
         style: VISUAL_STYLES.find(s => s.id === selectedStyle)?.label,
         sceneConfigs: bRollScenes.map(scene => ({ aiModel: scene.aiModel })),
         consistencyMode: modelConsistency, // ✨ PASS PREFERENCE TO AI
@@ -1278,7 +1280,10 @@ export function StorytellingSetup({
             // ✨ Auto-enable the End Frame slot for engines that support keyframe
             // transitions. The AI Director often returns useEndFrame:false even for
             // Kling/Sora, which left the End Frame slot greyed out and ungenerated.
-            useEndFrame: modelSupportsEndFrame(addedModel),
+            // NEVER auto-enable: an end frame costs a second paid image
+            // generation, so turning it on is the user's spending decision.
+            // `supportsEndFrame` only decides whether the toggle is OFFERED.
+            useEndFrame: false,
             primaryFile: null,
             primaryPreview: null,
             secondaryFile: null,
@@ -1320,7 +1325,8 @@ export function StorytellingSetup({
           duration: aiData.duration ? String(aiData.duration) : scene.duration,
           // ✨ Auto-enable End Frame for keyframe-capable engines (Kling/Sora/Pruna).
           // Seedance/Gemini stay false. Start-frame-only forces it off everywhere.
-          useEndFrame: startFrameOnly ? false : modelSupportsEndFrame(finalModel)
+          // Always false — see the note above. Capability gates availability only.
+          useEndFrame: false
         };
       });
 
@@ -1790,7 +1796,15 @@ export function StorytellingSetup({
         if (!scenesToUse[i].primaryPreview && currentPrompts[i]) {
           await handleGenerateSlot(i, 'primary', currentPrompts[i], 0, scenesToUse);
         }
-        if (scenesToUse[i].useEndFrame && !scenesToUse[i].secondaryPreview && currentPrompts[i]) {
+        // Capability re-check at the POINT OF SPEND: never generate a paid
+        // end-frame image for a model that cannot consume one, even if a stale
+        // useEndFrame survived a model switch.
+        if (
+          scenesToUse[i].useEndFrame
+          && isEndFrameAllowedFor(scenesToUse[i].aiModel, scenesToUse[i].mode)
+          && !scenesToUse[i].secondaryPreview
+          && currentPrompts[i]
+        ) {
           await handleGenerateSlot(i, 'secondary', currentPrompts[i], 0, scenesToUse);
         }
       }
@@ -1967,7 +1981,7 @@ export function StorytellingSetup({
       { toast.warning("This scene has no motion prompt. Run \"Write Scenes\" or describe the scene in the Scene Director box first."); return; }
     }
 
-    if (scene.useEndFrame && !scene.secondaryPreview && !isSeedance2) {
+    if (scene.useEndFrame && isEndFrameAllowedFor(scene.aiModel, scene.mode) && !scene.secondaryPreview && !isSeedance2) {
       { toast.warning("You enabled the End Frame toggle. Please generate or upload an End Frame before animating."); return; }
     }
 
@@ -2629,6 +2643,15 @@ export function StorytellingSetup({
               videoMode: scene.mode,
               hasAudio: Boolean(scene.dialogue || scene.audioUrl),
             });
+            const endFrameAllowed = isEndFrameAllowedFor(scene.aiModel, scene.mode);
+            // Cost of the ADDITIONAL end-frame image, from the scene's image engine.
+            // Zero when the user already supplied one — nothing is generated then.
+            const endFrameImageCredits = resolveImageEngine(scene.imageEngine || "nb2")?.creditCost
+              ?? N8N_IMAGE_DEFAULT_COST;
+            const endFrameCost = scene.useEndFrame && endFrameAllowed && !scene.secondaryPreview
+              ? endFrameImageCredits
+              : 0;
+            const combinedCredits = estimatedCredits === null ? null : estimatedCredits + endFrameCost;
             const imageEngine = scene.imageEngine || 'nb2';
             const isGptImg2Txt = imageEngine === 'gpt-image-2-text-to-image';
             const isGptImg2Img = imageEngine === 'gpt-image-2-image-to-image';
@@ -2657,7 +2680,16 @@ export function StorytellingSetup({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <select value={scene.aiModel || "auto"} onChange={(e) => updateScene(scene.id, "aiModel", e.target.value)} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#B3FF00] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#B3FF00]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
+                      <select value={scene.aiModel || "auto"} onChange={(e) => {
+                        const nextModel = e.target.value;
+                        updateScene(scene.id, "aiModel", nextModel);
+                        // Switching to a model that cannot consume an end frame must
+                        // CLEAR the selection, or a stale useEndFrame would keep
+                        // charging for an image the new provider ignores.
+                        if (scene.useEndFrame && !isEndFrameAllowedFor(nextModel, scene.mode)) {
+                          updateScene(scene.id, "useEndFrame", false);
+                        }
+                      }} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#B3FF00] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#B3FF00]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
                         <optgroup label="— Video Engines —" className="bg-[#191D23] text-[#57707A]">
                           <option value="auto" className="bg-[#191D23]">✨ Auto Engine</option>
                           <option value="replicate:openai/sora-2" className="bg-[#191D23]">Sora 2</option>
@@ -2774,9 +2806,13 @@ export function StorytellingSetup({
                     {estimatedCredits !== null && (
                       <span
                         className="text-[10px] font-bold rounded-xl border border-[#B3FF00]/30 bg-[#2A2F38] text-[#B3FF00] py-2 px-2.5 uppercase tracking-wider whitespace-nowrap"
-                        title={`Estimated ${estimatedCredits} credits — ${scene.duration || "5"}s on ${effectiveModel}. Final amount is calculated at generation time.`}
+                        title={
+                          `Estimated ${combinedCredits} credits total — ${estimatedCredits} for ${scene.duration || "5"}s of video on ${effectiveModel}` +
+                          (endFrameCost > 0 ? ` plus ${endFrameCost} for the additional end-frame image` : "") +
+                          `. Final amount is calculated at generation time.`
+                        }
                       >
-                        ≈ {estimatedCredits} cr
+                        ≈ {combinedCredits} cr{endFrameCost > 0 ? ` (${estimatedCredits}+${endFrameCost})` : ""}
                       </span>
                     )}
 
@@ -2792,7 +2828,12 @@ export function StorytellingSetup({
                       </label>
                     )}
 
-                    {!isSeedance2 && !isGeminiOmniVideo && !startFrameOnly && (
+                    {/* Offered ONLY for models that can actually consume an end
+                        frame (registry-derived). Sora has no end-frame input at
+                        all, so offering it there generated a paid image the
+                        provider never received. The label states the extra cost,
+                        because ticking this box spends image credits. */}
+                    {endFrameAllowed && !startFrameOnly && (
                       <label className="flex items-center gap-2.5 cursor-pointer bg-[#2A2F38] px-3 py-2 border border-[#57707A]/40 rounded-xl hover:bg-[#57707A]/30 hover:border-[#C5BAC4]/40 transition-all shadow-sm group/check">
                         <input
                           type="checkbox"
@@ -2800,7 +2841,9 @@ export function StorytellingSetup({
                           onChange={(e) => updateScene(scene.id, "useEndFrame", e.target.checked)}
                           className="rounded border-[#57707A]/50 bg-[#191D23] text-[#C5BAC4] focus:ring-[#C5BAC4] cursor-pointer"
                         />
-                        <span className="text-[10px] font-bold text-[#989DAA] group-hover/check:text-[#DEDCDC] uppercase tracking-widest transition-colors mt-0.5">End Frame</span>
+                        <span className="text-[10px] font-bold text-[#989DAA] group-hover/check:text-[#DEDCDC] uppercase tracking-widest transition-colors mt-0.5">
+                          End Frame {scene.secondaryPreview ? "(supplied)" : `(+${endFrameImageCredits} cr image)`}
+                        </span>
                       </label>
                     )}
 

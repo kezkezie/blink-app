@@ -10,6 +10,7 @@ import {
   allowedDurationsFor,
   estimateVideoCredits,
   isDurationAllowedFor,
+  isEndFrameAllowedFor,
   modelSupportsEndFrame,
   n8nPerSecondCost,
   resolveAutoModel,
@@ -121,13 +122,20 @@ describe("DRIFT: execution allowlists are derived from the registry", () => {
 });
 
 describe("capabilities", () => {
-  it("reports end-frame support per model, treating auto as capable", () => {
+  it("reports end-frame support per model", () => {
+    // Documented support only. Kling: image_urls[1] is the last frame (Kie docs).
+    // Pruna: last_frame_image (Replicate schema), now actually sent by Video V3.
     expect(modelSupportsEndFrame("kling-3.0/video")).toBe(true);
-    expect(modelSupportsEndFrame("replicate:openai/sora-2")).toBe(true);
     expect(modelSupportsEndFrame("replicate:prunaai/p-video")).toBe(true);
+    // Sora was `true` until 2026-08-07. Its schema has NO end-frame input, and
+    // because the UI auto-enabled from this flag it generated a paid image the
+    // provider never received. Corrected — do not restore this to true.
+    expect(modelSupportsEndFrame("replicate:openai/sora-2")).toBe(false);
     expect(modelSupportsEndFrame("bytedance/seedance-2")).toBe(false);
     expect(modelSupportsEndFrame("gemini-omni-video")).toBe(false);
-    // Matches the previous hard-coded behaviour: default scenes start as auto.
+    // `auto`/undefined still report capable so the option can be OFFERED before a
+    // concrete model is chosen; it never switches the option ON, and the resolved
+    // model is re-checked at the point of spend.
     expect(modelSupportsEndFrame("auto")).toBe(true);
     expect(modelSupportsEndFrame(undefined)).toBe(true);
     expect(modelSupportsEndFrame("unknown-model")).toBe(false);
@@ -363,5 +371,71 @@ describe("COST: one validated duration drives display, validation and billing", 
     expect(estimateVideoCredits("auto", "5", { videoMode: "ugc" })).toBe(60);
     expect(estimateVideoCredits("auto", "5", { videoMode: "clothing" })).toBe(20);
     expect(estimateVideoCredits("auto", "5", { videoMode: "showcase" })).toBe(100);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// END-FRAME BILLING INTEGRITY (2026-08-07)
+//
+// An enabled end frame triggers a SECOND PAID IMAGE generation. Until this slice,
+// `supportsEndFrame: true` AUTO-ENABLED it, so Sora (which has no end-frame input
+// at all) and Pruna (whose end frame the workflow never sent) both burned an image
+// generation the provider never received.
+//
+// Invariant: capability decides AVAILABILITY, never INTENT.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("END FRAME: capability is availability, never intent", () => {
+  it("Sora declares NO end-frame support (its schema has no such input)", () => {
+    expect(VIDEO_MODEL_REGISTRY["replicate:openai/sora-2"].supportsEndFrame).toBe(false);
+    expect(isEndFrameAllowedFor("replicate:openai/sora-2")).toBe(false);
+  });
+
+  it("only models with a documented end-frame input may offer it", () => {
+    // Kling: image_urls[1] is the last frame (Kie docs). Pruna: last_frame_image
+    // (Replicate schema), now actually sent by Video V3.
+    expect(isEndFrameAllowedFor("kling-3.0/video")).toBe(true);
+    expect(isEndFrameAllowedFor("replicate:prunaai/p-video")).toBe(true);
+    // Seedance has only `return_last_frame` (an OUTPUT flag) and Gemini none.
+    expect(isEndFrameAllowedFor("bytedance/seedance-2")).toBe(false);
+    expect(isEndFrameAllowedFor("bytedance/seedance-2-fast")).toBe(false);
+    expect(isEndFrameAllowedFor("gemini-omni-video")).toBe(false);
+    expect(isEndFrameAllowedFor("unknown-model")).toBe(false);
+  });
+
+  it("NO model may generate an end-frame image merely because supportsEndFrame is true", () => {
+    // The regression this whole slice exists to prevent. `isEndFrameAllowedFor`
+    // answers "may the option be offered?" — it must never be read as "is it on?".
+    // There is deliberately no registry function that returns an ENABLED end frame:
+    // intent lives only in the user's `useEndFrame` selection.
+    for (const spec of SPECS) {
+      const allowed = isEndFrameAllowedFor(spec.id);
+      expect(allowed).toBe(spec.supportsEndFrame);
+      // A capability of `true` must NOT by itself make a request valid: the
+      // request still has to carry an end frame for the guard to apply at all.
+      expect(validateVideoModelOptions({ model: spec.id, duration: spec.durations[0] })).toBeNull();
+    }
+  });
+
+  it("rejects an end frame on every unsupported model, before any spend", () => {
+    for (const id of ["replicate:openai/sora-2", "bytedance/seedance-2", "bytedance/seedance-2-fast", "gemini-omni-video"]) {
+      const spec = VIDEO_MODEL_REGISTRY[id];
+      const r = validateVideoModelOptions({ model: id, duration: spec.durations[0], hasEndFrame: true });
+      expect(r?.field, id).toBe("end_frame");
+      expect(r?.reason, id).toContain("does not support an end frame");
+    }
+  });
+
+  it("allows an end frame on supported models", () => {
+    expect(validateVideoModelOptions({ model: "kling-3.0/video", duration: "5", hasEndFrame: true })).toBeNull();
+    expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "5", hasEndFrame: true })).toBeNull();
+  });
+
+  it("resolves auto before deciding end-frame availability", () => {
+    // auto + clothing -> Pruna (supported); auto with no mode -> Seedance (not).
+    expect(isEndFrameAllowedFor("auto", "clothing")).toBe(true);
+    expect(isEndFrameAllowedFor("auto", null)).toBe(false);
+    expect(validateVideoModelOptions({ model: "auto", videoMode: null, duration: "5", hasEndFrame: true })?.field)
+      .toBe("end_frame");
   });
 });

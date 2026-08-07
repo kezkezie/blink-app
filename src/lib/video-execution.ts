@@ -232,6 +232,10 @@ export function parseVideoWorkflowRequest(value: unknown): VideoWorkflowInput | 
       videoMode: typeof payload.video_mode === "string" ? payload.video_mode : null,
       duration: typeof payload.duration === "string" ? payload.duration : null,
       aspectRatio: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : null,
+      // An end frame on a model that cannot consume one is rejected here, before
+      // any n8n work or deduction — a manipulated request must not be able to
+      // trigger a paid end-frame image on an unsupported model.
+      hasEndFrame: typeof payload.secondary_image_url === "string" && payload.secondary_image_url.length > 0,
     })
   ) {
     return null;
@@ -293,11 +297,28 @@ export function validateNanoVideoPayload(raw: Record<string, unknown>): boolean 
   // PER-MODEL gate for the scene-video path (same rule as parseVideoWorkflowRequest).
   // The scene's own duration wins where present, because that is what n8n bills.
   const sceneRecord = isRecord(raw.scene_data) ? raw.scene_data : null;
+  const sceneFrames = isRecord(sceneRecord?.frames) ? sceneRecord.frames : null;
+  const endFrameUrl = (typeof sceneFrames?.end_frame === "string" && sceneFrames.end_frame)
+    || (typeof raw.secondary_image_url === "string" && raw.secondary_image_url)
+    || null;
   const effectiveDuration = sceneRecord?.duration ?? raw.duration;
   const effectiveMode = (typeof sceneRecord?.video_mode === "string" ? sceneRecord.video_mode : null)
     ?? (typeof raw.video_mode === "string" ? raw.video_mode : null);
   // Only gate a request that actually names a duration; Director/frame helper
   // calls carry no duration and must keep working.
+  if (endFrameUrl && raw.ai_model_override !== undefined) {
+    // Checked even when no duration is named, so an end frame can never slip
+    // through on a Director/frame-helper shaped payload.
+    if (
+      validateVideoModelOptions({
+        model: typeof raw.ai_model_override === "string" ? raw.ai_model_override : null,
+        videoMode: effectiveMode,
+        hasEndFrame: true,
+      })
+    ) {
+      return false;
+    }
+  }
   if (effectiveDuration !== undefined && effectiveDuration !== null && String(effectiveDuration) !== "") {
     if (
       validateVideoModelOptions({
@@ -305,6 +326,7 @@ export function validateNanoVideoPayload(raw: Record<string, unknown>): boolean 
         videoMode: effectiveMode,
         duration: String(effectiveDuration),
         aspectRatio: typeof raw.aspect_ratio === "string" ? raw.aspect_ratio : null,
+        hasEndFrame: Boolean(endFrameUrl),
       })
     ) {
       return false;

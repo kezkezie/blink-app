@@ -135,10 +135,13 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     durations: ["5", "10", "15"],
     providerDurationRange: [3, 15], // Kie docs 2026-08-06: Kling 3.0 supports 3-15s
     aspectRatios: STANDARD_ASPECTS,
+    // TRUE, documented by Kie: `image_urls` carries "First and last frame image
+    // URLs ... if length is 2, index 0 is the first frame and index 1 is the last
+    // frame". So an end frame is genuinely supported for Kling 3.0.
     supportsEndFrame: true,
     supportsNativeAudio: true,
     referenceSlots: 1,
-    notes: "Multi-shot notation and native audio. Provider maximum is 15s.",
+    notes: "Multi-shot notation and native audio. Provider maximum is 15s. End frame is image_urls[1] per Kie docs.",
   },
   "bytedance/seedance-2": {
     id: "bytedance/seedance-2",
@@ -187,10 +190,15 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     // the provider does NOT accept, so 1:1 is withheld here rather than changing
     // the shared builder. 16:9 and 21:9 map to landscape; 9:16 and 3:4 to portrait.
     aspectRatios: ["16:9", "9:16", "21:9"],
-    supportsEndFrame: true,
+    // FALSE, proven from the schema: openai/sora-2's Input has only
+    // `input_reference` — there is NO end-frame/tail-frame parameter of any kind.
+    // This was `true` until 2026-08-07, and because the UI auto-enabled the end
+    // frame from this flag it generated a SECOND PAID IMAGE per scene that the
+    // provider never received.
+    supportsEndFrame: false,
     supportsNativeAudio: true,
     referenceSlots: 1,
-    notes: "Discrete durations 4/8/12s only. 1:1 is unavailable: the builder maps it to 'square', which the provider rejects.",
+    notes: "Discrete durations 4/8/12s only. No end frame (schema has no such input). 1:1 is unavailable: the builder maps it to 'square', which the provider rejects.",
   },
   "replicate:prunaai/p-video": {
     id: "replicate:prunaai/p-video",
@@ -201,10 +209,14 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     durations: ["5", "10"],
     providerDurationRange: [1, 10], // Replicate docs 2026-08-06: p-video duration 1-10s
     aspectRatios: STANDARD_ASPECTS,
+    // TRUE only because Video V3 now passes the selected end frame through the
+    // schema's `last_frame_image` input. Before 2026-08-07 this flag was true but
+    // the workflow never sent the field, so a paid end-frame image was generated
+    // and silently discarded.
     supportsEndFrame: true,
     supportsNativeAudio: false,
     referenceSlots: 1,
-    notes: "Cheapest; short direct prompts, draft mode available.",
+    notes: "Cheapest; short direct prompts, draft mode available. End frame is sent as last_frame_image.",
   },
   "gemini-omni-video": {
     id: "gemini-omni-video",
@@ -420,7 +432,24 @@ export function isResolutionAllowedFor(modelId: string | null | undefined, resol
   return spec.resolutions.includes(resolution);
 }
 
-export type VideoOptionRejection = { field: "model" | "duration" | "aspect_ratio" | "video_resolution"; reason: string };
+export type VideoOptionRejection = {
+  field: "model" | "duration" | "aspect_ratio" | "video_resolution" | "end_frame";
+  reason: string;
+};
+
+/**
+ * Capability, NOT intent.
+ *
+ * `supportsEndFrame` says the option MAY be offered. It must never be used to
+ * turn the option ON: an enabled end frame triggers a second PAID image
+ * generation, so enabling it is a spending decision that only the user may make.
+ * Callers wanting "should this scene have an end frame?" must read the user's
+ * explicit `useEndFrame` selection, and pass it here to check it is permitted.
+ */
+export function isEndFrameAllowedFor(modelId: string | null | undefined, videoMode?: string | null): boolean {
+  const effective = resolveEffectiveVideoModel(modelId, videoMode ?? null);
+  return resolveVideoModel(effective)?.supportsEndFrame ?? false;
+}
 
 /**
  * The single validation used by the execution boundary AND mirrored in n8n.
@@ -432,6 +461,8 @@ export function validateVideoModelOptions(input: {
   duration?: string | number | null;
   aspectRatio?: string | null;
   videoResolution?: string | null;
+  /** True when the request carries an end/last frame image. */
+  hasEndFrame?: boolean;
 }): VideoOptionRejection | null {
   const effective = resolveEffectiveVideoModel(input.model, input.videoMode);
   const spec = resolveVideoModel(effective);
@@ -449,6 +480,15 @@ export function validateVideoModelOptions(input: {
     return {
       field: "aspect_ratio",
       reason: `${spec.label} does not support ${input.aspectRatio} (supported: ${spec.aspectRatios.join(", ")})`,
+    };
+  }
+  // An end frame may only be requested for a model that can actually consume it.
+  // This is the server-side stop that prevents a manipulated request from causing
+  // a paid end-frame image generation on an unsupported model.
+  if (input.hasEndFrame && !spec.supportsEndFrame) {
+    return {
+      field: "end_frame",
+      reason: `${spec.label} does not support an end frame`,
     };
   }
   // Only enforce resolution where the model actually exposes a choice; the
