@@ -83,13 +83,19 @@ test("Kling/Sora duration options and Gemini credit estimate are correct", async
   expect(klingDurations).toEqual(["5", "10", "15"]);
   expect(klingDurations).not.toContain("300");
 
-  // ── 2. Sora ──
+  // ── 2. Sora — DISCRETE schema enum {4,8,12}. 5 and 10 were the 2026-08-06
+  //         replacements for the invalid 15 and were themselves rejected with
+  //         HTTP 422, charging then refunding on every attempt.
   await modelSelect.selectOption("replicate:openai/sora-2");
   await page.waitForTimeout(600);
   const soraDurations = await readDurations();
   console.log("SORA durations:", JSON.stringify(soraDurations));
-  expect(soraDurations).toEqual(["5", "10"]);
-  expect(soraDurations).not.toContain("15");
+  expect(soraDurations).toEqual(["4", "8", "12"]);
+  for (const bad of ["5", "10", "15"]) expect(soraDurations).not.toContain(bad);
+  const soraAspects = await page.locator("select").nth(1).locator("option")
+    .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+  console.log("SORA aspects:", JSON.stringify(soraAspects));
+  expect(soraAspects).not.toContain("1:1");
 
   // ── 3. Gemini at 10s must read ~200 credits ──
   await modelSelect.selectOption("gemini-omni-video");
