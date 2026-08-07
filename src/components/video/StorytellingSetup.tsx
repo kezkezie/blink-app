@@ -25,6 +25,7 @@ import type { ImageGenerationStatus } from "@/lib/image-generation-state";
 import { summarizeSequence } from "@/lib/video-sequence-state";
 import { observeSceneSet, type SceneSetObserver, type SceneSnapshot } from "@/lib/video-job-observer";
 import {
+  allowedAspectRatiosFor,
   allowedDurationsFor,
   estimateVideoCredits,
   modelSupportsEndFrame as registryModelSupportsEndFrame,
@@ -2703,10 +2704,13 @@ export function StorytellingSetup({
                       onChange={(e) => updateScene(scene.id, "aspectRatio", e.target.value)}
                       className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#f472b6] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#f472b6]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
                     >
-                      <option value="16:9" className="bg-[#191D23]">📐 16:9</option>
-                      <option value="9:16" className="bg-[#191D23]">📐 9:16</option>
-                      {!isGeminiOmniVideo && <option value="1:1" className="bg-[#191D23]">📐 1:1</option>}
-                      {!isGeminiOmniVideo && <option value="21:9" className="bg-[#191D23]">📐 21:9</option>}
+                      {/* Registry-derived, same reason as the duration list: the
+                          hardcoded version offered every model 1:1, but Sora's
+                          provider enum is only portrait|landscape and the builder
+                          maps 1:1 -> 'square', which is rejected with HTTP 422. */}
+                      {allowedAspectRatiosFor(effectiveModel).map((ar) => (
+                        <option key={ar} value={ar} className="bg-[#191D23]">📐 {ar}</option>
+                      ))}
                     </select>
 
                     {/* Duration — different options for gemini-omni-video */}

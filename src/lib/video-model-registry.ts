@@ -173,15 +173,24 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     family: "sora",
     providerMatch: "sora",
     creditsPerSecond: 12,
-    // Replicate docs (2026-08-06): Sora 2 generates 4-12s. "15" was unreachable —
-    // the workflow clamped it to 12s while billing 15s. Removed.
-    durations: ["5", "10"],
-    providerDurationRange: [4, 12], // Replicate docs 2026-08-06: Sora 2 generates 4-12s
-    aspectRatios: STANDARD_ASPECTS,
+    // CANONICAL, from the machine-readable Replicate schema (model
+    // openai/sora-2, version 763a9321f615f4867b1d7a2d, created 2026-01-21):
+    //   components.schemas.seconds.enum = [4, 8, 12]
+    // Sora accepts a DISCRETE set, not a range. A prose doc saying "typically 4
+    // to 12 seconds" was misread as continuous on 2026-08-06, so the UI offered
+    // 5 and 10 — both rejected with HTTP 422, charging then refunding the user on
+    // every attempt (found live 2026-08-07, exec 68026).
+    durations: ["4", "8", "12"],
+    providerDurationValues: [4, 8, 12],
+    // The same schema pins components.schemas.aspect_ratio.enum =
+    // ['portrait','landscape']. The payload builder maps 1:1 -> 'square', which
+    // the provider does NOT accept, so 1:1 is withheld here rather than changing
+    // the shared builder. 16:9 and 21:9 map to landscape; 9:16 and 3:4 to portrait.
+    aspectRatios: ["16:9", "9:16", "21:9"],
     supportsEndFrame: true,
     supportsNativeAudio: true,
     referenceSlots: 1,
-    notes: "Provider maximum is 12s; dialogue belongs in its own block.",
+    notes: "Discrete durations 4/8/12s only. 1:1 is unavailable: the builder maps it to 'square', which the provider rejects.",
   },
   "replicate:prunaai/p-video": {
     id: "replicate:prunaai/p-video",

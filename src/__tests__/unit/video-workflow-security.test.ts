@@ -244,6 +244,9 @@ describe("BILLING INTEGRITY: per-model options are enforced before any n8n/billi
     ["Pruna at 300s", { ai_model_override: "replicate:prunaai/p-video", duration: "300" }],
     ["Pruna above its 10s maximum", { ai_model_override: "replicate:prunaai/p-video", duration: "15" }],
     ["Sora above its 12s maximum", { ai_model_override: "replicate:openai/sora-2", duration: "15" }],
+    ["Sora at 5s (not in its {4,8,12} enum)", { ai_model_override: "replicate:openai/sora-2", duration: "5" }],
+    ["Sora at 10s (not in its enum)", { ai_model_override: "replicate:openai/sora-2", duration: "10" }],
+    ["Sora with 1:1 (builder maps to rejected 'square')", { ai_model_override: "replicate:openai/sora-2", duration: "4", aspect_ratio: "1:1" }],
     ["Gemini off its discrete set", { ai_model_override: "gemini-omni-video", duration: "5" }],
     ["Gemini with an unsupported aspect", { ai_model_override: "gemini-omni-video", duration: "4", aspect_ratio: "21:9" }],
   ];
@@ -263,6 +266,8 @@ describe("BILLING INTEGRITY: per-model options are enforced before any n8n/billi
     ["Kling at its 15s maximum", { ai_model_override: "kling-3.0/video", duration: "15" }],
     ["Pruna at its 10s maximum", { ai_model_override: "replicate:prunaai/p-video", duration: "10" }],
     ["Sora at its 12s maximum", { ai_model_override: "replicate:openai/sora-2", duration: "12" }],
+    ["Sora at 4s", { ai_model_override: "replicate:openai/sora-2", duration: "4" }],
+    ["Sora at 8s", { ai_model_override: "replicate:openai/sora-2", duration: "8" }],
     ["Gemini on its discrete set", { ai_model_override: "gemini-omni-video", duration: "8", aspect_ratio: "16:9" }],
     ["Seedance at an in-range duration the UI does not offer", { ai_model_override: "bytedance/seedance-2", duration: "8" }],
   ];

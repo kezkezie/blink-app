@@ -191,7 +191,7 @@ describe("estimateVideoCredits (display only — n8n is the billing authority)",
 const N8N_DURATION_RULES: Record<string, { min?: number; max?: number; values?: number[] }> = {
   kling: { min: 3, max: 15 },
   seedance: { min: 4, max: 15 },
-  sora: { min: 4, max: 12 },
+  sora: { values: [4, 8, 12] }, // schema enum openai/sora-2 763a9321…; proved by a live 422 on 5s
   pruna: { min: 1, max: 10 },
   gemini: { values: [4, 6, 8, 10] },
 };
@@ -237,6 +237,12 @@ describe("DRIFT: UI options, provider capability and n8n rules must agree", () =
     // Sora 15s was billed at 15s and clamped to 12s.
     expect(isDurationAllowedFor("replicate:openai/sora-2", 15)).toBe(false);
     expect(VIDEO_MODEL_REGISTRY["replicate:openai/sora-2"].durations).not.toContain("15");
+    // 5 and 10 were the post-2026-08-06 replacements and were ALSO invalid.
+    expect(isDurationAllowedFor("replicate:openai/sora-2", 5)).toBe(false);
+    expect(isDurationAllowedFor("replicate:openai/sora-2", 10)).toBe(false);
+    expect(VIDEO_MODEL_REGISTRY["replicate:openai/sora-2"].durations).toEqual(["4", "8", "12"]);
+    expect(VIDEO_MODEL_REGISTRY["replicate:openai/sora-2"].providerDurationRange).toBeUndefined();
+    expect(VIDEO_MODEL_REGISTRY["replicate:openai/sora-2"].providerDurationValues).toEqual([4, 8, 12]);
   });
 });
 
@@ -247,11 +253,27 @@ describe("REJECTION: unsupported combinations are refused, not clamped", () => {
     expect(r?.reason).toContain("cannot render 300s");
   });
 
-  it("rejects Sora above its 12s provider maximum", () => {
-    expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "15" })?.field).toBe("duration");
-    expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "13" })?.field).toBe("duration");
-    // 12 is the documented maximum and must still be accepted.
-    expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "12" })).toBeNull();
+  it("rejects every Sora duration outside the discrete schema enum {4,8,12}", () => {
+    // Sora publishes components.schemas.seconds.enum = [4,8,12]. It is NOT a
+    // 4-12 range: a live 422 on 5s proved that on 2026-08-07, after the UI had
+    // been offering 5 and 10 and charging then refunding on every attempt.
+    for (const bad of ["5", "10", "13", "15", "6", "11"]) {
+      expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: bad })?.field, bad).toBe("duration");
+    }
+    for (const good of ["4", "8", "12"]) {
+      expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: good }), good).toBeNull();
+    }
+  });
+
+  it("withholds Sora aspect ratios the builder would map to a rejected value", () => {
+    // The shared builder maps 1:1 -> "square", but Sora's provider enum is only
+    // ['portrait','landscape'], so 1:1 is withheld in the registry rather than
+    // changing the builder for one model.
+    expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "4", aspectRatio: "1:1" })?.field)
+      .toBe("aspect_ratio");
+    for (const ok of ["16:9", "9:16", "21:9"]) {
+      expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "4", aspectRatio: ok }), ok).toBeNull();
+    }
   });
 
   it("rejects Pruna at 300s and above its 10s maximum", () => {
@@ -321,6 +343,12 @@ describe("COST: one validated duration drives display, validation and billing", 
       const withAudio = estimateVideoCredits(spec.id, "5", { hasAudio: true });
       expect(withAudio).toBe(5 * (n8nPerSecondCost(spec.id) + AUDIO_SURCHARGE_PER_SECOND));
     }
+  });
+
+  it("quotes Sora at 48/96/144 for its three valid durations", () => {
+    expect(estimateVideoCredits("replicate:openai/sora-2", "4")).toBe(48);
+    expect(estimateVideoCredits("replicate:openai/sora-2", "8")).toBe(96);
+    expect(estimateVideoCredits("replicate:openai/sora-2", "12")).toBe(144);
   });
 
   it("quotes Gemini at the canonical rate", () => {
