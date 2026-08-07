@@ -29,6 +29,7 @@ import {
   allowedAspectRatiosFor,
   allowedDurationsFor,
   estimateVideoCredits,
+  generalReferenceSlotsFor,
   isEndFrameAllowedFor,
   modelSupportsEndFrame as registryModelSupportsEndFrame,
   resolveEffectiveVideoModel,
@@ -2658,6 +2659,10 @@ export function StorytellingSetup({
             const isGptImage2 = isGptImg2Txt || isGptImg2Img;
 
             const seedancePreviews = ensureArray(scene.seedancePreviews || [scene.primaryPreview || null]);
+            // Verified end-to-end reference capacity for this model. When the
+            // character lock is on, the actor sheet occupies one of those reference
+            // slots, so the in-panel slots are one fewer.
+            const seedanceMaxSlots = Math.max(1, generalReferenceSlotsFor(scene.aiModel, scene.mode) - (enableCharacterLock ? 1 : 0));
 
             return (
               <div key={scene.id} className={cn(
@@ -2917,7 +2922,11 @@ export function StorytellingSetup({
                               )}>
                                 {seedancePreviews.filter(Boolean).length}/{seedancePreviews.length} filled
                               </span>
-                              {seedancePreviews.length < 5 && (
+                              {/* Capped at the registry's VERIFIED reachable count.
+                                  It was 5, but only slots 1-2 plus the actor sheet
+                                  are serialized, so slots beyond that were paid for
+                                  and silently dropped. */}
+                              {seedancePreviews.length < seedanceMaxSlots && (
                                 <button
                                   onClick={() => addSeedanceSlot(scene.id)}
                                   className="flex items-center gap-1.5 text-[10px] font-bold text-[#C5BAC4] hover:text-white bg-[#191D23] hover:bg-[#C5BAC4]/15 border border-[#C5BAC4]/30 hover:border-[#C5BAC4]/60 px-3 py-1.5 rounded-lg shadow-sm transition-all"

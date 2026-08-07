@@ -9,6 +9,8 @@
 
 import {
   allProviderRenderableDurations,
+  resolveEffectiveVideoModel,
+  resolveVideoModel,
   allVideoAspectRatios,
   allVideoResolutions,
   validateVideoModelOptions,
@@ -301,19 +303,44 @@ export function validateNanoVideoPayload(raw: Record<string, unknown>): boolean 
   const endFrameUrl = (typeof sceneFrames?.end_frame === "string" && sceneFrames.end_frame)
     || (typeof raw.secondary_image_url === "string" && raw.secondary_image_url)
     || null;
+  const startFrameUrl = (typeof sceneFrames?.start_frame === "string" && sceneFrames.start_frame)
+    || (typeof raw.primary_image_url === "string" && raw.primary_image_url)
+    || null;
+  const castingRecord = isRecord(sceneRecord?.casting) ? sceneRecord.casting : null;
+  const actorSheetUrl = (typeof castingRecord?.actor_1_sheet === "string" && castingRecord.actor_1_sheet)
+    || (typeof castingRecord?.actor1Sheet === "string" && castingRecord.actor1Sheet)
+    || null;
   const effectiveDuration = sceneRecord?.duration ?? raw.duration;
   const effectiveMode = (typeof sceneRecord?.video_mode === "string" ? sceneRecord.video_mode : null)
     ?? (typeof raw.video_mode === "string" ? raw.video_mode : null);
+  const requestedModelId = typeof raw.ai_model_override === "string" ? raw.ai_model_override : null;
+  // General references = every supplied image MINUS the ones the model consumes as
+  // a temporal start/end frame. See the taxonomy on VideoModelSpec: a first or last
+  // frame is NOT a general reference slot.
+  const effectiveSpec = resolveVideoModel(resolveEffectiveVideoModel(requestedModelId, effectiveMode));
+  const suppliedImages = [startFrameUrl, endFrameUrl, actorSheetUrl].filter(Boolean).length;
+  const consumedAsFrames = effectiveSpec
+    ? (effectiveSpec.startFrameField && startFrameUrl ? 1 : 0) + (effectiveSpec.endFrameField && endFrameUrl ? 1 : 0)
+    : 0;
+  const generalReferenceCount = Math.max(0, suppliedImages - consumedAsFrames);
+  // The `frames.end_frame` CHANNEL is overloaded by the serializer: for models with
+  // an `endFrameField` it really is a last frame, but for reference-based models
+  // (Seedance) it carries the SECOND GENERAL REFERENCE. So an end frame is only
+  // "requested" when the model would treat it temporally, or when the model cannot
+  // use a second image at all — in which case it is invalid either way.
+  const endFrameIsTemporal = Boolean(endFrameUrl)
+    && (effectiveSpec ? effectiveSpec.endFrameField !== null || effectiveSpec.generalReferenceSlots < 2 : true);
   // Only gate a request that actually names a duration; Director/frame helper
   // calls carry no duration and must keep working.
-  if (endFrameUrl && raw.ai_model_override !== undefined) {
+  if ((endFrameUrl || generalReferenceCount > 0) && raw.ai_model_override !== undefined) {
     // Checked even when no duration is named, so an end frame can never slip
     // through on a Director/frame-helper shaped payload.
     if (
       validateVideoModelOptions({
         model: typeof raw.ai_model_override === "string" ? raw.ai_model_override : null,
         videoMode: effectiveMode,
-        hasEndFrame: true,
+        hasEndFrame: endFrameIsTemporal,
+        generalReferenceCount,
       })
     ) {
       return false;
@@ -326,7 +353,8 @@ export function validateNanoVideoPayload(raw: Record<string, unknown>): boolean 
         videoMode: effectiveMode,
         duration: String(effectiveDuration),
         aspectRatio: typeof raw.aspect_ratio === "string" ? raw.aspect_ratio : null,
-        hasEndFrame: Boolean(endFrameUrl),
+        hasEndFrame: endFrameIsTemporal,
+        generalReferenceCount,
       })
     ) {
       return false;

@@ -81,8 +81,36 @@ export interface VideoModelSpec {
   supportsEndFrame: boolean;
   /** Whether the model generates its own audio from the prompt. */
   supportsNativeAudio: boolean;
-  /** How many reference images the model accepts (0 = start frame only). */
-  referenceSlots: number;
+  /**
+   * ── IMAGE-INPUT TAXONOMY (defined 2026-08-07) ──────────────────────────────
+   *
+   * These are four DIFFERENT things and must never be conflated. Conflating them
+   * is what produced the end-frame waste and the Seedance slot over-advertisement:
+   *
+   *  1. GENERAL REFERENCE IMAGE — style/subject/character guidance with no
+   *     temporal position. Seedance `reference_image_urls`, Gemini `image_urls`.
+   *     Counted by `generalReferenceSlots`.
+   *  2. START / FIRST FRAME — the literal first frame. Pruna `image`, Sora
+   *     `input_reference`, Kling `image_urls[0]`. Recorded in `startFrameField`.
+   *     NOT counted as a general reference slot.
+   *  3. END / LAST FRAME — the literal last frame. Pruna `last_frame_image`,
+   *     Kling `image_urls[1]`. Recorded in `endFrameField` and gated separately by
+   *     `supportsEndFrame` + the user's explicit `useEndFrame`. NEVER counted as a
+   *     general reference slot.
+   *  4. PROVIDER OUTPUT FLAG — e.g. Seedance `return_last_frame`, which asks the
+   *     provider to RETURN a frame. Not an input, not a slot, never counted.
+   *
+   * `generalReferenceSlots` is the number of general reference images that are
+   * BOTH documented by the provider AND wired end-to-end (UI -> serialization ->
+   * workflow payload). An unverified or undocumented capability is advertised as
+   * 0 rather than optimistically. Excess images are REJECTED, never dropped.
+   */
+  generalReferenceSlots: number;
+  /** Payload field carrying the first frame, or null if the model has no temporal
+   *  first-frame concept (Seedance/Gemini treat all images as references). */
+  startFrameField: string | null;
+  /** Payload field carrying the last frame, or null when unsupported. */
+  endFrameField: string | null;
   /** Anything a future maintainer must know. */
   notes?: string;
 }
@@ -140,7 +168,10 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     // frame". So an end frame is genuinely supported for Kling 3.0.
     supportsEndFrame: true,
     supportsNativeAudio: true,
-    referenceSlots: 1,
+    generalReferenceSlots: 0,
+    startFrameField: "image_urls[0]",
+    endFrameField: "image_urls[1]",
+    // 0 general refs: Kie documents image_urls as first/last frame only. `ref_image_url` is NOT in the documented parameter list, so the actor sheet is not advertised.
     notes: "Multi-shot notation and native audio. Provider maximum is 15s. End frame is image_urls[1] per Kie docs.",
   },
   "bytedance/seedance-2": {
@@ -154,7 +185,10 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     aspectRatios: STANDARD_ASPECTS,
     supportsEndFrame: false,
     supportsNativeAudio: true,
-    referenceSlots: 4,
+    generalReferenceSlots: 3,
+    startFrameField: null,
+    endFrameField: null,
+    // 3 general refs, verified reachable end-to-end: frames.start_frame, frames.end_frame and casting.actor_1_sheet all land in reference_image_urls. No temporal frame semantics.
     notes: "No end frame; uses sequential @reference slots instead.",
   },
   "bytedance/seedance-2-fast": {
@@ -168,7 +202,10 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     aspectRatios: STANDARD_ASPECTS,
     supportsEndFrame: false,
     supportsNativeAudio: true,
-    referenceSlots: 4,
+    generalReferenceSlots: 3,
+    startFrameField: null,
+    endFrameField: null,
+    // Identical builder branch to seedance-2.
   },
   "replicate:openai/sora-2": {
     id: "replicate:openai/sora-2",
@@ -197,7 +234,10 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     // provider never received.
     supportsEndFrame: false,
     supportsNativeAudio: true,
-    referenceSlots: 1,
+    generalReferenceSlots: 0,
+    startFrameField: "input_reference",
+    endFrameField: null,
+    // 0 general refs: the schema has only input_reference (a first frame).
     notes: "Discrete durations 4/8/12s only. No end frame (schema has no such input). 1:1 is unavailable: the builder maps it to 'square', which the provider rejects.",
   },
   "replicate:prunaai/p-video": {
@@ -215,7 +255,10 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     // and silently discarded.
     supportsEndFrame: true,
     supportsNativeAudio: false,
-    referenceSlots: 1,
+    generalReferenceSlots: 0,
+    startFrameField: "image",
+    endFrameField: "last_frame_image",
+    // 0 general refs: the schema has image + last_frame_image only.
     notes: "Cheapest; short direct prompts, draft mode available. End frame is sent as last_frame_image.",
   },
   "gemini-omni-video": {
@@ -230,7 +273,10 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     resolutions: ["720p", "1080p", "4k"],
     supportsEndFrame: false,
     supportsNativeAudio: false,
-    referenceSlots: 1,
+    generalReferenceSlots: 1,
+    startFrameField: null,
+    endFrameField: null,
+    // 1 general ref, conservative: Kie publishes no documented limit for gemini-omni-video and the model is unexercised, so extra references are not advertised.
     notes:
       "Billed at GEMINI_CREDITS_PER_SECOND (20/sec) — n8n has an explicit gemini pricing branch. Reference-driven transformation; 4/6/8/10s and 16:9 or 9:16 only.",
   },
@@ -433,7 +479,7 @@ export function isResolutionAllowedFor(modelId: string | null | undefined, resol
 }
 
 export type VideoOptionRejection = {
-  field: "model" | "duration" | "aspect_ratio" | "video_resolution" | "end_frame";
+  field: "model" | "duration" | "aspect_ratio" | "video_resolution" | "end_frame" | "reference_images";
   reason: string;
 };
 
@@ -446,6 +492,12 @@ export type VideoOptionRejection = {
  * Callers wanting "should this scene have an end frame?" must read the user's
  * explicit `useEndFrame` selection, and pass it here to check it is permitted.
  */
+/** How many general reference images this model accepts (see the taxonomy). */
+export function generalReferenceSlotsFor(modelId: string | null | undefined, videoMode?: string | null): number {
+  const effective = resolveEffectiveVideoModel(modelId, videoMode ?? null);
+  return resolveVideoModel(effective)?.generalReferenceSlots ?? 0;
+}
+
 export function isEndFrameAllowedFor(modelId: string | null | undefined, videoMode?: string | null): boolean {
   const effective = resolveEffectiveVideoModel(modelId, videoMode ?? null);
   return resolveVideoModel(effective)?.supportsEndFrame ?? false;
@@ -463,6 +515,9 @@ export function validateVideoModelOptions(input: {
   videoResolution?: string | null;
   /** True when the request carries an end/last frame image. */
   hasEndFrame?: boolean;
+  /** How many GENERAL reference images the request carries (excluding the start
+   *  and end frames — see the taxonomy on VideoModelSpec). */
+  generalReferenceCount?: number;
 }): VideoOptionRejection | null {
   const effective = resolveEffectiveVideoModel(input.model, input.videoMode);
   const spec = resolveVideoModel(effective);
@@ -480,6 +535,15 @@ export function validateVideoModelOptions(input: {
     return {
       field: "aspect_ratio",
       reason: `${spec.label} does not support ${input.aspectRatio} (supported: ${spec.aspectRatios.join(", ")})`,
+    };
+  }
+  // Excess general reference images are REJECTED here, before any image
+  // generation, deduction or provider contact. Silently dropping them is what
+  // made the Seedance slots waste image credits.
+  if (typeof input.generalReferenceCount === "number" && input.generalReferenceCount > spec.generalReferenceSlots) {
+    return {
+      field: "reference_images",
+      reason: `${spec.label} accepts ${spec.generalReferenceSlots} reference image(s), got ${input.generalReferenceCount}`,
     };
   }
   // An end frame may only be requested for a model that can actually consume it.

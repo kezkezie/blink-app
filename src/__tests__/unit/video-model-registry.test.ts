@@ -9,6 +9,7 @@ import {
   allVideoDurations,
   allowedDurationsFor,
   estimateVideoCredits,
+  generalReferenceSlotsFor,
   isDurationAllowedFor,
   isEndFrameAllowedFor,
   modelSupportsEndFrame,
@@ -34,7 +35,7 @@ describe("registry shape", () => {
       expect(spec.creditsPerSecond).toBeGreaterThan(0);
       expect(spec.durations.length).toBeGreaterThan(0);
       expect(spec.aspectRatios.length).toBeGreaterThan(0);
-      expect(spec.referenceSlots).toBeGreaterThanOrEqual(0);
+      expect(spec.generalReferenceSlots).toBeGreaterThanOrEqual(0);
       // A model must declare a provider substring n8n can price on.
       expect(spec.id.includes(spec.providerMatch) || spec.family === "gemini").toBe(true);
     }
@@ -437,5 +438,84 @@ describe("END FRAME: capability is availability, never intent", () => {
     expect(isEndFrameAllowedFor("auto", null)).toBe(false);
     expect(validateVideoModelOptions({ model: "auto", videoMode: null, duration: "5", hasEndFrame: true })?.field)
       .toBe("end_frame");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REFERENCE-SLOT SEMANTICS (2026-08-07)
+//
+// Four distinct things, never to be conflated (see the taxonomy on VideoModelSpec):
+// general reference · start/first frame · end/last frame · provider output flag.
+// A first or last frame is NOT a general reference slot.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("REFERENCE SLOTS: frames are not general references", () => {
+  it("records the payload field for each temporal frame", () => {
+    // Kling's image_urls is first/last frame per Kie docs — NOT three general refs.
+    expect(VIDEO_MODEL_REGISTRY["kling-3.0/video"].startFrameField).toBe("image_urls[0]");
+    expect(VIDEO_MODEL_REGISTRY["kling-3.0/video"].endFrameField).toBe("image_urls[1]");
+    expect(VIDEO_MODEL_REGISTRY["replicate:openai/sora-2"].startFrameField).toBe("input_reference");
+    expect(VIDEO_MODEL_REGISTRY["replicate:openai/sora-2"].endFrameField).toBeNull();
+    expect(VIDEO_MODEL_REGISTRY["replicate:prunaai/p-video"].startFrameField).toBe("image");
+    expect(VIDEO_MODEL_REGISTRY["replicate:prunaai/p-video"].endFrameField).toBe("last_frame_image");
+    // Reference-based models have no temporal frame semantics at all.
+    expect(VIDEO_MODEL_REGISTRY["bytedance/seedance-2"].startFrameField).toBeNull();
+    expect(VIDEO_MODEL_REGISTRY["bytedance/seedance-2"].endFrameField).toBeNull();
+    expect(VIDEO_MODEL_REGISTRY["gemini-omni-video"].startFrameField).toBeNull();
+  });
+
+  it("advertises general reference slots conservatively, excluding frames", () => {
+    // Kling: 0. Its image_urls entries are first/last frame, and `ref_image_url` is
+    // NOT in Kie's documented parameter list, so it is not advertised as a slot.
+    expect(generalReferenceSlotsFor("kling-3.0/video")).toBe(0);
+    // Sora/Pruna: their schemas expose only frame inputs.
+    expect(generalReferenceSlotsFor("replicate:openai/sora-2")).toBe(0);
+    expect(generalReferenceSlotsFor("replicate:prunaai/p-video")).toBe(0);
+    // Seedance: 3, the number verified reachable end-to-end (was advertised as 4).
+    expect(generalReferenceSlotsFor("bytedance/seedance-2")).toBe(3);
+    expect(generalReferenceSlotsFor("bytedance/seedance-2-fast")).toBe(3);
+    // Gemini: conservative 1 — Kie publishes no documented limit and it is unexercised.
+    expect(generalReferenceSlotsFor("gemini-omni-video")).toBe(1);
+    expect(generalReferenceSlotsFor("unknown-model")).toBe(0);
+  });
+
+  it("never advertises the old unverified numbers", () => {
+    // Seedance was 4 with only 3 reachable; Kling was 1 while the builder could send
+    // 3. Neither number was verified end-to-end.
+    expect(generalReferenceSlotsFor("bytedance/seedance-2")).not.toBe(4);
+    // An output flag is not a slot: Seedance's return_last_frame must never be
+    // counted, and it has no end-frame INPUT.
+    expect(VIDEO_MODEL_REGISTRY["bytedance/seedance-2"].supportsEndFrame).toBe(false);
+  });
+
+  it("rejects excess general references rather than dropping them", () => {
+    expect(validateVideoModelOptions({ model: "gemini-omni-video", duration: "4", generalReferenceCount: 1 })).toBeNull();
+    const r = validateVideoModelOptions({ model: "gemini-omni-video", duration: "4", generalReferenceCount: 2 });
+    expect(r?.field).toBe("reference_images");
+    expect(r?.reason).toContain("accepts 1 reference image(s), got 2");
+    expect(validateVideoModelOptions({ model: "bytedance/seedance-2", duration: "5", generalReferenceCount: 3 })).toBeNull();
+    expect(validateVideoModelOptions({ model: "bytedance/seedance-2", duration: "5", generalReferenceCount: 4 })?.field)
+      .toBe("reference_images");
+    // Models with zero general slots reject any general reference. Each uses a
+    // duration that model actually supports, so the duration gate cannot mask the
+    // reference-count assertion (Sora is 4/8/12, not 5).
+    for (const [id, dur] of [
+      ["kling-3.0/video", "5"],
+      ["replicate:openai/sora-2", "4"],
+      ["replicate:prunaai/p-video", "5"],
+    ] as [string, string][]) {
+      expect(validateVideoModelOptions({ model: id, duration: dur, generalReferenceCount: 0 }), id).toBeNull();
+      expect(validateVideoModelOptions({ model: id, duration: dur, generalReferenceCount: 1 })?.field, id)
+        .toBe("reference_images");
+    }
+  });
+
+  it("end-frame availability stays governed separately", () => {
+    // A model with zero general slots may still accept an end frame (Kling, Pruna),
+    // and a model with three general slots may accept none (Seedance).
+    expect(generalReferenceSlotsFor("kling-3.0/video")).toBe(0);
+    expect(isEndFrameAllowedFor("kling-3.0/video")).toBe(true);
+    expect(generalReferenceSlotsFor("bytedance/seedance-2")).toBe(3);
+    expect(isEndFrameAllowedFor("bytedance/seedance-2")).toBe(false);
   });
 });
