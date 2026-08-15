@@ -26,15 +26,16 @@ import { summarizeSequence } from "@/lib/video-sequence-state";
 import { observeSceneSet, type SceneSetObserver, type SceneSnapshot } from "@/lib/video-job-observer";
 import { N8N_IMAGE_DEFAULT_COST, resolveImageEngine } from "@/lib/image-engine-pricing";
 import {
-  allowedAspectRatiosFor,
-  allowedDurationsFor,
   estimateVideoCredits,
   generalReferenceSlotsFor,
   isEndFrameAllowedFor,
   modelSupportsEndFrame as registryModelSupportsEndFrame,
+  reconcileAspectRatioFor,
+  reconcileDurationFor,
   resolveEffectiveVideoModel,
   videoModelFamily,
 } from "@/lib/video-model-registry";
+import { AspectRatioSelect, DurationField } from "./VideoOutputControls";
 import {
   clearActiveSceneJob,
   persistActiveSceneJob,
@@ -2694,6 +2695,18 @@ export function StorytellingSetup({
                         if (scene.useEndFrame && !isEndFrameAllowedFor(nextModel, scene.mode)) {
                           updateScene(scene.id, "useEndFrame", false);
                         }
+                        // Same reason for the other two capabilities: a duration or
+                        // aspect the new engine cannot render must not linger in the
+                        // picker. UI repair only — a submitted unsupported value is
+                        // still rejected before deduction, never clamped.
+                        const repairedDuration = reconcileDurationFor(nextModel, scene.duration);
+                        if (repairedDuration !== (scene.duration || "5")) {
+                          updateScene(scene.id, "duration", repairedDuration);
+                        }
+                        const repairedAspect = reconcileAspectRatioFor(nextModel, scene.aspectRatio);
+                        if (repairedAspect !== (scene.aspectRatio || "16:9")) {
+                          updateScene(scene.id, "aspectRatio", repairedAspect);
+                        }
                       }} className="text-xs font-bold rounded-xl border border-[#57707A]/40 shadow-inner py-2 px-3 bg-[#2A2F38] text-[#B3FF00] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#B3FF00]/50 hover:bg-[#57707A]/20 transition-colors appearance-none">
                         <optgroup label="— Video Engines —" className="bg-[#191D23] text-[#57707A]">
                           <option value="auto" className="bg-[#191D23]">✨ Auto Engine</option>
@@ -2735,40 +2748,33 @@ export function StorytellingSetup({
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
 
-                    {/* ✨ PER-SCENE ASPECT RATIO */}
-                    <select
+                    {/* ✨ PER-SCENE ASPECT RATIO — registry-derived, same reason as
+                        the duration control: the hardcoded version offered every
+                        model 1:1 (Sora's enum is only portrait|landscape, and the
+                        builder maps 1:1 -> 'square', rejected with HTTP 422) and
+                        21:9 (absent from Pruna's enum, charged then 422'd). */}
+                    <AspectRatioSelect
+                      model={scene.aiModel}
+                      videoMode={scene.mode}
                       value={scene.aspectRatio || "16:9"}
-                      onChange={(e) => updateScene(scene.id, "aspectRatio", e.target.value)}
+                      onChange={(next) => updateScene(scene.id, "aspectRatio", next)}
                       className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#f472b6] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#f472b6]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
-                    >
-                      {/* Registry-derived, same reason as the duration list: the
-                          hardcoded version offered every model 1:1, but Sora's
-                          provider enum is only portrait|landscape and the builder
-                          maps 1:1 -> 'square', which is rejected with HTTP 422. */}
-                      {allowedAspectRatiosFor(effectiveModel).map((ar) => (
-                        <option key={ar} value={ar} className="bg-[#191D23]">📐 {ar}</option>
-                      ))}
-                    </select>
+                    />
 
-                    {/* Duration — different options for gemini-omni-video */}
-                    {(
-                      <select
-                        value={scene.duration || "5"}
-                        onChange={(e) => updateScene(scene.id, "duration", e.target.value)}
-                        className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
-                      >
-                        {/* Registry-derived: the model registry is the single source
-                            for which durations a model offers. The previous
-                            hardcoded list drifted from it and offered Kling "5 Min"
-                            (300s), which the provider cannot render — it was billed
-                            at 300s and clamped to 15s. */}
-                        {allowedDurationsFor(effectiveModel).map((secs) => (
-                          <option key={secs} value={secs} className="bg-[#191D23]">
-                            {secs} Secs
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    {/* Duration — registry-derived, and SHAPED like the provider:
+                        a list for models publishing a discrete enum (Sora 4/8/12,
+                        Gemini 4/6/8/10), a range control for models accepting a
+                        continuous range (Pruna 1-20s). The old hardcoded list
+                        drifted and offered Kling "5 Min" (300s), which was billed
+                        at 300s and clamped to 15s. */}
+                    <DurationField
+                      model={scene.aiModel}
+                      videoMode={scene.mode}
+                      value={scene.duration || "5"}
+                      onChange={(next) => updateScene(scene.id, "duration", next)}
+                      hasAudio={Boolean(scene.dialogue || scene.audioUrl)}
+                      className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
+                    />
 
                     {/* Resolution — shown for Gemini Omni Video and GPT Image 2 */}
                     {(isGeminiOmniVideo || isGptImage2) && (

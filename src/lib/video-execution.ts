@@ -332,6 +332,22 @@ export function validateNanoVideoPayload(raw: Record<string, unknown>): boolean 
     && (effectiveSpec ? effectiveSpec.endFrameField !== null || effectiveSpec.generalReferenceSlots < 2 : true);
   // Only gate a request that actually names a duration; Director/frame helper
   // calls carry no duration and must keep working.
+  // ASPECT gate, checked whenever an aspect is named — NOT only when a duration
+  // is also present. Video V3 sends the aspect ratio to Pruna verbatim, so an
+  // unsupported value (21:9, offered until 2026-08-15) is charged upfront and then
+  // rejected by the provider with HTTP 422. Gating it behind "a duration was also
+  // supplied" left a manipulated, duration-less request able to reach billing.
+  if (typeof raw.aspect_ratio === "string" && raw.aspect_ratio !== "") {
+    if (
+      validateVideoModelOptions({
+        model: requestedModelId,
+        videoMode: effectiveMode,
+        aspectRatio: raw.aspect_ratio,
+      })
+    ) {
+      return false;
+    }
+  }
   if ((endFrameUrl || generalReferenceCount > 0) && raw.ai_model_override !== undefined) {
     // Checked even when no duration is named, so an end frame can never slip
     // through on a Director/frame-helper shaped payload.

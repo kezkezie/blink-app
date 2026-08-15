@@ -25,7 +25,12 @@ import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { triggerWorkflow } from "@/lib/workflows";
 import { toast } from "sonner";
-import { AUTO_VIDEO_MODEL, VIDEO_MODEL_REGISTRY } from "@/lib/video-model-registry";
+import {
+  AUTO_VIDEO_MODEL,
+  VIDEO_MODEL_REGISTRY,
+  reconcileAspectRatioFor,
+  reconcileDurationFor,
+} from "@/lib/video-model-registry";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 
@@ -742,6 +747,10 @@ export default function VideoStudioPage() {
                   setAspectRatio,
                   duration,
                   setDuration,
+                  // The setups derive their aspect/duration options from the
+                  // registry, so they need the model that will actually run.
+                  aiModel: selectedAiModel,
+                  videoMode: selectedMode,
                   aiEnhance,
                   setAiEnhance,
                 };
@@ -788,7 +797,17 @@ export default function VideoStudioPage() {
                       ].map((engine) => (
                         <button
                           key={engine.value}
-                          onClick={() => setSelectedAiModel(engine.value)}
+                          onClick={() => {
+                            setSelectedAiModel(engine.value);
+                            // Repair a selection the new engine cannot render, so
+                            // the picker never sits on a value that would be
+                            // rejected at the boundary (Pruna has no 21:9, and its
+                            // range is 1-20s). This is UI repair, not clamping:
+                            // an unsupported value that is actually submitted is
+                            // still REJECTED before any deduction.
+                            setAspectRatio((current) => reconcileAspectRatioFor(engine.value, current));
+                            setDuration((current) => reconcileDurationFor(engine.value, current));
+                          }}
                           className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${selectedAiModel === engine.value
                             ? "bg-[#57707A] text-[#DEDCDC] shadow-sm ring-1 ring-[#C5BAC4]/30"
                             : "text-[#DEDCDC]/40 hover:text-[#DEDCDC]/70 hover:bg-[#57707A]/30"

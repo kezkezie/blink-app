@@ -56,14 +56,29 @@ function readRegistryEntry(source, key) {
     return m ? m[1].trim() : null;
   };
   const nums = (raw) => (raw && raw.startsWith("[") ? JSON.parse(raw) : null);
+  // Named aspect constants declared in the registry. Kept in sync deliberately:
+  // if one is renamed or edited here without the registry, the audit reports
+  // drift instead of silently passing.
+  const NAMED_ASPECTS = {
+    STANDARD_ASPECTS: ["16:9", "9:16", "1:1", "21:9"],
+    PRUNA_ASPECTS: ["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:1"],
+  };
   const strs = (raw) => {
     if (!raw) return null;
-    if (raw === "STANDARD_ASPECTS") return ["16:9", "9:16", "1:1", "21:9"];
+    if (NAMED_ASPECTS[raw]) return NAMED_ASPECTS[raw];
     if (raw.startsWith("[")) return JSON.parse(raw.replace(/'/g, '"'));
     return null;
   };
+  // A model may declare its OFFERED durations as a discrete list or as a
+  // whole-second range (Pruna). Expanded here so the "every offered duration is
+  // renderable" check works identically for both shapes.
+  const uiRange = nums(grab("uiDurationRange"));
+  const durations = uiRange
+    ? Array.from({ length: uiRange[1] - uiRange[0] + 1 }, (_, i) => String(uiRange[0] + i))
+    : strs(grab("durations"));
   return {
-    durations: strs(grab("durations")),
+    durations,
+    uiDurationRange: uiRange,
     providerDurationRange: nums(grab("providerDurationRange")),
     providerDurationValues: nums(grab("providerDurationValues")),
     aspectRatios: strs(grab("aspectRatios")),
@@ -124,7 +139,10 @@ async function main() {
     console.log(`\n── ${m.registryKey}`);
     console.log(`   schema: model ${model.owner}/${model.name} version ${String(lv.id).slice(0, 16)} created ${lv.created_at}`);
     console.log(`   provider ${m.durationField}: enum=${JSON.stringify(dur?.enum)} min=${dur?.minimum} max=${dur?.maximum}`);
-    console.log(`   registry: values=${JSON.stringify(reg.providerDurationValues)} range=${JSON.stringify(reg.providerDurationRange)} UI=${JSON.stringify(reg.durations)}`);
+    const uiShape = reg.uiDurationRange
+      ? `range ${reg.uiDurationRange[0]}..${reg.uiDurationRange[1]} (${reg.durations?.length ?? 0} whole seconds)`
+      : JSON.stringify(reg.durations);
+    console.log(`   registry: values=${JSON.stringify(reg.providerDurationValues)} range=${JSON.stringify(reg.providerDurationRange)} UI=${uiShape}`);
 
     // ── duration shape must match: discrete enum vs continuous range ──
     if (dur?.enum) {

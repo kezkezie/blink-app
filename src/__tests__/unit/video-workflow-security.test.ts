@@ -242,7 +242,7 @@ describe("BILLING INTEGRITY: per-model options are enforced before any n8n/billi
   const REJECTED: Array<[string, Record<string, unknown>]> = [
     ["Kling at 300s (billed 3600 for a 15s video)", { ai_model_override: "kling-3.0/video", duration: "300" }],
     ["Pruna at 300s", { ai_model_override: "replicate:prunaai/p-video", duration: "300" }],
-    ["Pruna above its 10s maximum", { ai_model_override: "replicate:prunaai/p-video", duration: "15" }],
+    ["Pruna above its 20s maximum", { ai_model_override: "replicate:prunaai/p-video", duration: "21" }],
     ["Sora above its 12s maximum", { ai_model_override: "replicate:openai/sora-2", duration: "15" }],
     ["Sora at 5s (not in its {4,8,12} enum)", { ai_model_override: "replicate:openai/sora-2", duration: "5" }],
     ["Sora at 10s (not in its enum)", { ai_model_override: "replicate:openai/sora-2", duration: "10" }],
@@ -267,7 +267,7 @@ describe("BILLING INTEGRITY: per-model options are enforced before any n8n/billi
 
   const ACCEPTED: Array<[string, Record<string, unknown>]> = [
     ["Kling at its 15s maximum", { ai_model_override: "kling-3.0/video", duration: "15" }],
-    ["Pruna at its 10s maximum", { ai_model_override: "replicate:prunaai/p-video", duration: "10" }],
+    ["Pruna at its 20s maximum", { ai_model_override: "replicate:prunaai/p-video", duration: "20" }],
     ["Sora at its 12s maximum", { ai_model_override: "replicate:openai/sora-2", duration: "12" }],
     ["Sora at 4s", { ai_model_override: "replicate:openai/sora-2", duration: "4" }],
     ["Sora at 8s", { ai_model_override: "replicate:openai/sora-2", duration: "8" }],
@@ -286,9 +286,12 @@ describe("BILLING INTEGRITY: per-model options are enforced before any n8n/billi
   }
 
   it("validates the model auto resolves to, not the sentinel", async () => {
-    // auto + clothing -> Pruna (10s max), so 15s must be refused.
+    // auto + clothing -> Pruna. This used duration 15 while Pruna's registry
+    // maximum was 10; the provider schema publishes 1..20, so 15s is renderable
+    // now and no duration separates Pruna from the others. 21:9 does: it is not
+    // in Pruna's aspect enum, and Video V3 forwards Pruna's aspect verbatim.
     const res = await workflowsPost(request(url, {
-      ...VIDEO_WORKFLOW_BODY, ai_model_override: "auto", video_mode: "clothing", duration: "15",
+      ...VIDEO_WORKFLOW_BODY, ai_model_override: "auto", video_mode: "clothing", aspect_ratio: "21:9",
     }));
     expect(res.status).toBe(400);
     expect(mocks.providerFetch).not.toHaveBeenCalled();

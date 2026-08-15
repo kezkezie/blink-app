@@ -5,6 +5,7 @@ import { Upload, X, Sparkles, Loader2, Info, Shirt, UserCircle, FolderOpen, Mess
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
+import { AspectRatioSelect, DurationField, promptImpliesAudio } from "./VideoOutputControls";
 import type { VideoSetupProps } from "./types";
 
 interface ExtendedSetupProps extends VideoSetupProps {
@@ -12,6 +13,10 @@ interface ExtendedSetupProps extends VideoSetupProps {
     setAspectRatio?: (val: string) => void;
     duration?: string;
     setDuration?: (val: string) => void;
+    /** Selected engine (`auto` until the user picks one) and mode, so the aspect
+     *  and duration controls offer only what THIS model can render. */
+    aiModel?: string;
+    videoMode?: string;
 }
 
 export function ClothingSetup({
@@ -30,6 +35,8 @@ export function ClothingSetup({
     setAspectRatio,
     duration = "5",
     setDuration,
+    aiModel,
+    videoMode,
     isSuggesting,
     handleAISuggest,
     activeModeConfig,
@@ -145,30 +152,31 @@ export function ClothingSetup({
 
                     {/* ✨ STANDALONE ASPECT RATIO & SUGGEST BUTTON ✨ */}
                     <div className="flex items-center gap-3 shrink-0">
+                        {/* Registry-derived. Clothing mode resolves `auto` to Pruna,
+                            whose provider enum has NO 21:9 — the hardcoded list here
+                            offered it, and Video V3 forwards Pruna's aspect verbatim,
+                            so the request was charged and then 422'd. */}
                         {setAspectRatio && (
-                            <select
+                            <AspectRatioSelect
+                                model={aiModel}
+                                videoMode={videoMode}
                                 value={aspectRatio}
-                                onChange={(e) => setAspectRatio(e.target.value)}
+                                onChange={setAspectRatio}
                                 className="text-xs font-bold text-[#f472b6] bg-[#191D23] border border-[#f472b6]/30 px-3 py-2 rounded-xl cursor-pointer hover:border-[#f472b6]/60 transition-colors appearance-none shadow-sm outline-none h-10"
-                            >
-                                <option value="9:16">📐 9:16 (TikTok/Reels)</option>
-                                <option value="16:9">📐 16:9 (YouTube)</option>
-                                <option value="1:1">📐 1:1 (Square)</option>
-                                <option value="21:9">📐 21:9 (Cinematic)</option>
-                            </select>
+                            />
                         )}
 
-                        {/* Time Duration Dropdown */}
+                        {/* Duration — a range control for Pruna (1-20s), a list for
+                            models whose provider publishes a discrete enum. */}
                         {setDuration && (
-                            <select
+                            <DurationField
+                                model={aiModel}
+                                videoMode={videoMode}
                                 value={duration}
-                                onChange={(e) => setDuration(e.target.value)}
+                                onChange={setDuration}
+                                hasAudio={promptImpliesAudio(prompt)}
                                 className="text-xs font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-xl cursor-pointer hover:border-[#FFB300]/60 transition-colors appearance-none shadow-sm outline-none h-10"
-                            >
-                                <option value="5">⏱️ 5 Secs</option>
-                                <option value="10">⏱️ 10 Secs</option>
-                                <option value="15">⏱️ 15 Secs</option>
-                            </select>
+                            />
                         )}
                         <button
                             onClick={handleAISuggest}

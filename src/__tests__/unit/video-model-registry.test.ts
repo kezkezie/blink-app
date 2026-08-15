@@ -7,13 +7,18 @@ import {
   VIDEO_MODEL_REGISTRY,
   allVideoAspectRatios,
   allVideoDurations,
+  allowedAspectRatiosFor,
   allowedDurationsFor,
+  durationControlFor,
   estimateVideoCredits,
   generalReferenceSlotsFor,
+  isAspectRatioAllowedFor,
   isDurationAllowedFor,
   isEndFrameAllowedFor,
   modelSupportsEndFrame,
   n8nPerSecondCost,
+  reconcileAspectRatioFor,
+  reconcileDurationFor,
   resolveAutoModel,
   resolveEffectiveVideoModel,
   resolveVideoModel,
@@ -33,7 +38,11 @@ describe("registry shape", () => {
       );
       expect(spec.label.length).toBeGreaterThan(0);
       expect(spec.creditsPerSecond).toBeGreaterThan(0);
-      expect(spec.durations.length).toBeGreaterThan(0);
+      // Exactly one duration shape: a discrete option list OR a whole-second
+      // range. Pruna is a range (provider schema publishes min 1 / max 20), so
+      // asserting on `durations` alone would read as undefined.
+      expect(Boolean(spec.durations) !== Boolean(spec.uiDurationRange), `${spec.id} must declare exactly one of durations / uiDurationRange`).toBe(true);
+      expect(allowedDurationsFor(spec.id).length).toBeGreaterThan(0);
       expect(spec.aspectRatios.length).toBeGreaterThan(0);
       expect(spec.generalReferenceSlots).toBeGreaterThanOrEqual(0);
       // A model must declare a provider substring n8n can price on.
@@ -106,7 +115,7 @@ describe("DRIFT: execution allowlists are derived from the registry", () => {
 
   it("every duration and aspect any model allows is accepted", () => {
     for (const spec of SPECS) {
-      for (const d of spec.durations) expect(VIDEO_DURATIONS.has(d)).toBe(true);
+      for (const d of allowedDurationsFor(spec.id)) expect(VIDEO_DURATIONS.has(d)).toBe(true);
       for (const a of spec.aspectRatios) expect(VIDEO_ASPECT_RATIOS.has(a)).toBe(true);
     }
   });
@@ -154,7 +163,11 @@ describe("capabilities", () => {
 
   it("gates durations per model, and unions them for auto", () => {
     expect(allowedDurationsFor("gemini-omni-video")).toEqual(["4", "6", "8", "10"]);
-    expect(allowedDurationsFor("replicate:prunaai/p-video")).toEqual(["5", "10"]);
+    // Pruna is a RANGE, so every whole second 1..20 is offered — not the two
+    // arbitrary lengths (5, 10) the registry listed until 2026-08-15 while the
+    // provider schema published minimum 1 / maximum 20.
+    expect(allowedDurationsFor("replicate:prunaai/p-video"))
+      .toEqual(Array.from({ length: 20 }, (_, i) => String(i + 1)));
     // Kling's real provider maximum is 15s (Kie docs). The previous assertion
     // required "300", which no provider supports — corrected 2026-08-06.
     expect(allowedDurationsFor("kling-3.0/video")).toEqual(["5", "10", "15"]);
@@ -201,14 +214,26 @@ const N8N_DURATION_RULES: Record<string, { min?: number; max?: number; values?: 
   kling: { min: 3, max: 15 },
   seedance: { min: 4, max: 15 },
   sora: { values: [4, 8, 12] }, // schema enum openai/sora-2 763a9321…; proved by a live 422 on 5s
-  pruna: { min: 1, max: 10 },
+  pruna: { min: 1, max: 20 }, // schema prunaai/p-video 4420187a…: duration minimum 1, maximum 20
   gemini: { values: [4, 6, 8, 10] },
+};
+
+/** The ASPECT rules embedded in the live n8n `Parse Inputs & Calculate Cost`
+ *  node (added 2026-08-15 alongside the Pruna correction: the workflow validated
+ *  duration but never aspect, so an unsupported aspect was DEDUCTED and then 422'd
+ *  by the provider). Kept here so a change on either side fails this suite. */
+const N8N_ASPECT_RULES: Record<string, string[]> = {
+  kling: ["16:9", "9:16", "1:1", "21:9"],
+  seedance: ["16:9", "9:16", "1:1", "21:9"],
+  sora: ["16:9", "9:16", "21:9"], // builder maps 1:1 -> 'square', which the provider rejects
+  pruna: ["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:1"], // schema aspect_ratio.enum
+  gemini: ["16:9", "9:16"],
 };
 
 describe("DRIFT: UI options, provider capability and n8n rules must agree", () => {
   it("every offered duration is renderable by that model", () => {
     for (const spec of SPECS) {
-      for (const offered of spec.durations) {
+      for (const offered of allowedDurationsFor(spec.id)) {
         expect(
           isDurationAllowedFor(spec.id, offered),
           `${spec.id} offers ${offered}s in the UI but the provider cannot render it`,
@@ -237,6 +262,18 @@ describe("DRIFT: UI options, provider capability and n8n rules must agree", () =
         expect(spec.providerDurationRange, `${spec.id} duration range`).toEqual([rule.min, rule.max]);
       }
     }
+  });
+
+  it("registry aspects match the rules embedded in the live workflow", () => {
+    for (const spec of SPECS) {
+      const key = Object.keys(N8N_ASPECT_RULES).find((k) => spec.id.includes(k));
+      expect(key, `${spec.id} has no matching n8n aspect rule`).toBeTruthy();
+      expect([...spec.aspectRatios], `${spec.id} aspect ratios`).toEqual(N8N_ASPECT_RULES[key!]);
+    }
+    // The specific value this slice removed. n8n forwards Pruna's aspect verbatim,
+    // so re-adding 21:9 on either side restores a charge -> 422 -> refund cycle.
+    expect(N8N_ASPECT_RULES.pruna).not.toContain("21:9");
+    expect([...VIDEO_MODEL_REGISTRY["replicate:prunaai/p-video"].aspectRatios]).not.toContain("21:9");
   });
 
   it("the removed fictional options stay removed", () => {
@@ -287,8 +324,8 @@ describe("REJECTION: unsupported combinations are refused, not clamped", () => {
 
   it("rejects Pruna at 300s and above its 10s maximum", () => {
     expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "300" })?.field).toBe("duration");
-    expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "11" })?.field).toBe("duration");
-    expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "10" })).toBeNull();
+    expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "21" })?.field).toBe("duration");
+    expect(validateVideoModelOptions({ model: "replicate:prunaai/p-video", duration: "20" })).toBeNull();
   });
 
   it("rejects Gemini durations outside its discrete set", () => {
@@ -316,15 +353,24 @@ describe("REJECTION: unsupported combinations are refused, not clamped", () => {
     expect(validateVideoModelOptions({ model: "totally-made-up", duration: "5" })?.field).toBe("model");
   });
 
-  it("resolves auto to a concrete model BEFORE validating duration", () => {
-    // auto + clothing resolves to Pruna (max 10s), so 15s must be rejected even
-    // though other models allow it.
+  it("resolves auto to a concrete model BEFORE validating its options", () => {
+    // This used 15s as the discriminator while Pruna's registry maximum was 10.
+    // Pruna's real schema maximum is 20, so 15s is now renderable and duration can
+    // no longer distinguish the resolved model — Pruna is the most permissive of
+    // the five. ASPECT distinguishes it instead, and tests the same property on
+    // the capability this slice corrected: 21:9 is absent from Pruna's provider
+    // enum but present for Kling and Seedance.
     expect(resolveEffectiveVideoModel("auto", "clothing")).toBe("replicate:prunaai/p-video");
-    expect(validateVideoModelOptions({ model: "auto", videoMode: "clothing", duration: "15" })?.field).toBe("duration");
-    // auto + ugc resolves to Kling, where 15s IS renderable.
-    expect(validateVideoModelOptions({ model: "auto", videoMode: "ugc", duration: "15" })).toBeNull();
+    expect(validateVideoModelOptions({ model: "auto", videoMode: "clothing", aspectRatio: "21:9" })?.field)
+      .toBe("aspect_ratio");
+    // auto + ugc resolves to Kling, where 21:9 IS supported.
+    expect(validateVideoModelOptions({ model: "auto", videoMode: "ugc", aspectRatio: "21:9" })).toBeNull();
     // auto with no mode resolves to Seedance.
-    expect(validateVideoModelOptions({ model: "auto", duration: "15" })).toBeNull();
+    expect(validateVideoModelOptions({ model: "auto", aspectRatio: "21:9" })).toBeNull();
+    // Duration still resolves through auto: 15s is fine on Pruna, 21s never is.
+    expect(validateVideoModelOptions({ model: "auto", videoMode: "clothing", duration: "15" })).toBeNull();
+    expect(validateVideoModelOptions({ model: "auto", videoMode: "clothing", duration: "21" })?.field)
+      .toBe("duration");
   });
 
   it("accepts in-range durations the UI does not offer as buttons", () => {
@@ -339,7 +385,7 @@ describe("REJECTION: unsupported combinations are refused, not clamped", () => {
 describe("COST: one validated duration drives display, validation and billing", () => {
   it("UI estimate equals the mirrored n8n deduction for every offered duration", () => {
     for (const spec of SPECS) {
-      for (const secs of spec.durations) {
+      for (const secs of allowedDurationsFor(spec.id)) {
         const estimate = estimateVideoCredits(spec.id, secs);
         const n8nWouldCharge = Number(secs) * n8nPerSecondCost(spec.id);
         expect(estimate, `${spec.id} @ ${secs}s`).toBe(n8nWouldCharge);
@@ -414,14 +460,13 @@ describe("END FRAME: capability is availability, never intent", () => {
       expect(allowed).toBe(spec.supportsEndFrame);
       // A capability of `true` must NOT by itself make a request valid: the
       // request still has to carry an end frame for the guard to apply at all.
-      expect(validateVideoModelOptions({ model: spec.id, duration: spec.durations[0] })).toBeNull();
+      expect(validateVideoModelOptions({ model: spec.id, duration: allowedDurationsFor(spec.id)[0] })).toBeNull();
     }
   });
 
   it("rejects an end frame on every unsupported model, before any spend", () => {
     for (const id of ["replicate:openai/sora-2", "bytedance/seedance-2", "bytedance/seedance-2-fast", "gemini-omni-video"]) {
-      const spec = VIDEO_MODEL_REGISTRY[id];
-      const r = validateVideoModelOptions({ model: id, duration: spec.durations[0], hasEndFrame: true });
+      const r = validateVideoModelOptions({ model: id, duration: allowedDurationsFor(id)[0], hasEndFrame: true });
       expect(r?.field, id).toBe("end_frame");
       expect(r?.reason, id).toContain("does not support an end frame");
     }
@@ -517,5 +562,136 @@ describe("REFERENCE SLOTS: frames are not general references", () => {
     expect(isEndFrameAllowedFor("kling-3.0/video")).toBe(true);
     expect(generalReferenceSlotsFor("bytedance/seedance-2")).toBe(3);
     expect(isEndFrameAllowedFor("bytedance/seedance-2")).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRUNA CAPABILITY CORRECTION (2026-08-15)
+//
+// Two drifts, both confirmed against the machine-readable Replicate schema
+// (prunaai/p-video, version 4420187a2059aa9e…, schema created 2026-08-06):
+//   - `duration` publishes minimum 1 / maximum 20; the registry said 1..10.
+//   - `aspect_ratio.enum` is [16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 1:1] — no 21:9,
+//     which the registry offered via STANDARD_ASPECTS.
+//
+// The aspect drift is the dangerous one: Video V3 assigns Pruna's aspect
+// verbatim (`apiPayload.input.aspect_ratio = targetAspectRatio`, no mapping), so
+// a 21:9 request was CHARGED upfront and then rejected with HTTP 422 — the same
+// charge -> 422 -> refund cycle Sora's `seconds` defect produced.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PRUNA = "replicate:prunaai/p-video";
+
+describe("PRUNA: duration is the schema's 1..20 whole-second range", () => {
+  it("declares the range the provider publishes, not the transcribed 1..10", () => {
+    const spec = VIDEO_MODEL_REGISTRY[PRUNA];
+    expect(spec.providerDurationRange).toEqual([1, 20]);
+    expect(spec.uiDurationRange).toEqual([1, 20]);
+    // A range model must NOT also carry a discrete list, or the two could drift.
+    expect(spec.durations).toBeUndefined();
+    expect(spec.providerDurationValues).toBeUndefined();
+  });
+
+  it("offers a RANGE control, not a list of arbitrary lengths", () => {
+    const control = durationControlFor(PRUNA);
+    expect(control).toEqual({ kind: "range", min: 1, max: 20, step: 1 });
+    // Discrete-enum models keep a list.
+    expect(durationControlFor("replicate:openai/sora-2"))
+      .toEqual({ kind: "list", values: ["4", "8", "12"] });
+    expect(durationControlFor("gemini-omni-video").kind).toBe("list");
+  });
+
+  it("accepts every whole second from 1 to 20", () => {
+    for (let s = 1; s <= 20; s += 1) {
+      expect(isDurationAllowedFor(PRUNA, s), `${s}s`).toBe(true);
+      expect(validateVideoModelOptions({ model: PRUNA, duration: String(s) }), `${s}s`).toBeNull();
+    }
+    expect(allowedDurationsFor(PRUNA)).toHaveLength(20);
+  });
+
+  it("rejects 0, 21, decimals, negatives and non-numbers — never clamps them", () => {
+    for (const bad of ["0", "21", "100", "4.5", "0.5", "-5", "", "abc", "1e1", " 5 s", "5s", "NaN", "Infinity"]) {
+      expect(isDurationAllowedFor(PRUNA, bad), bad).toBe(false);
+    }
+    for (const bad of [0, 21, 4.5, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(isDurationAllowedFor(PRUNA, bad), String(bad)).toBe(false);
+    }
+    // Rejection carries the real capability, so the message cannot mislead.
+    const r = validateVideoModelOptions({ model: PRUNA, duration: "21" });
+    expect(r?.field).toBe("duration");
+    expect(r?.reason).toContain("1-20s");
+  });
+
+  it("prices every offered second at exactly 4 credits/sec", () => {
+    expect(estimateVideoCredits(PRUNA, "1")).toBe(4);
+    expect(estimateVideoCredits(PRUNA, "10")).toBe(40);
+    expect(estimateVideoCredits(PRUNA, "20")).toBe(80);
+    for (const secs of allowedDurationsFor(PRUNA)) {
+      expect(estimateVideoCredits(PRUNA, secs), `${secs}s`).toBe(Number(secs) * 4);
+      // The display estimate must equal what the mirrored n8n rule would deduct.
+      expect(estimateVideoCredits(PRUNA, secs)).toBe(Number(secs) * n8nPerSecondCost(PRUNA));
+    }
+  });
+});
+
+describe("PRUNA: aspect ratios are exactly the provider enum", () => {
+  const SCHEMA_ENUM = ["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:1"];
+
+  it("advertises the schema enum and nothing else", () => {
+    expect([...VIDEO_MODEL_REGISTRY[PRUNA].aspectRatios]).toEqual(SCHEMA_ENUM);
+    expect([...allowedAspectRatiosFor(PRUNA)]).toEqual(SCHEMA_ENUM);
+  });
+
+  it("accepts every schema aspect", () => {
+    for (const ar of SCHEMA_ENUM) {
+      expect(isAspectRatioAllowedFor(PRUNA, ar), ar).toBe(true);
+      expect(validateVideoModelOptions({ model: PRUNA, duration: "5", aspectRatio: ar }), ar).toBeNull();
+    }
+  });
+
+  it("rejects 21:9 before deduction or provider contact", () => {
+    expect(isAspectRatioAllowedFor(PRUNA, "21:9")).toBe(false);
+    const r = validateVideoModelOptions({ model: PRUNA, duration: "5", aspectRatio: "21:9" });
+    expect(r?.field).toBe("aspect_ratio");
+    expect(r?.reason).toContain("does not support 21:9");
+    // Rejected with or without a duration, and through `auto` in clothing mode.
+    expect(validateVideoModelOptions({ model: PRUNA, aspectRatio: "21:9" })?.field).toBe("aspect_ratio");
+    expect(validateVideoModelOptions({ model: "auto", videoMode: "clothing", aspectRatio: "21:9" })?.field)
+      .toBe("aspect_ratio");
+  });
+
+  it("does not leak Pruna's extra aspects to models that lack them", () => {
+    // 4:3/3:4/3:2/2:3 exist in Pruna's enum only. Widening the boundary union
+    // must not make them acceptable for Kling, Seedance, Sora or Gemini.
+    for (const id of ["kling-3.0/video", "bytedance/seedance-2", "replicate:openai/sora-2", "gemini-omni-video"]) {
+      for (const ar of ["4:3", "3:4", "3:2", "2:3"]) {
+        expect(isAspectRatioAllowedFor(id, ar), `${id} ${ar}`).toBe(false);
+      }
+    }
+    // And 21:9 stays valid where the provider really supports it.
+    expect(isAspectRatioAllowedFor("kling-3.0/video", "21:9")).toBe(true);
+    expect(isAspectRatioAllowedFor("bytedance/seedance-2", "21:9")).toBe(true);
+  });
+});
+
+describe("PRUNA: UI selection repair is not clamping", () => {
+  it("keeps a selection the new model can render", () => {
+    expect(reconcileDurationFor(PRUNA, "15")).toBe("15");
+    expect(reconcileAspectRatioFor(PRUNA, "4:3")).toBe("4:3");
+  });
+
+  it("replaces a selection the new model cannot render", () => {
+    // Switching Kling -> Pruna with 21:9 selected must not leave 21:9 in place.
+    expect(reconcileAspectRatioFor(PRUNA, "21:9")).toBe("16:9");
+    // Switching Pruna(20s) -> Sora must not leave 20s selected.
+    expect(reconcileDurationFor("replicate:openai/sora-2", "20")).toBe("4");
+    expect(reconcileDurationFor("gemini-omni-video", "20")).toBe("4");
+    expect(reconcileDurationFor("kling-3.0/video", "20")).toBe("5");
+  });
+
+  it("repairing the picker never makes an unsupported REQUEST valid", () => {
+    // The repair is UI-only. The boundary still refuses the original value.
+    expect(validateVideoModelOptions({ model: PRUNA, aspectRatio: "21:9" })?.field).toBe("aspect_ratio");
+    expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "20" })?.field).toBe("duration");
   });
 });

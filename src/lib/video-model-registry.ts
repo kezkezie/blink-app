@@ -61,9 +61,22 @@ export interface VideoModelSpec {
   providerMatch: string;
   /** Verified per-second credit cost (before the audio surcharge). */
   creditsPerSecond: number;
-  /** Durations the UI OFFERS, in seconds (string form, as the UI/payload use).
-   *  Must be a subset of what the provider can render — enforced by a drift test. */
-  durations: readonly string[];
+  /**
+   * Durations the UI OFFERS as a DISCRETE option list, in seconds (string form,
+   * as the UI/payload use). Must be a subset of what the provider can render —
+   * enforced by a drift test.
+   *
+   * Exactly one of `durations` / `uiDurationRange` is set. A model whose provider
+   * accepts a continuous range should use `uiDurationRange` so the UI offers a
+   * range control instead of an arbitrarily-chosen handful of buttons.
+   */
+  durations?: readonly string[];
+  /**
+   * Inclusive whole-second range the UI OFFERS via a range control. Set instead
+   * of `durations` for models the provider accepts continuously (Pruna 1..20).
+   * Must sit inside `providerDurationRange` — enforced by a drift test.
+   */
+  uiDurationRange?: readonly [number, number];
   /**
    * What the PROVIDER can actually render. This, not `durations`, is the
    * rejection gate: `durations` is only what we choose to offer, and other
@@ -142,6 +155,20 @@ export const DEFAULT_CREDITS_PER_SECOND = 12;
 export const GEMINI_CREDITS_PER_SECOND = 20;
 
 const STANDARD_ASPECTS = ["16:9", "9:16", "1:1", "21:9"] as const;
+
+/**
+ * Pruna's aspect capability, transcribed EXACTLY from the machine-readable
+ * Replicate schema (prunaai/p-video, version 4420187a2059aa9e…, schema created
+ * 2026-08-06): `components.schemas.aspect_ratio.enum`.
+ *
+ * `STANDARD_ASPECTS` was used here until 2026-08-15, which advertised 21:9 — a
+ * value NOT in this enum. Video V3 sends Pruna's aspect ratio verbatim
+ * (`apiPayload.input.aspect_ratio = targetAspectRatio`, no mapping), so a 21:9
+ * selection was charged upfront and then rejected by the provider with HTTP 422,
+ * producing the same charge -> 422 -> refund cycle as the Sora `seconds` defect.
+ * Do not re-add 21:9 without a schema that contains it.
+ */
+const PRUNA_ASPECTS = ["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:1"] as const;
 
 /**
  * Every video model the app offers. **Adding a model is this entry plus nothing
@@ -246,9 +273,17 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     family: "pruna",
     providerMatch: "pruna",
     creditsPerSecond: 4,
-    durations: ["5", "10"],
-    providerDurationRange: [1, 10], // Replicate docs 2026-08-06: p-video duration 1-10s
-    aspectRatios: STANDARD_ASPECTS,
+    // CANONICAL, from the machine-readable Replicate schema (model
+    // prunaai/p-video, version 4420187a2059aa9e…, schema created 2026-08-06):
+    //   components.schemas.Input.properties.duration -> minimum 1, maximum 20
+    // A continuous whole-second RANGE, not an enum. The registry said 1..10 until
+    // 2026-08-15 — transcribed from prose rather than the schema — so half of
+    // Pruna's paid-for capability was unreachable, and the UI offered exactly two
+    // arbitrary lengths (5 and 10). Represented as a range so the UI offers a
+    // range control rather than a handful of buttons.
+    uiDurationRange: [1, 20],
+    providerDurationRange: [1, 20],
+    aspectRatios: PRUNA_ASPECTS,
     // TRUE only because Video V3 now passes the selected end frame through the
     // schema's `last_frame_image` input. Before 2026-08-07 this flag was true but
     // the workflow never sent the field, so a paid end-frame image was generated
@@ -311,11 +346,43 @@ export function modelSupportsEndFrame(id: string | null | undefined): boolean {
   return resolveVideoModel(id)?.supportsEndFrame ?? false;
 }
 
+/**
+ * How the UI should let a user pick a duration for this model.
+ *
+ * Two shapes, because two provider shapes exist and flattening them loses
+ * information: Sora/Gemini accept a DISCRETE enum, Pruna accepts a CONTINUOUS
+ * whole-second range (1..20). Expanding Pruna's range into 20 `<option>` rows
+ * would misrepresent a range as a list and re-introduce the "pick from an
+ * arbitrary handful" problem; rendering a range control keeps every renderable
+ * value reachable.
+ */
+export type VideoDurationControl =
+  | { kind: "list"; values: readonly string[] }
+  | { kind: "range"; min: number; max: number; step: 1 };
+
+export function durationControlFor(id: string | null | undefined): VideoDurationControl {
+  const spec = resolveVideoModel(id);
+  if (spec?.uiDurationRange) {
+    return { kind: "range", min: spec.uiDurationRange[0], max: spec.uiDurationRange[1], step: 1 };
+  }
+  return { kind: "list", values: allowedDurationsFor(id) };
+}
+
+/** Whole seconds a spec OFFERS, expanding a range into its members. The single
+ *  place `durations` / `uiDurationRange` are collapsed to one list. */
+function uiDurationsOf(spec: VideoModelSpec): string[] {
+  if (spec.uiDurationRange) {
+    const [min, max] = spec.uiDurationRange;
+    return Array.from({ length: max - min + 1 }, (_, i) => String(min + i));
+  }
+  return [...(spec.durations ?? [])];
+}
+
 /** Durations/aspects/resolutions a model allows (registry-wide union for `auto`). */
 export function allowedDurationsFor(id: string | null | undefined): readonly string[] {
   const spec = resolveVideoModel(id);
-  if (spec) return spec.durations;
-  return unionOf((s) => s.durations);
+  if (spec) return uiDurationsOf(spec);
+  return unionOf(uiDurationsOf);
 }
 
 export function allowedAspectRatiosFor(id: string | null | undefined): readonly string[] {
@@ -334,7 +401,7 @@ function unionOf(pick: (spec: VideoModelSpec) => readonly string[]): string[] {
  *  execution boundary validates against (a scene names its own model, so the
  *  per-model check belongs to capability gating, not the security allowlist). */
 export function allVideoDurations(): string[] {
-  return unionOf((s) => s.durations);
+  return unionOf(uiDurationsOf);
 }
 
 /**
@@ -356,7 +423,7 @@ export function allProviderRenderableDurations(): string[] {
       const [min, max] = spec.providerDurationRange;
       for (let v = min; v <= max; v += 1) all.add(v);
     } else {
-      for (const v of spec.durations) all.add(Number(v));
+      for (const v of uiDurationsOf(spec)) all.add(Number(v));
     }
   }
   return [...all].sort((a, b) => a - b).map(String);
@@ -444,6 +511,11 @@ export function resolveEffectiveVideoModel(
 export function isDurationAllowedFor(modelId: string | null | undefined, duration: string | number): boolean {
   const spec = resolveVideoModel(modelId);
   if (!spec) return false;
+  // A string duration must be a plain decimal integer. `Number("1e1")` is 10 but
+  // n8n's `parseInt("1e1")` is 1, so accepting exotic numeric forms would let the
+  // app validate and price one length while the workflow billed and rendered
+  // another — the exact divergence the one-validated-duration invariant forbids.
+  if (typeof duration !== "number" && !/^\d+$/.test(String(duration).trim())) return false;
   const seconds = typeof duration === "number" ? duration : Number(String(duration).trim());
   if (!Number.isInteger(seconds) || seconds <= 0) return false;
   if (spec.providerDurationValues) return spec.providerDurationValues.includes(seconds);
@@ -453,14 +525,47 @@ export function isDurationAllowedFor(modelId: string | null | undefined, duratio
   }
   // No provider capability recorded — fall back to the offered options rather
   // than accepting anything.
-  return spec.durations.includes(String(seconds));
+  return uiDurationsOf(spec).includes(String(seconds));
 }
 
 /** Human-readable description of what a model can render, for rejection messages. */
 export function describeAllowedDurations(spec: VideoModelSpec): string {
   if (spec.providerDurationValues) return `${spec.providerDurationValues.join(", ")}s`;
   if (spec.providerDurationRange) return `${spec.providerDurationRange[0]}-${spec.providerDurationRange[1]}s`;
-  return `${spec.durations.join(", ")}s`;
+  return `${uiDurationsOf(spec).join(", ")}s`;
+}
+
+/**
+ * UI-ONLY selection repair, used when the user switches models and the current
+ * selection is not renderable by the new one.
+ *
+ * This is NOT clamping: it never rewrites a submitted request, and it never maps
+ * a requested value onto a different one at execution time. It returns the
+ * model's own sensible default so the picker cannot sit on a value that would be
+ * rejected later. A request that arrives with an unsupported value is still
+ * REJECTED before deduction — see `validateVideoModelOptions`.
+ */
+export function reconcileDurationFor(
+  modelId: string | null | undefined,
+  current: string | null | undefined,
+): string {
+  const effective = resolveEffectiveVideoModel(modelId, null);
+  if (current && isDurationAllowedFor(effective, current)) return String(current);
+  const offered = allowedDurationsFor(effective);
+  if (offered.includes("5")) return "5";
+  return offered[0] ?? "5";
+}
+
+/** UI-only aspect repair on model switch. Same non-clamping contract as above. */
+export function reconcileAspectRatioFor(
+  modelId: string | null | undefined,
+  current: string | null | undefined,
+): string {
+  const effective = resolveEffectiveVideoModel(modelId, null);
+  if (current && isAspectRatioAllowedFor(effective, current)) return current;
+  const offered = allowedAspectRatiosFor(effective);
+  if (current && offered.includes(current)) return current;
+  return offered[0] ?? "16:9";
 }
 
 /** True when this aspect ratio is offered for this model. */

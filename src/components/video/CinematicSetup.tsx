@@ -5,6 +5,7 @@ import { Upload, X, Sparkles, Loader2, Info, ShoppingBag, FolderOpen } from "luc
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { AssetSelectionModal } from "@/components/shared/AssetSelectionModal";
+import { AspectRatioSelect, DurationField, promptImpliesAudio } from "./VideoOutputControls";
 import type { VideoSetupProps } from "./types";
 
 interface ExtendedSetupProps extends VideoSetupProps {
@@ -12,6 +13,10 @@ interface ExtendedSetupProps extends VideoSetupProps {
     setAspectRatio?: (val: string) => void;
     duration?: string;
     setDuration?: (val: string) => void;
+    /** Selected engine (`auto` until the user picks one) and mode, so the aspect
+     *  and duration controls offer only what THIS model can render. */
+    aiModel?: string;
+    videoMode?: string;
 }
 
 export function CinematicSetup({
@@ -26,6 +31,8 @@ export function CinematicSetup({
     setAspectRatio,
     duration = "5",
     setDuration,
+    aiModel,
+    videoMode,
     isSuggesting,
     handleAISuggest,
     activeModeConfig,
@@ -115,29 +122,25 @@ export function CinematicSetup({
                     <div className="flex items-center gap-3 shrink-0">
                         {/* Standalone Aspect Ratio Dropdown */}
                         {setAspectRatio && (
-                            <select
+                            <AspectRatioSelect
+                                model={aiModel}
+                                videoMode={videoMode}
                                 value={aspectRatio}
-                                onChange={(e) => setAspectRatio(e.target.value)}
+                                onChange={setAspectRatio}
                                 className="text-xs font-bold text-[#f472b6] bg-[#191D23] border border-[#f472b6]/30 px-3 py-2 rounded-xl cursor-pointer hover:border-[#f472b6]/60 transition-colors appearance-none shadow-sm outline-none h-10"
-                            >
-                                <option value="16:9">📐 16:9 (Landscape)</option>
-                                <option value="9:16">📐 9:16 (Vertical)</option>
-                                <option value="1:1">📐 1:1 (Square)</option>
-                                <option value="21:9">📐 21:9 (Cinematic)</option>
-                            </select>
+                            />
                         )}
 
                         {/* Time Duration Dropdown */}
                         {setDuration && (
-                            <select
+                            <DurationField
+                                model={aiModel}
+                                videoMode={videoMode}
                                 value={duration}
-                                onChange={(e) => setDuration(e.target.value)}
+                                onChange={setDuration}
+                                hasAudio={promptImpliesAudio(prompt)}
                                 className="text-xs font-bold text-[#FFB300] bg-[#191D23] border border-[#FFB300]/30 px-3 py-2 rounded-xl cursor-pointer hover:border-[#FFB300]/60 transition-colors appearance-none shadow-sm outline-none h-10"
-                            >
-                                <option value="5">⏱️ 5 Secs</option>
-                                <option value="10">⏱️ 10 Secs</option>
-                                <option value="15">⏱️ 15 Secs</option>
-                            </select>
+                            />
                         )}
 
                         <button
