@@ -125,6 +125,7 @@ test("Kling/Sora duration options and Gemini credit estimate are correct", async
   //         1..10 and offered exactly two lengths while the provider schema
   //         published 1..20; and STANDARD_ASPECTS advertised 21:9, which Pruna
   //         does not accept and Video V3 forwards verbatim.
+  const durationSelectsBefore = await page.getByTestId("video-duration-select").count();
   await modelSelect.selectOption("replicate:prunaai/p-video");
   await page.waitForTimeout(800);
 
@@ -134,8 +135,12 @@ test("Kling/Sora duration options and Gemini credit estimate are correct", async
   expect(prunaAspects).toEqual(["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:1"]);
   expect(prunaAspects).not.toContain("21:9");
 
-  // The duration select must be GONE — replaced by the range control.
-  await expect(page.getByTestId("video-duration-select")).toHaveCount(0);
+  // Scene 1's duration SELECT must be replaced by a RANGE control. Only scene 1
+  // was switched to Pruna, so the other scenes keep their selects — the counts
+  // together prove the swap happened in the scene that changed model and nowhere
+  // else. (A page-wide `toHaveCount(0)` would be wrong for the same reason.)
+  await expect(page.getByTestId("video-duration-range")).toHaveCount(1);
+  expect(await page.getByTestId("video-duration-select").count()).toBe(durationSelectsBefore - 1);
   const range = page.getByTestId("video-duration-range").first();
   await expect(range).toBeVisible({ timeout: 15_000 });
   const slider = range.locator("input[type=range]");
