@@ -3,6 +3,39 @@ import { createServerClient } from "@supabase/ssr";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { cloudinaryVideoPoster } from "@/lib/utils";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
+import { complete } from "@/lib/llm";
+
+
+const LENGTHS = new Set(["short", "long"]);
+
+/** https-only, parseable, bounded. The vision model fetches this URL. */
+function isSafeMediaUrl(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return true; // media is optional
+  if (typeof value !== "string" || value.length > 2048) return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const boundedOrAbsent = (v: unknown, max: number) =>
+  v === undefined || v === null || (typeof v === "string" && v.length <= max);
+
+function isValidAnalyzeRequest(body: Record<string, any>): boolean {
+  if (!body || typeof body !== "object") return false;
+  if (!isSafeMediaUrl(body.mediaUrl) || !isSafeMediaUrl(body.imageUrl)) return false;
+  if (body.lengthPreference !== undefined && !LENGTHS.has(body.lengthPreference)) return false;
+  for (const [key, max] of [["brandVoice", 2000], ["context", 4000], ["dos", 2000], ["donts", 2000], ["mediaType", 100]] as const) {
+    if (!boundedOrAbsent(body[key], max)) return false;
+  }
+  const bc = body.brandContext;
+  if (bc !== undefined && bc !== null) {
+    if (typeof bc !== "object") return false;
+    if (!boundedOrAbsent(bc.brandVoice, 2000) || !boundedOrAbsent(bc.description, 4000)) return false;
+  }
+  return true;
+}
 
 export async function POST(req: NextRequest) {
   let clientIdForRefund = null;
@@ -16,14 +49,16 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await req.json();
-    const apiKey = process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "Missing OPENAI_API_KEY" },
-        { status: 500 }
-      );
+    let body: Record<string, any>;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
+    // Validated BEFORE any ownership check or charge. Every field below is either
+    // sent to the vision model (mediaUrl) or interpolated into its prompt.
+    if (!isValidAnalyzeRequest(body)) {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
     // ✨ Support payloads from BOTH the Upload Page and the Content Detail Page
@@ -108,41 +143,16 @@ The JSON object must have EXACTLY these 4 keys:
   "call_to_action": "A 1-sentence Call to Action."
 }`;
 
-    let messages: any[] = [];
-
-    if (canSeeMedia) {
-      messages = [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: visionUrl } },
-          ],
-        },
-      ];
-    } else {
-      messages = [{ role: "user", content: prompt }];
-    }
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: messages,
-        temperature: 0.7,
-        response_format: { type: "json_object" }, // Forces JSON output
-        max_tokens: 600,
-      }),
+    // Vision when media is available. Model/limits: LLM_TASKS.contentAnalyze.
+    const content = await complete({
+      task: "contentAnalyze",
+      system: "You are a world-class social media manager. Respond with a JSON object only.",
+      user: prompt,
+      json: true,
+      ...(canSeeMedia ? { images: [{ url: visionUrl }] } : {}),
     });
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || "OpenAI API Error");
-
-    const result = JSON.parse(data.choices[0].message.content.trim());
+    const result = JSON.parse(content.trim());
 
     return NextResponse.json(result);
   } catch (error) {

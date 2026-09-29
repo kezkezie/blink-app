@@ -27,7 +27,7 @@ export const LLM_TASKS = {
   /** Brand autofill from website / social URLs. */
   brandAutofill: { provider: "openai", model: "gpt-4o-mini" },
   /** Caption / analysis of existing media (vision). */
-  contentAnalyze: { provider: "openai", model: "gpt-4o" },
+  contentAnalyze: { provider: "openai", model: "gpt-4o", maxTokens: 600, temperature: 0.7 },
   /** Video suggestion, storyboard and frame helpers (secured video routes). */
   videoHelper: { provider: "openai", model: "gpt-4o-mini" },
 } as const satisfies Record<string, LlmTaskConfig>;
