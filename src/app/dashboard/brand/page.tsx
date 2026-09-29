@@ -79,7 +79,7 @@ export default function BrandIdentityPage() {
 
   useEffect(() => {
     if (!clientId) return;
-    supabase.from("brand_profiles").select("id, brand_name, logo_url").eq("client_id", clientId).then(({ data }) => {
+    supabase.from("brand_profiles").select("id, brand_name, logo_url").eq("client_id", clientId).eq("is_active", true).then(({ data }) => {
       if (data) {
         setAvailableBrands(data);
         const currentActive = useBrandStore.getState().activeBrand;
@@ -168,7 +168,12 @@ export default function BrandIdentityPage() {
     setIsCreatingBrand(true);
     try {
       const result = await createQuickBrand(clientId!, name.trim());
-      if (result.error) throw new Error(result.error);
+      // The server enforces the plan limit; show ITS message (it names the limit and
+      // how to free a slot) instead of a generic failure.
+      if (result.error) {
+        setConnectionMessage({ type: "error", text: result.error });
+        return;
+      }
       if (result.brand) {
         setAvailableBrands([...availableBrands, result.brand]);
         setActiveBrand(result.brand);

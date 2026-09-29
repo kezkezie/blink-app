@@ -40,6 +40,7 @@ import {
     DialogDescription,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const PREDEFINED_TONES = [
     "Luxurious", "Modern", "Earthy", "Professional", "Minimal", "Elegant",
@@ -339,7 +340,7 @@ export function BrandCreationModal({ isOpen, onClose, onSuccess }: BrandCreation
 
         } catch (err: any) {
             console.error("Brand creation failed:", err);
-            alert(err.message || "Failed to save brand profile.");
+            toast.error(err.message || "Failed to save brand profile.");
             setSaving(false);
         }
     }

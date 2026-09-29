@@ -20,6 +20,8 @@ import { BrandCreationModal } from "@/components/brand/info"; // ✨ IMPORT NEW 
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { archiveBrand, getBrandAllowance } from "@/app/actions/brand";
 
 interface TopBarProps {
   pageTitle: string;
@@ -49,6 +51,7 @@ export function TopBar({ pageTitle }: TopBarProps) {
       .from("brand_profiles")
       .select("id, brand_name, logo_url")
       .eq("client_id", clientId)
+      .eq("is_active", true) // archived brands are hidden, never shown as switchable
       .then(({ data }) => {
         if (data) {
           setAvailableBrands(data);
@@ -86,34 +89,35 @@ export function TopBar({ pageTitle }: TopBarProps) {
     router.push("/login");
   };
 
-  // ✨ NEW: Delete Brand Function
-  const handleDeleteBrand = async (brandId: string, brandName: string, e: React.MouseEvent) => {
-    // Prevent the dropdown menu from clicking/closing automatically
+  // Archive (soft delete) with an inline two-step confirm. The first click arms the
+  // button ("Archive?"); the second archives through the server action, which checks
+  // the session and ownership. The old version hard-deleted from the browser, which
+  // failed for any brand with posts (content/social_accounts reference the row).
+  const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+
+  const handleArchiveBrand = async (brandId: string, brandName: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
-    const isConfirmed = window.confirm(`Are you sure you want to permanently delete the workspace "${brandName || 'Unnamed'}"?`);
-    if (!isConfirmed) return;
-
+    if (confirmArchiveId !== brandId) {
+      setConfirmArchiveId(brandId);
+      return;
+    }
+    setArchivingId(brandId);
     try {
-      const { error } = await supabase
-        .from("brand_profiles")
-        .delete()
-        .eq("id", brandId);
-
-      if (error) throw error;
-
-      // Update Local State
+      const result = await archiveBrand(brandId);
+      if (result.error) throw new Error(result.error);
       const updatedBrands = availableBrands.filter((b) => b.id !== brandId);
       setAvailableBrands(updatedBrands);
-
-      // If they deleted the brand they were currently looking at, switch them
       if (activeBrand?.id === brandId) {
         setActiveBrand(updatedBrands.length > 0 ? updatedBrands[0] : null);
       }
+      toast.success(`Archived "${brandName || "Unnamed"}". Its posts and history are kept.`);
     } catch (err) {
-      console.error("Failed to delete workspace:", err);
-      alert("Failed to delete workspace. Please try again.");
+      toast.error(err instanceof Error ? err.message : "Could not archive the brand. Please try again.");
+    } finally {
+      setArchivingId(null);
+      setConfirmArchiveId(null);
     }
   };
 
@@ -178,7 +182,17 @@ export function TopBar({ pageTitle }: TopBarProps) {
 
               {/* ✨ NEW ADD BRAND BUTTON ✨ */}
               <DropdownMenuItem
-                onClick={() => setBrandCreationModalOpen(true)}
+                onClick={async () => {
+                  // Explain the plan limit BEFORE the user fills in a whole form.
+                  // The server still enforces it at creation time.
+                  const allowance = await getBrandAllowance();
+                  if ("error" in allowance) { toast.error(allowance.error); return; }
+                  if (!allowance.canCreate) {
+                    toast.error(`You're using ${allowance.used} of ${allowance.limit} brand${allowance.limit === 1 ? "" : "s"} on your plan. Upgrade, or archive a brand to free a slot.`);
+                    return;
+                  }
+                  setBrandCreationModalOpen(true);
+                }}
                 className="flex items-center gap-3 cursor-pointer focus:bg-[#C5BAC4]/10 focus:text-[#C5BAC4] py-2 text-[#C5BAC4] font-bold"
               >
                 <div className="h-6 w-6 rounded-md bg-[#C5BAC4]/10 border border-[#C5BAC4]/30 flex items-center justify-center shrink-0">
@@ -226,14 +240,28 @@ export function TopBar({ pageTitle }: TopBarProps) {
                       <Check className="h-4 w-4 ml-auto text-[#B3FF00] group-hover:opacity-0 transition-opacity" />
                     )}
 
-                    {/* ✨ DELETE BUTTON (Shows on Hover) ✨ */}
-                    <div
-                      onClick={(e) => handleDeleteBrand(brand.id, brand.brand_name, e)}
-                      className="absolute right-2 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 text-[#57707A] hover:text-red-400 rounded-md transition-all z-10"
-                      title="Delete Workspace"
+                    {/* Archive: first click arms, second click archives */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleArchiveBrand(brand.id, brand.brand_name, e)}
+                      onBlur={() => setConfirmArchiveId((id) => (id === brand.id ? null : id))}
+                      disabled={archivingId === brand.id}
+                      aria-label={confirmArchiveId === brand.id ? `Confirm archiving ${brand.brand_name || "this brand"}` : `Archive ${brand.brand_name || "this brand"}`}
+                      className={cn(
+                        "absolute right-2 flex items-center gap-1 rounded-md transition-all z-10 text-xs font-bold",
+                        confirmArchiveId === brand.id
+                          ? "opacity-100 px-2 py-1 bg-red-500/20 text-red-300"
+                          : "opacity-0 group-hover:opacity-100 focus:opacity-100 p-1.5 hover:bg-red-500/20 text-[#57707A] hover:text-red-400",
+                      )}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </div>
+                      {archivingId === brand.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : confirmArchiveId === brand.id ? (
+                        "Archive?"
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
 
                   </DropdownMenuItem>
                 ))

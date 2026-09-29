@@ -137,6 +137,7 @@ export async function loadOwnedBrandCreativeContext(
     .select(BRAND_CONTEXT_COLUMNS)
     .eq("id", brandId)
     .eq("client_id", client.id)
+    .eq("is_active", true) // an archived brand cannot generate or publish
     .maybeSingle();
   if (brandError) return { ok: false, status: 500, error: "Unable to resolve brand context" };
   if (!brand) return { ok: false, status: 404, error: "Brand not found" };

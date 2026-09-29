@@ -159,6 +159,7 @@ async function loadBrand(clientId: string, brandId: string): Promise<SecurityRes
     .select("id, brand_name, company_name, website_url, description, industry, primary_color, secondary_color, logo_url")
     .eq("id", brandId)
     .eq("client_id", clientId)
+    .eq("is_active", true) // an archived brand cannot generate or publish
     .maybeSingle();
   if (error) return { ok: false, status: 500, error: "Internal server error" };
   return data

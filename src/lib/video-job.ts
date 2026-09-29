@@ -123,6 +123,7 @@ async function verifyBrandOwned(clientId: string, brandId: string): Promise<Vide
     .select("id")
     .eq("id", brandId)
     .eq("client_id", clientId)
+    .eq("is_active", true) // an archived brand cannot generate or publish
     .maybeSingle();
   if (error) return INTERNAL_ERROR;
   return data ? { ok: true, value: true } : NOT_FOUND;

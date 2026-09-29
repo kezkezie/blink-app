@@ -108,6 +108,7 @@ export async function authorizeSocialScope(
       .select("id")
       .eq("id", requestedBrandId)
       .eq("client_id", authenticated.scope.clientId)
+      .eq("is_active", true) // an archived brand cannot generate or publish
       .maybeSingle();
 
     if (error) {
