@@ -45,3 +45,9 @@ node_modules
 .next
 .env.local
 .env
+# eval run artefacts (images, per-run results); summaries live in scripts/eval/HISTORY.md
+/scripts/eval/runs/
+
+# loop-private: workflow backups etc. that may contain secrets. NEVER commit.
+/.loop-private/
+/scripts/eval/.last-run.log
