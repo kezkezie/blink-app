@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { complete, LlmError } from "@/lib/llm";
+import { safeFetchText, validatePublicUrl } from "@/lib/safe-fetch";
 import { createServerClient } from "@supabase/ssr";
 
 function dedupeHex(arr: string[]): string[] {
@@ -15,7 +16,17 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { website_url, social_urls } = await req.json();
+  let body: { website_url?: unknown; social_urls?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
+  const website_url = typeof body?.website_url === 'string' ? body.website_url : '';
+  const social_urls = typeof body?.social_urls === 'string' ? body.social_urls : '';
+  if (website_url.length > 2048 || social_urls.length > 4000) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
 
   if (!website_url?.trim() && !social_urls?.trim()) {
     return NextResponse.json(
@@ -24,9 +35,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'OpenAI not configured.' }, { status: 500 });
+  // SSRF guard: a URL that is not a public http(s) address is refused outright,
+  // before ANY request is made. (A public site that is merely down still falls
+  // back to inferring from the domain, as before.)
+  if (website_url.trim()) {
+    const check = await validatePublicUrl(website_url.trim());
+    if (!check.ok) {
+      return NextResponse.json({ error: "That website address can't be used. Enter a public https:// URL." }, { status: 400 });
+    }
   }
 
   // ── Scrape & extract technical signals from the website HTML ─────────────
@@ -36,11 +52,12 @@ export async function POST(req: NextRequest) {
 
   if (website_url?.trim()) {
     try {
-      const res = await fetch(website_url.trim(), {
-        signal: AbortSignal.timeout(8000),
+      // Re-validates every redirect hop and caps the body at 1 MB.
+      const page = await safeFetchText(website_url.trim(), {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BlinkBot/1.0)' },
       });
-      const html = await res.text();
+      if (!page.ok) throw new Error(page.reason);
+      const html = page.text;
 
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       const descMatch  = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
@@ -106,16 +123,14 @@ Return this exact JSON structure (all color values must be valid 6-digit hex cod
 }`;
 
   try {
-    const openai = new OpenAI({ apiKey });
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 600,
-      temperature: 0.3,
+    // Model and limits: LLM_TASKS.brandAutofill (gpt-4o-mini, 600, 0.3 — unchanged).
+    const content = await complete({
+      task: 'brandAutofill',
+      system: 'You are a brand identity analyst. Respond with a JSON object only.',
+      user: prompt,
+      json: true,
     });
-
-    const raw = (completion.choices[0].message.content ?? '')
-      .replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const raw = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let extracted: Record<string, unknown>;
     try {
@@ -147,7 +162,7 @@ Return this exact JSON structure (all color values must be valid 6-digit hex cod
       secondaryFont:  extracted.secondaryFont && extracted.secondaryFont !== 'null' ? String(extracted.secondaryFont) : null,
     });
   } catch (err: any) {
-    if (err?.status === 429 || err?.code === 'insufficient_quota') {
+    if ((err instanceof LlmError && err.status === 429) || err?.status === 429 || err?.code === 'insufficient_quota') {
       return NextResponse.json({ error: 'AI quota reached. Try again shortly.' }, { status: 429 });
     }
     console.error('[autofill] OpenAI error:', err?.message);

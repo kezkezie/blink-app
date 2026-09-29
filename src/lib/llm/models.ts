@@ -25,7 +25,7 @@ export const LLM_TASKS = {
   /** Brand suggestions from brand context. */
   brandSuggest: { provider: "openai", model: "gpt-4o-mini", maxTokens: 150, temperature: 0.7 },
   /** Brand autofill from website / social URLs. */
-  brandAutofill: { provider: "openai", model: "gpt-4o-mini" },
+  brandAutofill: { provider: "openai", model: "gpt-4o-mini", maxTokens: 600, temperature: 0.3 },
   /** Caption / analysis of existing media (vision). */
   contentAnalyze: { provider: "openai", model: "gpt-4o", maxTokens: 600, temperature: 0.7 },
   /** Video suggestion, storyboard and frame helpers (secured video routes). */
