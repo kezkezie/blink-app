@@ -10,6 +10,7 @@ import { consumeAssistedCreationRateLimit } from "@/lib/assisted-creation-rate-l
 import { loadOwnedAssistedBrandContext, parseAssistedCreationRequest, verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { isTestFixtureRequest } from "@/lib/test-mode";
+import { isDeductionSuccessful } from "@/lib/credit-deduction";
 
 // Small fixed charge for an image-driven concept generation (a GPT-4o vision call).
 // Text-only concepts stay free. Deducted upfront, refunded on failure/fallback.
@@ -130,7 +131,7 @@ export async function POST(req: NextRequest) {
           p_operation: "inspiration_concepts",
           p_description: "Inspiration image → concepts",
         });
-        if (deductError || deductData === false) {
+        if (!isDeductionSuccessful(deductData, deductError)) {
           return NextResponse.json({ error: "Insufficient credits. Please top up." }, { status: 402 });
         }
         chargedClientId = ownedBrand.clientId;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { cloudinaryVideoPoster } from "@/lib/utils";
+import { isDeductionSuccessful } from "@/lib/credit-deduction";
 
 export async function POST(req: NextRequest) {
   let clientIdForRefund = null;
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
     );
 
     // If the RPC fails or returns false (insufficient balance), halt the operation
-    if (deductError || deductData === false) {
+    if (!isDeductionSuccessful(deductData, deductError)) {
       return NextResponse.json(
         { error: "Insufficient credits to generate caption. Please top up." },
         { status: 402 } // 402 Payment Required

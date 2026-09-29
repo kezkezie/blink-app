@@ -43,7 +43,8 @@ beforeEach(() => {
   vi.stubGlobal("fetch", providerFetch);
   createServerClient.mockReturnValue({ auth: { getUser } });
   getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
-  rpc.mockResolvedValue({ data: true, error: null });
+  // Real deduct_credits success shape (verified live 2026-09-29), not a bare boolean.
+  rpc.mockResolvedValue({ data: { success: true }, error: null });
 });
 
 describe("POST /api/brand/logo", () => {
@@ -66,9 +67,20 @@ describe("POST /api/brand/logo", () => {
 
   it("402 and no provider call when credits are insufficient", async () => {
     from.mockReturnValueOnce(clientRow()).mockReturnValueOnce(brandRow());
-    rpc.mockResolvedValueOnce({ data: false, error: null });
+    rpc.mockResolvedValueOnce({ data: { success: false, error: "Insufficient credits" }, error: null });
     expect((await POST(request({ brandId: BRAND_ID }))).status).toBe(402);
     expect(providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("402 on the REAL failure shape: HTTP 200 with {success:false} (regression 2026-09-29)", async () => {
+    // The live deduct_credits never returns a bare `false`; it returns this object.
+    // The old `data === false` check let this through: free generation + a refund
+    // of credits that were never taken.
+    from.mockReturnValueOnce(clientRow()).mockReturnValueOnce(brandRow());
+    rpc.mockResolvedValueOnce({ data: { success: false, error: "Insufficient credits" }, error: null });
+    expect((await POST(request({ brandId: BRAND_ID }))).status).toBe(402);
+    expect(providerFetch).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalledWith("refund_credits", expect.anything());
   });
 
   it("charges 6, generates, and returns logo URLs on success (no refund)", async () => {

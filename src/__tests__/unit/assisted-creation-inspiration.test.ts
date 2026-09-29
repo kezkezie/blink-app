@@ -61,7 +61,8 @@ beforeEach(() => {
   createServerClient.mockReturnValue({ auth: { getUser } });
   getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
   consumeRateLimit.mockResolvedValue({ ok: true, allowed: true, remaining: 9, resetAt: "", retryAfterSeconds: 3600 });
-  rpc.mockResolvedValue({ data: true, error: null });
+  // Real deduct_credits success shape (verified live 2026-09-29), not a bare boolean.
+  rpc.mockResolvedValue({ data: { success: true }, error: null });
 });
 
 describe("parseInspirationImageUrl", () => {
@@ -133,7 +134,7 @@ describe("route — image-driven concepts billing", () => {
 
   it("returns 402 and never calls the provider when credits are insufficient", async () => {
     from.mockReturnValueOnce(clientRow()).mockReturnValueOnce(brandRow());
-    rpc.mockResolvedValueOnce({ data: false, error: null }); // deduct → insufficient
+    rpc.mockResolvedValueOnce({ data: { success: false, error: "Insufficient credits" }, error: null }); // deduct → insufficient
     const res = await POST(request({ operation: "concepts", brandId: BRAND_ID, inspirationImageUrl: OWNED_IMG, allowedFormats: ["image"] }));
     expect(res.status).toBe(402);
     expect(providerFetch).not.toHaveBeenCalled();
@@ -145,6 +146,15 @@ describe("route — image-driven concepts billing", () => {
     expect(res.status).toBe(400);
     expect(rpc).not.toHaveBeenCalled();
     expect(providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("REAL failure shape {success:false} is insufficient: no vision call, no refund (regression 2026-09-29)", async () => {
+    from.mockReturnValueOnce(clientRow()).mockReturnValueOnce(brandRow());
+    rpc.mockResolvedValueOnce({ data: { success: false, error: "Insufficient credits" }, error: null });
+    const res = await POST(request({ operation: "concepts", brandId: BRAND_ID, inspirationImageUrl: OWNED_IMG, allowedFormats: ["image"] }));
+    expect(res.status).toBe(402);
+    expect(providerFetch).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalledWith("refund_credits", expect.anything());
   });
 
   it("refunds when the vision call fails", async () => {
