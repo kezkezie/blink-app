@@ -1,5 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { complete } from "@/lib/llm";
+
+/** Every mode the two real callers send (Image Studio + content detail page). */
+const HELPER_MODES = new Set([
+  "standard", "edit", "grid", "organic_blend", "product_drop",
+  "generate", "style_transfer", "gpt_image_2_t2i", "gpt_image_2_i2i",
+]);
+
+type BrandContextInput = { name?: string; description?: string; industry?: string; websiteUrl?: string };
+
+const str = (v: unknown, max: number): string | null | undefined =>
+  v === undefined || v === null ? undefined : typeof v === "string" && v.length <= max ? v : null;
+
+/**
+ * Bounds everything that is interpolated into the model prompt. Present-but-invalid
+ * is rejected, never silently truncated. Unknown style ids still fall back to the
+ * studio hint, as before; unknown MODES are rejected because the mode picks the
+ * instruction block.
+ */
+function parseHelperRequest(body: Record<string, unknown>) {
+  const prompt = str(body?.prompt, 2000);
+  if (prompt === null) return null;
+  const mode = str(body?.mode, 40);
+  if (mode === null || (mode !== undefined && !HELPER_MODES.has(mode))) return null;
+  let brandContext: BrandContextInput | undefined;
+  if (body?.brandContext !== undefined && body.brandContext !== null) {
+    if (typeof body.brandContext !== "object") return null;
+    const b = body.brandContext as Record<string, unknown>;
+    const name = str(b.name, 200), description = str(b.description, 2000), industry = str(b.industry, 200), websiteUrl = str(b.websiteUrl, 500);
+    if ([name, description, industry, websiteUrl].some((x) => x === null)) return null;
+    brandContext = { name: name ?? undefined, description: description ?? undefined, industry: industry ?? undefined, websiteUrl: websiteUrl ?? undefined };
+  }
+  const styleObj = body?.style && typeof body.style === "object" ? (body.style as Record<string, unknown>) : null;
+  const styleId = styleObj ? str(styleObj.id, 40) : undefined;
+  if (styleId === null) return null;
+  return { prompt: prompt ?? "", brandContext, useBrand: body?.useBrand === true, mode, style: styleId ? { id: styleId } : undefined };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,12 +48,15 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { prompt, brandContext, useBrand, mode, style } = await req.json();
-    const apiKey = process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY environment variable" }, { status: 500 });
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
+    const parsed = parseHelperRequest(body);
+    if (!parsed) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    const { prompt, brandContext, useBrand, mode, style } = parsed;
 
     const brand = useBrand && brandContext ? brandContext : null;
     const isZeroPrompt = !prompt || prompt.trim().length < 5;
@@ -44,7 +84,7 @@ export async function POST(req: NextRequest) {
       grid: "A moodboard of related visuals — describe the visual theme and feeling.",
     };
 
-    const activeHint = modeHints[mode] || styleHints[styleKey] || styleHints.studio;
+    const activeHint = (mode && modeHints[mode]) || styleHints[styleKey] || styleHints.studio;
 
     const zeroPromptInstruction = isZeroPrompt
       ? `The user has not written anything. Invent a compelling, specific visual concept that would work for this brand and style. Choose a concrete subject and mood.`
@@ -82,31 +122,14 @@ Output ONLY the concept. No preamble, no labels, no explanation.`;
 
     const userMessage = zeroPromptInstruction + "\n\nWrite the concept now:";
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        temperature: 0.9,
-        max_tokens: 80,
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || "OpenAI API Error");
-
-    const suggestion = data.choices[0].message.content.trim();
+    // Model, 80-token cap and temperature live in LLM_TASKS.conceptSeed. The cap is
+    // deliberate: this is a 15-40 word seed; the Creative Direction Engine adds the rest.
+    const suggestion = (await complete({ task: "conceptSeed", system: systemPrompt, user: userMessage })).trim();
     return NextResponse.json({ suggestion });
 
-  } catch (error: any) {
+  } catch (error) {
+    // Logged server-side only. Provider error text never reaches the client.
     console.error("AI Prompt Helper Error:", error);
-    return NextResponse.json({ error: error.message || "Failed to generate prompt" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to generate prompt" }, { status: 500 });
   }
 }
