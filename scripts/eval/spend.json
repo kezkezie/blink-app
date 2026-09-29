@@ -1,0 +1,50 @@
+{
+  "total": 56,
+  "days": {
+    "2026-09-29": 56
+  },
+  "entries": [
+    {
+      "at": "2026-09-29T12:34:21.287Z",
+      "day": "2026-09-29",
+      "amount": 8,
+      "note": "2026-09-29T12-33-55-278Z zap__product http=200"
+    },
+    {
+      "at": "2026-09-29T12:40:43.051Z",
+      "day": "2026-09-29",
+      "amount": 8,
+      "note": "2026-09-29T12-37-25-479Z zap__product http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790685642/blinkspot/image%20content/ekhid7gzu8ydgupj2vwx.png"
+    },
+    {
+      "at": "2026-09-29T12:43:36.012Z",
+      "day": "2026-09-29",
+      "amount": 8,
+      "note": "2026-09-29T12-37-25-479Z mama-njeri__announcement http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790685815/blinkspot/image%20content/jkigbpirwpfrttxbhvus.png"
+    },
+    {
+      "at": "2026-09-29T12:44:18.219Z",
+      "day": "2026-09-29",
+      "amount": 8,
+      "note": "2026-09-29T12-37-25-479Z lup-space__lifestyle http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790685857/blinkspot/image%20content/cyiy2d8evhtjxjlb0fob.png"
+    },
+    {
+      "at": "2026-09-29T12:46:28.741Z",
+      "day": "2026-09-29",
+      "amount": 8,
+      "note": "2026-09-29T12-37-25-479Z gasless-cash__promotion http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790685988/blinkspot/image%20content/zb94gctdlow5l6simgyp.png"
+    },
+    {
+      "at": "2026-09-29T12:58:24.988Z",
+      "day": "2026-09-29",
+      "amount": 8,
+      "note": "2026-09-29T12-37-25-479Z nuf-farms__inspiration http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790686704/blinkspot/image%20content/ktklz3b54srnxvfomnjf.png"
+    },
+    {
+      "at": "2026-09-29T13:02:33.043Z",
+      "day": "2026-09-29",
+      "amount": 8,
+      "note": "2026-09-29T12-37-25-479Z empty-brand__product http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790686952/blinkspot/image%20content/enplf9ht56m68m6nilgq.png"
+    }
+  ]
+}

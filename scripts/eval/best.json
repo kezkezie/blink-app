@@ -1,0 +1,32 @@
+{
+  "zap__product": {
+    "url": "https://res.cloudinary.com/dap8jijxa/image/upload/v1790685642/blinkspot/image%20content/ekhid7gzu8ydgupj2vwx.png",
+    "run": "2026-09-29T12-37-25-479Z",
+    "pass": false
+  },
+  "mama-njeri__announcement": {
+    "url": "https://res.cloudinary.com/dap8jijxa/image/upload/v1790685815/blinkspot/image%20content/jkigbpirwpfrttxbhvus.png",
+    "run": "2026-09-29T12-37-25-479Z",
+    "pass": false
+  },
+  "lup-space__lifestyle": {
+    "url": "https://res.cloudinary.com/dap8jijxa/image/upload/v1790685857/blinkspot/image%20content/cyiy2d8evhtjxjlb0fob.png",
+    "run": "2026-09-29T12-37-25-479Z",
+    "pass": true
+  },
+  "gasless-cash__promotion": {
+    "url": "https://res.cloudinary.com/dap8jijxa/image/upload/v1790685988/blinkspot/image%20content/zb94gctdlow5l6simgyp.png",
+    "run": "2026-09-29T12-37-25-479Z",
+    "pass": false
+  },
+  "empty-brand__product": {
+    "url": "https://res.cloudinary.com/dap8jijxa/image/upload/v1790686952/blinkspot/image%20content/enplf9ht56m68m6nilgq.png",
+    "run": "2026-09-29T12-37-25-479Z",
+    "pass": false
+  },
+  "nuf-farms__inspiration": {
+    "url": "https://res.cloudinary.com/dap8jijxa/image/upload/v1790686704/blinkspot/image%20content/ktklz3b54srnxvfomnjf.png",
+    "run": "2026-09-29T12-37-25-479Z",
+    "pass": false
+  }
+}
