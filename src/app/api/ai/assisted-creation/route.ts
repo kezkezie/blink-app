@@ -10,6 +10,7 @@ import { consumeAssistedCreationRateLimit } from "@/lib/assisted-creation-rate-l
 import { loadOwnedAssistedBrandContext, parseAssistedCreationRequest, verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { isTestFixtureRequest } from "@/lib/test-mode";
+import { complete } from "@/lib/llm";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 
 // Small fixed charge for an image-driven concept generation (a GPT-4o vision call).
@@ -22,27 +23,15 @@ function extractJson(content: string): unknown {
 }
 
 async function askForJson(system: string, user: string, imageUrl?: string): Promise<unknown> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("AI service unavailable");
-  // With an inspiration image, send a GPT-4o vision message (text + image_url).
-  const userMessage = imageUrl
-    ? { role: "user", content: [{ type: "text", text: user }, { type: "image_url", image_url: { url: imageUrl } }] }
-    : { role: "user", content: user };
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      response_format: { type: "json_object" },
-      temperature: 0.8,
-      max_tokens: 900,
-      messages: [{ role: "system", content: system }, userMessage],
-    }),
+  // Provider-neutral adapter: model/limits live in LLM_TASKS.assistedCreation,
+  // and calls are time-bounded with retries on transient failures.
+  const content = await complete({
+    task: "assistedCreation",
+    system,
+    user,
+    json: true,
+    ...(imageUrl ? { images: [{ url: imageUrl }] } : {}),
   });
-  if (!response.ok) throw new Error("AI service request failed");
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (typeof content !== "string") throw new Error("AI service returned no content");
   return extractJson(content);
 }
 

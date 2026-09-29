@@ -5,6 +5,8 @@
 // exactly one is made on the authorized path. The API key is read from the
 // server-only `OPENAI_API_KEY` and never leaves the server.
 
+import { complete } from "@/lib/llm";
+
 type ChatOptions = {
   system: string;
   user: string;
@@ -17,31 +19,20 @@ export function hasOpenAiKey(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
+/**
+ * Delegates to the provider-neutral adapter (`src/lib/llm`). Same defaults as
+ * before (gpt-4o-mini via the `videoHelper` task), same error messages and
+ * `status`, plus a timeout and retries on transient failures.
+ */
 export async function openAiChat(options: ChatOptions): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("AI service unavailable");
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: options.model ?? "gpt-4o-mini",
-      ...(options.jsonObject ? { response_format: { type: "json_object" } } : {}),
-      ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
-      messages: [
-        { role: "system", content: options.system },
-        { role: "user", content: options.user },
-      ],
-    }),
+  return complete({
+    task: "videoHelper",
+    system: options.system,
+    user: options.user,
+    json: options.jsonObject,
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.maxTokens ? { maxTokens: options.maxTokens } : {}),
   });
-  if (!response.ok) {
-    const err = new Error("AI service request failed") as Error & { status?: number };
-    err.status = response.status;
-    throw err;
-  }
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (typeof content !== "string") throw new Error("AI service returned no content");
-  return content;
 }
 
 export async function openAiSpeech(text: string, voice: string): Promise<ArrayBuffer> {
