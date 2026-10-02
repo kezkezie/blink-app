@@ -4,7 +4,7 @@ The launch loop's memory between sessions. Plan of record:
 `/Users/freddykezie/Documents/ AIos demo/Kezie-OS/projects/blinkspot/launch-loop-plan.md`.
 Resume prompt: *"Continue the BlinkSpot launch loop. Read Kezie-OS/projects/blinkspot/launch-loop-plan.md and LOOP_STATE.md, then proceed."*
 
-Last updated: 2026-09-29 by session 1
+Last updated: 2026-10-02 by session 2
 
 ## Resume here
 Current task: **W1 known bugs.** Green items done (W1.1 validation half, W1.3, W1.4, W1.5 onboard
@@ -18,8 +18,8 @@ Next step (Green, do these without waiting for approvals):
   3. **RLS verification** of `brand_profiles` (settings page updates `primary_font` straight from
      the browser, relying on RLS). Read-only: check policies via the Supabase SQL of record or a
      browser-session probe that uses GET only.
-  4. Then **W2 helper model A/B** once W1.2 is approved and applied (the eval must measure the
-     assembled prompt, otherwise model choice is being judged on a discarded prompt).
+  4. **Eval must send `assembled_prompt`** now that W1.2 is live (cases.mjs / run.mjs), then
+     re-baseline. Then **W2 helper model A/B** (needs the judge's 3-vote majority first).
 Resume a crashed eval: `node scripts/eval/run.mjs --live --subset --resume=<stamp>` (free for
 already-paid images; reads local copies first).
 Tree: all product work committed and deployed through b682828. Eval state files, LOOP_STATE and
@@ -48,28 +48,32 @@ Judge disagreement: it PASSED Lup Space (generic woman-at-laptop). Too lenient o
 tighten the rubric before trusting it for launch criteria.
 
 ## Budget
-Credits today (2026-09-29): see `scripts/eval/spend.json` · daily cap 400 · total cap 3,000
+Credits: see `scripts/eval/spend.json` · daily cap 400 · total cap 3,000
 LLM $ today: judge only, small (gpt-4o vision, 6 calls/run) · cap $5/day
 
 ## Approvals queue (Red — waiting for Kezie)
-- [ ] **Remove "rounded color label chips" from the Smart Router's `FLAT_2D_TEXT`**
-  (`Build Payload Router`, `LXINWLmOghHWzRgA`). The model draws them as gibberish text pills
-  (baseline Gasless Cash poster). Bundle with W1.2: same workflow, same backup. Not yet prepared.
-- [ ] **X-Ray Image Analyzer (`kWMHsGM7goHkhFPn`) charges without checking.** Its
-  `Supabase: Deduct Credits` node feeds straight into `OpenAI Vision API1` with no success gate,
-  so a failed deduction still runs the paid vision call. Fix: insert an IF on
-  `$json.success === true` (nested conditions schema) before the vision node, false branch
-  responds 402. Prepare + fixture-test like W1.2. Not yet prepared.
+**APPROVED 2026-10-02 by Kezie ("reply 1-3 which i want"): W1.2 assembledPrompt, remove the
+"colour label chips" phrase, X-Ray deduction gate.** W1.2 + chips APPLIED (see Done). X-Ray APPLIED
+too. n8n API key = `N8N_MCP_TOKEN` in blink-app/.env.local (export it as N8N_TOKEN for scripts).
 - [ ] **W1.6 misleading ledger text is a DB function, not n8n.** "AI Image Generation (8 images)"
   is written by `process_image_generation_billing(user_id_param, cost_param)`, which only
   receives the cost. Fix needs a migration adding an image-count parameter. Not yet prepared.
-- [ ] **W1.2 forward `assembledPrompt` to the image router** — likely root cause of weak image
-  output. Prepared at `scripts/n8n-patches/w1.2/` (patched node + README). Proof: 7/7 free fixture
-  checks against live node code, billing fields identical. Rollback: PUT
-  `.loop-private/w1.2/backup_LXINWLmOghHWzRgA.json`. **After applying, the eval must start
-  sending `assembled_prompt`.**
 
 ## Done (newest first)
+- **7402b33 + n8n fy6MbNs4ShWkKk0i → a51f87c9: Seedance 2.5** (`bytedance/seedance-2-5`, 4-30s, true
+  first/last frame) in registry, Video Studio, Storytelling and the live video workflow. 7/7 fixtures on
+  real node code; all other models byte-identical. **Price 64 cr/s is PROVISIONAL**: correct it from Kie
+  `creditsConsumed` on the first real run. See scripts/n8n-patches/seedance-2-5/.
+- **55650d5 + n8n kWMHsGM7goHkhFPn → 692f5f3f: X-Ray deduction gate** (approved). Live negative test
+  exec 94449: vision never ran. Route maps `insufficient_credits` → 402. Found: its refund branch is dead
+  (connections name an Error Trigger node that does not exist). See scripts/n8n-patches/xray/.
+- **2026-10-02 n8n `LXINWLmOghHWzRgA` → version cc2f9b0b-0b07-454f-b299-d0ec005ea322** (Red,
+  approved). Parse node now returns `assembledPrompt` (trimmed, ≤8000 chars) and the router uses it;
+  both "label chips" phrases removed from the flat-2D style text (template-recreation mention kept).
+  Verified 5/5 on live code + 1 real generation (Gasless Cash "20% off", HTTP 200, 46.4s, 8 credits):
+  text exact, no gibberish pills. But the image is generic (stock phone + tick, weak brand colour) →
+  the prompt now arrives, so quality now depends on what the prompt says (W1.1 / W3 / W4).
+  Rollback: PUT `.loop-private/w1.2/backup_LXINWLmOghHWzRgA.json` (was a3bc64fb). Ledger total 64.
 - **b682828** SECURITY: brand server actions now authenticate from the session and check
   ownership (anyone could overwrite any brand before). `/api/onboard` deleted (unauthenticated,
   free agency tier, confirmed accounts for any email). W1.3 archive instead of delete (inline

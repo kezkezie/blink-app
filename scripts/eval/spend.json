@@ -1,7 +1,8 @@
 {
-  "total": 56,
+  "total": 64,
   "days": {
-    "2026-09-29": 56
+    "2026-09-29": 56,
+    "2026-10-02": 8
   },
   "entries": [
     {
@@ -45,6 +46,12 @@
       "day": "2026-09-29",
       "amount": 8,
       "note": "2026-09-29T12-37-25-479Z empty-brand__product http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790686952/blinkspot/image%20content/enplf9ht56m68m6nilgq.png"
+    },
+    {
+      "at": "2026-10-02T17:01:39.818Z",
+      "day": "2026-10-02",
+      "amount": 8,
+      "note": "w12-verify gasless-cash__promotion http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790960499/blinkspot/image%20content/bgqwfvk8cnqdim0sbcik.png"
     }
   ]
 }
