@@ -218,6 +218,28 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     // 3 general refs, verified reachable end-to-end: frames.start_frame, frames.end_frame and casting.actor_1_sheet all land in reference_image_urls. No temporal frame semantics.
     notes: "No end frame; uses sequential @reference slots instead.",
   },
+  "bytedance/seedance-2-5": {
+    id: "bytedance/seedance-2-5",
+    label: "Seedance 2.5 (30s)",
+    family: "seedance",
+    providerMatch: "seedance-2-5",
+    // PROVISIONAL (2026-10-02): Kie publishes no rate; two third-party sources agree on
+    // ~$9.45 per 30s at 720p (~$0.315/s, ~3x Seedance 2). 64/sec keeps the same margin
+    // as Seedance 2. Correct it from `creditsConsumed` on the first real Kie task.
+    creditsPerSecond: 64,
+    durations: ["5", "10", "15", "20", "30"],
+    providerDurationRange: [4, 30], // docs.kie.ai seedance-2-5: duration 4-30
+    aspectRatios: STANDARD_ASPECTS,
+    // TRUE, documented by Kie: `first_frame_url` / `last_frame_url` are temporal frames
+    // (last requires first). Unlike Seedance 2, these are NOT references.
+    supportsEndFrame: true,
+    supportsNativeAudio: true,
+    // 0: Kie's reference_* arrays are mutually exclusive with frames and not wired yet.
+    generalReferenceSlots: 0,
+    startFrameField: "first_frame_url",
+    endFrameField: "last_frame_url",
+    notes: "Up to 30s in one take. Frames only in v1; start frame + reference audio is refused before billing.",
+  },
   "bytedance/seedance-2-fast": {
     id: "bytedance/seedance-2-fast",
     label: "Seedance 2 (Fast)",
@@ -473,6 +495,8 @@ export function estimateVideoCredits(
  * silently disagree with what the workflow actually charges.
  */
 export function n8nPerSecondCost(modelId: string): number {
+  // Must precede the generic seedance rule: n8n checks seedance-2-5 first (2026-10-02).
+  if (modelId.includes("seedance-2-5")) return 64;
   if (modelId.includes("seedance")) return 20;
   if (modelId.includes("kling") || modelId.includes("sora")) return 12;
   if (modelId.includes("pruna")) return 4;

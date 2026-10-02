@@ -123,7 +123,8 @@ describe("parseSceneSpec — rejections", () => {
     // 16s is beyond every model's provider maximum. ("7" used to stand in for
     // "invalid" but is renderable by Kling/Seedance — see 2026-08-06 billing slice.)
     // 21s, not 16s: Pruna renders up to 20s since the 2026-08-15 capability fix.
-    expect(parseSceneSpec(validSpec({ durationSeconds: "21" })).ok).toBe(false);
+    // 31s, not 21s: Seedance 2.5 renders up to 30s (added 2026-10-02).
+    expect(parseSceneSpec(validSpec({ durationSeconds: "31" })).ok).toBe(false);
     expect(parseSceneSpec(validSpec({ aspectRatio: "5:5" })).ok).toBe(false);
     expect(parseSceneSpec(validSpec({ videoResolution: "8K" })).ok).toBe(false);
     expect(parseSceneSpec(validSpec({ videoMode: "exfiltrate" })).ok).toBe(false);

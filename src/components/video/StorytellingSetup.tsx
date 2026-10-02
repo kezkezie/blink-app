@@ -2713,6 +2713,7 @@ export function StorytellingSetup({
                           <option value="replicate:openai/sora-2" className="bg-[#191D23]">Sora 2</option>
                           <option value="kling-3.0/video" className="bg-[#191D23]">Kling 3.0</option>
                           <option value="bytedance/seedance-2" className="bg-[#191D23]">Seedance 2 (Cinematic)</option>
+                          <option value="bytedance/seedance-2-5" className="bg-[#191D23]">Seedance 2.5 (30s)</option>
                           <option value="bytedance/seedance-2-fast" className="bg-[#191D23]">Seedance 2 (Fast)</option>
                           <option value="replicate:prunaai/p-video" className="bg-[#191D23]">Pruna (Fast)</option>
                         </optgroup>

@@ -70,6 +70,8 @@ describe("DRIFT: registry prices must equal the n8n cost rules", () => {
 
   it("pins the verified n8n rates so a silent edit is caught", () => {
     expect(n8nPerSecondCost("bytedance/seedance-2")).toBe(20);
+    expect(n8nPerSecondCost("bytedance/seedance-2-5")).toBe(64);
+    expect(n8nPerSecondCost("bytedance/seedance-2-fast")).toBe(20);
     expect(n8nPerSecondCost("kling-3.0/video")).toBe(12);
     expect(n8nPerSecondCost("replicate:openai/sora-2")).toBe(12);
     expect(n8nPerSecondCost("replicate:prunaai/p-video")).toBe(4);
@@ -212,6 +214,8 @@ describe("estimateVideoCredits (display only — n8n is the billing authority)",
  *  node. Kept here so a change on either side fails this suite. */
 const N8N_DURATION_RULES: Record<string, { min?: number; max?: number; values?: number[] }> = {
   kling: { min: 3, max: 15 },
+  // Listed before "seedance": lookups take the first key the id contains, as n8n's .find() does.
+  "seedance-2-5": { min: 4, max: 30 },
   seedance: { min: 4, max: 15 },
   sora: { values: [4, 8, 12] }, // schema enum openai/sora-2 763a9321…; proved by a live 422 on 5s
   pruna: { min: 1, max: 20 }, // schema prunaai/p-video 4420187a…: duration minimum 1, maximum 20
@@ -224,6 +228,7 @@ const N8N_DURATION_RULES: Record<string, { min?: number; max?: number; values?: 
  *  by the provider). Kept here so a change on either side fails this suite. */
 const N8N_ASPECT_RULES: Record<string, string[]> = {
   kling: ["16:9", "9:16", "1:1", "21:9"],
+  "seedance-2-5": ["16:9", "9:16", "1:1", "21:9"],
   seedance: ["16:9", "9:16", "1:1", "21:9"],
   sora: ["16:9", "9:16", "21:9"], // builder maps 1:1 -> 'square', which the provider rejects
   pruna: ["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:1"], // schema aspect_ratio.enum

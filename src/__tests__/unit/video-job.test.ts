@@ -80,7 +80,7 @@ describe("parseVideoJobRequest", () => {
     // 21s exceeds every provider maximum. This was "16" until 2026-08-15, when
     // Pruna was corrected to its schema range of 1..20 and 16s became renderable
     // — the same stale-stand-in correction "7" needed in the 2026-08-06 slice.
-    expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, durationSeconds: "21" } })).toBeNull();
+    expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, durationSeconds: "31" } })).toBeNull(); // beyond every model, incl. Seedance 2.5 (30s)
     expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, videoPrompt: "x".repeat(8001) } })).toBeNull();
     expect(parseVideoJobRequest({ ...valid, scene_spec: { ...SPEC, startFrameRef: "http://insecure/x.png" } })).toBeNull();
     expect(parseVideoJobRequest({ ...valid, scene_spec: null })).toBeNull();
