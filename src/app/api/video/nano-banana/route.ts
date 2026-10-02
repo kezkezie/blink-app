@@ -117,7 +117,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Generation service request failed" }, { status: 502 });
     }
     try {
-      return NextResponse.json(JSON.parse(rawText));
+      const parsed = JSON.parse(rawText);
+      // n8n answers 200 with a body code when its deduction gate refuses the call.
+      if (parsed?.code === "insufficient_credits") {
+        return NextResponse.json({ error: "Not enough credits." }, { status: 402 });
+      }
+      return NextResponse.json(parsed);
     } catch {
       return NextResponse.json({ success: true, message: rawText.slice(0, 500) });
     }
