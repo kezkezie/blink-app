@@ -31,14 +31,15 @@ ok("seedance-2, seedance-2-fast, kling, pruna, auto: cost and payload byte-ident
 let r = pipeline(...NEW, { ...base, ai_model_override: "bytedance/seedance-2-5", duration: "30" });
 assert.equal(r.parse.isValid, true); assert.equal(r.parse.totalCost, 30 * 64);
 assert.equal(r.build.payload.model, "bytedance/seedance-2-5"); assert.equal(r.build.payload.input.duration, 30);
-assert.equal(r.build.provider, "kie"); assert.equal(r.build.payload.input.first_frame_url, undefined);
+assert.equal(r.build.provider, "kie"); assert.equal(r.build.payload.input.first_frame_url, undefined); assert.equal(r.build.payload.input.aspect_ratio, "16:9");
 ok("2.5 text-only 30s: valid, billed 1920, kie payload, no frames");
 
 // 3. first + last frame are temporal, no reference arrays
 r = pipeline(...NEW, { ...base, ai_model_override: "bytedance/seedance-2-5", duration: "10", primary_image_url: IMG1, secondary_image_url: IMG2 });
 assert.equal(r.build.payload.input.first_frame_url, IMG1); assert.equal(r.build.payload.input.last_frame_url, IMG2);
 assert.equal(r.build.payload.input.reference_image_urls, undefined);
-ok("2.5 frames: first_frame_url + last_frame_url, never reference_image_urls");
+assert.equal(r.build.payload.input.aspect_ratio, "adaptive");
+ok("2.5 frames: first_frame_url + last_frame_url, aspect adaptive (Kie 422 otherwise), never reference arrays");
 
 // 4. last frame alone is never sent (docs: requires first_frame_url)
 r = pipeline(...NEW, { ...base, ai_model_override: "bytedance/seedance-2-5", duration: "10", secondary_image_url: IMG2 });

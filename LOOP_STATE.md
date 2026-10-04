@@ -55,11 +55,28 @@ LLM $ today: judge only, small (gpt-4o vision, 6 calls/run) · cap $5/day
 **APPROVED 2026-10-02 by Kezie ("reply 1-3 which i want"): W1.2 assembledPrompt, remove the
 "colour label chips" phrase, X-Ray deduction gate.** W1.2 + chips APPLIED (see Done). X-Ray APPLIED
 too. n8n API key = `N8N_MCP_TOKEN` in blink-app/.env.local (export it as N8N_TOKEN for scripts).
+- [ ] **NEW 2026-10-05: Kie createTask errors are never caught (video workflow) → charged, no video,
+  no refund.** Live: exec 95541 polled taskId=undefined 118x for 30 min, then was cancelled (cancel ≠
+  error, so no refund). Patch prepared: scripts/n8n-patches/kie-create-guard/README.md. First verify the
+  in-workflow Error Trigger refund path fires at all (settings name no errorWorkflow).
+- [ ] **NEW 2026-10-05: "no logo" turns logo injection ON (Smart Router `Build Payload Router`).**
+  `wantsLogo = style === 'brand' || rawTopic.toLowerCase().includes('logo') || ...includes('brand mark')`
+  is a substring check with no negation, so a prompt saying "no logos" attaches the brand's logo_url as a
+  reference and adds "naturally integrate the provided brand logo". Seen live: 6/6 Nuf Farms images
+  (posters + video frames) carried the stale scallop logo despite "No logos" in every prompt (48 credits
+  wasted, regenerated without the word). Fix: drive it from an explicit flag (`include_logo` from the UI /
+  style 'brand'), never from prompt text; at minimum ignore negated mentions. Also: the eval-client and
+  production Nuf Farms brand rows still carry the OLD logo as logo_url (Kezie decides replacement).
 - [ ] **W1.6 misleading ledger text is a DB function, not n8n.** "AI Image Generation (8 images)"
   is written by `process_image_generation_billing(user_id_param, cost_param)`, which only
   receives the cost. Fix needs a migration adding an image-count parameter. Not yet prepared.
 
 ## Done (newest first)
+- **2026-10-05 brand-asset runners** `scripts/brand-assets/generate.mjs` (images) and `video.mjs` (one clip):
+  eval client only, eval spend ledger, assembled_prompt; video gated on the daily/total caps because one
+  Seedance clip exceeds the 240 per-run cap. First Seedance 2.5 run FAILED: Kie 422 "first-frame tasks
+  only support adaptive aspect ratio" → fixed live (fy6MbNs4ShWkKk0i 2097c843, fixtures 7/7). The 256
+  eval-client credits for that run were deducted and not refunded (see the createTask item above).
 - **7402b33 + n8n fy6MbNs4ShWkKk0i → a51f87c9: Seedance 2.5** (`bytedance/seedance-2-5`, 4-30s, true
   first/last frame) in registry, Video Studio, Storytelling and the live video workflow. 7/7 fixtures on
   real node code; all other models byte-identical. **Price 64 cr/s is PROVISIONAL**: correct it from Kie

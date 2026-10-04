@@ -1,8 +1,9 @@
 {
-  "total": 64,
+  "total": 416,
   "days": {
     "2026-09-29": 56,
-    "2026-10-02": 8
+    "2026-10-02": 8,
+    "2026-10-04": 352
   },
   "entries": [
     {
@@ -52,6 +53,84 @@
       "day": "2026-10-02",
       "amount": 8,
       "note": "w12-verify gasless-cash__promotion http=200 https://res.cloudinary.com/dap8jijxa/image/upload/v1790960499/blinkspot/image%20content/bgqwfvk8cnqdim0sbcik.png"
+    },
+    {
+      "at": "2026-10-04T23:10:45.109Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets p1-hero http=200"
+    },
+    {
+      "at": "2026-10-04T23:11:05.982Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets p2-wholesale http=200"
+    },
+    {
+      "at": "2026-10-04T23:11:22.072Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets p3-tasty http=200"
+    },
+    {
+      "at": "2026-10-04T23:11:42.922Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets p4-grow http=200"
+    },
+    {
+      "at": "2026-10-04T23:12:19.989Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets v-button-end http=200"
+    },
+    {
+      "at": "2026-10-04T23:13:09.727Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets v-button-start http=200"
+    },
+    {
+      "at": "2026-10-04T23:14:06.869Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets p1-hero http=200"
+    },
+    {
+      "at": "2026-10-04T23:14:27.294Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets p2-wholesale http=200"
+    },
+    {
+      "at": "2026-10-04T23:14:47.741Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets p3-tasty http=200"
+    },
+    {
+      "at": "2026-10-04T23:15:12.624Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets p4-grow http=200"
+    },
+    {
+      "at": "2026-10-04T23:16:02.809Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets v-button-end http=200"
+    },
+    {
+      "at": "2026-10-04T23:16:48.978Z",
+      "day": "2026-10-04",
+      "amount": 8,
+      "note": "brand-assets v-button-start http=200"
+    },
+    {
+      "at": "2026-10-04T23:18:00.992Z",
+      "day": "2026-10-04",
+      "amount": 256,
+      "note": "brand-assets video button-grow bytedance/seedance-2-5 4s http=200"
     }
   ]
 }

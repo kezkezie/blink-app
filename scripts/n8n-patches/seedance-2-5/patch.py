@@ -46,6 +46,9 @@ BRANCH = """  if (actualModel === 'bytedance/seedance-2-5') {
       }
     };
     if (primaryImg) {
+      // Kie (live 422, 2026-10-05): first-frame / first-last-frame tasks ONLY accept 'adaptive';
+      // the output then takes the frame image's own ratio.
+      apiPayload.input.aspect_ratio = 'adaptive';
       apiPayload.input.first_frame_url = primaryImg;
       if (secondaryImg && secondaryImg !== primaryImg) apiPayload.input.last_frame_url = secondaryImg;
     } else if (validAudioUrl) {
@@ -55,6 +58,13 @@ BRANCH = """  if (actualModel === 'bytedance/seedance-2-5') {
   } else if (actualModel === 'bytedance/seedance-2' || actualModel === 'bytedance/seedance-2-fast') {"""
 
 def patch_build(c):
+    if "actualModel === 'bytedance/seedance-2-5'" in c:   # live already has v1 of the branch: apply the 422 fix only
+        return sub(c, """    if (primaryImg) {
+      apiPayload.input.first_frame_url = primaryImg;""", """    if (primaryImg) {
+      // Kie (live 422, 2026-10-05): first-frame / first-last-frame tasks ONLY accept 'adaptive';
+      // the output then takes the frame image's own ratio.
+      apiPayload.input.aspect_ratio = 'adaptive';
+      apiPayload.input.first_frame_url = primaryImg;""")
     return sub(c, "  if (actualModel === 'bytedance/seedance-2' || actualModel === 'bytedance/seedance-2-fast') {", BRANCH)
 
 if __name__ == "__main__":
@@ -62,7 +72,7 @@ if __name__ == "__main__":
     w = json.load(open(src))
     nodes = copy.deepcopy(w["nodes"])
     for n in nodes:
-        if n["name"] == "Parse Inputs & Calculate Cost":
+        if n["name"] == "Parse Inputs & Calculate Cost" and "seedance-2-5" not in n["parameters"]["jsCode"]:
             n["parameters"]["jsCode"] = patch_parse(n["parameters"]["jsCode"])
             open(f"{out}/parse_inputs.patched.js", "w").write(n["parameters"]["jsCode"])
         if n["name"] == "Build Universal Payload":
