@@ -1,9 +1,10 @@
 {
-  "total": 416,
+  "total": 748,
   "days": {
     "2026-09-29": 56,
     "2026-10-02": 8,
-    "2026-10-04": 352
+    "2026-10-04": 352,
+    "2026-10-05": 332
   },
   "entries": [
     {
@@ -131,6 +132,30 @@
       "day": "2026-10-04",
       "amount": 256,
       "note": "brand-assets video button-grow bytedance/seedance-2-5 4s http=200"
+    },
+    {
+      "at": "2026-10-05T00:00:17.494Z",
+      "day": "2026-10-05",
+      "amount": 256,
+      "note": "brand-assets video button-grow bytedance/seedance-2-5 4s http=200"
+    },
+    {
+      "at": "2026-10-05T08:51:09.804Z",
+      "day": "2026-10-05",
+      "amount": 60,
+      "note": "brand-assets video forced-failure-refund-test kling-3.0/video 5s http=200"
+    },
+    {
+      "at": "2026-10-05T08:57:09.492Z",
+      "day": "2026-10-05",
+      "amount": 8,
+      "note": "brand-assets v-oyster-end http=200"
+    },
+    {
+      "at": "2026-10-05T08:57:51.113Z",
+      "day": "2026-10-05",
+      "amount": 8,
+      "note": "brand-assets v-oyster-start http=200"
     }
   ]
 }

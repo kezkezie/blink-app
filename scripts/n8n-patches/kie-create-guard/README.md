@@ -1,4 +1,4 @@
-# Kie create-task guard (PREPARED, NOT APPLIED: Red, needs Kezie's approval)
+# Kie create-task guard (APPLIED 2026-10-05 with Kezie's approval: version ac0b5360)
 
 Found live 2026-10-05, execution 95541 (Generate Video V3, fy6MbNs4ShWkKk0i): Kie answered createTask
 with `{"code":422,"msg":"...","data":null}`. Nothing checks for that: `Kie.ai: Create Task` feeds
@@ -21,3 +21,10 @@ Before applying, VERIFY the refund path actually fires on a thrown error: the wo
 starts at an `Error Trigger` node inside this same workflow, and settings name no `errorWorkflow`.
 Run scripts/rehearsals/refund-orchestration.mjs (its documented rehearsal) against a forced failure on
 the eval client and confirm the ledger refund, then apply.
+
+## Outcome (2026-10-05)
+Applied: `Assert Kie Task Created` + `Kie Poll Cap` (6/6 fixtures, structure check). Forced failure
+(Kling with a missing start image, exec 95734) errored in 46 s instead of hanging 30 min; the in-workflow
+Error Trigger DID fire (exec 95735). Its refund then stopped at Reconciliation Required because
+`Fetch Execution Data` got 401 from the n8n API: the "BlinkSpot n8n API" credential has a dead key.
+Real users are still refunded by the Stale Job Reconciler (content row exists). Fix the credential.

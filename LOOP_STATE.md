@@ -55,23 +55,20 @@ LLM $ today: judge only, small (gpt-4o vision, 6 calls/run) · cap $5/day
 **APPROVED 2026-10-02 by Kezie ("reply 1-3 which i want"): W1.2 assembledPrompt, remove the
 "colour label chips" phrase, X-Ray deduction gate.** W1.2 + chips APPLIED (see Done). X-Ray APPLIED
 too. n8n API key = `N8N_MCP_TOKEN` in blink-app/.env.local (export it as N8N_TOKEN for scripts).
-- [ ] **NEW 2026-10-05: Kie createTask errors are never caught (video workflow) → charged, no video,
-  no refund.** Live: exec 95541 polled taskId=undefined 118x for 30 min, then was cancelled (cancel ≠
-  error, so no refund). Patch prepared: scripts/n8n-patches/kie-create-guard/README.md. First verify the
-  in-workflow Error Trigger refund path fires at all (settings name no errorWorkflow).
-- [ ] **NEW 2026-10-05: "no logo" turns logo injection ON (Smart Router `Build Payload Router`).**
-  `wantsLogo = style === 'brand' || rawTopic.toLowerCase().includes('logo') || ...includes('brand mark')`
-  is a substring check with no negation, so a prompt saying "no logos" attaches the brand's logo_url as a
-  reference and adds "naturally integrate the provided brand logo". Seen live: 6/6 Nuf Farms images
-  (posters + video frames) carried the stale scallop logo despite "No logos" in every prompt (48 credits
-  wasted, regenerated without the word). Fix: drive it from an explicit flag (`include_logo` from the UI /
-  style 'brand'), never from prompt text; at minimum ignore negated mentions. Also: the eval-client and
-  production Nuf Farms brand rows still carry the OLD logo as logo_url (Kezie decides replacement).
+- [ ] **n8n credential "BlinkSpot n8n API" holds a dead key (Kezie to paste the current one in the n8n UI).**
+  Video V3's instant refund chain (Error Trigger → Fetch Execution Data) gets 401 "unauthorized", so it
+  stops at "Reconciliation Required" without refunding. Proven 2026-10-05 with a forced Kling failure
+  (exec 95734 → error-mode exec 95735). Real users are still refunded by the Stale Job Reconciler
+  (aD8RyTUsRL81Rv0k, every 15 min, healthy) because their content row exists; only the instant path is down.
 - [ ] **W1.6 misleading ledger text is a DB function, not n8n.** "AI Image Generation (8 images)"
   is written by `process_image_generation_billing(user_id_param, cost_param)`, which only
   receives the cost. Fix needs a migration adding an image-count parameter. Not yet prepared.
 
 ## Done (newest first)
+- **2026-10-05 (Kezie approved) no-logo negation fix** live: LXINWLmOghHWzRgA → 18f53200 (25/25 fixtures,
+  everything else byte-identical). **Kie createTask guard + 100-poll cap** live: fy6MbNs4ShWkKk0i → ac0b5360.
+  Error Trigger confirmed to fire (exec 95735). **Nuf Farms logo_url replaced** on prod 0d482cc8 and eval
+  520b5fc8 (compare-and-set; old URL in decisions log). **89d6c71 brand archive fix** (blur disarmed it).
 - **2026-10-05 brand-asset runners** `scripts/brand-assets/generate.mjs` (images) and `video.mjs` (one clip):
   eval client only, eval spend ledger, assembled_prompt; video gated on the daily/total caps because one
   Seedance clip exceeds the 240 per-run cap. First Seedance 2.5 run FAILED: Kie 422 "first-frame tasks
