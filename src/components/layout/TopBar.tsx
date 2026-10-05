@@ -95,6 +95,14 @@ export function TopBar({ pageTitle }: TopBarProps) {
   // failed for any brand with posts (content/social_accounts reference the row).
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  // An armed "Archive?" disarms after 4 s or when the menu closes. It used to disarm on blur, but the
+  // dropdown moves focus to the row on every pointer move, so the button disarmed before the second
+  // click could land and brands could never be archived (reported by Kezie, 2026-10-05).
+  useEffect(() => {
+    if (!confirmArchiveId) return;
+    const t = setTimeout(() => setConfirmArchiveId(null), 4000);
+    return () => clearTimeout(t);
+  }, [confirmArchiveId]);
 
   const handleArchiveBrand = async (brandId: string, brandName: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -162,11 +170,11 @@ export function TopBar({ pageTitle }: TopBarProps) {
         <div className="flex-1 flex items-center justify-end gap-4">
 
           {/* MULTI-BRAND WORKSPACE SWITCHER */}
-          <DropdownMenu>
+          <DropdownMenu onOpenChange={(open) => { if (!open) setConfirmArchiveId(null); }}>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="h-9 gap-2 bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#191D23] hover:text-white transition-all shadow-md">
                 {activeBrand?.logo_url ? (
-                  <img src={activeBrand.logo_url} alt="Logo" className="h-4 w-4 rounded-sm object-cover" />
+                  <img src={activeBrand.logo_url} alt="Logo" className="h-4 w-4 rounded-sm object-contain bg-[#DEDCDC] p-px" />
                 ) : (
                   <Briefcase className="h-4 w-4 text-[#C5BAC4]" />
                 )}
@@ -225,7 +233,7 @@ export function TopBar({ pageTitle }: TopBarProps) {
                   >
                     <div className="h-6 w-6 rounded-md bg-[#191D23] border border-[#57707A]/50 flex items-center justify-center overflow-hidden shrink-0">
                       {brand.logo_url ? (
-                        <img src={brand.logo_url} alt="logo" className="h-full w-full object-cover" />
+                        <img src={brand.logo_url} alt="logo" className="h-full w-full object-contain bg-[#DEDCDC] p-0.5" />
                       ) : (
                         <Briefcase className="h-3 w-3 text-[#57707A]" />
                       )}
@@ -243,15 +251,15 @@ export function TopBar({ pageTitle }: TopBarProps) {
                     {/* Archive: first click arms, second click archives */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => handleArchiveBrand(brand.id, brand.brand_name, e)}
-                      onBlur={() => setConfirmArchiveId((id) => (id === brand.id ? null : id))}
                       disabled={archivingId === brand.id}
                       aria-label={confirmArchiveId === brand.id ? `Confirm archiving ${brand.brand_name || "this brand"}` : `Archive ${brand.brand_name || "this brand"}`}
                       className={cn(
                         "absolute right-2 flex items-center gap-1 rounded-md transition-all z-10 text-xs font-bold",
                         confirmArchiveId === brand.id
                           ? "opacity-100 px-2 py-1 bg-red-500/20 text-red-300"
-                          : "opacity-0 group-hover:opacity-100 focus:opacity-100 p-1.5 hover:bg-red-500/20 text-[#57707A] hover:text-red-400",
+                          : "opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100 p-1.5 hover:bg-red-500/20 text-[#57707A] hover:text-red-400",
                       )}
                     >
                       {archivingId === brand.id ? (
