@@ -223,9 +223,8 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     label: "Seedance 2.5 (30s)",
     family: "seedance",
     providerMatch: "seedance-2-5",
-    // PROVISIONAL (2026-10-02): Kie publishes no rate; two third-party sources agree on
-    // ~$9.45 per 30s at 720p (~$0.315/s, ~3x Seedance 2). 64/sec keeps the same margin
-    // as Seedance 2. Correct it from `creditsConsumed` on the first real Kie task.
+    // VERIFIED 2026-10-05 against a real Kie task (n8n exec 95555): a 4 s, 720p, first+last-frame
+    // clip consumed 252 Kie credits = 63/sec (~$0.315/s). 64/sec covers it with a hair of margin.
     creditsPerSecond: 64,
     durations: ["5", "10", "15", "20", "30"],
     providerDurationRange: [4, 30], // docs.kie.ai seedance-2-5: duration 4-30
