@@ -1,10 +1,11 @@
 {
-  "total": 748,
+  "total": 1004,
   "days": {
     "2026-09-29": 56,
     "2026-10-02": 8,
     "2026-10-04": 352,
-    "2026-10-05": 332
+    "2026-10-05": 332,
+    "2026-10-06": 256
   },
   "entries": [
     {
@@ -156,6 +157,12 @@
       "day": "2026-10-05",
       "amount": 8,
       "note": "brand-assets v-oyster-start http=200"
+    },
+    {
+      "at": "2026-10-06T17:27:21.458Z",
+      "day": "2026-10-06",
+      "amount": 256,
+      "note": "brand-assets video oyster-grow bytedance/seedance-2-5 4s http=200 (Kezie account)"
     }
   ]
 }

@@ -6,6 +6,8 @@
  *
  *   node --env-file=.env.local scripts/brand-assets/video.mjs <job.json> <outDir> [--live]
  * job.json: { id, model, duration, aspect, prompt, start, end, creditsPerSecond }
+ * Optional env: CLIENT_ID + POST_ID to run inside a real account against a content row created the
+ * way Video Studio creates it (so the result shows in that account's library). Default: eval client.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -30,20 +32,21 @@ const today = ledger.days[dayKey()] ?? 0;
 if (today + cost > BUDGET.daily) { console.error(`STOP: daily cap ${today}+${cost} > ${BUDGET.daily}`); process.exit(3); }
 if (ledger.total + cost > BUDGET.total) { console.error(`STOP: total cap ${ledger.total}+${cost} > ${BUDGET.total}`); process.exit(3); }
 
-const postId = crypto.randomUUID();
+const postId = process.env.POST_ID || crypto.randomUUID();
+const CLIENT = process.env.CLIENT_ID || EVAL_CLIENT;
 const startedAt = new Date();
 const res = await fetch(`${N8N}/webhook/blink-generate-video-v1`, {
   method: "POST",
   headers: { "Content-Type": "application/json", ...(process.env.N8N_WEBHOOK_SECRET ? { "x-blink-webhook-secret": process.env.N8N_WEBHOOK_SECRET } : {}) },
   body: JSON.stringify({
-    client_id: EVAL_CLIENT, post_id: postId, content_type: "video", video_mode: "showcase",
+    client_id: CLIENT, post_id: postId, content_type: "video", video_mode: "showcase",
     ai_model_override: job.model, duration: String(job.duration), aspect_ratio: job.aspect,
     primary_image_url: job.start, secondary_image_url: job.end, user_prompt: job.prompt,
     ai_enhance: false, brand_name: "Nuf Farms",
   }),
 });
 console.log("queued:", res.status, (await res.text()).slice(0, 120), "post", postId);
-ledger = recordSpend(ledger, cost, { note: `brand-assets video ${job.id} ${job.model} ${job.duration}s http=${res.status}` });
+ledger = recordSpend(ledger, cost, { note: `brand-assets video ${job.id} ${job.model} ${job.duration}s http=${res.status}${CLIENT === EVAL_CLIENT ? "" : " (Kezie account)"}` });
 fs.writeFileSync(LEDGER, JSON.stringify(ledger, null, 2));
 
 // find this run's execution and wait for it to finish
