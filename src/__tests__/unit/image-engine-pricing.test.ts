@@ -14,7 +14,7 @@ describe("image-engine pricing registry — verified mappings", () => {
   it("maps every supported engine to its canonical model and verified cost", () => {
     // Provenance (verified 2026-08-01 from the operator's kie.ai model pages):
     // nano-banana-2 = 8cr (1K); GPT Image 2 T2I/I2I = 6cr (1K).
-    expect(resolveImageEngine("nb2")).toMatchObject({ engine: "nb2", model: "nano-banana-2", creditCost: 8, referenceCapable: true });
+    expect(resolveImageEngine("nb2")).toMatchObject({ engine: "nb2", model: "nano-banana-2", creditCost: 18, referenceCapable: true }); // 4K since 2026-10-08, at cost
     expect(resolveImageEngine("gpt-image-2-text-to-image")).toMatchObject({ model: "gpt-image-2-text-to-image", creditCost: 6, referenceCapable: false });
     expect(resolveImageEngine("gpt-image-2-image-to-image")).toMatchObject({ model: "gpt-image-2-image-to-image", creditCost: 6, referenceCapable: true });
     // z-image: kie.ai flat 0.8cr rounded up to 1 (integer credits); text-only.
@@ -41,7 +41,7 @@ describe("image-engine pricing registry — verified mappings", () => {
   it("never returns a numeric price accepted from a caller — cost comes only from the registry", () => {
     // The resolver takes an alias, not a price; there is no path to inject a cost.
     const pricing = resolveImageEngine("nb2");
-    expect(pricing?.creditCost).toBe(8);
+    expect(pricing?.creditCost).toBe(18);
     expect(typeof pricing?.creditCost).toBe("number");
   });
 });
@@ -56,7 +56,7 @@ describe("pricing drift detection (registry ⇄ n8n cost map ⇄ SQL allowlist)"
 
   it("mirrors the intended n8n cost map (GPT Image 2 now explicit 6, not defaulted)", () => {
     expect(N8N_IMAGE_COST_MAP).toEqual({
-      "nano-banana-2": 8, "nano-banana-pro": 15, "flux-schnell": 2, "qwen-image-edit": 5,
+      "nano-banana-2": 18, "nano-banana-pro": 15, "flux-schnell": 2, "qwen-image-edit": 5,
       "gpt-image-2-text-to-image": 6, "gpt-image-2-image-to-image": 6, "z-image": 1,
     });
     expect(N8N_IMAGE_DEFAULT_COST).toBe(8);

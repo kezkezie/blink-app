@@ -15,9 +15,9 @@
  *    "Blink - Generate Video V3 (Pro Bypass & Cloudinary Scale)", node
  *    "Parse Inputs & Calculate Cost") ──────────────────────────────────────
  *
+ *   (re-priced AT KIE COST 2026-10-09: seedance-2-5 158, seedance 41, kling 27, sora 20;
+ *    audio surcharge only for models whose base rate excludes audio)
  *   let perSecCost = 12;                        // default fallback
- *   if (model.includes('seedance'))    perSecCost = 20;
- *   else if (model.includes('kling') || model.includes('sora')) perSecCost = 12;
  *   else if (model.includes('pruna'))  perSecCost = 4;
  *   else if (model.includes('gemini')) perSecCost = 20;   // re-mirrored 2026-08-06
  *   if (hasAudioUrl || hasAudioScript || promptHasDialogue) perSecCost += 4;
@@ -182,7 +182,7 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     label: "Kling 3.0",
     family: "kling",
     providerMatch: "kling",
-    creditsPerSecond: 12,
+    creditsPerSecond: 27, // at Kie cost, 2026-10-09
     // Kie docs (2026-08-06): Kling 3.0 supports 3-15s; multi-shot totals must also
     // stay <= 15s. The old "300" ("5 Min Premium") option was never achievable —
     // the provider cannot render it, and the workflow silently clamped it to 15s
@@ -206,7 +206,7 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     label: "Seedance 2 (Cinematic)",
     family: "seedance",
     providerMatch: "seedance",
-    creditsPerSecond: 20,
+    creditsPerSecond: 41, // at Kie cost, 2026-10-09
     durations: ["5", "10", "15"],
     providerDurationRange: [4, 15], // Seedance 2 accepts 4-15s
     aspectRatios: STANDARD_ASPECTS,
@@ -225,7 +225,7 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     providerMatch: "seedance-2-5",
     // VERIFIED 2026-10-05 against a real Kie task (n8n exec 95555): a 4 s, 720p, first+last-frame
     // clip consumed 252 Kie credits = 63/sec (~$0.315/s). 64/sec covers it with a hair of margin.
-    creditsPerSecond: 64,
+    creditsPerSecond: 158, // at Kie cost, 2026-10-09
     durations: ["5", "10", "15", "20", "30"],
     providerDurationRange: [4, 30], // docs.kie.ai seedance-2-5: duration 4-30
     aspectRatios: STANDARD_ASPECTS,
@@ -244,7 +244,7 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     label: "Seedance 2 (Fast)",
     family: "seedance",
     providerMatch: "seedance",
-    creditsPerSecond: 20,
+    creditsPerSecond: 41, // at Kie cost, 2026-10-09
     durations: ["5", "10", "15"],
     providerDurationRange: [4, 15],
     aspectRatios: STANDARD_ASPECTS,
@@ -260,7 +260,7 @@ export const VIDEO_MODEL_REGISTRY: Readonly<Record<string, VideoModelSpec>> = Ob
     label: "Sora 2 (Replicate)",
     family: "sora",
     providerMatch: "sora",
-    creditsPerSecond: 12,
+    creditsPerSecond: 20, // at Kie cost, 2026-10-09
     // CANONICAL, from the machine-readable Replicate schema (model
     // openai/sora-2, version 763a9321f615f4867b1d7a2d, created 2026-01-21):
     //   components.schemas.seconds.enum = [4, 8, 12]
@@ -482,8 +482,9 @@ export function estimateVideoCredits(
   // Seedance 20/sec is a 40% error on a 5s clip).
   const resolvedId = resolveEffectiveVideoModel(modelId, options.videoMode ?? null);
   const spec = resolveVideoModel(resolvedId);
+  const audioIncluded = resolvedId.includes("kling") || resolvedId.includes("seedance");
   const perSecond = (spec?.creditsPerSecond ?? DEFAULT_CREDITS_PER_SECOND)
-    + (options.hasAudio ? AUDIO_SURCHARGE_PER_SECOND : 0);
+    + (options.hasAudio && !audioIncluded ? AUDIO_SURCHARGE_PER_SECOND : 0);
   return Math.round(duration * perSecond);
 }
 
@@ -495,9 +496,10 @@ export function estimateVideoCredits(
  */
 export function n8nPerSecondCost(modelId: string): number {
   // Must precede the generic seedance rule: n8n checks seedance-2-5 first (2026-10-02).
-  if (modelId.includes("seedance-2-5")) return 64;
-  if (modelId.includes("seedance")) return 20;
-  if (modelId.includes("kling") || modelId.includes("sora")) return 12;
+  if (modelId.includes("seedance-2-5")) return 158; // 1080p + audio, Kie measured 2026-10-08
+  if (modelId.includes("seedance")) return 41;      // 720p with an image
+  if (modelId.includes("kling")) return 27;          // pro + native sound
+  if (modelId.includes("sora")) return 20;           // $0.10/s on Replicate
   if (modelId.includes("pruna")) return 4;
   // n8n has an explicit gemini branch; omitting it here is what let the registry
   // advertise 12/sec while the workflow charged 20/sec (found 2026-08-06).

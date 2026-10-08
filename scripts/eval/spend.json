@@ -1,11 +1,12 @@
 {
-  "total": 1004,
+  "total": 2500,
   "days": {
     "2026-09-29": 56,
     "2026-10-02": 8,
     "2026-10-04": 352,
     "2026-10-05": 332,
-    "2026-10-06": 256
+    "2026-10-06": 256,
+    "2026-10-08": 1496
   },
   "entries": [
     {
@@ -163,6 +164,180 @@
       "day": "2026-10-06",
       "amount": 256,
       "note": "brand-assets video oyster-grow bytedance/seedance-2-5 4s http=200 (Kezie account)"
+    },
+    {
+      "at": "2026-10-08T12:48:59.342Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets hero-covered http=200"
+    },
+    {
+      "at": "2026-10-08T12:49:21.032Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets hero-revealed http=200"
+    },
+    {
+      "at": "2026-10-08T12:49:37.186Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets imports-front http=200"
+    },
+    {
+      "at": "2026-10-08T12:50:39.927Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets imports-rear http=200"
+    },
+    {
+      "at": "2026-10-08T12:51:01.050Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets customs-white http=200"
+    },
+    {
+      "at": "2026-10-08T12:51:22.008Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets customs-red http=200"
+    },
+    {
+      "at": "2026-10-08T12:51:42.495Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets customs-black http=200"
+    },
+    {
+      "at": "2026-10-08T12:52:03.311Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets wash-clean http=200"
+    },
+    {
+      "at": "2026-10-08T12:52:29.684Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets wash-dirty http=200"
+    },
+    {
+      "at": "2026-10-08T13:39:38.073Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets hero-covered http=200"
+    },
+    {
+      "at": "2026-10-08T13:45:00.255Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets hero-covered http=200"
+    },
+    {
+      "at": "2026-10-08T13:46:21.597Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets hero-revealed http=200"
+    },
+    {
+      "at": "2026-10-08T13:46:57.443Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets imports-front http=200"
+    },
+    {
+      "at": "2026-10-08T13:47:36.769Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets imports-rear http=200"
+    },
+    {
+      "at": "2026-10-08T13:48:40.517Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets customs-white http=200"
+    },
+    {
+      "at": "2026-10-08T14:02:23.293Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets customs-red http=200"
+    },
+    {
+      "at": "2026-10-08T14:03:02.916Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets customs-black http=200"
+    },
+    {
+      "at": "2026-10-08T14:03:47.363Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets wash-clean http=200"
+    },
+    {
+      "at": "2026-10-08T14:04:26.545Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets wash-dirty http=200"
+    },
+    {
+      "at": "2026-10-08T14:06:27.494Z",
+      "day": "2026-10-08",
+      "amount": 120,
+      "note": "brand-assets video hero-unveil kling-3.0/video 10s http=200 (Kezie account)"
+    },
+    {
+      "at": "2026-10-08T14:30:30.092Z",
+      "day": "2026-10-08",
+      "amount": 120,
+      "note": "brand-assets video customs-wrap kling-3.0/video 10s http=200 (Kezie account)"
+    },
+    {
+      "at": "2026-10-08T15:34:59.814Z",
+      "day": "2026-10-08",
+      "amount": 60,
+      "note": "brand-assets video t1-hero-startend kling-3.0/video 5s http=200 (Kezie account)"
+    },
+    {
+      "at": "2026-10-08T15:35:01.773Z",
+      "day": "2026-10-08",
+      "amount": 60,
+      "note": "brand-assets video t2-hero-startonly kling-3.0/video 5s http=200 (Kezie account)"
+    },
+    {
+      "at": "2026-10-08T15:56:34.136Z",
+      "day": "2026-10-08",
+      "amount": 320,
+      "note": "brand-assets video sd-hero-unveil bytedance/seedance-2-5 5s http=200 (Kezie account)"
+    },
+    {
+      "at": "2026-10-08T15:56:37.052Z",
+      "day": "2026-10-08",
+      "amount": 320,
+      "note": "brand-assets video sd-imports-orbit bytedance/seedance-2-5 5s http=200 (Kezie account)"
+    },
+    {
+      "at": "2026-10-08T15:56:40.094Z",
+      "day": "2026-10-08",
+      "amount": 320,
+      "note": "brand-assets video sd-customs-wrap bytedance/seedance-2-5 5s http=200 (Kezie account)"
+    },
+    {
+      "at": "2026-10-08T19:46:42.374Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets gle-road http=200"
+    },
+    {
+      "at": "2026-10-08T19:48:46.719Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets gle-air http=200"
+    },
+    {
+      "at": "2026-10-08T19:49:45.515Z",
+      "day": "2026-10-08",
+      "amount": 8,
+      "note": "brand-assets hero-lights-off http=200"
     }
   ]
 }

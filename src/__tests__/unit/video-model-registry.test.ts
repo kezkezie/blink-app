@@ -69,11 +69,12 @@ describe("DRIFT: registry prices must equal the n8n cost rules", () => {
   });
 
   it("pins the verified n8n rates so a silent edit is caught", () => {
-    expect(n8nPerSecondCost("bytedance/seedance-2")).toBe(20);
-    expect(n8nPerSecondCost("bytedance/seedance-2-5")).toBe(64);
-    expect(n8nPerSecondCost("bytedance/seedance-2-fast")).toBe(20);
-    expect(n8nPerSecondCost("kling-3.0/video")).toBe(12);
-    expect(n8nPerSecondCost("replicate:openai/sora-2")).toBe(12);
+    // Re-priced AT KIE COST 2026-10-09 (Kezie). Measured from Kie task records where possible.
+    expect(n8nPerSecondCost("bytedance/seedance-2")).toBe(41);
+    expect(n8nPerSecondCost("bytedance/seedance-2-5")).toBe(158);
+    expect(n8nPerSecondCost("bytedance/seedance-2-fast")).toBe(41);
+    expect(n8nPerSecondCost("kling-3.0/video")).toBe(27);
+    expect(n8nPerSecondCost("replicate:openai/sora-2")).toBe(20);
     expect(n8nPerSecondCost("replicate:prunaai/p-video")).toBe(4);
     // Gemini has its OWN branch in the live workflow (`includes('gemini') -> 20`).
     // This assertion previously pinned DEFAULT_CREDITS_PER_SECOND (12), which was
@@ -181,18 +182,22 @@ describe("capabilities", () => {
 
 describe("estimateVideoCredits (display only — n8n is the billing authority)", () => {
   it("multiplies the per-second rate by duration", () => {
-    expect(estimateVideoCredits("bytedance/seedance-2", "5")).toBe(100); // 20 * 5
-    expect(estimateVideoCredits("kling-3.0/video", 10)).toBe(120); // 12 * 10
+    expect(estimateVideoCredits("bytedance/seedance-2", "5")).toBe(205); // 41 * 5
+    expect(estimateVideoCredits("kling-3.0/video", 10)).toBe(270); // 27 * 10
     expect(estimateVideoCredits("replicate:prunaai/p-video", "5")).toBe(20); // 4 * 5
   });
 
   it("adds the audio surcharge exactly as n8n does", () => {
-    expect(estimateVideoCredits("kling-3.0/video", "5", { hasAudio: true }))
-      .toBe((12 + AUDIO_SURCHARGE_PER_SECOND) * 5);
+    // Kling and Seedance rates already include audio: no surcharge on top.
+    expect(estimateVideoCredits("kling-3.0/video", "5", { hasAudio: true })).toBe(27 * 5);
+    expect(estimateVideoCredits("bytedance/seedance-2-5", "5", { hasAudio: true })).toBe(158 * 5);
+    // Models whose base rate excludes audio still get it.
+    expect(estimateVideoCredits("replicate:prunaai/p-video", "5", { hasAudio: true }))
+      .toBe((4 + AUDIO_SURCHARGE_PER_SECOND) * 5);
   });
 
   it("prices auto via the resolved auto model, and rejects a nonsense duration", () => {
-    expect(estimateVideoCredits(AUTO_VIDEO_MODEL, "5")).toBe(100); // auto → seedance-2 (20/sec)
+    expect(estimateVideoCredits(AUTO_VIDEO_MODEL, "5")).toBe(205); // auto → seedance-2 (41/sec)
     expect(estimateVideoCredits("kling-3.0/video", "0")).toBeNull();
     expect(estimateVideoCredits("kling-3.0/video", "abc")).toBeNull();
   });
@@ -401,14 +406,15 @@ describe("COST: one validated duration drives display, validation and billing", 
   it("applies the audio surcharge identically to n8n", () => {
     for (const spec of SPECS) {
       const withAudio = estimateVideoCredits(spec.id, "5", { hasAudio: true });
-      expect(withAudio).toBe(5 * (n8nPerSecondCost(spec.id) + AUDIO_SURCHARGE_PER_SECOND));
+      const audioIncluded = spec.id.includes("kling") || spec.id.includes("seedance"); // same rule as n8n
+      expect(withAudio).toBe(5 * (n8nPerSecondCost(spec.id) + (audioIncluded ? 0 : AUDIO_SURCHARGE_PER_SECOND)));
     }
   });
 
-  it("quotes Sora at 48/96/144 for its three valid durations", () => {
-    expect(estimateVideoCredits("replicate:openai/sora-2", "4")).toBe(48);
-    expect(estimateVideoCredits("replicate:openai/sora-2", "8")).toBe(96);
-    expect(estimateVideoCredits("replicate:openai/sora-2", "12")).toBe(144);
+  it("quotes Sora at 80/160/240 for its three valid durations", () => {
+    expect(estimateVideoCredits("replicate:openai/sora-2", "4")).toBe(80);
+    expect(estimateVideoCredits("replicate:openai/sora-2", "8")).toBe(160);
+    expect(estimateVideoCredits("replicate:openai/sora-2", "12")).toBe(240);
   });
 
   it("quotes Gemini at the canonical rate", () => {
@@ -419,10 +425,10 @@ describe("COST: one validated duration drives display, validation and billing", 
   });
 
   it("estimates `auto` using the model n8n will actually pick", () => {
-    // ugc -> Kling (12/sec), not the default Seedance (20/sec).
-    expect(estimateVideoCredits("auto", "5", { videoMode: "ugc" })).toBe(60);
+    // ugc -> Kling (27/sec), not the default Seedance (41/sec).
+    expect(estimateVideoCredits("auto", "5", { videoMode: "ugc" })).toBe(135);
     expect(estimateVideoCredits("auto", "5", { videoMode: "clothing" })).toBe(20);
-    expect(estimateVideoCredits("auto", "5", { videoMode: "showcase" })).toBe(100);
+    expect(estimateVideoCredits("auto", "5", { videoMode: "showcase" })).toBe(205);
   });
 });
 

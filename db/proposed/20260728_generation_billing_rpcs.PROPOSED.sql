@@ -22,7 +22,7 @@
 -- never substitute for `p_amount = content.credit_cost`.
 CREATE OR REPLACE FUNCTION public.is_valid_image_generation_cost(p_amount integer)
 RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
-  SELECT p_amount IS NOT NULL AND p_amount = ANY (ARRAY[1,2,5,6,8,15]);  -- registry-generated
+  SELECT p_amount IS NOT NULL AND p_amount = ANY (ARRAY[1,2,5,6,8,15,18]);  -- registry-generated (18 = nano-banana-2 at 4K, 2026-10-09)
 $$;
 
 CREATE TABLE IF NOT EXISTS public.generation_billing_ledger (

@@ -30,7 +30,7 @@ const brandOk = () => chain({ data: { id: BRAND_ID }, error: null });
 const brandMissing = () => chain({ data: null, error: null });
 // A created placeholder row now carries a server-derived credit_cost.
 const createdRow = (over: Record<string, unknown> = {}) =>
-  chain({ data: { id: NEW_ID, generation_state: "queued", billing_state: "not_charged", retry_state: "none", generation_attempt: 1, credit_cost: 8, ...over }, error: null });
+  chain({ data: { id: NEW_ID, generation_state: "queued", billing_state: "not_charged", retry_state: "none", generation_attempt: 1, credit_cost: 18, ...over }, error: null });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -99,7 +99,7 @@ describe("createImageJobPlaceholder — ownership, creation, and server-derived 
 
     expect(result).toEqual({
       ok: true,
-      value: { id: NEW_ID, generationState: "queued", billingState: "not_charged", retryState: "none", attempt: 1, creditCost: 8, idempotent: false },
+      value: { id: NEW_ID, generationState: "queued", billingState: "not_charged", retryState: "none", attempt: 1, creditCost: 18, idempotent: false },
     });
     const [row, options] = content.upsert.mock.calls[0];
     expect(row).toMatchObject({
@@ -110,9 +110,9 @@ describe("createImageJobPlaceholder — ownership, creation, and server-derived 
       retry_state: "none",
       generation_attempt: 1,
       generation_idempotency_key: KEY,
-      credit_cost: 8, // server-derived from the registry, not the browser
+      credit_cost: 18, // server-derived from the registry, not the browser
       creation_metadata_version: 1,
-      creation_metadata: { operation: "standard", mode: "standard", image_engine: "nb2", image_model: "nano-banana-2", credit_cost: 8, aspect_ratio: "4:5" },
+      creation_metadata: { operation: "standard", mode: "standard", image_engine: "nb2", image_model: "nano-banana-2", credit_cost: 18, aspect_ratio: "4:5" },
     });
     expect(row.retry_of_content_id).toBeUndefined();
     expect(options).toEqual({ onConflict: "client_id,generation_idempotency_key", ignoreDuplicates: true });
@@ -148,13 +148,13 @@ describe("createImageJobPlaceholder — idempotency preserves the original cost"
     const upsertConflict = chain({ data: null, error: null }); // ON CONFLICT DO NOTHING → no row
     // The original job was created earlier at cost 8; even if the registry later
     // changed, the durable row's stored cost is what a replay returns.
-    const existing = chain({ data: { id: NEW_ID, generation_state: "generating", billing_state: "charged", retry_state: "none", generation_attempt: 1, credit_cost: 8 }, error: null });
+    const existing = chain({ data: { id: NEW_ID, generation_state: "generating", billing_state: "charged", retry_state: "none", generation_attempt: 1, credit_cost: 18 }, error: null });
     from.mockReturnValueOnce(clientOk()).mockReturnValueOnce(brandOk()).mockReturnValueOnce(upsertConflict).mockReturnValueOnce(existing);
 
     const result = await createImageJobPlaceholder(USER_ID, { brandId: BRAND_ID, idempotencyKey: KEY, mode: "standard", imageEngine: ENGINE });
     expect(result).toEqual({
       ok: true,
-      value: { id: NEW_ID, generationState: "generating", billingState: "charged", retryState: "none", attempt: 1, creditCost: 8, idempotent: true },
+      value: { id: NEW_ID, generationState: "generating", billingState: "charged", retryState: "none", attempt: 1, creditCost: 18, idempotent: true },
     });
     expect(existing.eq).toHaveBeenCalledWith("client_id", CLIENT_ID);
     expect(existing.eq).toHaveBeenCalledWith("generation_idempotency_key", KEY);

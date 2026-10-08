@@ -64,8 +64,10 @@ describe("eval harness: budget", () => {
 
   it("enforces the total cap and says to check in", () => {
     let l = emptyLedger();
-    for (let d = 0; d < 8; d += 1) l = recordSpend(l, 375, { day: `2026-10-0${d + 1}` });
-    expect(l.total).toBe(3000);
+    // fill exactly to the configured total cap (raised to 6,000 for the KYRA build, 2026-10-08)
+    const days = 8, per = BUDGET.total / days;
+    for (let d = 0; d < days; d += 1) l = recordSpend(l, per, { day: `2026-10-0${d + 1}` });
+    expect(l.total).toBe(BUDGET.total);
     expect(canSpend(l, 8, { day: "2026-10-20", runCap: BUDGET.perRunHard }).reason).toMatch(/Check in with Kezie/);
   });
 

@@ -20,7 +20,7 @@ const WEBHOOK = "https://n8n.srv1166077.hstgr.cloud/webhook/blink-generate-image
 const LEDGER = new URL("../eval/spend.json", import.meta.url);
 const [jobsPath, outDir] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const LIVE = process.argv.includes("--live");
-const BRAND_ID = process.env.BRAND_ID; // eval-client brand row to attach the generation to
+const BRAND_ID = process.env.BRAND_ID; // eval-client brand row to attach the generation to (BRAND_NAME sets the name, default Nuf Farms)
 
 const jobs = JSON.parse(fs.readFileSync(jobsPath, "utf8"));
 fs.mkdirSync(outDir, { recursive: true });
@@ -37,9 +37,9 @@ for (const job of todo) {
   if (!gate.ok) { console.error(`STOP: ${gate.reason}`); break; }
   const refs = (job.refs ?? []).map((r) => (r.startsWith("https://") ? r : manifest[r]?.url)).filter(Boolean);
   const payload = {
-    client_id: EVAL_CLIENT, brand_id: BRAND_ID, mode: "generate", style: "photo",
+    client_id: process.env.CLIENT_ID || EVAL_CLIENT, brand_id: BRAND_ID, mode: "generate", style: "photo",
     prompt: job.prompt, assembled_prompt: job.prompt, kie_model: IMAGE_ENGINE,
-    aspect_ratio: job.aspect ?? "4:5", numImages: 1, brand_name: "Nuf Farms", is_sync: true,
+    aspect_ratio: job.aspect ?? "4:5", numImages: 1, brand_name: process.env.BRAND_NAME || "Nuf Farms", is_sync: true,
     ...(refs.length ? { reference_image_urls: refs } : {}),
   };
   const t0 = Date.now();
@@ -59,7 +59,7 @@ for (const job of todo) {
   ledger = recordSpend(ledger, IMAGE_COST, { note: `brand-assets ${job.id} http=${status}` });
   fs.writeFileSync(LEDGER, JSON.stringify(ledger, null, 2));
   if (url) {
-    const buf = Buffer.from(await (await fetch(url, { signal: AbortSignal.timeout(60_000) })).arrayBuffer());
+    const buf = Buffer.from(await (await fetch(url, { signal: AbortSignal.timeout(180_000) })).arrayBuffer()) // 4K files are ~7 MB;
     fs.writeFileSync(path.join(outDir, `${job.id}.png`), buf);
   }
   manifest[job.id] = { url, status, seconds: (Date.now() - t0) / 1000, err, refs };

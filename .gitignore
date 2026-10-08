@@ -51,3 +51,6 @@ node_modules
 # loop-private: workflow backups etc. that may contain secrets. NEVER commit.
 /.loop-private/
 /scripts/eval/.last-run.log
+
+# ops backups of live n8n workflows (may contain secrets)
+scripts/ops/backups/

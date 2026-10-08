@@ -46,7 +46,7 @@ export const IMAGE_ENGINE_REGISTRY: Readonly<Record<string, ImageEnginePricing>>
   "nb2": {
     engine: "nb2",
     model: "nano-banana-2",
-    creditCost: 8, // kie.ai nano-banana-2: 8cr 1K / 12cr 2K / 18cr 4K — flat 1K
+    creditCost: 18, // kie.ai nano-banana-2 at 4K (renders 4K since 2026-10-08): 18cr, at cost
     referenceCapable: isReferenceCapableEngine("nb2"),
   },
   "gpt-image-2-text-to-image": {
@@ -91,7 +91,7 @@ export const LOGO_ENGINE = Object.freeze({
  * durable registry cost.
  */
 export const N8N_IMAGE_COST_MAP: Readonly<Record<string, number>> = Object.freeze({
-  "nano-banana-2": 8,
+  "nano-banana-2": 18,
   "nano-banana-pro": 15,
   "flux-schnell": 2,
   "qwen-image-edit": 5,
@@ -107,7 +107,7 @@ export function n8nResolvedCost(model: string): number {
 }
 
 /** Costs the SQL billing allowlist (`is_valid_image_generation_cost`) must accept. */
-export const SQL_COST_ALLOWLIST: readonly number[] = [1, 2, 5, 6, 8, 15];
+export const SQL_COST_ALLOWLIST: readonly number[] = [1, 2, 5, 6, 8, 15, 18];
 
 /**
  * Resolve a browser-supplied engine alias to its canonical model + verified cost.

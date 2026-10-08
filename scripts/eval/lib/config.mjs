@@ -42,12 +42,13 @@ export const IMAGE_ENGINE = "nano-banana-2";
 /** Credits per nano-banana-2 1K image, mirrored from the live n8n cost map. */
 export const IMAGE_COST = 8;
 
-/** Budgets agreed with Kezie 2026-09-29 (launch-loop-plan.md §5.3). */
+/** Budgets agreed with Kezie 2026-09-29 (launch-loop-plan.md §5.3); daily/total raised 2026-10-08
+ *  for the KYRA website build ("use more credits to make that website work"). */
 export const BUDGET = Object.freeze({
   perRunDefault: 60,
   perRunHard: 240,
-  daily: 400,
-  total: 3000,
+  daily: 1500,
+  total: 6000,
 });
 
 /** Judge model. Chosen by W2's A/B; gpt-4o is the baseline. */
