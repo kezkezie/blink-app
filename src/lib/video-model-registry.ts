@@ -470,17 +470,32 @@ export function resolveAutoModel(videoMode: string | null | undefined): string {
  * Estimated credit cost, mirroring n8n's formula. **Display only** — n8n computes
  * and deducts the real amount, and no price is ever accepted from the browser.
  */
+/**
+ * Kling 3.0 image-to-video on Kie returns FROZEN clips: the start frame held for the whole
+ * duration, billed in full (5/5 runs on 2026-10-08, including a direct minimal Kie call).
+ * Until it is re-verified, an image-led Kling job with no voice/dialogue renders on Seedance 2.5.
+ * Mirrored exactly in n8n "Parse Inputs & Calculate Cost", so the quote matches the charge.
+ * Kling still runs when there is audio/dialogue (talking UGC), which was not part of the finding.
+ */
+export const KLING_I2V_FALLBACK_MODEL = "bytedance/seedance-2-5";
+export function routeVideoModelForFrames(
+  modelId: string,
+  options: { hasStartFrame?: boolean; hasAudio?: boolean } = {},
+): string {
+  return modelId.includes("kling") && options.hasStartFrame && !options.hasAudio ? KLING_I2V_FALLBACK_MODEL : modelId;
+}
+
 export function estimateVideoCredits(
   modelId: string | null | undefined,
   durationSeconds: string | number,
-  options: { hasAudio?: boolean; videoMode?: string | null } = {},
+  options: { hasAudio?: boolean; videoMode?: string | null; hasStartFrame?: boolean } = {},
 ): number | null {
   const duration = typeof durationSeconds === "number" ? durationSeconds : Number(durationSeconds);
   if (!Number.isFinite(duration) || duration <= 0) return null;
   // `auto` must resolve with the SAME videoMode n8n uses, or the estimate quotes a
   // different model than the one that runs (ugc -> Kling 12/sec vs the default
   // Seedance 20/sec is a 40% error on a 5s clip).
-  const resolvedId = resolveEffectiveVideoModel(modelId, options.videoMode ?? null);
+  const resolvedId = routeVideoModelForFrames(resolveEffectiveVideoModel(modelId, options.videoMode ?? null), options);
   const spec = resolveVideoModel(resolvedId);
   const audioIncluded = resolvedId.includes("kling") || resolvedId.includes("seedance");
   const perSecond = (spec?.creditsPerSecond ?? DEFAULT_CREDITS_PER_SECOND)

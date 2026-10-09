@@ -2644,6 +2644,7 @@ export function StorytellingSetup({
             const estimatedCredits = estimateVideoCredits(scene.aiModel, scene.duration || "5", {
               videoMode: scene.mode,
               hasAudio: Boolean(scene.dialogue || scene.audioUrl),
+              hasStartFrame: true, // storyboard scenes render from their start frame
             });
             const endFrameAllowed = isEndFrameAllowedFor(scene.aiModel, scene.mode);
             // Cost of the ADDITIONAL end-frame image, from the scene's image engine.

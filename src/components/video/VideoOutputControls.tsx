@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 /**
  * Registry-derived aspect / duration / cost controls, shared by every video setup.
  *
@@ -24,6 +26,7 @@ import {
   estimateVideoCredits,
   resolveEffectiveVideoModel,
   resolveVideoModel,
+  routeVideoModelForFrames,
 } from "@/lib/video-model-registry";
 
 /** Mirrors n8n's dialogue surcharge trigger in `Parse Inputs & Calculate Cost`
@@ -78,6 +81,7 @@ export function DurationField({
   value,
   onChange,
   hasAudio = false,
+  hasStartFrame = true,
   className,
 }: {
   model: string | null | undefined;
@@ -85,10 +89,26 @@ export function DurationField({
   value: string;
   onChange: (next: string) => void;
   hasAudio?: boolean;
+  /** Every Video Studio mode starts from an image (actor, product, garment, storyboard frame). */
+  hasStartFrame?: boolean;
   className?: string;
 }) {
-  const effective = resolveEffectiveVideoModel(model, videoMode ?? null);
+  const requested = resolveEffectiveVideoModel(model, videoMode ?? null);
+  // The model that will actually render (Kling image-to-video falls back to Seedance 2.5).
+  const effective = routeVideoModelForFrames(requested, { hasStartFrame, hasAudio });
+  const rerouted = effective !== requested;
   const control = durationControlFor(effective);
+  // A duration the rendering model cannot do would be rejected before billing: snap it.
+  const allowed = control.kind === "range"
+    ? (() => { const n = Number(value); return Number.isInteger(n) && n >= control.min && n <= control.max; })()
+    : control.values.map(String).includes(String(value));
+  const fallbackValue = control.kind === "range" ? String(control.min) : String(control.values[0]);
+  useEffect(() => { if (!allowed) onChange(fallbackValue); }, [allowed, fallbackValue, onChange]);
+  const reroutedNote = rerouted ? (
+    <span className="text-[10px] text-[#989DAA]" data-testid="video-model-rerouted">
+      Kling image-to-video is paused. Rendering on {resolveVideoModel(effective)?.label ?? effective}.
+    </span>
+  ) : null;
 
   if (control.kind === "range") {
     const seconds = Number(value);
@@ -97,7 +117,7 @@ export function DurationField({
     const shown = Number.isInteger(seconds) && seconds >= control.min && seconds <= control.max
       ? seconds
       : control.min;
-    const credits = estimateVideoCredits(effective, shown, { videoMode, hasAudio });
+    const credits = estimateVideoCredits(effective, shown, { videoMode, hasAudio, hasStartFrame });
     return (
       <div
         data-testid="video-duration-range"
@@ -122,26 +142,30 @@ export function DurationField({
             ≈ {credits} cr
           </span>
         )}
+        {reroutedNote}
       </div>
     );
   }
 
   return (
-    <select
-      data-testid="video-duration-select"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={className}
-      title={`${resolveVideoModel(effective)?.label ?? effective} renders ${control.values.join(", ")}s`}
-    >
-      {control.values.map((secs) => {
-        const credits = estimateVideoCredits(effective, secs, { videoMode, hasAudio });
-        return (
-          <option key={secs} value={secs} className="bg-[#191D23]">
-            ⏱️ {secs} Secs{credits === null ? "" : ` · ${credits} cr`}
-          </option>
-        );
-      })}
-    </select>
+    <div className="flex flex-col gap-1">
+      <select
+        data-testid="video-duration-select"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={className}
+        title={`${resolveVideoModel(effective)?.label ?? effective} renders ${control.values.join(", ")}s`}
+      >
+        {control.values.map((secs) => {
+          const credits = estimateVideoCredits(effective, secs, { videoMode, hasAudio, hasStartFrame });
+          return (
+            <option key={secs} value={secs} className="bg-[#191D23]">
+              ⏱️ {secs} Secs{credits === null ? "" : ` · ${credits} cr`}
+            </option>
+          );
+        })}
+      </select>
+      {reroutedNote}
+    </div>
   );
 }

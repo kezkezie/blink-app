@@ -293,7 +293,7 @@ export default function BrandIdentityPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 max-w-4xl pb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="bg-[#2A2F38] border border-[#C5BAC4]/30 rounded-2xl p-4 shadow-sm flex items-center gap-3">
         <Briefcase className="h-5 w-5 text-[#C5BAC4]" />
         <h3 className="text-sm font-bold text-[#DEDCDC]">Editing Workspace: <span className="text-white bg-[#191D23] px-2 py-1 rounded ml-1">{activeBrand.brand_name || "Unnamed"}</span></h3>
@@ -461,7 +461,7 @@ export default function BrandIdentityPage() {
       )}
 
       {/* Global Save Button */}
-      <div className="fixed bottom-0 left-0 right-0 md:left-[260px] bg-[#191D23]/80 backdrop-blur-xl border-t border-[#57707A]/30 p-6 flex justify-end z-20">
+      <div className="sticky bottom-0 z-20 -mx-1 rounded-2xl bg-[#191D23]/85 backdrop-blur-xl border border-[#57707A]/30 p-4 flex justify-end shadow-2xl">
         <div className="max-w-4xl mx-auto w-full flex justify-end">
           <Button onClick={handleSaveBrand} disabled={savingBrand} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold px-10 h-12 rounded-xl transition-all shadow-lg shadow-[#C5BAC4]/20">
             {savingBrand ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Save className="h-5 w-5 mr-2" />}

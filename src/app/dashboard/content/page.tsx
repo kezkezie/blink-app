@@ -12,9 +12,10 @@ import type { Content } from "@/types/database";
 import { useBrandStore } from "@/app/store/useBrandStore";
 
 export default function ContentPage() {
-  const { clientId } = useClient();
+  const { clientId, loading: clientLoading } = useClient();
   const [content, setContent] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { activeBrand } = useBrandStore();
 
   const [activeTab, setActiveTab] = useState<"finished" | "sequences">("finished");
@@ -25,11 +26,14 @@ export default function ContentPage() {
 
   async function fetchContent() {
     if (!clientId || !activeBrand) {
-      setLoading(false);
+      // Still resolving the account: stay in loading. Only an account that has
+      // finished loading without a client or brand is a real empty state.
+      if (!clientLoading) setLoading(false);
       return;
     }
 
     setLoading(true);
+    setLoadError(null);
 
     let query = supabase
       .from("content")
@@ -59,15 +63,21 @@ export default function ContentPage() {
       ]);
     }
 
-    const { data } = await query;
-    if (data) setContent(data as unknown as Content[]);
+    const { data, error } = await query;
+    if (error) {
+      // Never show a failed query as an empty library.
+      setLoadError(error.message || "Could not load your content.");
+      setContent([]);
+    } else if (data) {
+      setContent(data as unknown as Content[]);
+    }
     setLoading(false);
   }
 
   useEffect(() => {
     fetchContent();
     setSelectedIds(new Set());
-  }, [clientId, activeBrand?.id, activeTab]);
+  }, [clientId, clientLoading, activeBrand?.id, activeTab]);
 
   const toggleSelect = (id: string) => {
     const newSet = new Set(selectedIds);
@@ -201,6 +211,12 @@ export default function ContentPage() {
       {/* ── CONTENT GRID ── */}
       {loading ? (
         <ContentGridShimmer />
+      ) : loadError ? (
+        <div role="alert" className="text-center py-24 bg-[#2A2F38] border border-red-500/30 rounded-2xl flex flex-col items-center justify-center gap-3">
+          <p className="text-[#DEDCDC] font-bold text-lg">Couldn&apos;t load your content.</p>
+          <p className="text-sm text-[#989DAA] max-w-sm">{loadError}</p>
+          <Button onClick={() => fetchContent()} className="mt-2">Try again</Button>
+        </div>
       ) : content.length === 0 ? (
         <div className="text-center py-32 bg-[#2A2F38] border border-[#57707A]/30 rounded-2xl shadow-inner flex flex-col items-center justify-center">
           <div className="h-16 w-16 bg-[#191D23] rounded-full flex items-center justify-center mb-4 border border-[#57707A]/30">

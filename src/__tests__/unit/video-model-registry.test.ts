@@ -706,3 +706,28 @@ describe("PRUNA: UI selection repair is not clamping", () => {
     expect(validateVideoModelOptions({ model: "replicate:openai/sora-2", duration: "20" })?.field).toBe("duration");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KLING IMAGE-TO-VIDEO FALLBACK (2026-10-09): Kling i2v on Kie returned frozen clips 5/5.
+// Mirrors n8n "Parse Inputs & Calculate Cost" (klingRerouted), so quote == charge.
+// ─────────────────────────────────────────────────────────────────────────────
+import { routeVideoModelForFrames, KLING_I2V_FALLBACK_MODEL } from "@/lib/video-model-registry";
+
+describe("Kling image-to-video fallback", () => {
+  it("routes image-led Kling without voice to Seedance 2.5", () => {
+    expect(routeVideoModelForFrames("kling-3.0/video", { hasStartFrame: true, hasAudio: false })).toBe(KLING_I2V_FALLBACK_MODEL);
+  });
+  it("keeps Kling for talking/dialogue jobs and for text-only jobs", () => {
+    expect(routeVideoModelForFrames("kling-3.0/video", { hasStartFrame: true, hasAudio: true })).toBe("kling-3.0/video");
+    expect(routeVideoModelForFrames("kling-3.0/video", { hasStartFrame: false })).toBe("kling-3.0/video");
+  });
+  it("never touches other models", () => {
+    expect(routeVideoModelForFrames("bytedance/seedance-2", { hasStartFrame: true })).toBe("bytedance/seedance-2");
+    expect(routeVideoModelForFrames("replicate:prunaai/p-video", { hasStartFrame: true })).toBe("replicate:prunaai/p-video");
+  });
+  it("prices the rerouted job as Seedance 2.5, including auto+ugc", () => {
+    expect(estimateVideoCredits("kling-3.0/video", "5", { hasStartFrame: true })).toBe(158 * 5);
+    expect(estimateVideoCredits("auto", "5", { videoMode: "ugc", hasStartFrame: true })).toBe(158 * 5);
+    expect(estimateVideoCredits("kling-3.0/video", "5", { hasStartFrame: true, hasAudio: true })).toBe(27 * 5);
+  });
+});
