@@ -23,6 +23,10 @@ import { ClothingSetup } from "@/components/video/ClothingSetup";
 import { ProductRevealSetup } from "@/components/video/ProductRevealSetup";
 import { StorytellingSetup } from "@/components/video/StorytellingSetup";
 import { formatCredits, useCredits } from "@/components/studio/hooks";
+import { queueForEditor } from "@/components/studio/queue-clips";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+import type { Content } from "@/types/database";
 import { useAskStore } from "@/components/studio/ask-store";
 
 /**
@@ -181,7 +185,7 @@ function EnginePicker({ v, pro }: { v: VideoStudio; pro: boolean }) {
   );
 }
 
-function Inspector({ v, total, effectiveModel }: { v: VideoStudio; total: number; effectiveModel: string }) {
+function Inspector({ v, total, effectiveModel, onRender }: { v: VideoStudio; total: number; effectiveModel: string; onRender: () => void }) {
   const [pro, setPro] = useState(false);
   const [open, setOpen] = useState<string | null>("quality");
   const { balance } = useCredits();
@@ -234,7 +238,7 @@ function Inspector({ v, total, effectiveModel }: { v: VideoStudio; total: number
         </div>
         <div className="flex justify-between text-[13px]"><span>Estimated total</span><b className="mono font-medium">{formatCredits(total)} cr</b></div>
         {short && <p className="text-xs" style={{ color: "var(--s-warn)" }}>You have {formatCredits(balance)} credits. <Link href="/studio/account/billing" className="underline">Top up</Link> or pick Draft.</p>}
-        <button className="s-btn primary lg w-full" onClick={v.handleGenerate} disabled={v.isGenerating || missingImage}>
+        <button className="s-btn primary lg w-full" onClick={onRender} disabled={v.isGenerating || missingImage}>
           {v.isGenerating ? <><Loader2 className="h-4 w-4 animate-spin" /> Queuing…</> : <>Render video <span className="cost">{formatCredits(total)} cr</span></>}
         </button>
         {missingImage && <p className="text-xs text-center" style={{ color: "var(--s-mute)" }}>Add the {v.activeModeConfig.primaryLabel?.toLowerCase()} first.</p>}
@@ -244,7 +248,7 @@ function Inspector({ v, total, effectiveModel }: { v: VideoStudio; total: number
   );
 }
 
-function SequenceBar({ v, total }: { v: VideoStudio; total: number }) {
+function SequenceBar({ v, total, onRender }: { v: VideoStudio; total: number; onRender: () => void }) {
   const seconds = v.bRollScenes.reduce((s, sc) => s + Number(sc.duration || 5), 0);
   return (
     <div className="sticky bottom-0 z-10 flex flex-wrap lg:flex-nowrap items-center gap-3 px-4 py-2.5"
@@ -271,7 +275,7 @@ function SequenceBar({ v, total }: { v: VideoStudio; total: number }) {
           <div className="text-sm">{v.bRollScenes.length} scene{v.bRollScenes.length === 1 ? "" : "s"} · {seconds} s</div>
           <div className="text-[11px]" style={{ color: "var(--s-mute)" }}>Renders each scene, then join them in Edit</div>
         </div>
-        <button className="s-btn primary lg" onClick={v.handleGenerate} disabled={v.isGenerating || v.bRollScenes.length === 0}>
+        <button className="s-btn primary lg" onClick={onRender} disabled={v.isGenerating || v.bRollScenes.length === 0}>
           {v.isGenerating ? <><Loader2 className="h-4 w-4 animate-spin" /> Queuing…</> : <>Render all scenes <span className="cost">{formatCredits(total)} cr</span></>}
         </button>
       </div>
@@ -279,7 +283,28 @@ function SequenceBar({ v, total }: { v: VideoStudio; total: number }) {
   );
 }
 
-function RenderView({ v }: { v: VideoStudio }) {
+function RenderView({ v, renderStartedAt }: { v: VideoStudio; renderStartedAt: React.RefObject<string | null> }) {
+  const [stacking, setStacking] = useState(false);
+  async function putTogether() {
+    if (v.selectedMode !== "storytelling" || !v.activeBrand) { v.setActiveTab("editor"); return; }
+    setStacking(true);
+    try {
+      // Every scene this render made, oldest first (= scene order).
+      const since = renderStartedAt.current ?? new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from("content")
+        .select("caption, image_urls, video_urls, reference_image_url, created_at")
+        .eq("brand_id", v.activeBrand.id)
+        .eq("content_type", "sequence_clip")
+        .gte("created_at", since)
+        .order("created_at", { ascending: true });
+      const n = await queueForEditor((data ?? []) as unknown as Content[]);
+      if (n === 0) toast.info("The scenes are still rendering. They'll be in the editor's Scenes tab when ready.");
+    } finally {
+      setStacking(false);
+      v.setActiveTab("editor");
+    }
+  }
   const reset = () => {
     v.setStep(1);
     v.setPrimaryFile(null);
@@ -324,7 +349,9 @@ function RenderView({ v }: { v: VideoStudio }) {
             <span className="text-sm" style={{ color: "var(--s-soft)" }}>Saved to your Library.</span>
             <div className="flex-1" />
             <button className="s-btn ghost" onClick={reset}><RotateCcw className="h-4 w-4" /> Make another</button>
-            <button className="s-btn primary" onClick={() => v.setActiveTab("editor")}><Film className="h-4 w-4" /> {story ? "Put the scenes together" : "Open in editor"}</button>
+            <button className="s-btn primary" onClick={putTogether} disabled={stacking}>
+              {stacking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />} {story ? "Put the scenes together" : "Open in editor"}
+            </button>
           </div>
         </div>
       )}
@@ -338,6 +365,12 @@ function VideoStudioInner() {
   const router = useRouter();
   const { ask } = useAskStore();
   const applied = useRef(false);
+  const renderStartedAt = useRef<string | null>(null);
+  const autoScenes = useRef(false);
+  const render = () => {
+    renderStartedAt.current = new Date(Date.now() - 5000).toISOString();
+    void v.handleGenerate();
+  };
 
   const chooseMode = (id: string) => {
     v.setSelectedMode(id);
@@ -358,7 +391,10 @@ function VideoStudioInner() {
     if (!mode || !VIDEO_MODES.some((m) => m.id === mode)) return;
     chooseMode(mode);
     const brief = params.get("brief")?.slice(0, 1200);
-    if (brief) { if (mode === "storytelling") v.setBRollConcept(brief); else v.setPrompt(brief); }
+    if (brief) {
+      if (mode === "storytelling") { v.setBRollConcept(brief); autoScenes.current = true; }
+      else v.setPrompt(brief);
+    }
     const aspect = params.get("aspect");
     if (aspect && ["9:16", "16:9", "1:1", "4:5"].includes(aspect)) v.setAspectRatio(reconcileAspectRatioFor(v.selectedAiModel, aspect));
     const start = params.get("start");
@@ -366,6 +402,22 @@ function VideoStudioInner() {
     router.replace("/studio/video", { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A brief from Create or Ask turns into scenes straight away (text only, no credits); the user
+  // then approves the start frames. Waits until the empty scene slots exist so it can fill them.
+  const generateScenes = useRef(v.handleGenerateScenes);
+  useEffect(() => { generateScenes.current = v.handleGenerateScenes; });
+  useEffect(() => {
+    if (!autoScenes.current || !v.bRollConcept.trim() || v.isSuggesting) return;
+    if (v.bRollScenes.some((sc) => sc.prompt?.trim())) { autoScenes.current = false; return; }
+    // The flag is cleared when the timer fires (a re-render before then must not cancel it twice).
+    const t = setTimeout(() => {
+      if (!autoScenes.current) return;
+      autoScenes.current = false;
+      void generateScenes.current();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [v.bRollConcept, v.bRollScenes, v.isSuggesting]);
 
   const story = v.selectedMode === "storytelling";
   const hasStart = !!(v.primaryFile || v.primaryPreview);
@@ -407,6 +459,7 @@ function VideoStudioInner() {
         return (
           <StorytellingSetup
             {...sharedProps}
+            hideSheetMode
             bRollConcept={v.bRollConcept} setBRollConcept={v.setBRollConcept}
             bRollScenes={v.bRollScenes} setBRollScenes={v.setBRollScenes}
             handleGenerateScenes={v.handleGenerateScenes} addEmptyScene={v.addEmptyScene}
@@ -431,23 +484,23 @@ function VideoStudioInner() {
       </div>
 
       {v.activeTab === "editor" ? (
-        <div className="p-4 md:p-5"><VideoEditorUI /></div>
+        <div className="p-3"><VideoEditorUI variant="studio" /></div>
       ) : v.step === 1 ? (
         <div className="p-4 md:p-8"><StylePicker v={v} onPick={chooseMode} /></div>
       ) : v.step === 2 ? (
         story ? (
           <div className="flex-1 flex flex-col">
             <div className="flex-1 p-4 md:p-5">{setup}</div>
-            <SequenceBar v={v} total={total} />
+            <SequenceBar v={v} total={total} onRender={render} />
           </div>
         ) : (
           <div className="flex-1 grid lg:grid-cols-[1fr_336px] min-h-0">
             <div className="p-4 md:p-5 min-w-0"><ProductShotToggle v={v} />{setup}</div>
-            <Inspector v={v} total={total} effectiveModel={effectiveModel} />
+            <Inspector v={v} total={total} effectiveModel={effectiveModel} onRender={render} />
           </div>
         )
       ) : (
-        <div className="p-4 md:p-8"><RenderView v={v} /></div>
+        <div className="p-4 md:p-8"><RenderView v={v} renderStartedAt={renderStartedAt} /></div>
       )}
     </div>
   );

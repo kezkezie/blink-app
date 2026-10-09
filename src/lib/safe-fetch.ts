@@ -126,3 +126,50 @@ export async function safeFetchText(
   }
   return { ok: false, reason: "too many redirects" };
 }
+
+/**
+ * Same rules as safeFetchText, for binary bodies (images pasted by link). Refuses a body larger
+ * than `maxBytes` instead of truncating it, and reports the final URL after redirects.
+ */
+export async function safeFetchBytes(
+  raw: string,
+  opts: { resolve?: Resolver; fetchImpl?: typeof fetch; maxBytes?: number; maxRedirects?: number; timeoutMs?: number; headers?: Record<string, string> } = {},
+): Promise<{ ok: true; bytes: Uint8Array; contentType: string; finalUrl: string } | { ok: false; reason: string }> {
+  const { resolve = defaultResolver, fetchImpl = fetch, maxBytes = 12_000_000, maxRedirects = 4, timeoutMs = 15000, headers } = opts;
+  let current = raw;
+  for (let hop = 0; hop <= maxRedirects; hop += 1) {
+    const check = await validatePublicUrl(current, resolve);
+    if (!check.ok) return check;
+    let res: Response;
+    try {
+      res = await fetchImpl(check.url.toString(), { redirect: "manual", signal: AbortSignal.timeout(timeoutMs), headers });
+    } catch {
+      return { ok: false, reason: "fetch failed" };
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) return { ok: false, reason: "redirect without location" };
+      current = new URL(location, check.url).toString();
+      continue;
+    }
+    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+    const declared = Number(res.headers.get("content-length") || 0);
+    if (declared > maxBytes) return { ok: false, reason: "too large" };
+    if (!res.body) return { ok: false, reason: "empty body" };
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) { await reader.cancel().catch(() => {}); return { ok: false, reason: "too large" }; }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const c of chunks) { bytes.set(c, offset); offset += c.byteLength; }
+    return { ok: true, bytes, contentType: (res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase(), finalUrl: check.url.toString() };
+  }
+  return { ok: false, reason: "too many redirects" };
+}

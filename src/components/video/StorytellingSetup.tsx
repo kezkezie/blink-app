@@ -556,6 +556,8 @@ type DirectorSheetBeat = {
 
 // ✨ We extend the props locally to safely accept the universal Aspect Ratio
 export interface StorytellingSetupProps extends VideoSetupProps {
+  /** The studio look keeps the flow to "a stack of scenes, then the editor" and hides the 4-shot sheet. */
+  hideSheetMode?: boolean;
   bRollConcept: string;
   setBRollConcept: (val: string) => void;
   bRollScenes: StoryboardScene[];
@@ -753,6 +755,7 @@ export function StorytellingSetup({
   aspectRatio = "16:9",
   setAspectRatio,
   isSuggesting,
+  hideSheetMode = false,
 }: StorytellingSetupProps) {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
@@ -2576,10 +2579,10 @@ export function StorytellingSetup({
           </div>
           <div className="flex items-center gap-3">
             {/* ✨ Mode toggle: individual scene frames | one credit-saving sheet */}
-            <div className="flex items-center bg-[#191D23] p-1 rounded-xl border border-[#57707A]/40 shadow-inner">
+            {!hideSheetMode && <div className="flex items-center bg-[#191D23] p-1 rounded-xl border border-[#57707A]/40 shadow-inner">
               <button onClick={() => setStudioMode('storyboard')} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all", studioMode === 'storyboard' ? "bg-[#C5BAC4] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>Storyboard</button>
               <button onClick={() => setStudioMode('comic')} className={cn("px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all", studioMode === 'comic' ? "bg-[#C5BAC4] text-[#191D23] shadow-sm" : "text-[#989DAA] hover:text-[#DEDCDC]")}>4-Shot Sheet</button>
-            </div>
+            </div>}
             {studioMode === 'storyboard' && (
               <span className={cn(
                 "text-xs font-bold px-3.5 py-1.5 rounded-lg border uppercase tracking-wider",
@@ -2592,7 +2595,7 @@ export function StorytellingSetup({
         </div>
 
         {/* ✨ STORYBOARD SHEET CANVAS — one image generation, four scene references */}
-        {studioMode === 'comic' && (
+        {studioMode === 'comic' && !hideSheetMode && (
           <div className="flex flex-col gap-5">
             <div className="relative w-full aspect-video rounded-2xl border-2 border-dashed border-[#57707A]/40 bg-[#191D23]/50 overflow-hidden flex items-center justify-center shadow-inner">
               {comicUrl ? (

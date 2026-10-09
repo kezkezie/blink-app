@@ -15,7 +15,7 @@ const BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 
 const BLOCKED = [
   "**/api/workflows**", "**/api/video-jobs**", "**/api/image-jobs**", "**/api/video/**", "**/api/ai/**",
-  "**/api/assistant**", "**/api/tts**", "**/api/social-posts/**", "**/api/brand/**",
+  "**/api/assistant**", "**/api/tts**", "**/api/social-posts/**", "**/api/brand/**", "**/api/inspo/**",
   "**n8n.srv1166077.hstgr.cloud/**", "**api.replicate.com/**", "**api.kie.ai/**",
 ];
 
@@ -100,8 +100,10 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   await expect(page.locator("textarea").filter({ hasText: "farm at dawn" }).first()).toBeVisible();
   console.log("VIDEO deep link ok");
 
-  // Image Studio: the three modes.
+  // Image Studio opens on Inspo Remix (the one-click way in), then the other modes.
   await page.goto(`${BASE}/studio/image`);
+  await expect(page.getByText("Seen a post you love? Make it yours.")).toBeVisible();
+  await expect(page.getByLabel("Inspiration link")).toBeVisible();
   await page.getByRole("tab", { name: /Edit with AI/ }).click();
   await expect(page.getByText("Which photo?")).toBeVisible();
   await page.getByRole("tab", { name: /Design/ }).click();
@@ -123,6 +125,13 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
 
   // Editor: "Edit with AI" opens the assistant in editing mode (it can see the timeline).
   await page.goto(`${BASE}/studio/video?tab=editor`);
+  await page.getByRole("button", { name: "Focus" }).click();
+  await page.waitForTimeout(400);
+  const preview = await page.locator("[class*='aspect-video']").first().boundingBox();
+  console.log(`EDITOR preview in focus: ${Math.round(preview?.width ?? 0)}x${Math.round(preview?.height ?? 0)}`);
+  expect(preview?.width ?? 0).toBeGreaterThan(850); // was ~400 px wide before the studio layout
+  await page.screenshot({ path: testInfo.outputPath("editor-focus.png") });
+  await page.getByRole("button", { name: "Exit focus" }).click();
   await page.getByRole("button", { name: "Edit with AI" }).click();
   await expect(page.getByText(/I can see your timeline/)).toBeVisible();
   await expect(page.getByText("Look at clips")).toBeVisible();

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music,
   Image as ImageIcon, UploadCloud, Settings, Download,
-  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check
+  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check, Maximize2, Minimize2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, cloudinaryVideoPoster } from "@/lib/utils";
@@ -56,7 +56,13 @@ interface TextLayer {
   trackRow?: number;
 }
 
-export function VideoEditorUI() {
+/**
+ * `variant="studio"` (the new look): the editor fills the screen, the timeline is compact and Focus
+ * hides the side panels so playback is big. The classic page keeps the original layout.
+ */
+export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "studio" } = {}) {
+  const studio = variant === "studio";
+  const [focusPreview, setFocusPreview] = useState(false);
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore(); // ✨ Fetch active brand
   const router = useRouter();
@@ -126,6 +132,25 @@ export function VideoEditorUI() {
     });
     return () => useEditorBridge.setState({ attached: false, getState: null, apply: null, undo: null, canUndo: false });
   }, []);
+
+  // A queued stack (rendered scenes, or clips picked in the Library) lands on the main track in order.
+  const queued = useEditorBridge((b) => b.queue);
+  useEffect(() => {
+    if (!queued.length) return;
+    useEditorBridge.setState({ queue: [] });
+    const newAssets: MediaAsset[] = [];
+    const newClips: TrackClip[] = [];
+    let at = Math.max(0, ...liveTimeline.current.videoClips.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (c.trimEnd - c.trimStart)));
+    for (const q of queued) {
+      const id = crypto.randomUUID();
+      const length = q.duration > 0 ? q.duration : 5;
+      newAssets.push({ id, type: "video", url: q.url, thumb: q.url, name: q.name, duration: length });
+      newClips.push({ id: crypto.randomUUID(), assetId: id, url: q.url, type: "video", name: q.name, timelineStart: at, trimStart: 0, trimEnd: length, maxDuration: length, opacity: 100, volume: 100, trackRow: 0 });
+      at += length;
+    }
+    setAssets((prev) => [...newAssets, ...prev]);
+    setVideoClips((prev) => [...prev, ...newClips]);
+  }, [queued]);
   const [hoveredTrackInfo, setHoveredTrackInfo] = useState<{ type: string, row: number } | null>(null);
 
   const videoTrackCount = Math.max(1, ...videoClips.map(c => (c.trackRow || 0) + 1));
@@ -775,7 +800,10 @@ export function VideoEditorUI() {
   if (zoom < 0.2) rulerStep = 60;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] min-h-[640px] bg-[#191D23] border border-[#57707A]/25 rounded-3xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] select-none relative ring-1 ring-white/[0.03]">
+    <div className={cn(
+      "flex flex-col bg-[#191D23] border border-[#57707A]/25 rounded-3xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] select-none relative ring-1 ring-white/[0.03]",
+      studio ? "h-[calc(100dvh-56px-53px-24px)] min-h-[560px]" : "h-[calc(100vh-200px)] min-h-[640px]",
+    )}>
 
       {isRendering && (
         <div className="absolute inset-0 z-50 bg-[#191D23]/95 backdrop-blur-md flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
@@ -824,7 +852,7 @@ export function VideoEditorUI() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT PANEL: Media/Text */}
-        <div className="w-72 bg-[#2A2F38] border-r border-[#57707A]/25 flex flex-col z-10">
+        <div className={cn("bg-[#2A2F38] border-r border-[#57707A]/25 flex flex-col z-10", studio ? "w-60" : "w-72", focusPreview && "hidden")}>
           <div className="flex border-b border-[#57707A]/25 bg-[#191D23]/40">
             <button onClick={() => setActiveTab("assets")} className={cn(
               "flex-1 py-3 text-[11px] font-black uppercase tracking-[0.08em] transition-all relative",
@@ -946,10 +974,22 @@ export function VideoEditorUI() {
 
         {/* CENTER PANEL: Preview Canvas */}
         <div className="flex-1 bg-[#191D23] flex flex-col relative" onClick={() => setSelectedElement(null)}>
-          <div className="h-13 bg-gradient-to-r from-[#2A2F38] to-[#232830] border-b border-[#57707A]/25 flex items-center justify-between px-5 shrink-0 z-10 shadow-sm py-2.5">
+          <div className={cn("bg-gradient-to-r from-[#2A2F38] to-[#232830] border-b border-[#57707A]/25 flex items-center justify-between px-5 shrink-0 z-10 shadow-sm", studio ? "py-1.5" : "h-13 py-2.5")}>
             <div className="flex items-center gap-2.5">
               <div className="w-1.5 h-4 rounded-full bg-[#C5BAC4]/40" />
               <span className="text-[11px] font-black text-[#989DAA] tracking-[0.1em] uppercase">Preview Canvas</span>
+              {studio && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setFocusPreview((f) => !f); }}
+                  aria-pressed={focusPreview}
+                  title={focusPreview ? "Show the media and settings panels" : "Hide the side panels for a bigger preview"}
+                  className="ml-2 h-7 px-2.5 rounded-lg text-[11px] font-bold border border-[#57707A]/40 text-[#DEDCDC] hover:bg-[#57707A]/30 flex items-center gap-1.5"
+                >
+                  {focusPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  {focusPreview ? "Exit focus" : "Focus"}
+                </button>
+              )}
             </div>
             <Button
               size="sm"
@@ -962,7 +1002,7 @@ export function VideoEditorUI() {
             </Button>
           </div>
 
-          <div className="flex-1 overflow-hidden p-6 flex items-center justify-center bg-[url('/checkers.png')] relative before:absolute before:inset-0 before:bg-[#191D23]/90">
+          <div className={cn("flex-1 overflow-hidden flex items-center justify-center bg-[url('/checkers.png')] relative before:absolute before:inset-0 before:bg-[#191D23]/90", studio ? "p-3" : "p-6")}>
             <div ref={canvasRef} className="relative aspect-video max-w-full max-h-full h-full w-auto mx-auto bg-[#000000] rounded-lg shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden ring-1 ring-[#57707A]/50 z-10">
 
               {videoClips.sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
@@ -1043,7 +1083,7 @@ export function VideoEditorUI() {
             </div>
           </div>
 
-          <div className="h-14 bg-[#2A2F38] border-t border-[#57707A]/30 flex items-center justify-center gap-6 shrink-0 z-10">
+          <div className={cn("bg-[#2A2F38] border-t border-[#57707A]/30 flex items-center justify-center gap-6 shrink-0 z-10", studio ? "h-12" : "h-14")}>
             <span className="text-xs font-mono font-bold w-16 text-right text-[#DEDCDC]/50">{globalTime.toFixed(1)}s</span>
             <button onClick={() => setGlobalTime(0)} className="p-2.5 text-[#DEDCDC]/50 hover:bg-[#191D23] hover:text-[#DEDCDC] rounded-full transition-colors"><SkipBack className="w-4 h-4" /></button>
             <button onClick={togglePlay} className="p-3.5 bg-[#C5BAC4] text-[#191D23] hover:bg-white rounded-full transition-colors shadow-lg shadow-[#C5BAC4]/10">
@@ -1054,7 +1094,7 @@ export function VideoEditorUI() {
         </div>
 
         {/* RIGHT PANEL: INSPECTOR */}
-        <div className="w-72 bg-[#2A2F38] border-l border-[#57707A]/30 flex flex-col z-10 overflow-y-auto custom-scrollbar shadow-[-5px_0_15px_rgba(0,0,0,0.1)]">
+        <div className={cn("bg-[#2A2F38] border-l border-[#57707A]/30 flex flex-col z-10 overflow-y-auto custom-scrollbar shadow-[-5px_0_15px_rgba(0,0,0,0.1)]", studio ? "w-60" : "w-72", focusPreview && "hidden")}>
           <div className="p-4 border-b border-[#57707A]/30 flex items-center gap-2 bg-[#191D23]/40">
             <SlidersHorizontal className="w-4 h-4 text-[#C5BAC4]" />
             <span className="font-bold text-sm text-[#DEDCDC] font-display">Properties</span>
@@ -1166,7 +1206,7 @@ export function VideoEditorUI() {
       </div>
 
       {/* ─── BOTTOM WORKSPACE (Timeline Engine) ─── */}
-      <div className="h-80 bg-[#2A2F38] border-t border-[#57707A]/25 flex flex-col z-0 shadow-[0_-8px_24px_rgba(0,0,0,0.25)]">
+      <div className={cn("bg-[#2A2F38] border-t border-[#57707A]/25 flex flex-col z-0 shadow-[0_-8px_24px_rgba(0,0,0,0.25)] shrink-0", studio ? (focusPreview ? "h-40" : "h-56") : "h-80")}>
         <div className="h-11 bg-gradient-to-r from-[#191D23] to-[#1D2229] border-b border-[#57707A]/25 flex items-center justify-between px-5 z-20 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">

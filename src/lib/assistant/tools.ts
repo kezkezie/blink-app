@@ -37,6 +37,7 @@ export const VIDEO_QUALITY: Record<"draft" | "standard" | "cinema", { model: str
 };
 
 const PAGES: Record<string, { href: string; label: string }> = {
+  inspo: { href: "/studio/image?mode=remix", label: "Open Inspo Remix" },
   library: { href: "/studio/library", label: "Open Library" },
   upload: { href: "/studio/library/upload", label: "Upload media" },
   plan: { href: "/studio/plan", label: "Open the calendar" },
@@ -129,7 +130,7 @@ export const ASSISTANT_TOOLS = [
   },
   {
     name: "open_page",
-    description: "Offer a button to a page: library, upload, plan (calendar), approvals, brand, billing, settings.",
+    description: "Offer a button to a page: inspo (Inspo Remix: the user drops a design they love and gets it remade for their brand), library, upload, plan (calendar), approvals, brand, billing, settings.",
     input_schema: {
       type: "object",
       properties: { page: { type: "string", enum: Object.keys(PAGES) } },

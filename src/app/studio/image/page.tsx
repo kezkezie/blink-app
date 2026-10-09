@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, X } from "lucide-react";
+import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, X, Shuffle } from "lucide-react";
+import { InspoRemix } from "@/components/studio/InspoRemix";
 import { supabase } from "@/lib/supabase";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useAssistedCreationStore } from "@/app/store/useAssistedCreationStore";
@@ -14,15 +15,17 @@ import { cleanCaption, resolveMedia } from "@/components/studio/media";
 import type { Content } from "@/types/database";
 
 /**
- * Image Studio = one place for the three image jobs:
+ * Image Studio = one place for the image jobs:
+ *   Inspo Remix  drop a design you love, get the same look for your brand (one click)
  *   Generate  the classic studio (assisted creation, engines, styles, references), unchanged inside
  *   Edit      X-ray a photo into objects, change colours, materials and text, re-render with
  *             Nano Banana 2 or GPT Image 2 (the classic JSON editor)
  *   Design    set real type and the logo over a photo, pick colours from the photo, export sizes
  */
-type Mode = "generate" | "edit" | "design";
+type Mode = "remix" | "generate" | "edit" | "design";
 const MODES: Array<{ id: Mode; label: string; icon: typeof Sparkles; hint: string }> = [
-  { id: "generate", label: "Generate", icon: Sparkles, hint: "Make new images" },
+  { id: "remix", label: "Inspo Remix", icon: Shuffle, hint: "Drop a design you love, get it for your brand" },
+  { id: "generate", label: "Generate", icon: Sparkles, hint: "Make new images from an idea" },
   { id: "edit", label: "Edit with AI", icon: Wand2, hint: "Change a photo you have" },
   { id: "design", label: "Design", icon: LayoutTemplate, hint: "Type and logo on a photo · free" },
 ];
@@ -39,8 +42,10 @@ function ImageStudioInner() {
   const router = useRouter();
   const { activeBrand } = useBrandStore();
   const setIdea = useAssistedCreationStore((s) => s.setIdea);
+  const requestAutoDevelop = useAssistedCreationStore((s) => s.requestAutoDevelop);
   const hydrated = useAssistedCreationStore((s) => s.hasHydrated);
-  const initialMode = (["generate", "edit", "design"] as const).find((m) => m === params.get("mode")) ?? "generate";
+  // No mode in the link: a typed idea opens Generate, otherwise Inspo Remix (the fastest way in).
+  const initialMode = (["remix", "generate", "edit", "design"] as const).find((m) => m === params.get("mode")) ?? (params.get("prompt") ? "generate" : "remix");
   const [mode, setMode] = useState<Mode>(initialMode);
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [loadingPick, setLoadingPick] = useState(!!params.get("content"));
@@ -60,8 +65,9 @@ function ImageStudioInner() {
     const prompt = params.get("prompt")?.slice(0, 1000);
     if (!prompt || !activeBrand || !hydrated) return;
     setIdea(activeBrand.id, prompt);
+    requestAutoDevelop(activeBrand.id);
     router.replace("/studio/image", { scroll: false });
-  }, [params, activeBrand, hydrated, setIdea, router]);
+  }, [params, activeBrand, hydrated, setIdea, requestAutoDevelop, router]);
 
   if (!activeBrand) {
     return <div className="p-6"><div className="s-empty"><h3>Pick a brand first</h3><p className="text-sm">Image Studio works for one brand at a time. Use the switcher at the top right.</p></div></div>;
@@ -80,12 +86,14 @@ function ImageStudioInner() {
         <span className="text-xs hidden sm:inline" style={{ color: "var(--s-mute)" }}>{MODES.find((m) => m.id === mode)?.hint}</span>
       </div>
 
+      {mode === "remix" && <InspoRemix />}
+
       {mode === "generate" && (
         <div className="p-4 md:p-6 mx-auto w-full max-w-[1320px]">
           {handoff && (
             <div className="s-card px-4 py-3 mb-4 flex flex-wrap items-center gap-2 text-sm" role="status" style={{ borderColor: "color-mix(in oklab, var(--s-accent) 35%, var(--s-line))" }}>
-              <b className="font-medium">Your idea from {handoff} is in the box below.</b>
-              <span style={{ color: "var(--s-soft)" }}>Press <b>Develop my idea</b> for three directions, or <b>Customize advanced details</b> to set it up yourself.</span>
+              <b className="font-medium">Working on your idea from {handoff}.</b>
+              <span style={{ color: "var(--s-soft)" }}>BlinkSpot is writing three directions below. Pick one, or open <b>Customize advanced details</b> to set it up yourself.</span>
               <button className="s-btn ghost sm ml-auto" onClick={() => setHandoff(null)} aria-label="Dismiss"><X className="h-3.5 w-3.5" /></button>
             </div>
           )}

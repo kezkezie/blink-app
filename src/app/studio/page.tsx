@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Clapperboard, ImageIcon, LayoutTemplate, MessageCircle, Scissors } from "lucide-react";
+import { Clapperboard, ImageIcon, Scissors, Shuffle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
@@ -11,7 +11,6 @@ import type { Content } from "@/types/database";
 import { estimateVideoCredits } from "@/lib/video-model-registry";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { MediaCard, NOT_STORYBOARD_FRAME, PART_TYPES } from "@/components/studio/media";
-import { useAskStore } from "@/components/studio/ask-store";
 import { useStudioBrands } from "@/components/studio/hooks";
 
 type Kind = "video" | "image";
@@ -30,7 +29,6 @@ export default function CreatePage() {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
   const { profile } = useStudioBrands();
-  const { ask } = useAskStore();
   const [kind, setKind] = useState<Kind>("video");
   const [brief, setBrief] = useState("");
   const [recent, setRecent] = useState<Content[] | null>(null);
@@ -83,9 +81,7 @@ export default function CreatePage() {
             <button key={k} className="s-chip" aria-pressed={kind === k} onClick={() => setKind(k)}>{KIND_LABEL[k]}</button>
           ))}
           <div className="flex-1" />
-          <button className="s-btn ai" onClick={() => ask(brief.trim() ? `Help me make this: ${brief.trim()}` : "")}>
-            <MessageCircle className="h-4 w-4" /> Plan it with AI
-          </button>
+          {kind === "image" && <Link href="/studio/image?mode=remix" className="s-btn ghost sm">Have an inspo pic? Inspo Remix →</Link>}
           <button className="s-btn primary" onClick={start}>
             Start <span className="cost">from {startCost} cr</span>
           </button>
@@ -96,9 +92,9 @@ export default function CreatePage() {
         <h3 className="s-section-h">Or start from</h3>
         <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
           {[
-            { href: "/studio/video", icon: Clapperboard, title: "Video", line: "Scene by scene, from one shot to a full ad. Every style is inside.", accent: true },
+            { href: "/studio/image?mode=remix", icon: Shuffle, title: "Inspo Remix", line: "Drop a post you love from Pinterest or anywhere. Get it in your brand.", accent: true },
+            { href: "/studio/video", icon: Clapperboard, title: "Video", line: "A stack of scenes, then the editor. One shot or a full ad." },
             { href: "/studio/image", icon: ImageIcon, title: "Image", line: `Generate from an idea · from ${IMAGE_ENGINE_REGISTRY["gpt-image-2-text-to-image"].creditCost} cr` },
-            { href: "/studio/image?mode=design", icon: LayoutTemplate, title: "Poster", line: "Your type and logo on a photo · free" },
             { href: "/studio/video?tab=editor", icon: Scissors, title: "Edit footage", line: "Cut your clips; Ask BlinkSpot can do the cut" },
           ].map((w) => (
             <Link key={w.title} href={w.href} className="s-card p-4 flex flex-col gap-2 hover:border-[var(--s-line-2)] transition-colors">

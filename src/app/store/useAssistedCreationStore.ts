@@ -23,6 +23,10 @@ interface AssistedCreationState {
   setHandoff: (brandId: string, direction: AssistedCreativeDirection) => void;
   clearDraft: () => void;
   setHasHydrated: (value: boolean) => void;
+  /** One-shot, not persisted: the studio's Create box asks Image Studio to develop the idea on arrival. */
+  autoDevelopFor: string | null;
+  requestAutoDevelop: (brandId: string) => void;
+  consumeAutoDevelop: () => void;
 }
 
 const forBrand = (draft: AssistedCreationDraft | null, brandId: string) =>
@@ -46,6 +50,9 @@ export const useAssistedCreationStore = create<AssistedCreationState>()(
       setHandoff: (brandId, direction) => set((state) => ({ draft: { ...forBrand(state.draft, brandId), direction, step: "handoff", advancedRevealed: true, handoff: { prompt: direction.summary, style: direction.style, mode: "standard" } } })),
       clearDraft: () => set({ draft: null }),
       setHasHydrated: (hasHydrated) => set({ hasHydrated }),
+      autoDevelopFor: null,
+      requestAutoDevelop: (brandId) => set({ autoDevelopFor: brandId }),
+      consumeAutoDevelop: () => set({ autoDevelopFor: null }),
     }),
     {
       name: ASSISTED_CREATION_STORAGE_KEY,
