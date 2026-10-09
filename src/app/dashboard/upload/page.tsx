@@ -63,6 +63,11 @@ export default function YourContentPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingText, setLoadingText] = useState("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("caption");
+  // Deep link from the studio's "Lip-sync to audio" card.
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "audio_to_video") setActiveTab(tab);
+  }, []);
   const [duration, setDuration] = useState("10");
 
   // MOTION BRUSH STATES (V2)

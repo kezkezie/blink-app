@@ -34,6 +34,15 @@ const FORMATS = [
 ] as const;
 type FormatId = (typeof FORMATS)[number]["id"];
 
+type Slot = Pick<Layer, "x" | "y" | "w"> & { size?: number; align?: Layer["align"]; lh?: number };
+/** Layouts that move the headline, the line and the logo; the user's words and colours stay. */
+const TEMPLATES: Array<{ id: string; label: string; head: Slot; sub: Slot; logo: Slot; shade: "none" | "top" | "bottom"; shadeAmt: number }> = [
+  { id: "top", label: "Headline top", head: { x: 7, y: 6, w: 86, size: 104, align: "left", lh: 0.95 }, sub: { x: 7, y: 27, w: 70, size: 36, align: "left" }, logo: { x: 73, y: 88, w: 20 }, shade: "top", shadeAmt: 50 },
+  { id: "band", label: "Bottom band", head: { x: 7, y: 64, w: 86, size: 88, align: "left", lh: 0.95 }, sub: { x: 7, y: 82, w: 70, size: 32, align: "left" }, logo: { x: 76, y: 5, w: 17 }, shade: "bottom", shadeAmt: 65 },
+  { id: "center", label: "Centred statement", head: { x: 8, y: 36, w: 84, size: 96, align: "center", lh: 0.95 }, sub: { x: 15, y: 58, w: 70, size: 34, align: "center" }, logo: { x: 41, y: 87, w: 18 }, shade: "bottom", shadeAmt: 35 },
+  { id: "minimal", label: "Minimal corner", head: { x: 7, y: 83, w: 62, size: 48, align: "left", lh: 1.05 }, sub: { x: 7, y: 91, w: 62, size: 24, align: "left" }, logo: { x: 81, y: 6, w: 13 }, shade: "bottom", shadeAmt: 40 },
+];
+
 const DESIGN_FONTS = ["Plus Jakarta Sans", "Inter", "DM Sans", "Syne", "Space Grotesk", "Montserrat", "Playfair Display", "Bebas Neue", "Anton", "Archivo Black"];
 const PROXY_HOSTS = ["res.cloudinary.com", "supabase.co", "tempfile.aiquickdraw.com"];
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -181,6 +190,23 @@ export function PosterDesigner({ initial }: { initial?: PickedImage | null }) {
     return () => { cancelled = true; };
   }, [photo]);
 
+  function applyTemplate(id: string) {
+    const t = TEMPLATES.find((x) => x.id === id);
+    if (!t) return;
+    setLayers((ls) => {
+      let textIndex = 0;
+      const next = ls.map((l) => {
+        if (l.kind === "logo") return { ...l, ...t.logo };
+        const slot = textIndex++ === 0 ? t.head : t.sub;
+        return textIndex <= 2 ? { ...l, ...slot } : l;
+      });
+      if (kit.logo && !next.some((l) => l.kind === "logo")) next.push({ id: uid(), kind: "logo", ...t.logo });
+      return next;
+    });
+    setShade(t.shade);
+    setShadeAmt(t.shadeAmt);
+  }
+
   const update = useCallback((id: string, patch: Partial<Layer>) => setLayers((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l))), []);
   const remove = useCallback((id: string) => { setLayers((ls) => ls.filter((l) => l.id !== id)); setSel(null); }, []);
 
@@ -314,6 +340,10 @@ export function PosterDesigner({ initial }: { initial?: PickedImage | null }) {
           <div className="s-seg" role="tablist" aria-label="Format">
             {FORMATS.map((x) => <button key={x.id} role="tab" aria-selected={format === x.id} onClick={() => setFormat(x.id)}>{x.label}</button>)}
           </div>
+          <select className="s-input" style={{ width: "auto", height: 28, fontSize: 12 }} defaultValue="" onChange={(e) => { applyTemplate(e.target.value); e.target.value = ""; }} aria-label="Layout">
+            <option value="" disabled>Layout…</option>
+            {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
           <button className="s-btn sm" onClick={() => {
             const l: Layer = { id: uid(), kind: "text", x: 10, y: 45, w: 60, text: "New text", size: 48, font: kit.font || "Plus Jakarta Sans", weight: 700, color: "#FFFFFF", align: "left", lh: 1.1, ls: 0 };
             setLayers((ls) => [...ls, l]); setSel(l.id);

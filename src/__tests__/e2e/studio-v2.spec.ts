@@ -23,11 +23,10 @@ const PAGES: Array<[string, RegExp]> = [
   ["/studio", /What are we making/],
   ["/studio/library", /Everything/],
   ["/studio/library/upload", /./],
-  ["/studio/video", /What kind of video/],
+  ["/studio/video", /Make a video/],
   ["/studio/image", /Generate/],
   ["/studio/plan", /Calendar/],
   ["/studio/plan/approvals", /Approvals/],
-  ["/studio/plan/analytics", /Analytics/],
   ["/studio/brand", /Brand DNA/],
   ["/studio/account/billing", /Billing/],
   ["/studio/account/settings", /Settings/],
@@ -56,7 +55,8 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   // Opening /studio opts into the new look.
   await page.goto(`${BASE}/studio`);
   await expect(page.locator(".s-rail")).toBeVisible();
-  expect((await context.cookies()).find((c) => c.name === "ui")?.value).toBe("studio");
+  // Set by the studio layout once it renders (after hydration).
+  await expect.poll(async () => (await context.cookies()).find((c) => c.name === "ui")?.value, { timeout: 15_000 }).toBe("studio");
 
   for (const [path, marker] of PAGES) {
     await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
@@ -77,12 +77,16 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
 
   // Video Studio: Kezie's flow. Long video -> scene planner with the sequence bar; single shot -> inspector.
   await page.goto(`${BASE}/studio/video`);
-  await page.getByRole("button", { name: /Story, scene by scene/ }).click();
+  await page.getByRole("button", { name: /Scene by scene/ }).click();
   await expect(page.getByRole("button", { name: /Render all scenes/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("video-story.png") });
   await page.locator(".s-step", { hasText: "Style" }).click();
-  await page.getByRole("button", { name: /Cinematic Showcase/i }).click();
+  await page.getByRole("button", { name: /Product shot/ }).click();
   await expect(page.getByRole("button", { name: /Render video/ })).toBeVisible();
+  // Product reveal is the other side of Product shot, not a separate style.
+  await page.getByRole("tab", { name: "Reveal" }).click();
+  await expect(page.getByText(/3D or VFX reveal/)).toBeVisible();
+  await page.getByRole("tab", { name: "Camera move" }).click();
   await expect(page.getByText("Shot settings")).toBeVisible();
   await page.getByRole("button", { name: "Pro" }).click();
   await expect(page.getByLabel("Exact model")).toBeVisible();
@@ -116,6 +120,20 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
     expect(file.suggestedFilename()).toMatch(/\.png$/);
     console.log("DESIGN export ok: " + file.suggestedFilename());
   } else console.log("DESIGN: no library images on this account, picker shown");
+
+  // Editor: "Edit with AI" opens the assistant in editing mode (it can see the timeline).
+  await page.goto(`${BASE}/studio/video?tab=editor`);
+  await page.getByRole("button", { name: "Edit with AI" }).click();
+  await expect(page.getByText(/I can see your timeline/)).toBeVisible();
+  await expect(page.getByText("Look at clips")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("editor-ask.png") });
+  await page.keyboard.press("Escape");
+  console.log("EDITOR ask ok");
+
+  // Create: one box and four starts (the video styles live inside Video Studio, once).
+  await page.goto(`${BASE}/studio`);
+  await expect(page.getByText("Or start from")).toBeVisible();
+  await expect(page.getByText("Cinematic showcase")).toHaveCount(0);
 
   // Ask BlinkSpot opens from anywhere (⌘K) and shows its starters; nothing is sent.
   await page.goto(`${BASE}/studio/library`);

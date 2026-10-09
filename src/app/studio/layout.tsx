@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { StudioNav, StudioTopBar } from "@/components/studio/StudioShell";
 import { AskPanel } from "@/components/studio/AskPanel";
 import { useAskStore } from "@/components/studio/ask-store";
+import { UI_COOKIE } from "@/lib/studio-routes";
 
 /**
  * BlinkSpot v2 shell: four places (Create, Library, Plan, Brand), the account menu, the active
@@ -23,6 +24,13 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
   useEffect(() => {
     document.body.classList.add("studio");
     return () => document.body.classList.remove("studio");
+  }, []);
+
+  // Seeing the studio switches you to the new look (only a page that actually renders can do this).
+  useEffect(() => {
+    if (!document.cookie.split("; ").includes(`${UI_COOKIE}=studio`)) {
+      document.cookie = `${UI_COOKIE}=studio; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+    }
   }, []);
 
   // Cmd/Ctrl+K opens the assistant from anywhere in the studio.

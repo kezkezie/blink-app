@@ -9,7 +9,8 @@ import { parseAssistantRequest } from "@/lib/assistant/request";
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
-  if (!isExecutionBodySizeAllowed(request, 64_000)) return NextResponse.json({ error: "Request too large" }, { status: 413 });
+  // Up to 24 small JPEG frames from the editor (~60 KB each) ride along with editing requests.
+  if (!isExecutionBodySizeAllowed(request, 2_500_000)) return NextResponse.json({ error: "Request too large" }, { status: 413 });
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
   try {
     const ctx = { clientId: client.id, brandId };
     const brief = await loadAccountBrief(ctx).catch(() => undefined);
-    const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page });
+    const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor });
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof AssistantUnavailableError) return NextResponse.json({ error: err.message }, { status: 503 });

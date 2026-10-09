@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Check, ChevronRight, Clapperboard, Film, Loader2, Plus, RotateCcw, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Clapperboard, Film, Loader2, Mic, Plus, RotateCcw, Scissors, Shirt, ShoppingBag, Sparkles, UserCircle, X } from "lucide-react";
 import {
   AUTO_VIDEO_MODEL,
   VIDEO_MODEL_REGISTRY,
@@ -42,7 +42,6 @@ const QUALITY = [
   { id: "bytedance/seedance-2-5", label: "Cinema", hint: "Seedance 2.5 · 1080p" },
 ];
 
-const STYLE_ORDER = ["storytelling", "showcase", "logo_reveal", "ugc", "clothing"];
 
 function sceneCost(model: string, duration: string | undefined, mode: string, hasStartFrame: boolean) {
   return estimateVideoCredits(model, duration || "5", { videoMode: mode, hasStartFrame }) ?? 0;
@@ -54,7 +53,9 @@ function StepRail({ v, current }: { v: VideoStudio; current: number }) {
     <div className="s-steps" role="navigation" aria-label="Steps">
       {STEP_LABELS.map((label, i) => {
         const n = i + 1;
-        const state = n < current ? "done" : n === current ? "cur" : "";
+        // In the editor, earlier steps only count as done if this session actually rendered something.
+        const doneUpTo = v.activeTab === "editor" ? (v.generatedVideoUrl ? 3 : 0) : current - 1;
+        const state = n === current ? "cur" : n <= doneUpTo ? "done" : "";
         return (
           <span key={label} className="contents">
             {i > 0 && <span className="s-step-sep" aria-hidden />}
@@ -68,7 +69,7 @@ function StepRail({ v, current }: { v: VideoStudio; current: number }) {
                 if (n < 3 || v.step === 3) v.setStep(n);
               }}
             >
-              <i>{n < current ? <Check className="h-3 w-3" /> : n}</i>{label}
+              <i>{state === "done" ? <Check className="h-3 w-3" /> : n}</i>{label}
             </button>
           </span>
         );
@@ -77,48 +78,71 @@ function StepRail({ v, current }: { v: VideoStudio; current: number }) {
   );
 }
 
+// The single-shot styles. Product reveal is not its own card: it is the "Reveal" side of Product shot
+// (same inputs, same engine, a different direction), toggled on the next step.
+const QUICK_SHOTS: Array<{ mode: string; title: string; line: string; icon: typeof Film }> = [
+  { mode: "showcase", title: "Product shot", line: "Your product photo, a camera move or a reveal", icon: ShoppingBag },
+  { mode: "ugc", title: "Creator talking", line: "A person talks about your product", icon: UserCircle },
+  { mode: "clothing", title: "Try-on", line: "Your garment on a model", icon: Shirt },
+];
+
 function StylePicker({ v, onPick }: { v: VideoStudio; onPick: (mode: string) => void }) {
-  const modes = STYLE_ORDER.map((id) => VIDEO_MODES.find((m) => m.id === id)!).filter(Boolean);
-  const [long, ...shots] = modes;
   return (
     <div className="max-w-[1100px] mx-auto">
-      <h2 className="text-2xl font-semibold tracking-tight mb-1">What kind of video?</h2>
-      <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Pick a style. You can change every setting on the next step.</p>
+      <h2 className="text-2xl font-semibold tracking-tight mb-1">Make a video</h2>
+      <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Most videos start here. Every setting can still be changed on the next step.</p>
       <button
-        className="s-card w-full text-left p-6 mb-3 grid md:grid-cols-[1fr_auto] gap-4 items-center hover:border-[var(--s-line-2)] transition-colors"
-        style={v.selectedMode === long.id ? { borderColor: "var(--s-accent)" } : undefined}
-        onClick={() => onPick(long.id)}
+        className="s-card w-full text-left p-6 mb-6 grid md:grid-cols-[1fr_auto] gap-4 items-center hover:border-[var(--s-line-2)] transition-colors"
+        style={{ borderColor: "var(--s-line-2)" }}
+        onClick={() => onPick("storytelling")}
       >
         <div>
-          <div className="flex items-center gap-2 mb-2"><Clapperboard className="h-5 w-5" style={{ color: "var(--s-accent)" }} /><span className="s-badge">LONG VIDEO · SCENES</span></div>
-          <b className="text-lg font-semibold">Story, scene by scene</b>
+          <div className="flex items-center gap-2 mb-2"><Clapperboard className="h-5 w-5" style={{ color: "var(--s-accent)" }} /><span className="s-badge">RECOMMENDED</span></div>
+          <b className="text-lg font-semibold">Scene by scene</b>
           <p className="text-sm mt-1 max-w-xl" style={{ color: "var(--s-soft)" }}>
-            Write the idea once. BlinkSpot breaks it into scenes, gives each one a start frame you can approve or swap, renders them, and you put them together in the editor.
+            Write the idea once. BlinkSpot splits it into scenes (one scene is fine for a single shot), each with a start frame you approve. Every scene can be a product shot, a reveal, a creator or a try-on. Then put them together in Edit.
           </p>
         </div>
         <div className="flex items-center gap-1.5 text-xs mono" style={{ color: "var(--s-mute)" }}>
-          Story <ChevronRight className="h-3 w-3" /> Scenes <ChevronRight className="h-3 w-3" /> Render <ChevronRight className="h-3 w-3" /> Edit
+          Idea <ChevronRight className="h-3 w-3" /> Scenes <ChevronRight className="h-3 w-3" /> Render <ChevronRight className="h-3 w-3" /> Edit
         </div>
       </button>
+      <h3 className="s-section-h">Or a quick single shot</h3>
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {shots.map((m) => (
-          <button
-            key={m.id}
-            className="s-card text-left p-4 flex flex-col gap-2 hover:border-[var(--s-line-2)] transition-colors"
-            style={v.selectedMode === m.id ? { borderColor: "var(--s-accent)" } : undefined}
-            onClick={() => onPick(m.id)}
-          >
+        {QUICK_SHOTS.map((m) => (
+          <button key={m.mode} className="s-card text-left p-4 flex flex-col gap-2 hover:border-[var(--s-line-2)] transition-colors" onClick={() => onPick(m.mode)}>
             <m.icon className="h-4 w-4" />
-            <b className="text-sm font-medium">{m.title.replace("AI ", "")}</b>
-            <span className="text-xs" style={{ color: "var(--s-mute)" }}>{m.desc}</span>
-            <span className="text-[11px] mono mt-auto pt-2" style={{ color: "var(--s-mute)" }}>5 s from {sceneCost(AUTO_VIDEO_MODEL, "5", m.id, true)} cr</span>
+            <b className="text-sm font-medium">{m.title}</b>
+            <span className="text-xs" style={{ color: "var(--s-mute)" }}>{m.line}</span>
+            <span className="text-[11px] mono mt-auto pt-2" style={{ color: "var(--s-mute)" }}>5 s from {sceneCost(AUTO_VIDEO_MODEL, "5", m.mode, true)} cr</span>
           </button>
         ))}
+        <Link href="/studio/library/upload?tab=audio_to_video" className="s-card text-left p-4 flex flex-col gap-2 hover:border-[var(--s-line-2)] transition-colors">
+          <Mic className="h-4 w-4" />
+          <b className="text-sm font-medium">Lip-sync to audio</b>
+          <span className="text-xs" style={{ color: "var(--s-mute)" }}>Upload a voice track, a face speaks it</span>
+        </Link>
       </div>
       <div className="mt-6 flex items-center gap-3 text-sm" style={{ color: "var(--s-soft)" }}>
-        <Film className="h-4 w-4" /> Already have clips?
+        <Scissors className="h-4 w-4" /> Already have clips?
         <button className="s-btn sm" onClick={() => v.setActiveTab("editor")}>Open the editor</button>
       </div>
+    </div>
+  );
+}
+
+/** Product shot = Cinematic showcase (camera move) or Product reveal; same photo, one click apart. */
+function ProductShotToggle({ v }: { v: VideoStudio }) {
+  if (v.selectedMode !== "showcase" && v.selectedMode !== "logo_reveal") return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="s-seg" role="tablist" aria-label="Product shot type">
+        <button role="tab" aria-selected={v.selectedMode === "showcase"} onClick={() => v.setSelectedMode("showcase")}>Camera move</button>
+        <button role="tab" aria-selected={v.selectedMode === "logo_reveal"} onClick={() => v.setSelectedMode("logo_reveal")}>Reveal</button>
+      </div>
+      <span className="text-xs" style={{ color: "var(--s-mute)" }}>
+        {v.selectedMode === "showcase" ? "The camera moves around your product." : "Your product appears with a 3D or VFX reveal."}
+      </span>
     </div>
   );
 }
@@ -399,7 +423,11 @@ function VideoStudioInner() {
         <StepRail v={v} current={current} />
         <div className="flex-1" />
         {current === 2 && <span className="text-xs" style={{ color: "var(--s-mute)" }}>{v.activeModeConfig.title}</span>}
-        <button className="s-btn ai sm" onClick={() => ask(story ? "Help me plan the scenes for my video" : "Help me write a better prompt for this shot")}>Ask for help</button>
+        {v.activeTab === "editor" ? (
+          <button className="s-btn ai sm" onClick={() => ask("")}>Edit with AI</button>
+        ) : (
+          <button className="s-btn ai sm" onClick={() => ask(story ? "Help me plan the scenes for my video" : "Help me write a better prompt for this shot")}>Ask for help</button>
+        )}
       </div>
 
       {v.activeTab === "editor" ? (
@@ -414,7 +442,7 @@ function VideoStudioInner() {
           </div>
         ) : (
           <div className="flex-1 grid lg:grid-cols-[1fr_336px] min-h-0">
-            <div className="p-4 md:p-5 min-w-0">{setup}</div>
+            <div className="p-4 md:p-5 min-w-0"><ProductShotToggle v={v} />{setup}</div>
             <Inspector v={v} total={total} effectiveModel={effectiveModel} />
           </div>
         )

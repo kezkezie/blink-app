@@ -14,6 +14,8 @@ import { supabase } from "@/lib/supabase";
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ Added to isolate libraries by brand
+import { useEditorBridge } from "@/components/video/editor-bridge";
+import { applyEditOps, type EditorState } from "@/lib/editor-ops";
 
 interface MediaAsset {
   id: string;
@@ -91,6 +93,39 @@ export function VideoEditorUI() {
   const [textLayers, setTextLayers] = useState<TextLayer[]>([]);
 
   const [selectedElement, setSelectedElement] = useState<{ id: string; type: "text" | "video" | "audio"; } | null>(null);
+
+  // Ask BlinkSpot can read and edit this timeline through the editor bridge (smart editing).
+  // Nothing visual changes here; an AI edit is applied only when the user presses Apply.
+  const liveTimeline = useRef<EditorState>({ videoClips: [], audioClips: [], textLayers: [], assets: [] });
+  const aiUndo = useRef<EditorState | null>(null);
+  useEffect(() => {
+    liveTimeline.current = { videoClips, audioClips, textLayers, assets } as EditorState;
+  }, [videoClips, audioClips, textLayers, assets]);
+  useEffect(() => {
+    useEditorBridge.setState({
+      attached: true,
+      getState: () => liveTimeline.current,
+      apply: (ops) => {
+        const before = liveTimeline.current;
+        const next = applyEditOps(before, ops);
+        aiUndo.current = before;
+        setVideoClips(next.videoClips as TrackClip[]);
+        setAudioClips(next.audioClips as TrackClip[]);
+        setTextLayers(next.textLayers as TextLayer[]);
+        useEditorBridge.setState({ canUndo: true });
+      },
+      undo: () => {
+        const prev = aiUndo.current;
+        if (!prev) return;
+        setVideoClips(prev.videoClips as TrackClip[]);
+        setAudioClips(prev.audioClips as TrackClip[]);
+        setTextLayers(prev.textLayers as TextLayer[]);
+        aiUndo.current = null;
+        useEditorBridge.setState({ canUndo: false });
+      },
+    });
+    return () => useEditorBridge.setState({ attached: false, getState: null, apply: null, undo: null, canUndo: false });
+  }, []);
   const [hoveredTrackInfo, setHoveredTrackInfo] = useState<{ type: string, row: number } | null>(null);
 
   const videoTrackCount = Math.max(1, ...videoClips.map(c => (c.trackRow || 0) + 1));

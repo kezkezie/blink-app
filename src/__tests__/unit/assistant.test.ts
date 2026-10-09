@@ -47,7 +47,7 @@ describe("Ask BlinkSpot tools", () => {
   it("proposes a long video as a link into the scene planner, never a spend", async () => {
     const r = await runAssistantTool("propose_video", { style: "storytelling", brief: "farm to plate", seconds: 20, quality: "standard" }, ctx);
     expect(r.action?.kind).toBe("open_video_studio");
-    const url = new URL(r.action!.href, "https://x");
+    const url = new URL(r.action!.href!, "https://x");
     expect(url.pathname).toBe("/studio/video");
     expect(url.searchParams.get("mode")).toBe("storytelling");
     expect(url.searchParams.get("brief")).toBe("farm to plate");
@@ -58,7 +58,7 @@ describe("Ask BlinkSpot tools", () => {
   });
   it("clamps and whitelists model input", async () => {
     const r = await runAssistantTool("propose_video", { style: "hack", brief: "x", seconds: 9999, aspect_ratio: "7:3", quality: "ultra" }, ctx);
-    const url = new URL(r.action!.href, "https://x");
+    const url = new URL(r.action!.href!, "https://x");
     expect(url.searchParams.get("mode")).toBe("storytelling");
     expect(url.searchParams.get("aspect")).toBe("16:9");
     expect(r.action!.note).toMatch(/120s/);
@@ -99,6 +99,15 @@ describe("Ask BlinkSpot agent loop", () => {
     await expect(runAssistant([{ role: "user", content: "hi" }], ctx, vi.fn())).rejects.toBeInstanceOf(AssistantUnavailableError);
   });
 
+  it("names the workspace for keys that are not scoped to one", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.ANTHROPIC_WORKSPACE_ID = "wrkspc_test";
+    const fetchImpl = vi.fn().mockResolvedValue(ok({ stop_reason: "end_turn", content: [{ type: "text", text: "hi" }] }));
+    await runAssistant([{ role: "user", content: "hi" }], ctx, fetchImpl as unknown as typeof fetch);
+    expect(fetchImpl.mock.calls[0][1].headers["anthropic-workspace-id"]).toBe("wrkspc_test");
+    delete process.env.ANTHROPIC_WORKSPACE_ID;
+  });
+
   it("goes straight to Anthropic when an Anthropic key is set (same model and format)", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     const fetchImpl = vi.fn().mockResolvedValue(ok({ stop_reason: "end_turn", content: [{ type: "text", text: "hi" }] }));
@@ -108,6 +117,7 @@ describe("Ask BlinkSpot agent loop", () => {
     expect(init.headers["x-api-key"]).toBe("sk-ant-test");
     expect(init.headers["anthropic-version"]).toBe("2023-06-01");
     expect(init.headers.Authorization).toBeUndefined();
+    expect(init.headers["anthropic-workspace-id"]).toBeUndefined();
     expect(JSON.parse(init.body).model).toBe("claude-opus-5-5");
     expect(out.provider).toBe("anthropic");
   });
@@ -134,6 +144,27 @@ describe("Ask BlinkSpot agent loop", () => {
     expect(init.headers.Authorization).toBe("Bearer test-key");
     const second = JSON.parse(fetchImpl.mock.calls[1][1].body);
     expect(second.messages.at(-1)).toEqual({ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: expect.stringMatching(/Nothing has been spent/) }] });
+  });
+
+  it("in the editor: sends the timeline and frames, offers edit_timeline, returns an Apply action", async () => {
+    const timeline = { length: 10, video: [{ id: "a", name: "Pour", type: "video" as const, start: 0, from: 0, to: 5, sourceLength: 8, row: 0 }, { id: "b", name: "Pack", type: "video" as const, start: 5, from: 0, to: 5, sourceLength: 6, row: 0 }], audio: [], text: [], library: [] };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(ok({ stop_reason: "tool_use", content: [{ type: "tool_use", id: "t1", name: "edit_timeline", input: { summary: "Pack first, tighter", ops: [{ op: "sequence", clipIds: ["b", "a"] }, { op: "trim", clipId: "a", from: 1, to: 3 }] } }] }))
+      .mockResolvedValueOnce(ok({ stop_reason: "end_turn", content: [{ type: "text", text: "Opened on the pack, trimmed the pour." }] }));
+    const out = await runAssistant([{ role: "user", content: "make it punchier" }], { ...ctx, editor: { timeline, frames: [{ clipId: "a", t: 2, data: "QUJD" }] } }, fetchImpl as unknown as typeof fetch);
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body.tools.map((t: { name: string }) => t.name)).toContain("edit_timeline");
+    expect(body.system).toContain('"id":"a"');
+    const last = body.messages.at(-1);
+    expect(last.content[1]).toEqual({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: "QUJD" } });
+    expect(last.content.at(-1)).toEqual({ type: "text", text: "make it punchier" });
+    expect(out.actions[0]).toMatchObject({ kind: "apply_edit", changes: ["Order: Pack → Pour", "Trim Pour to 1–3 s"] });
+  });
+
+  it("does not offer edit_timeline outside the editor", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(ok({ stop_reason: "end_turn", content: [{ type: "text", text: "hi" }] }));
+    await runAssistant([{ role: "user", content: "hi" }], ctx, fetchImpl as unknown as typeof fetch);
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).tools.map((t: { name: string }) => t.name)).not.toContain("edit_timeline");
   });
 
   it("surfaces a model error instead of an empty answer", async () => {

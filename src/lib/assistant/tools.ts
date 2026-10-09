@@ -9,16 +9,20 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { estimateVideoCredits, resolveEffectiveVideoModel, resolveVideoModel } from "@/lib/video-model-registry";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
+import { describeEditOps, validateEditOps, type EditOp, type TimelineSummary } from "@/lib/editor-ops";
 
 export type AssistantAction = {
-  kind: "open_video_studio" | "open_image_studio" | "open_page";
+  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit";
   label: string;
-  href: string;
+  href?: string;
   estimatedCredits?: number;
   note?: string;
+  /** apply_edit only: the validated edit and a plain-English list of what it changes. */
+  ops?: EditOp[];
+  changes?: string[];
 };
 
-export type ToolContext = { clientId: string; brandId: string | null };
+export type ToolContext = { clientId: string; brandId: string | null; timeline?: TimelineSummary };
 export type ToolResult = { content: string; action?: AssistantAction };
 
 const VIDEO_STYLES = ["storytelling", "showcase", "logo_reveal", "ugc", "clothing"] as const;
@@ -37,7 +41,6 @@ const PAGES: Record<string, { href: string; label: string }> = {
   upload: { href: "/studio/library/upload", label: "Upload media" },
   plan: { href: "/studio/plan", label: "Open the calendar" },
   approvals: { href: "/studio/plan/approvals", label: "Open approvals" },
-  analytics: { href: "/studio/plan/analytics", label: "Open analytics" },
   brand: { href: "/studio/brand", label: "Open Brand" },
   billing: { href: "/studio/account/billing", label: "Open billing" },
   settings: { href: "/studio/account/settings", label: "Open settings" },
@@ -126,7 +129,7 @@ export const ASSISTANT_TOOLS = [
   },
   {
     name: "open_page",
-    description: "Offer a button to a page: library, upload, plan (calendar), approvals, analytics, brand, billing, settings.",
+    description: "Offer a button to a page: library, upload, plan (calendar), approvals, brand, billing, settings.",
     input_schema: {
       type: "object",
       properties: { page: { type: "string", enum: Object.keys(PAGES) } },
@@ -135,6 +138,25 @@ export const ASSISTANT_TOOLS = [
     },
   },
 ] as const;
+
+/** Only offered when the user has the Video Editor open; it edits that timeline and nothing else. */
+export const EDIT_TIMELINE_TOOL = {
+  name: "edit_timeline",
+  description: "Propose an edit to the open Video Editor timeline. The user sees the list of changes and presses Apply (Undo is one click). Use only ids from the timeline. Ops: sequence {clipIds in play order, dropOthers?}; trim {clipId, from, to} in seconds of the source clip; remove {clipId}; add_clip {assetId from library, at start|end, from?, to?}; add_text {text, start, duration, position top|center|bottom, size small|medium|large, color #RRGGBB}; remove_text {textId}; volume {clipId, volume 0-100}; music {assetId of an audio item, volume?}. Clips are laid end to end after an edit.",
+  input_schema: {
+    type: "object",
+    properties: {
+      summary: { type: "string", maxLength: 300, description: "One line: what this cut does." },
+      ops: { type: "array", maxItems: 40, items: { type: "object" } },
+    },
+    required: ["summary", "ops"],
+    additionalProperties: false,
+  },
+} as const;
+
+export const EDITOR_GUIDE = `The user has the Video Editor open. You can see its timeline below (and, when attached, a few frames from each clip, labelled with the clip id and time). Editing is free and needs no credits.
+How to cut well for social: open on the strongest moment (a hook in the first 1-2 s), keep shots 1.5-4 s unless the moment needs longer, cut on action, end on the product or brand with a short call to action, and match the length the user asks for (default 15 s for Reels/TikTok). Trim to the best part of each clip using the frames. Keep captions short (2-6 words), in the brand's voice.
+Use edit_timeline once with the whole edit. Then say in one or two lines what you changed.`;
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const int = (v: unknown, lo: number, hi: number, fallback: number) => {
@@ -258,6 +280,16 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
       return {
         content: `Proposal shown to the user as a button. About ${quote.credits} credits. Nothing has been spent.`,
         action: { kind: "open_image_studio", label: "Open Image Studio", href: `/studio/image?${params}`, estimatedCredits: quote.credits, note: `${quote.perImage} credits per image` },
+      };
+    }
+    case "edit_timeline": {
+      if (!ctx.timeline) return { content: "The Video Editor is not open, so there is nothing to edit. Offer open_page or ask the user to open Video Studio → Edit." };
+      const ops = validateEditOps(input.ops, ctx.timeline);
+      if (!ops.length) return { content: "None of those operations were valid for this timeline (check the clip ids). Nothing was proposed." };
+      const changes = describeEditOps(ops, ctx.timeline);
+      return {
+        content: `Proposed ${ops.length} change(s) to the user as an Apply button. Nothing is changed until they press it.`,
+        action: { kind: "apply_edit", label: "Apply this edit", note: str(input.summary, 300) || "AI edit", ops, changes },
       };
     }
     case "open_page": {

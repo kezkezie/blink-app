@@ -68,9 +68,10 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 6. Two looks, one app. Opening /studio opts into the new look; "Classic look" in the studio
-  // account menu sets the cookie back. While the new look is on, classic /dashboard links (old
-  // bookmarks, the post-login redirect, router.push inside reused pages) land on their /studio home.
+  // 6. Two looks, one app. The studio layout turns the new look on when it renders (client side, so
+  // no prefetch or background request can ever flip it); "Classic look" in the studio account menu
+  // turns it off. While it is on, classic /dashboard links (old bookmarks, the post-login redirect,
+  // router.push inside reused pages) land on their /studio home.
   if (user && pathname.startsWith("/dashboard") && request.cookies.get(UI_COOKIE)?.value === "studio") {
     const target = studioPathFor(pathname);
     if (target) {
@@ -79,13 +80,6 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
   }
-  // Only a real page load opts in. A background RSC fetch or link prefetch of a /studio page (still
-  // in flight when someone picks "Classic look") must not flip the cookie back.
-  const isDocumentRequest = !request.headers.get("rsc") && !request.headers.get("next-router-prefetch") && request.headers.get("purpose") !== "prefetch";
-  if (user && isDocumentRequest && (pathname === "/studio" || pathname.startsWith("/studio/")) && request.cookies.get(UI_COOKIE)?.value !== "studio") {
-    response.cookies.set(UI_COOKIE, "studio", { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" });
-  }
-
   return response;
 }
 

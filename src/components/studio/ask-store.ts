@@ -1,11 +1,15 @@
 "use client";
 
 import { create } from "zustand";
+import type { EditOp } from "@/lib/editor-ops";
 
 export type AskAction = {
-  kind: "open_video_studio" | "open_image_studio" | "open_page";
+  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit";
   label: string;
-  href: string;
+  href?: string;
+  /** apply_edit: the edit and what it changes, applied only when the user presses Apply. */
+  ops?: EditOp[];
+  changes?: string[];
   /** Credits the action will cost when the user runs it in the studio (never spent by the assistant). */
   estimatedCredits?: number;
   note?: string;

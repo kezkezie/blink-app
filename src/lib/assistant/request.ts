@@ -1,11 +1,48 @@
 import type { AgentMessage } from "./agent";
+import type { TimelineSummary } from "@/lib/editor-ops";
+
+export type EditorFrame = { clipId: string; t: number; data: string };
+export type EditorContext = { timeline: TimelineSummary; frames: EditorFrame[] };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_MESSAGES = 20;
 const MAX_TEXT = 4000;
 
+const ID = /^[\w-]{1,80}$/;
+const FRAME = /^[A-Za-z0-9+/=]+$/;
+const num = (v: unknown, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null);
+const name = (v: unknown) => (typeof v === "string" ? v.slice(0, 80) : "");
+
+/** The Video Editor timeline as the panel sends it. Anything malformed is dropped, not trusted. */
+export function parseEditorContext(raw: unknown): EditorContext | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const t = r.timeline as Record<string, unknown> | undefined;
+  if (!t || typeof t !== "object") return null;
+  const list = (v: unknown, max: number) => (Array.isArray(v) ? v.slice(0, max).filter((x) => x && typeof x === "object" && ID.test(String((x as { id?: unknown }).id))) as Record<string, unknown>[] : []);
+  const timeline: TimelineSummary = {
+    length: num(t.length, 0, 36_000) ?? 0,
+    video: list(t.video, 60).map((c) => ({
+      id: String(c.id), name: name(c.name), type: c.type === "image" ? "image" : "video",
+      start: num(c.start, 0, 36_000) ?? 0, from: num(c.from, 0, 36_000) ?? 0, to: num(c.to, 0, 36_000) ?? 0,
+      sourceLength: num(c.sourceLength, 0, 36_000) ?? 0, row: num(c.row, 0, 20) ?? 0,
+    })),
+    audio: list(t.audio, 20).map((c) => ({ id: String(c.id), name: name(c.name), start: num(c.start, 0, 36_000) ?? 0, from: num(c.from, 0, 36_000) ?? 0, to: num(c.to, 0, 36_000) ?? 0, volume: num(c.volume, 0, 100) ?? 100 })),
+    text: list(t.text, 40).map((x) => ({ id: String(x.id), text: name(x.text), start: num(x.start, 0, 36_000) ?? 0, duration: num(x.duration, 0, 3600) ?? 0 })),
+    library: list(t.library, 30).map((a) => ({ id: String(a.id), name: name(a.name), type: a.type === "audio" ? "audio" : a.type === "image" ? "image" : "video", duration: num(a.duration, 0, 36_000) ?? undefined })),
+  };
+  const ids = new Set([...timeline.video, ...timeline.library].map((c) => c.id));
+  const frames = (Array.isArray(r.frames) ? r.frames : []).slice(0, 24).flatMap((f) => {
+    if (!f || typeof f !== "object") return [];
+    const { clipId, t: at, data } = f as Record<string, unknown>;
+    if (typeof clipId !== "string" || !ids.has(clipId) || typeof data !== "string" || data.length > 80_000 || !FRAME.test(data)) return [];
+    return [{ clipId, t: num(at, 0, 36_000) ?? 0, data }];
+  });
+  return { timeline, frames };
+}
+
 /** Only plain user/assistant text is accepted from the browser; tool traffic is rebuilt server side. */
-export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; brandId: string | null; page?: string } | null {
+export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; brandId: string | null; page?: string; editor?: EditorContext } | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
   if (!Array.isArray(b.messages) || b.messages.length === 0 || b.messages.length > MAX_MESSAGES) return null;
@@ -23,5 +60,6 @@ export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]
   while (messages.length && messages[0].role !== "user") messages.shift();
   const brandId = typeof b.brandId === "string" && UUID.test(b.brandId) ? b.brandId : null;
   const page = typeof b.page === "string" && /^\/studio[\w/-]{0,80}$/.test(b.page) ? b.page : undefined;
-  return { messages, brandId, page };
+  const editor = parseEditorContext(b.editor) ?? undefined;
+  return { messages, brandId, page, ...(editor ? { editor } : {}) };
 }

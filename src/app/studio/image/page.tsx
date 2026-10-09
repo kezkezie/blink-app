@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LayoutTemplate, Sparkles, Wand2, ArrowLeft } from "lucide-react";
+import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useAssistedCreationStore } from "@/app/store/useAssistedCreationStore";
@@ -45,6 +45,8 @@ function ImageStudioInner() {
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [loadingPick, setLoadingPick] = useState(!!params.get("content"));
   const [designKey, setDesignKey] = useState(0);
+  // Where the prompt came from, read once on arrival (the query is cleared after the hand-off).
+  const [handoff, setHandoff] = useState<string | null>(() => (params.get("prompt") ? (params.get("from") === "ask" ? "Ask BlinkSpot" : "Create") : null));
 
   // ?content= opens Edit or Design on a Library image.
   useEffect(() => {
@@ -78,7 +80,18 @@ function ImageStudioInner() {
         <span className="text-xs hidden sm:inline" style={{ color: "var(--s-mute)" }}>{MODES.find((m) => m.id === mode)?.hint}</span>
       </div>
 
-      {mode === "generate" && <div className="p-4 md:p-6 mx-auto w-full max-w-[1320px]"><ClassicImageStudio /></div>}
+      {mode === "generate" && (
+        <div className="p-4 md:p-6 mx-auto w-full max-w-[1320px]">
+          {handoff && (
+            <div className="s-card px-4 py-3 mb-4 flex flex-wrap items-center gap-2 text-sm" role="status" style={{ borderColor: "color-mix(in oklab, var(--s-accent) 35%, var(--s-line))" }}>
+              <b className="font-medium">Your idea from {handoff} is in the box below.</b>
+              <span style={{ color: "var(--s-soft)" }}>Press <b>Develop my idea</b> for three directions, or <b>Customize advanced details</b> to set it up yourself.</span>
+              <button className="s-btn ghost sm ml-auto" onClick={() => setHandoff(null)} aria-label="Dismiss"><X className="h-3.5 w-3.5" /></button>
+            </div>
+          )}
+          <ClassicImageStudio />
+        </div>
+      )}
 
       {mode === "edit" && (
         loadingPick ? <div className="p-6"><div className="s-skel h-80" /></div> : picked?.contentId ? (

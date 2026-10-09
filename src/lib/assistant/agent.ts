@@ -6,7 +6,8 @@
  * 72-82 s for a 10-token reply and 2 of 3 calls past 120 s, so when ANTHROPIC_API_KEY is set the
  * same request goes straight to the Anthropic API instead (same model, same format).
  */
-import { ASSISTANT_TOOLS, runAssistantTool, type AssistantAction, type ToolContext } from "./tools";
+import { ASSISTANT_TOOLS, EDITOR_GUIDE, EDIT_TIMELINE_TOOL, runAssistantTool, type AssistantAction, type ToolContext } from "./tools";
+import type { EditorContext } from "./request";
 
 export const ASSISTANT_MODEL = "claude-opus-5-5";
 const KIE_MESSAGES_URL = "https://api.kie.ai/anthropic/v1/messages";
@@ -19,16 +20,25 @@ const TURN_BUDGET_MS = 170_000;
 
 export function assistantProvider(): { name: "anthropic" | "kie"; url: string; headers: Record<string, string> } {
   const anthropic = process.env.ANTHROPIC_API_KEY;
-  if (anthropic) return { name: "anthropic", url: ANTHROPIC_MESSAGES_URL, headers: { "x-api-key": anthropic, "anthropic-version": "2023-06-01" } };
+  if (anthropic) {
+    // A key that is not scoped to a workspace must name one, or Anthropic answers 400.
+    const workspace = process.env.ANTHROPIC_WORKSPACE_ID;
+    return {
+      name: "anthropic",
+      url: ANTHROPIC_MESSAGES_URL,
+      headers: { "x-api-key": anthropic, "anthropic-version": "2023-06-01", ...(workspace ? { "anthropic-workspace-id": workspace } : {}) },
+    };
+  }
   const kie = process.env.KIE_API_TOKEN;
   if (kie) return { name: "kie", url: KIE_MESSAGES_URL, headers: { Authorization: `Bearer ${kie}` } };
   throw new AssistantUnavailableError("The assistant is not configured (set ANTHROPIC_API_KEY or KIE_API_TOKEN).");
 }
 
 type TextBlock = { type: "text"; text: string };
+type ImageBlock = { type: "image"; source: { type: "base64"; media_type: "image/jpeg"; data: string } };
 type ToolUseBlock = { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
 type ToolResultBlock = { type: "tool_result"; tool_use_id: string; content: string };
-type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | { type: string; [k: string]: unknown };
+type ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock | { type: string; [k: string]: unknown };
 export type AgentMessage = { role: "user" | "assistant"; content: string | ContentBlock[] };
 type MessagesResponse = {
   content?: ContentBlock[];
@@ -58,14 +68,37 @@ function textOf(blocks: ContentBlock[] | undefined) {
 
 export async function runAssistant(
   history: AgentMessage[],
-  ctx: ToolContext & { pageHint?: string; brief?: string },
+  ctx: ToolContext & { pageHint?: string; brief?: string; editor?: EditorContext },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ reply: string; actions: AssistantAction[]; usage: { input: number; output: number }; provider: "anthropic" | "kie" }> {
   const provider = assistantProvider();
   const started = Date.now();
 
-  const system = [SYSTEM_PROMPT, ctx.brief, ctx.pageHint ? `The user is on: ${ctx.pageHint}.` : ""].filter(Boolean).join("\n\n");
+  const editor = ctx.editor;
+  const system = [
+    SYSTEM_PROMPT,
+    ctx.brief,
+    ctx.pageHint ? `The user is on: ${ctx.pageHint}.` : "",
+    editor ? `${EDITOR_GUIDE}\nTimeline (ids, seconds): ${JSON.stringify(editor.timeline)}` : "",
+  ].filter(Boolean).join("\n\n");
+  const tools = editor ? [...ASSISTANT_TOOLS, EDIT_TIMELINE_TOOL] : ASSISTANT_TOOLS;
+  const toolCtx: ToolContext = { clientId: ctx.clientId, brandId: ctx.brandId, timeline: editor?.timeline };
   const messages: AgentMessage[] = [...history];
+  // Frames ride on the latest user message only, so they cost tokens once.
+  if (editor?.frames.length) {
+    const last = messages[messages.length - 1];
+    const text = typeof last.content === "string" ? last.content : "";
+    messages[messages.length - 1] = {
+      role: "user",
+      content: [
+        ...editor.frames.flatMap((f): ContentBlock[] => [
+          { type: "text", text: `Frame from clip ${f.clipId} at ${f.t.toFixed(1)} s:` },
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: f.data } },
+        ]),
+        { type: "text", text },
+      ],
+    };
+  }
   const actions: AssistantAction[] = [];
   const usage = { input: 0, output: 0 };
   let reply = "";
@@ -75,7 +108,7 @@ export async function runAssistant(
     const res = await fetchImpl(provider.url, {
       method: "POST",
       headers: { ...provider.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: MAX_TOKENS, system, tools: ASSISTANT_TOOLS, messages, stream: false }),
+      body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: MAX_TOKENS, system, tools, messages, stream: false }),
       signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
     });
     const data = (await res.json().catch(() => ({}))) as MessagesResponse;
@@ -94,7 +127,7 @@ export async function runAssistant(
     messages.push({ role: "assistant", content: data.content });
     const results: ToolResultBlock[] = [];
     for (const call of calls) {
-      const out = await runAssistantTool(call.name, call.input ?? {}, ctx).catch(() => ({ content: "That lookup failed. Carry on without it.", action: undefined }));
+      const out = await runAssistantTool(call.name, call.input ?? {}, toolCtx).catch(() => ({ content: "That lookup failed. Carry on without it.", action: undefined }));
       if (out.action && actions.length < 4) actions.push(out.action);
       results.push({ type: "tool_result", tool_use_id: call.id, content: out.content });
     }

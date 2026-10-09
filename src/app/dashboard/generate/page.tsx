@@ -770,8 +770,8 @@ export default function ImageStudioPage() {
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 pb-20 animate-in fade-in duration-500 relative">
-      {/* ── HERO BANNER ── */}
-      <div className="relative bg-[#2A2F38] rounded-2xl p-8 border border-[#57707A]/40 shadow-xl overflow-hidden">
+      {/* ── HERO BANNER ── (hidden in the studio look, which has its own header) */}
+      <div data-classic-hero className="relative bg-[#2A2F38] rounded-2xl p-8 border border-[#57707A]/40 shadow-xl overflow-hidden">
         <div className="absolute top-0 left-0 w-96 h-96 bg-[#C5BAC4]/10 blur-[120px] rounded-full pointer-events-none -translate-x-1/2 -translate-y-1/2" />
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-3">
