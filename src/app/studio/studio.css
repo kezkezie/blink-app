@@ -1,0 +1,214 @@
+/* BlinkSpot v2 "studio" look. Dark work tool: the work is the brightest thing on screen.
+   Everything is scoped to .studio, so the classic /dashboard design is untouched. The layout
+   also puts .studio on <body> while it is mounted, so dialogs and menus (portals) match. */
+
+.studio {
+  --s-bg: #0C0D0F;
+  --s-panel: #131417;
+  --s-raised: #1A1C20;
+  --s-hover: #22252A;
+  --s-line: #25282D;
+  --s-line-2: #30343A;
+  --s-text: #ECEDEE;
+  --s-soft: #A9AEB6;
+  --s-mute: #6E737B;
+  --s-black: #000000;
+  --s-accent: #C6F432;      /* one action colour */
+  --s-accent-ink: #0C0D0F;
+  --s-ai: #8B7CFF;          /* AI suggestions only */
+  --s-ok: #3DD68C;
+  --s-warn: #F5B547;
+  --s-danger: #FF5D5D;
+  --s-r: 10px;
+  --s-r-lg: 14px;
+  --s-ui: var(--font-geist-sans), "Geist", system-ui, sans-serif;
+  --s-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+
+  /* Re-point the app's Tailwind theme and shadcn tokens, so reused pages and ui/* components
+     pick up the new look without being edited. */
+  --color-brand-bg: var(--s-bg);
+  --color-brand-surface: var(--s-hover);
+  --color-brand-secondary: var(--s-soft);
+  --color-brand-accent: var(--s-text);
+  --color-brand-light: var(--s-text);
+  --color-brand-text: var(--s-text);
+  --font-sans: var(--s-ui);
+  --font-display: var(--s-ui);
+  --font-heading: var(--s-ui);
+  --font-mono: var(--s-mono);
+  --background: var(--s-bg);
+  --foreground: var(--s-text);
+  --card: var(--s-panel);
+  --card-foreground: var(--s-text);
+  --popover: var(--s-raised);
+  --popover-foreground: var(--s-text);
+  --primary: var(--s-accent);
+  --primary-foreground: var(--s-accent-ink);
+  --secondary: var(--s-raised);
+  --secondary-foreground: var(--s-text);
+  --muted: var(--s-raised);
+  --muted-foreground: var(--s-mute);
+  --accent: var(--s-hover);
+  --accent-foreground: var(--s-text);
+  --border: var(--s-line);
+  --input: var(--s-line-2);
+  --ring: var(--s-accent);
+
+  color-scheme: dark;
+  background: var(--s-bg);
+  color: var(--s-text);
+  font-family: var(--s-ui);
+  -webkit-font-smoothing: antialiased;
+}
+body.studio { background: var(--s-bg); }
+.studio h1, .studio h2, .studio h3, .studio h4 { font-family: var(--s-ui); letter-spacing: -0.01em; }
+.studio :focus-visible { outline: 2px solid var(--s-accent); outline-offset: 2px; }
+.studio ::selection { background: color-mix(in oklab, var(--s-accent) 35%, transparent); }
+.studio .mono, .studio .font-mono { font-family: var(--s-mono); }
+.studio * { scrollbar-width: thin; scrollbar-color: var(--s-line-2) transparent; }
+
+/* Component classes live in Tailwind's components layer, so utilities on the same element
+   (hidden, md:inline-flex, w-full...) still win. The token block above and legacy-theme.css stay
+   unlayered on purpose: they must beat the classic pages' utilities. */
+@layer components {
+  /* ---------- shell */
+  .s-app { display: flex; min-height: 100dvh; }
+  .s-rail {
+    position: sticky; top: 0; height: 100dvh; width: 76px; flex-shrink: 0;
+    background: var(--s-panel); border-right: 1px solid var(--s-line);
+    display: none; flex-direction: column; align-items: center; padding: 14px 0; gap: 6px; z-index: 30;
+  }
+  @media (min-width: 768px) { .s-rail { display: flex; } }
+  .s-logo { width: 34px; height: 34px; border-radius: 10px; background: var(--s-accent); color: var(--s-accent-ink);
+    display: grid; place-items: center; font: 700 15px var(--s-ui); margin-bottom: 14px; }
+  .s-navbtn { width: 60px; padding: 9px 0 7px; border-radius: 10px; display: flex; flex-direction: column; align-items: center;
+    gap: 5px; color: var(--s-mute); font-size: 10.5px; font-weight: 500; transition: background .15s, color .15s; }
+  .s-navbtn svg { width: 20px; height: 20px; }
+  .s-navbtn:hover { background: var(--s-raised); color: var(--s-soft); }
+  .s-navbtn[aria-current="page"] { background: var(--s-raised); color: var(--s-text); }
+  .s-navbtn[aria-current="page"] svg { color: var(--s-accent); }
+  .s-navbtn.ask svg { color: var(--s-ai); }
+  .s-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .s-top { position: sticky; top: 0; z-index: 20; height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+    padding: 0 16px; background: color-mix(in oklab, var(--s-bg) 88%, transparent); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--s-line); }
+  .s-top h1 { font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .s-crumb { color: var(--s-mute); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s-content { flex: 1; min-width: 0; padding: 20px 16px 96px; }
+  @media (min-width: 768px) { .s-content { padding: 24px 24px 40px; } }
+  .s-content.bleed { padding: 0; }
+  .s-reading { max-width: 1240px; margin: 0 auto; }
+
+  .s-tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, 1fr);
+    background: color-mix(in oklab, var(--s-panel) 94%, transparent); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--s-line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+  @media (min-width: 768px) { .s-tabbar { display: none; } }
+  .s-tabbar .s-navbtn { width: auto; }
+
+  /* ---------- controls */
+  .s-btn { height: 34px; padding: 0 14px; border-radius: 9px; background: var(--s-raised); border: 1px solid var(--s-line-2);
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 500; font-size: 13px;
+    white-space: nowrap; color: var(--s-text); transition: background .15s, filter .15s, border-color .15s; }
+  .s-btn:hover { background: var(--s-hover); }
+  .s-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .s-btn.primary { background: var(--s-accent); color: var(--s-accent-ink); border-color: transparent; font-weight: 600; }
+  .s-btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .s-btn.ghost { background: transparent; border-color: transparent; color: var(--s-soft); }
+  .s-btn.ghost:hover { background: var(--s-raised); color: var(--s-text); }
+  .s-btn.ai { border-color: color-mix(in oklab, var(--s-ai) 45%, transparent); color: var(--s-text); }
+  .s-btn.ai svg { color: var(--s-ai); }
+  .s-btn.lg { height: 42px; padding: 0 18px; font-size: 14px; }
+  .s-btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+  .s-btn .cost { font: 500 11px var(--s-mono); opacity: .75; padding-left: 8px; border-left: 1px solid rgba(0,0,0,.25); }
+  .s-btn:not(.primary) .cost { border-left-color: var(--s-line-2); }
+  .s-chip { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--s-line-2); background: transparent;
+    color: var(--s-soft); display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+  .s-chip:hover { color: var(--s-text); border-color: var(--s-mute); }
+  .s-chip[aria-pressed="true"], .s-chip.on { background: var(--s-text); color: var(--s-bg); border-color: var(--s-text); }
+  .s-pill { font: 500 12px var(--s-mono); color: var(--s-soft); background: var(--s-raised); border: 1px solid var(--s-line);
+    border-radius: 999px; padding: 6px 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .s-pill b { color: var(--s-text); font-weight: 500; }
+  .s-badge { font: 500 10px var(--s-mono); padding: 2px 7px; border-radius: 999px; background: var(--s-line); color: var(--s-soft); white-space: nowrap; }
+  .s-badge.ok { background: color-mix(in oklab, var(--s-ok) 15%, transparent); color: var(--s-ok); }
+  .s-badge.ai { background: color-mix(in oklab, var(--s-ai) 15%, transparent); color: var(--s-ai); }
+  .s-badge.warn { background: color-mix(in oklab, var(--s-warn) 15%, transparent); color: var(--s-warn); }
+  .s-badge.danger { background: color-mix(in oklab, var(--s-danger) 15%, transparent); color: var(--s-danger); }
+  .s-seg { display: inline-flex; background: var(--s-bg); border: 1px solid var(--s-line); border-radius: 10px; padding: 3px; gap: 2px; }
+  .s-seg > button, .s-seg > a { height: 28px; padding: 0 12px; border-radius: 7px; color: var(--s-mute); font-weight: 500; font-size: 12.5px;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .s-seg > button:hover, .s-seg > a:hover { color: var(--s-soft); }
+  .s-seg > [aria-selected="true"], .s-seg > [aria-pressed="true"], .s-seg > [aria-current="page"] { background: var(--s-raised); color: var(--s-text); }
+  .s-input { width: 100%; background: var(--s-bg); border: 1px solid var(--s-line-2); border-radius: 9px; height: 36px; padding: 0 12px;
+    font-size: 13px; color: var(--s-text); outline: none; }
+  .s-input:focus { border-color: var(--s-mute); }
+  .s-input::placeholder { color: var(--s-mute); }
+  textarea.s-input { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.5; }
+  select.s-input { padding: 0 8px; }
+  .s-label { color: var(--s-mute); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 7px; display: block; }
+  .s-kbd { font: 500 10px var(--s-mono); color: var(--s-mute); border: 1px solid var(--s-line-2); border-radius: 5px; padding: 1px 5px; }
+
+  /* ---------- surfaces */
+  .s-card { background: var(--s-panel); border: 1px solid var(--s-line); border-radius: var(--s-r-lg); }
+  .s-panel { background: var(--s-panel); border: 1px solid var(--s-line); border-radius: var(--s-r-lg); }
+  .s-section-h { font-size: 12px; font-weight: 500; color: var(--s-mute); text-transform: uppercase; letter-spacing: .08em;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .s-empty { border: 1px dashed var(--s-line-2); border-radius: var(--s-r-lg); padding: 48px 20px; text-align: center; color: var(--s-soft); }
+  .s-empty h3 { color: var(--s-text); font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .s-skel { background: linear-gradient(90deg, var(--s-panel), var(--s-raised), var(--s-panel)); background-size: 200% 100%;
+    animation: s-shimmer 1.4s infinite linear; border-radius: var(--s-r-lg); }
+  @keyframes s-shimmer { to { background-position: -200% 0; } }
+
+  /* media cards (Library, Create recents, pickers) */
+  .s-media { position: relative; display: block; border-radius: var(--s-r-lg); overflow: hidden; background: var(--s-panel);
+    border: 1px solid var(--s-line); transition: border-color .2s; text-align: left; width: 100%; }
+  .s-media:hover { border-color: var(--s-line-2); }
+  .s-media .m { position: relative; aspect-ratio: 4 / 3; background: #000; overflow: hidden; }
+  .s-media .m img, .s-media .m video { width: 100%; height: 100%; object-fit: cover; transition: transform .5s; display: block; }
+  .s-media:hover .m img, .s-media:hover .m video { transform: scale(1.03); }
+  .s-media .tl { position: absolute; left: 8px; top: 8px; display: flex; gap: 4px; }
+  .s-media .tl .s-badge { background: rgba(0,0,0,.6); color: #fff; backdrop-filter: blur(6px); }
+  .s-media .hov { position: absolute; right: 8px; top: 8px; display: flex; gap: 4px; opacity: 0; transform: translateY(-4px); transition: all .2s; }
+  .s-media .hov .s-btn { background: rgba(12,13,15,.72); backdrop-filter: blur(8px); border-color: rgba(255,255,255,.12); }
+  .s-media .hov .s-btn:hover { background: rgba(12,13,15,.9); }
+  .s-media:hover .hov, .s-media:focus-within .hov { opacity: 1; transform: none; }
+  @media (hover: none) { .s-media .hov { opacity: 1; transform: none; } }
+  .s-media .ft { padding: 9px 11px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .s-media .ft b { font-weight: 500; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s-media .ft span { color: var(--s-mute); font-size: 11px; white-space: nowrap; }
+  .s-media.sel { outline: 2px solid var(--s-accent); outline-offset: -2px; }
+
+  /* inspector accordion: every dial is listed by name + value; only the open one takes space */
+  .s-acc { border-bottom: 1px solid var(--s-line); }
+  .s-acc > button { width: 100%; display: grid; grid-template-columns: 22px 1fr auto auto; align-items: center; gap: 10px; padding: 12px 14px; text-align: left; }
+  .s-acc > button:hover { background: var(--s-raised); }
+  .s-acc .ic { color: var(--s-mute); display: grid; place-items: center; }
+  .s-acc .nm { font-weight: 500; font-size: 13px; }
+  .s-acc .sum { color: var(--s-mute); font-size: 12px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .s-acc .chev { color: var(--s-mute); transition: transform .2s; }
+  .s-acc[data-open="true"] .chev { transform: rotate(90deg); }
+  .s-acc .b { padding: 2px 14px 14px 46px; }
+
+  .s-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .s-step { display: flex; align-items: center; gap: 7px; color: var(--s-mute); font-size: 12.5px; font-weight: 500; padding: 4px 6px; border-radius: 8px; }
+  .s-step:hover:not(:disabled) { color: var(--s-soft); }
+  .s-step i { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--s-line-2); display: grid; place-items: center; font: 500 10px var(--s-mono); font-style: normal; }
+  .s-step.done { color: var(--s-soft); }
+  .s-step.done i { background: var(--s-ok); border-color: var(--s-ok); color: #06210f; }
+  .s-step.cur { color: var(--s-text); }
+  .s-step.cur i { background: var(--s-text); color: var(--s-bg); border-color: var(--s-text); }
+  .s-step:disabled { cursor: default; }
+  .s-step-sep { width: 22px; height: 1px; background: var(--s-line-2); }
+
+  /* the "Ask BlinkSpot" assistant */
+  .s-ask { position: fixed; z-index: 60; right: 12px; bottom: 12px; top: 12px; width: min(420px, calc(100vw - 24px));
+    background: var(--s-panel); border: 1px solid var(--s-line-2); border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,.55);
+    display: flex; flex-direction: column; overflow: hidden; }
+  @media (max-width: 767px) { .s-ask { right: 0; left: 0; bottom: 0; top: 10dvh; width: auto; border-radius: 16px 16px 0 0; } }
+  .s-ask .msg { font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }
+  .s-ask .msg.me { align-self: flex-end; background: var(--s-raised); border: 1px solid var(--s-line); padding: 8px 12px; border-radius: 12px 12px 4px 12px; max-width: 85%; }
+  .s-ask .msg.ai { color: var(--s-text); }
+  .s-ask .act { border: 1px solid color-mix(in oklab, var(--s-ai) 40%, transparent); background: color-mix(in oklab, var(--s-ai) 7%, var(--s-bg));
+    border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) { .studio *, .studio *::before, .studio *::after { transition: none !important; animation: none !important; } }

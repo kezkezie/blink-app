@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { UI_COOKIE, studioPathFor } from "@/lib/studio-routes";
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -51,8 +52,10 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next/") ||
     pathname.includes(".");
 
-  // 4. If logged OUT and trying to access the dashboard -> Kick to login
-  if (!user && !isPublicPath && pathname.startsWith("/dashboard")) {
+  const isAppPath = pathname.startsWith("/dashboard") || pathname === "/studio" || pathname.startsWith("/studio/");
+
+  // 4. If logged OUT and trying to access the app (classic or studio) -> Kick to login
+  if (!user && !isPublicPath && isAppPath) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
@@ -63,6 +66,24 @@ export async function middleware(request: NextRequest) {
     if (pathname === "/login" || pathname === "/signup" || pathname === "/get-started") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
+  }
+
+  // 6. Two looks, one app. Opening /studio opts into the new look; "Classic look" in the studio
+  // account menu sets the cookie back. While the new look is on, classic /dashboard links (old
+  // bookmarks, the post-login redirect, router.push inside reused pages) land on their /studio home.
+  if (user && pathname.startsWith("/dashboard") && request.cookies.get(UI_COOKIE)?.value === "studio") {
+    const target = studioPathFor(pathname);
+    if (target) {
+      const url = request.nextUrl.clone();
+      url.pathname = target;
+      return NextResponse.redirect(url);
+    }
+  }
+  // Only a real page load opts in. A background RSC fetch or link prefetch of a /studio page (still
+  // in flight when someone picks "Classic look") must not flip the cookie back.
+  const isDocumentRequest = !request.headers.get("rsc") && !request.headers.get("next-router-prefetch") && request.headers.get("purpose") !== "prefetch";
+  if (user && isDocumentRequest && (pathname === "/studio" || pathname.startsWith("/studio/")) && request.cookies.get(UI_COOKIE)?.value !== "studio") {
+    response.cookies.set(UI_COOKIE, "studio", { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" });
   }
 
   return response;
