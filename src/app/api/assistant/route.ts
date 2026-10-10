@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   try {
     const ctx = { clientId: client.id, brandId };
     const brief = await loadAccountBrief(ctx).catch(() => undefined);
-    const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor });
+    const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas });
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof AssistantUnavailableError) return NextResponse.json({ error: err.message }, { status: 503 });
