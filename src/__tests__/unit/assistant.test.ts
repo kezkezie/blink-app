@@ -161,6 +161,18 @@ describe("Ask BlinkSpot agent loop", () => {
     expect(out.actions[0]).toMatchObject({ kind: "apply_edit", changes: ["Order: Pack → Pour", "Trim Pour to 1–3 s"] });
   });
 
+  it("in the image Editor: offers edit_canvas and shows the AI a preview of the canvas", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(ok({ stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] }));
+    const canvas = { width: 1080, height: 1350, background: "#FFFFFF", brandColors: [], layers: [], preview: "QUJD" };
+    await runAssistant([{ role: "user", content: "make a poster" }], { ...ctx, canvas }, fetchImpl as unknown as typeof fetch);
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body.tools.map((t: { name: string }) => t.name)).toContain("edit_canvas");
+    expect(body.max_tokens).toBe(8000);
+    const last = body.messages.at(-1);
+    expect(last.content[1]).toEqual({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: "QUJD" } });
+    expect(body.system).not.toContain("QUJD"); // the picture is sent once, not inside the prompt text
+  });
+
   it("does not offer edit_timeline outside the editor", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(ok({ stop_reason: "end_turn", content: [{ type: "text", text: "hi" }] }));
     await runAssistant([{ role: "user", content: "hi" }], ctx, fetchImpl as unknown as typeof fetch);

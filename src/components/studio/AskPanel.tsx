@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ArrowUp, Check, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useEditorBridge } from "@/components/video/editor-bridge";
+import { useCanvasBridge } from "./editor/canvas-bridge";
 import { summarizeTimeline } from "@/lib/editor-ops";
 import { useAskStore, type AskAction, type AskMessage } from "./ask-store";
 import { captureTimelineFrames } from "./capture-frames";
@@ -15,6 +16,13 @@ const EDITOR_STARTERS = [
   "Pick the best 3 moments and make a 10 second teaser",
   "Add short captions in my brand's voice",
   "Tighten every clip so nothing drags",
+];
+
+const CANVAS_STARTERS = [
+  "Design a launch poster layout here with my brand colours",
+  "Draw a simple vector logo mark for my brand",
+  "Add a bold headline and a call to action at the bottom",
+  "Tidy this up: align everything and fix the spacing",
 ];
 
 const STARTERS = [
@@ -36,6 +44,8 @@ export function AskPanel() {
   const [applied, setApplied] = useState<string | null>(null); // key of the edit currently applied
   const editorOpen = useEditorBridge((b) => b.attached);
   const canUndo = useEditorBridge((b) => b.canUndo);
+  const canvasOpen = useCanvasBridge((b) => b.attached);
+  const canvasCanUndo = useCanvasBridge((b) => b.canUndo);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -74,10 +84,13 @@ export function AskPanel() {
         editor = { timeline: summarizeTimeline(state), frames: watch && state.videoClips.length ? await captureTimelineFrames(state) : [] };
       }
       setStage(null);
+      const cb = useCanvasBridge.getState();
+      const canvas = cb.attached && cb.summary ? cb.summary() : undefined;
+      if (canvas) setStage("Reading your canvas");
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, brandId: activeBrand?.id ?? null, page: pathname, ...(editor ? { editor } : {}) }),
+        body: JSON.stringify({ messages: history, brandId: activeBrand?.id ?? null, page: pathname, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "The assistant could not answer just now.");
@@ -117,10 +130,12 @@ export function AskPanel() {
             <p className="text-sm" style={{ color: "var(--s-soft)" }}>
               {editorOpen
                 ? "I can see your timeline and look at your clips. Tell me the cut you want; I'll show the changes and you press Apply. Undo is one click, and editing is free."
+                : canvasOpen
+                ? "I can see your canvas and its layers. Ask me to lay out a design, draw a vector or logo, add text, or tidy things up. You press Apply; Undo is one click."
                 : <>Tell me what you want to make{activeBrand ? ` for ${activeBrand.brand_name}` : ""}. I&apos;ll read your brand, plan it, price it and open the right studio with everything filled in. I never spend credits; you press Generate.</>}
             </p>
             <div className="flex flex-col gap-2">
-              {(editorOpen ? EDITOR_STARTERS : STARTERS).map((s) => (
+              {(editorOpen ? EDITOR_STARTERS : canvasOpen ? CANVAS_STARTERS : STARTERS).map((s) => (
                 <button key={s} className="s-btn justify-start text-left" style={{ height: "auto", padding: "10px 12px", whiteSpace: "normal" }} onClick={() => send(s)}>{s}</button>
               ))}
             </div>
@@ -131,6 +146,25 @@ export function AskPanel() {
             <div className={`msg ${m.role === "user" ? "me" : "ai"}`}>{m.text}</div>
             {m.actions?.map((a, j) => {
               const key = `${i}:${j}`;
+              if (a.kind === "apply_canvas") {
+                const isApplied = applied === key && canvasCanUndo;
+                return (
+                  <div key={j} className="act">
+                    <div className="text-xs font-medium">{a.note}</div>
+                    <ul className="text-xs grid gap-1" style={{ color: "var(--s-soft)" }}>{a.changes?.slice(0, 12).map((c, k) => <li key={k}>· {c}</li>)}</ul>
+                    {isApplied ? (
+                      <div className="flex items-center gap-2">
+                        <span className="s-badge ok"><Check className="inline h-3 w-3 -mt-px" /> APPLIED</span>
+                        <button className="s-btn sm" onClick={() => { useCanvasBridge.getState().undo?.(); setApplied(null); }}><Undo2 className="h-3.5 w-3.5" /> Undo</button>
+                      </div>
+                    ) : (
+                      <button className="s-btn primary" disabled={!canvasOpen} onClick={async () => { await useCanvasBridge.getState().apply?.(a.canvasOps ?? []); setApplied(key); }}>
+                        {canvasOpen ? a.label : "Open the Editor to apply"}
+                      </button>
+                    )}
+                  </div>
+                );
+              }
               if (a.kind === "apply_edit") {
                 const isApplied = applied === key && canUndo;
                 return (
@@ -190,7 +224,7 @@ export function AskPanel() {
           </button>
         </div>
         <div className="flex items-center justify-between gap-2 mt-2 px-1">
-          <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Claude Opus 5.5 · {editorOpen ? "editing your timeline" : "reads your brand, library and credits"} · <span className="s-kbd">⌘K</span></p>
+          <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Claude Opus 5.5 · {editorOpen ? "editing your timeline" : canvasOpen ? "designing on your canvas" : "reads your brand, library and credits"} · <span className="s-kbd">⌘K</span></p>
           {editorOpen && (
             <label className="flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: "var(--s-soft)" }}>
               <input type="checkbox" checked={watch} onChange={(e) => setWatch(e.target.checked)} style={{ accentColor: "var(--s-accent)" }} /> Look at clips

@@ -77,21 +77,27 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
 
   // Video Studio: Kezie's flow. Long video -> scene planner with the sequence bar; single shot -> inspector.
   await page.goto(`${BASE}/studio/video`);
-  await page.getByRole("button", { name: /Scene by scene/ }).click();
+  await page.getByRole("button", { name: /^Scene by scene/ }).click();
   await expect(page.getByRole("button", { name: /Render all scenes/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("video-story.png") });
   await page.locator(".s-step", { hasText: "Style" }).click();
-  await page.getByRole("button", { name: /Product shot/ }).click();
+  await page.getByRole("button", { name: /^Product shot/ }).click();
   await expect(page.getByRole("button", { name: /Render video/ })).toBeVisible();
   // Product reveal is the other side of Product shot, not a separate style.
   await page.getByRole("tab", { name: "Reveal" }).click();
   await expect(page.getByText(/3D or VFX reveal/)).toBeVisible();
   await page.getByRole("tab", { name: "Camera move" }).click();
   await expect(page.getByText("Shot settings")).toBeVisible();
-  await page.getByRole("button", { name: "Pro" }).click();
+  await page.getByRole("button", { name: "Pro", exact: true }).click();
   await expect(page.getByLabel("Exact model")).toBeVisible();
+  await page.getByRole("button", { name: /Shape & length/ }).click();
+  await expect(page.getByTestId("video-aspect-select")).toBeVisible();
   await page.waitForTimeout(800); // the setup fades in over 500 ms
   await page.screenshot({ path: testInfo.outputPath("video-shot-pro.png") });
+  await page.locator(".s-step", { hasText: "Style" }).click();
+  await page.getByRole("button", { name: /^Lip-sync/ }).click();
+  await expect(page.getByRole("button", { name: /Make it talk/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Record my voice/ })).toBeVisible();
   console.log("VIDEO flow ok");
 
   // Deep link from Create / Ask: the brief lands in the story concept.
@@ -114,22 +120,30 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   await expect(page.getByRole("button", { name: /Back to simple Generate/ })).toBeVisible();
   await page.getByRole("tab", { name: /Edit with AI/ }).click();
   await expect(page.getByText("Which photo?")).toBeVisible();
-  await page.getByRole("tab", { name: /Design/ }).click();
-  await expect(page.getByText("Pick the photo")).toBeVisible();
-  // Wait for the picker to finish loading: either library images or the empty note.
-  await page.locator("main .s-media, main :text('No images in this brand')").first().waitFor({ timeout: 30_000 });
-  const firstImage = page.locator("main .s-media").first();
-  if (await firstImage.count()) {
-    await firstImage.click();
-    await expect(page.getByRole("button", { name: /Save to Library/ })).toBeVisible();
-    await page.waitForTimeout(2500);
-    await page.screenshot({ path: testInfo.outputPath("image-design.png") });
-    const download = page.waitForEvent("download", { timeout: 60_000 });
-    await page.getByRole("button", { name: /PNG/ }).click();
-    const file = await download;
-    expect(file.suggestedFilename()).toMatch(/\.png$/);
-    console.log("DESIGN export ok: " + file.suggestedFilename());
-  } else console.log("DESIGN: no library images on this account, picker shown");
+  // Image Editor: blank canvas -> text -> rectangle -> layers -> export PNG (no credits).
+  await page.getByRole("tab", { name: /Editor/ }).click();
+  await expect(page.getByText("Start from a photo")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /Blank canvas/ }).click();
+  const canvasEl = page.locator("canvas.upper-canvas");
+  await expect(canvasEl).toBeVisible({ timeout: 30_000 });
+  const box = (await canvasEl.boundingBox())!;
+  await page.getByRole("button", { name: /^Text \(T\)/ }).click();
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.2);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Shapes" }).click();
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.7, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.getByLabel("Layer name")).toHaveCount(2);
+  console.log("EDITOR layers:", await page.getByLabel("Layer name").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value).join(", ")));
+  await page.screenshot({ path: testInfo.outputPath("image-editor.png") });
+  await page.getByRole("button", { name: /Export/ }).hover();
+  const download = page.waitForEvent("download", { timeout: 60_000 });
+  await page.getByRole("button", { name: /PNG \(transparent ok\)/ }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/\.png$/);
+  console.log("EDITOR export ok: " + file.suggestedFilename());
 
   // Editor: "Edit with AI" opens the assistant in editing mode (it can see the timeline).
   await page.goto(`${BASE}/studio/video?tab=editor`);

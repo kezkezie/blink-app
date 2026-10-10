@@ -2,14 +2,16 @@
 
 import { create } from "zustand";
 import type { EditOp } from "@/lib/editor-ops";
+import type { CanvasOp } from "@/lib/canvas-ops";
 
 export type AskAction = {
-  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit";
+  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas";
   label: string;
   href?: string;
   /** apply_edit: the edit and what it changes, applied only when the user presses Apply. */
   ops?: EditOp[];
   changes?: string[];
+  canvasOps?: CanvasOp[];
   /** Credits the action will cost when the user runs it in the studio (never spent by the assistant). */
   estimatedCredits?: number;
   note?: string;

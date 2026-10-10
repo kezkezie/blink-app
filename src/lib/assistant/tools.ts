@@ -10,9 +10,10 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { estimateVideoCredits, resolveEffectiveVideoModel, resolveVideoModel } from "@/lib/video-model-registry";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { describeEditOps, validateEditOps, type EditOp, type TimelineSummary } from "@/lib/editor-ops";
+import { describeCanvasOps, validateCanvasOps, type CanvasOp, type CanvasSummary } from "@/lib/canvas-ops";
 
 export type AssistantAction = {
-  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit";
+  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas";
   label: string;
   href?: string;
   estimatedCredits?: number;
@@ -20,9 +21,11 @@ export type AssistantAction = {
   /** apply_edit only: the validated edit and a plain-English list of what it changes. */
   ops?: EditOp[];
   changes?: string[];
+  /** apply_canvas only: validated image Editor operations. */
+  canvasOps?: CanvasOp[];
 };
 
-export type ToolContext = { clientId: string; brandId: string | null; timeline?: TimelineSummary };
+export type ToolContext = { clientId: string; brandId: string | null; timeline?: TimelineSummary; canvas?: CanvasSummary };
 export type ToolResult = { content: string; action?: AssistantAction };
 
 const VIDEO_STYLES = ["storytelling", "showcase", "logo_reveal", "ugc", "clothing"] as const;
@@ -154,6 +157,25 @@ export const EDIT_TIMELINE_TOOL = {
     additionalProperties: false,
   },
 } as const;
+
+/** Only offered when the image Editor is open. */
+export const EDIT_CANVAS_TOOL = {
+  name: "edit_canvas",
+  description: "Propose changes to the open image Editor canvas. The user sees the list and presses Apply (Undo is one click). Coordinates are canvas pixels from the top-left. Ops: add_shape {shape rect|ellipse|line|star|polygon, x, y, w, h, fill, stroke, strokeWidth, radius, name}; add_text {text, x, y, w, size, color, weight, font, align, name}; add_svg {svg (one complete <svg> with viewBox, simple paths/shapes, no images or scripts), x, y, w, name}; update {id, x, y, w, h, angle, fill, stroke, strokeWidth, opacity, text, size}; remove {id}; arrange {id, to front|back|forward|backward}; background {color}. Colours are #RRGGBB.",
+  input_schema: {
+    type: "object",
+    properties: {
+      summary: { type: "string", maxLength: 300, description: "One line: what this change does." },
+      ops: { type: "array", maxItems: 60, items: { type: "object" } },
+    },
+    required: ["summary", "ops"],
+    additionalProperties: false,
+  },
+} as const;
+
+export const CANVAS_GUIDE = `The user has the image Editor open; its canvas and layers are below. You can design on it directly with edit_canvas (free, no credits).
+Good design: a clear hierarchy (one big headline, one supporting line, the brand mark), generous margins (at least 6% of the width), alignment to a simple grid, the brand colours, 2 fonts at most. For vectors and logos, draw clean SVG with few paths, solid fills and a viewBox, and group parts with <g id="..."> so they become separate layers.
+Use edit_canvas once with all the changes, then say in one or two lines what you did. AI photo edits (remove background 1 cr, face swap or prompt edits 18 cr) are buttons in the Editor's right panel; point the user to them instead of doing them yourself.`;
 
 export const EDITOR_GUIDE = `The user has the Video Editor open. You can see its timeline below (and, when attached, a few frames from each clip, labelled with the clip id and time). Editing is free and needs no credits.
 How to cut well for social: open on the strongest moment (a hook in the first 1-2 s), keep shots 1.5-4 s unless the moment needs longer, cut on action, end on the product or brand with a short call to action, and match the length the user asks for (default 15 s for Reels/TikTok). Trim to the best part of each clip using the frames. Keep captions short (2-6 words), in the brand's voice.
@@ -291,6 +313,15 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
       return {
         content: `Proposed ${ops.length} change(s) to the user as an Apply button. Nothing is changed until they press it.`,
         action: { kind: "apply_edit", label: "Apply this edit", note: str(input.summary, 300) || "AI edit", ops, changes },
+      };
+    }
+    case "edit_canvas": {
+      if (!ctx.canvas) return { content: "The image Editor is not open, so there is no canvas to change. Offer open_page or ask the user to open Image Studio → Editor." };
+      const ops = validateCanvasOps(input.ops, ctx.canvas);
+      if (!ops.length) return { content: "None of those operations were valid for this canvas (check layer ids, numbers and #RRGGBB colours). Nothing was proposed." };
+      return {
+        content: `Proposed ${ops.length} change(s) to the user as an Apply button. Nothing changes until they press it.`,
+        action: { kind: "apply_canvas", label: "Apply to canvas", note: str(input.summary, 300) || "Canvas edit", canvasOps: ops, changes: describeCanvasOps(ops, ctx.canvas) },
       };
     }
     case "open_page": {

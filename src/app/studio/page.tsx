@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Clapperboard, ImageIcon, Scissors, Shuffle } from "lucide-react";
+import { Clapperboard, ImageIcon, PenTool, Shuffle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
@@ -90,17 +90,23 @@ export default function CreatePage() {
 
       <section className="mt-10">
         <h3 className="s-section-h">Or start from</h3>
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { href: "/studio/image?mode=remix", icon: Shuffle, title: "Inspo Remix", line: "Drop a post you love from Pinterest or anywhere. Get it in your brand.", accent: true },
-            { href: "/studio/video", icon: Clapperboard, title: "Video", line: "A stack of scenes, then the editor. One shot or a full ad." },
-            { href: "/studio/image", icon: ImageIcon, title: "Image", line: `Generate from an idea · from ${IMAGE_ENGINE_REGISTRY["gpt-image-2-text-to-image"].creditCost} cr` },
-            { href: "/studio/video?tab=editor", icon: Scissors, title: "Edit footage", line: "Cut your clips; Ask BlinkSpot can do the cut" },
+            { href: "/studio/image?mode=remix", icon: Shuffle, title: "Inspo Remix", line: "Drop a post you love from Pinterest or anywhere. Get it in your brand.", need: "an inspo picture", tint: "#C6F432", badge: "FASTEST" },
+            { href: "/studio/video", icon: Clapperboard, title: "Video", line: "Ads, product shots, creators, try-ons and lip-sync.", need: "an idea or a photo", tint: "#5EC8FF" },
+            { href: "/studio/image?mode=generate", icon: ImageIcon, title: "Image", line: "Say what you want; get three ideas, then the image.", need: "an idea", tint: "#E68BFF" },
+            { href: "/studio/image?mode=design", icon: PenTool, title: "Editor", line: "Layers, text, shapes, logos and AI edits on a canvas.", need: "nothing", tint: "#FF8A5C" },
           ].map((w) => (
-            <Link key={w.title} href={w.href} className="s-card p-4 flex flex-col gap-2 hover:border-[var(--s-line-2)] transition-colors">
-              <w.icon className="h-4 w-4" style={{ color: w.accent ? "var(--s-accent)" : "var(--s-soft)" }} />
-              <b className="text-sm font-medium">{w.title}</b>
-              <span className="text-xs" style={{ color: "var(--s-mute)" }}>{w.line}</span>
+            <Link key={w.title} href={w.href} className="s-pick">
+              <div className="s-pick-media" style={{ aspectRatio: "16 / 8", background: `radial-gradient(120% 90% at 20% 10%, color-mix(in oklab, ${w.tint} 28%, transparent), transparent 60%), linear-gradient(160deg, #15171b, #0c0d0f)` }}>
+                <w.icon className="h-9 w-9" style={{ color: w.tint }} strokeWidth={1.4} />
+                {w.badge && <span className="s-badge absolute left-3 top-3" style={{ background: "var(--s-accent)", color: "var(--s-accent-ink)" }}>{w.badge}</span>}
+              </div>
+              <div className="p-4 grid gap-1.5">
+                <b className="text-[15px] font-semibold">{w.title}</b>
+                <span className="text-[13px] leading-snug" style={{ color: "var(--s-soft)" }}>{w.line}</span>
+                <span className="flex items-center gap-1.5 mt-1"><span className="text-[11px]" style={{ color: "var(--s-mute)" }}>You need</span><span className="s-badge">{w.need}</span></span>
+              </div>
             </Link>
           ))}
         </div>

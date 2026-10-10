@@ -9,10 +9,16 @@ import { supabase } from "@/lib/supabase";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import ClassicImageStudio from "@/app/dashboard/generate/page";
 import { SemanticImageEditor } from "@/components/image/SemanticImageEditor";
-import { PosterDesigner } from "@/components/studio/PosterDesigner";
+import dynamic from "next/dynamic";
 import { ImagePicker, type PickedImage } from "@/components/studio/ImagePicker";
 import { cleanCaption, resolveMedia } from "@/components/studio/media";
 import type { Content } from "@/types/database";
+
+// fabric.js is browser-only and heavy: load the editor on demand.
+const ImageEditor = dynamic(() => import("@/components/studio/editor/ImageEditor").then((m) => m.ImageEditor), {
+  ssr: false,
+  loading: () => <div className="p-6"><div className="s-skel h-80" /></div>,
+});
 
 /**
  * Image Studio = one place for the image jobs:
@@ -21,14 +27,15 @@ import type { Content } from "@/types/database";
  *   Pro controls the classic studio (modes, engines, styles, references), unchanged inside
  *   Edit      X-ray a photo into objects, change colours, materials and text, re-render with
  *             Nano Banana 2 or GPT Image 2 (the classic JSON editor)
- *   Design    set real type and the logo over a photo, pick colours from the photo, export sizes
+ *   Editor       layers, shapes, pen, brush, eraser, text and AI on the canvas (remove background,
+ *                swap a face, edit with words, vectorise, draw a vector/logo); Ask BlinkSpot can edit it
  */
 type Mode = "remix" | "generate" | "edit" | "design" | "pro";
 const MODES: Array<{ id: Mode; label: string; icon: typeof Sparkles; hint: string }> = [
   { id: "remix", label: "Inspo Remix", icon: Shuffle, hint: "Drop a design you love, get it for your brand" },
   { id: "generate", label: "Generate", icon: Sparkles, hint: "Make new images from an idea" },
   { id: "edit", label: "Edit with AI", icon: Wand2, hint: "Change a photo you have" },
-  { id: "design", label: "Design", icon: LayoutTemplate, hint: "Type and logo on a photo · free" },
+  { id: "design", label: "Editor", icon: LayoutTemplate, hint: "Layers, shapes, pen, text and AI edits" },
 ];
 
 async function loadPicked(contentId: string): Promise<PickedImage | null> {
@@ -108,7 +115,7 @@ function ImageStudioInner() {
         )
       )}
 
-      {mode === "design" && (loadingPick ? <div className="p-6"><div className="s-skel h-80" /></div> : <PosterDesigner key={designKey} initial={picked} />)}
+      {mode === "design" && (loadingPick ? <div className="p-6"><div className="s-skel h-80" /></div> : <ImageEditor key={designKey} initial={picked} />)}
     </div>
   );
 }

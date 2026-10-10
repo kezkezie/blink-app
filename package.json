@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@erase2d/fabric": "^1.2.1",
     "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
@@ -18,7 +19,9 @@
     "@supabase/supabase-js": "^2.95.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "fabric": "^7.4.0",
     "framer-motion": "^12.38.0",
+    "imagetracerjs": "^1.2.6",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
     "openai": "^6.25.0",

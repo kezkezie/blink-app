@@ -6,7 +6,8 @@
  * 72-82 s for a 10-token reply and 2 of 3 calls past 120 s, so when ANTHROPIC_API_KEY is set the
  * same request goes straight to the Anthropic API instead (same model, same format).
  */
-import { ASSISTANT_TOOLS, EDITOR_GUIDE, EDIT_TIMELINE_TOOL, runAssistantTool, type AssistantAction, type ToolContext } from "./tools";
+import { ASSISTANT_TOOLS, CANVAS_GUIDE, EDITOR_GUIDE, EDIT_CANVAS_TOOL, EDIT_TIMELINE_TOOL, runAssistantTool, type AssistantAction, type ToolContext } from "./tools";
+import type { CanvasSummary } from "@/lib/canvas-ops";
 import type { EditorContext } from "./request";
 
 export const ASSISTANT_MODEL = "claude-opus-5-5";
@@ -14,6 +15,8 @@ const KIE_MESSAGES_URL = "https://api.kie.ai/anthropic/v1/messages";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TURNS = 6;
 const MAX_TOKENS = 1500;
+/** Drawing vectors on the canvas needs room for SVG paths. */
+const MAX_TOKENS_CANVAS = 8000;
 const CALL_TIMEOUT_MS = 120_000;
 /** Don't start another model turn after this much time (the route allows 300 s). */
 const TURN_BUDGET_MS = 170_000;
@@ -69,7 +72,7 @@ function textOf(blocks: ContentBlock[] | undefined) {
 
 export async function runAssistant(
   history: AgentMessage[],
-  ctx: ToolContext & { pageHint?: string; brief?: string; editor?: EditorContext },
+  ctx: ToolContext & { pageHint?: string; brief?: string; editor?: EditorContext; canvas?: CanvasSummary },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ reply: string; actions: AssistantAction[]; usage: { input: number; output: number }; provider: "anthropic" | "kie" }> {
   const provider = assistantProvider();
@@ -81,10 +84,24 @@ export async function runAssistant(
     ctx.brief,
     ctx.pageHint ? `The user is on: ${ctx.pageHint}.` : "",
     editor ? `${EDITOR_GUIDE}\nTimeline (ids, seconds): ${JSON.stringify(editor.timeline)}` : "",
+    ctx.canvas ? `${CANVAS_GUIDE}\nCanvas (pixels): ${JSON.stringify({ ...ctx.canvas, preview: undefined })}` : "",
   ].filter(Boolean).join("\n\n");
-  const tools = editor ? [...ASSISTANT_TOOLS, EDIT_TIMELINE_TOOL] : ASSISTANT_TOOLS;
-  const toolCtx: ToolContext = { clientId: ctx.clientId, brandId: ctx.brandId, timeline: editor?.timeline };
+  const tools = [...ASSISTANT_TOOLS, ...(editor ? [EDIT_TIMELINE_TOOL] : []), ...(ctx.canvas ? [EDIT_CANVAS_TOOL] : [])];
+  const toolCtx: ToolContext = { clientId: ctx.clientId, brandId: ctx.brandId, timeline: editor?.timeline, canvas: ctx.canvas };
   const messages: AgentMessage[] = [...history];
+  // The canvas preview rides on the latest user message (once), like video frames.
+  if (ctx.canvas?.preview) {
+    const last = messages[messages.length - 1];
+    const text = typeof last.content === "string" ? last.content : "";
+    messages[messages.length - 1] = {
+      role: "user",
+      content: [
+        { type: "text", text: `This is the canvas right now (scaled down from ${ctx.canvas.width}×${ctx.canvas.height}). Place things where they read well against the picture:` },
+        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: ctx.canvas.preview } },
+        { type: "text", text },
+      ],
+    };
+  }
   // Frames ride on the latest user message only, so they cost tokens once.
   if (editor?.frames.length) {
     const last = messages[messages.length - 1];
@@ -109,7 +126,7 @@ export async function runAssistant(
     const res = await fetchImpl(provider.url, {
       method: "POST",
       headers: { ...provider.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: MAX_TOKENS, system, tools, messages, stream: false }),
+      body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: ctx.canvas ? MAX_TOKENS_CANVAS : MAX_TOKENS, system, tools, messages, stream: false }),
       signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
     });
     const data = (await res.json().catch(() => ({}))) as MessagesResponse;

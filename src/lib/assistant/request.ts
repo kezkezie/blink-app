@@ -1,5 +1,6 @@
 import type { AgentMessage } from "./agent";
 import type { TimelineSummary } from "@/lib/editor-ops";
+import type { CanvasSummary } from "@/lib/canvas-ops";
 
 export type EditorFrame = { clipId: string; t: number; data: string };
 export type EditorContext = { timeline: TimelineSummary; frames: EditorFrame[] };
@@ -41,8 +42,31 @@ export function parseEditorContext(raw: unknown): EditorContext | null {
   return { timeline, frames };
 }
 
+/** The image Editor's layers as the panel sends them (geometry and text only; no pixels). */
+export function parseCanvasContext(raw: unknown): CanvasSummary | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.width !== "number" || typeof r.height !== "number" || r.width < 1 || r.height < 1 || !Array.isArray(r.layers)) return null;
+  const W = Math.min(10_000, r.width), H = Math.min(10_000, r.height);
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
+  const layers = r.layers.slice(0, 200).flatMap((l) => {
+    if (!l || typeof l !== "object") return [];
+    const x = l as Record<string, unknown>;
+    if (typeof x.id !== "string" || !ID.test(x.id)) return [];
+    return [{
+      id: x.id, name: str(x.name, 60) ?? "Layer", type: str(x.type, 20) ?? "Layer",
+      x: num(x.x, -1e5, 1e5) ?? 0, y: num(x.y, -1e5, 1e5) ?? 0, w: num(x.w, 0, 1e5) ?? 0, h: num(x.h, 0, 1e5) ?? 0,
+      angle: num(x.angle, -360, 360) ?? 0, fill: str(x.fill, 30), stroke: str(x.stroke, 30), text: str(x.text, 120),
+      opacity: num(x.opacity, 0, 1) ?? 1, visible: x.visible !== false,
+    }];
+  });
+  const brandColors = Array.isArray(r.brandColors) ? r.brandColors.filter((c): c is string => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c)).slice(0, 6) : [];
+  const preview = typeof r.preview === "string" && r.preview.length <= 200_000 && FRAME.test(r.preview) ? r.preview : undefined;
+  return { width: W, height: H, background: str(r.background, 30) ?? "#FFFFFF", layers, brandColors, ...(preview ? { preview } : {}) };
+}
+
 /** Only plain user/assistant text is accepted from the browser; tool traffic is rebuilt server side. */
-export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; brandId: string | null; page?: string; editor?: EditorContext } | null {
+export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; brandId: string | null; page?: string; editor?: EditorContext; canvas?: CanvasSummary } | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
   if (!Array.isArray(b.messages) || b.messages.length === 0 || b.messages.length > MAX_MESSAGES) return null;
@@ -61,5 +85,6 @@ export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]
   const brandId = typeof b.brandId === "string" && UUID.test(b.brandId) ? b.brandId : null;
   const page = typeof b.page === "string" && /^\/studio[\w/-]{0,80}$/.test(b.page) ? b.page : undefined;
   const editor = parseEditorContext(b.editor) ?? undefined;
-  return { messages, brandId, page, ...(editor ? { editor } : {}) };
+  const canvas = parseCanvasContext(b.canvas) ?? undefined;
+  return { messages, brandId, page, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}) };
 }

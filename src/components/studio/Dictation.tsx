@@ -72,7 +72,12 @@ export function Dictation() {
   useEffect(() => {
     if (!field) return;
     let raf = 0;
-    const tick = () => { setRect(field.isConnected ? field.getBoundingClientRect() : null); raf = requestAnimationFrame(tick); };
+    const tick = () => {
+      // Only the box that has focus right now gets the mic (a closed panel's box must not keep it).
+      const live = field.isConnected && field.offsetParent !== null && (document.activeElement === field || recorder.current?.state === "recording");
+      setRect(live ? field.getBoundingClientRect() : null);
+      raf = requestAnimationFrame(tick);
+    };
     tick();
     return () => cancelAnimationFrame(raf);
   }, [field]);

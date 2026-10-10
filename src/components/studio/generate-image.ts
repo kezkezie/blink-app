@@ -75,6 +75,10 @@ export type GenerateRequest = {
   style: (typeof MARKETING_STYLES)[number]["id"];
   count?: number;
   caption: string;
+  /** "edit" changes the reference image itself (face swap, prompt edits) instead of making a new one. */
+  mode?: "standard" | "edit";
+  /** false for in-between editor steps: return the image without adding it to the Library. */
+  save?: boolean;
 };
 
 export type GeneratedImage = { id: string | null; url: string };
@@ -85,6 +89,7 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
   const constraint = brandConstraintFor(req.kit);
   let assembled = req.assembledPrompt ? `${req.assembledPrompt}\n\n${constraint}` : "";
   let negative: string | undefined;
+  if (!assembled && req.mode === "edit") assembled = `${req.prompt}\nKeep everything else in image 1 exactly as it is (composition, lighting, people, text).`;
   if (!assembled) {
     const direction = selectCreativeDirection(req.kit, { topic: req.prompt, style: req.style, mode: "standard" });
     const built = assemblePrompt(req.prompt, direction, req.kit, styleObj?.promptAddon ?? "", constraint);
@@ -95,7 +100,7 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
   const payload = {
     client_id: req.clientId,
     brand_id: req.brandId,
-    mode: "standard",
+    mode: req.mode ?? "standard",
     prompt: req.prompt.slice(0, 3900),
     assembled_prompt: assembled.slice(0, 11900),
     ...(negative ? { negative_prompt: negative.slice(0, 3900) } : {}),
@@ -132,6 +137,7 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
       urls.push(...(Array.isArray(v.imageUrls) ? v.imageUrls : v.imageUrls ? [v.imageUrls] : []));
     }
     if (!urls.length) throw new Error(refusal || firstError || "No image came back. If credits were taken they are refunded.");
+    if (req.save === false) return urls.map((url) => ({ id: null, url }));
     const saved: GeneratedImage[] = [];
     for (const url of urls) {
       const { data } = await supabase

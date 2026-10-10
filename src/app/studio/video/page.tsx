@@ -17,10 +17,9 @@ import {
 import { VIDEO_MODES } from "@/components/video/video-modes";
 import { useVideoStudio, type VideoStudio } from "@/components/video/useVideoStudio";
 import { VideoEditorUI } from "@/components/layout/VideoEditorUI";
-import { UgcSetup } from "@/components/video/UgcSetup";
-import { CinematicSetup } from "@/components/video/CinematicSetup";
-import { ClothingSetup } from "@/components/video/ClothingSetup";
-import { ProductRevealSetup } from "@/components/video/ProductRevealSetup";
+import { AspectRatioSelect, DurationField, promptImpliesAudio } from "@/components/video/VideoOutputControls";
+import { ShotSetup } from "@/components/studio/video/ShotSetup";
+import { LipSyncSetup } from "@/components/studio/video/LipSyncSetup";
 import { StorytellingSetup } from "@/components/video/StorytellingSetup";
 import { formatCredits, useCredits } from "@/components/studio/hooks";
 import { queueForEditor } from "@/components/studio/queue-clips";
@@ -82,50 +81,60 @@ function StepRail({ v, current }: { v: VideoStudio; current: number }) {
   );
 }
 
-// The single-shot styles. Product reveal is not its own card: it is the "Reveal" side of Product shot
-// (same inputs, same engine, a different direction), toggled on the next step.
-const QUICK_SHOTS: Array<{ mode: string; title: string; line: string; icon: typeof Film }> = [
-  { mode: "showcase", title: "Product shot", line: "Your product photo, a camera move or a reveal", icon: ShoppingBag },
-  { mode: "ugc", title: "Creator talking", line: "A person talks about your product", icon: UserCircle },
-  { mode: "clothing", title: "Try-on", line: "Your garment on a model", icon: Shirt },
+// The ways to make a video. Product reveal is not its own card: it is the "Reveal" side of Product
+// shot (same inputs, same engine, a different direction), toggled on the next step.
+type Way = { mode: string; title: string; line: string; need: string[]; icon: typeof Film; tint: string; big?: boolean };
+const WAYS: Way[] = [
+  { mode: "storytelling", title: "Scene by scene", line: "A full ad or story: BlinkSpot plans the scenes, you approve each one, then join them in Edit.", need: ["an idea"], icon: Clapperboard, tint: "#C6F432", big: true },
+  { mode: "showcase", title: "Product shot", line: "Your product photo turns into a moving shot, a camera move or a reveal.", need: ["a product photo"], icon: ShoppingBag, tint: "#5EC8FF" },
+  { mode: "ugc", title: "Creator talking", line: "A person holds your product and talks about it, like a real creator video.", need: ["a product photo", "a face (optional)"], icon: UserCircle, tint: "#FF8A5C" },
+  { mode: "clothing", title: "Try-on", line: "Your garment, worn by a model who walks and turns.", need: ["a garment photo", "a model (optional)"], icon: Shirt, tint: "#E68BFF" },
+  { mode: "lipsync", title: "Lip-sync", line: "A face speaks your voice: record it right here or upload audio.", need: ["a face photo", "a voice"], icon: Mic, tint: "#8B7CFF" },
 ];
+
+/** Example clips per way, shown on hover once BlinkSpot has made them (empty until then). */
+const WAY_EXAMPLES: Record<string, { video: string; poster?: string } | undefined> = {};
 
 function StylePicker({ v, onPick }: { v: VideoStudio; onPick: (mode: string) => void }) {
   return (
-    <div className="max-w-[1100px] mx-auto">
+    <div className="max-w-[1120px] mx-auto">
       <h2 className="text-2xl font-semibold tracking-tight mb-1">Make a video</h2>
-      <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Most videos start here. Every setting can still be changed on the next step.</p>
-      <button
-        className="s-card w-full text-left p-6 mb-6 grid md:grid-cols-[1fr_auto] gap-4 items-center hover:border-[var(--s-line-2)] transition-colors"
-        style={{ borderColor: "var(--s-line-2)" }}
-        onClick={() => onPick("storytelling")}
-      >
-        <div>
-          <div className="flex items-center gap-2 mb-2"><Clapperboard className="h-5 w-5" style={{ color: "var(--s-accent)" }} /><span className="s-badge">RECOMMENDED</span></div>
-          <b className="text-lg font-semibold">Scene by scene</b>
-          <p className="text-sm mt-1 max-w-xl" style={{ color: "var(--s-soft)" }}>
-            Write the idea once. BlinkSpot splits it into scenes (one scene is fine for a single shot), each with a start frame you approve. Every scene can be a product shot, a reveal, a creator or a try-on. Then put them together in Edit.
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs mono" style={{ color: "var(--s-mute)" }}>
-          Idea <ChevronRight className="h-3 w-3" /> Scenes <ChevronRight className="h-3 w-3" /> Render <ChevronRight className="h-3 w-3" /> Edit
-        </div>
-      </button>
-      <h3 className="s-section-h">Or a quick single shot</h3>
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {QUICK_SHOTS.map((m) => (
-          <button key={m.mode} className="s-card text-left p-4 flex flex-col gap-2 hover:border-[var(--s-line-2)] transition-colors" onClick={() => onPick(m.mode)}>
-            <m.icon className="h-4 w-4" />
-            <b className="text-sm font-medium">{m.title}</b>
-            <span className="text-xs" style={{ color: "var(--s-mute)" }}>{m.line}</span>
-            <span className="text-[11px] mono mt-auto pt-2" style={{ color: "var(--s-mute)" }}>5 s from {sceneCost(AUTO_VIDEO_MODEL, "5", m.mode, true)} cr</span>
-          </button>
-        ))}
-        <Link href="/studio/library/upload?tab=audio_to_video" className="s-card text-left p-4 flex flex-col gap-2 hover:border-[var(--s-line-2)] transition-colors">
-          <Mic className="h-4 w-4" />
-          <b className="text-sm font-medium">Lip-sync to audio</b>
-          <span className="text-xs" style={{ color: "var(--s-mute)" }}>Upload a voice track, a face speaks it</span>
-        </Link>
+      <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Pick what you want to make. You can change every setting on the next step.</p>
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        {WAYS.map((w) => {
+          const ex = WAY_EXAMPLES[w.mode];
+          // Creator videos speak, and a voiced Kling shot is priced differently from a silent one.
+          const from = w.mode === "lipsync" ? estimateVideoCredits("replicate:prunaai/p-video", 5, { hasAudio: true, videoMode: "audio_to_video", hasStartFrame: true }) ?? 0
+            : w.mode === "ugc" ? estimateVideoCredits(AUTO_VIDEO_MODEL, 5, { hasAudio: true, videoMode: "ugc", hasStartFrame: true }) ?? 0
+            : sceneCost(AUTO_VIDEO_MODEL, "5", w.mode === "storytelling" ? "showcase" : w.mode, true);
+          return (
+            <button key={w.mode} onClick={() => onPick(w.mode)} className={`s-pick text-left ${w.big ? "sm:col-span-2" : ""}`} aria-label={`${w.title}: ${w.line}`}>
+              <div className="s-pick-media" style={{ aspectRatio: w.big ? "32 / 9.2" : "16 / 9", background: `radial-gradient(120% 90% at 20% 10%, color-mix(in oklab, ${w.tint} 30%, transparent), transparent 60%), linear-gradient(160deg, #15171b, #0c0d0f)` }}>
+                {ex ? (
+                  <video src={ex.video} poster={ex.poster} muted loop playsInline preload="none"
+                    onMouseEnter={(e) => { void e.currentTarget.play().catch(() => {}); }} onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }} />
+                ) : (
+                  <w.icon className={w.big ? "h-14 w-14" : "h-9 w-9"} style={{ color: w.tint, opacity: 0.9 }} strokeWidth={1.4} />
+                )}
+                {w.big && <span className="s-badge absolute left-3 top-3" style={{ background: "var(--s-accent)", color: "var(--s-accent-ink)" }}>RECOMMENDED</span>}
+              </div>
+              <div className="p-4 grid gap-1.5">
+                <b className={w.big ? "text-lg font-semibold" : "text-[15px] font-semibold"}>{w.title}</b>
+                <span className="text-[13px] leading-snug" style={{ color: "var(--s-soft)" }}>{w.line}</span>
+                <span className="flex flex-wrap items-center gap-1.5 mt-1">
+                  <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>You need</span>
+                  {w.need.map((n) => <span key={n} className="s-badge">{n}</span>)}
+                  <span className="text-[11px] mono ml-auto" style={{ color: "var(--s-mute)" }}>from {from} cr</span>
+                </span>
+                {w.big && (
+                  <span className="flex items-center gap-1.5 text-xs mono mt-2" style={{ color: "var(--s-mute)" }}>
+                    Idea <ChevronRight className="h-3 w-3" /> Scenes <ChevronRight className="h-3 w-3" /> Render <ChevronRight className="h-3 w-3" /> Edit
+                  </span>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </div>
       <div className="mt-6 flex items-center gap-3 text-sm" style={{ color: "var(--s-soft)" }}>
         <Scissors className="h-4 w-4" /> Already have clips?
@@ -215,8 +224,16 @@ function Inspector({ v, total, effectiveModel, onRender }: { v: VideoStudio; tot
       </div>
       <div className="flex-1 overflow-y-auto">
         {row("quality", "Quality", quality, <EnginePicker v={v} pro={pro} />)}
-        {row("format", "Format", `${v.aspectRatio} · ${v.duration || 5} s`,
-          <p className="text-xs" style={{ color: "var(--s-soft)" }}>Set the shape and length in the setup on the left. The engine only offers what it can render.</p>)}
+        {row("format", "Shape & length", `${v.aspectRatio} · ${v.duration || 5} s`,
+          <div className="grid gap-2">
+            <label className="text-[11px] grid gap-1" style={{ color: "var(--s-mute)" }}>Shape
+              <AspectRatioSelect model={v.selectedAiModel} videoMode={v.selectedMode} value={v.aspectRatio} onChange={v.setAspectRatio} className="s-input" />
+            </label>
+            <label className="text-[11px] grid gap-1" style={{ color: "var(--s-mute)" }}>Length
+              <DurationField model={v.selectedAiModel} videoMode={v.selectedMode} value={v.duration} onChange={v.setDuration} hasAudio={promptImpliesAudio(v.prompt)} className="s-input" />
+            </label>
+            <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Only what the chosen quality can render is offered. 9:16 for Reels and TikTok, 16:9 for YouTube.</p>
+          </div>)}
         {row("brand", "Brand lock", "On",
           <p className="text-xs" style={{ color: "var(--s-soft)" }}>Your brand&apos;s colours, look and voice are applied to every shot{v.activeBrand ? ` (${v.activeBrand.brand_name})` : ""}.</p>)}
         {pro && row("enhance", "Prompt enhance", v.aiEnhance ? "On" : "Off",
@@ -372,7 +389,10 @@ function VideoStudioInner() {
     void v.handleGenerate();
   };
 
+  const [lipsync, setLipsync] = useState(false);
   const chooseMode = (id: string) => {
+    if (id === "lipsync") { setLipsync(true); v.setStep(2); return; }
+    setLipsync(false);
     v.setSelectedMode(id);
     v.setPrimaryFile(null);
     v.setPrimaryPreview(null);
@@ -388,6 +408,7 @@ function VideoStudioInner() {
     applied.current = true;
     if (params.get("tab") === "editor") { v.setActiveTab("editor"); return; }
     const mode = params.get("mode");
+    if (mode === "lipsync") { chooseMode("lipsync"); router.replace("/studio/video", { scroll: false }); return; }
     if (!mode || !VIDEO_MODES.some((m) => m.id === mode)) return;
     chooseMode(mode);
     const brief = params.get("brief")?.slice(0, 1200);
@@ -451,10 +472,11 @@ function VideoStudioInner() {
 
   const setup = (() => {
     switch (v.selectedMode) {
-      case "ugc": return <UgcSetup {...sharedProps} />;
-      case "showcase": return <CinematicSetup {...sharedProps} />;
-      case "clothing": return <ClothingSetup {...sharedProps} />;
-      case "logo_reveal": return <ProductRevealSetup {...sharedProps} />;
+      case "ugc":
+      case "showcase":
+      case "clothing":
+      case "logo_reveal":
+        return <ShotSetup v={v} />;
       case "storytelling":
         return (
           <StorytellingSetup
@@ -475,7 +497,7 @@ function VideoStudioInner() {
       <div className="flex flex-wrap items-center gap-3 px-4 md:px-5 py-3" style={{ borderBottom: "1px solid var(--s-line)" }}>
         <StepRail v={v} current={current} />
         <div className="flex-1" />
-        {current === 2 && <span className="text-xs" style={{ color: "var(--s-mute)" }}>{v.activeModeConfig.title}</span>}
+        {current === 2 && <span className="text-xs" style={{ color: "var(--s-mute)" }}>{lipsync ? "Lip-sync" : WAYS.find((w) => w.mode === v.selectedMode)?.title ?? (v.selectedMode === "logo_reveal" ? "Product shot · reveal" : v.activeModeConfig.title)}</span>}
         {v.activeTab === "editor" ? (
           <button className="s-btn ai sm" onClick={() => ask("")}>Edit with AI</button>
         ) : (
@@ -488,7 +510,9 @@ function VideoStudioInner() {
       ) : v.step === 1 ? (
         <div className="p-4 md:p-8"><StylePicker v={v} onPick={chooseMode} /></div>
       ) : v.step === 2 ? (
-        story ? (
+        lipsync ? (
+          <div className="p-4 md:p-6"><LipSyncSetup v={v} /></div>
+        ) : story ? (
           <div className="flex-1 flex flex-col">
             <div className="flex-1 p-4 md:p-5">{setup}</div>
             <SequenceBar v={v} total={total} onRender={render} />
