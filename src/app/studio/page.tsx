@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Clapperboard, ImageIcon, PenTool, Shuffle, Sparkles } from "lucide-react";
+import { ExamplesGallery } from "@/components/studio/examples/ExamplesGallery";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
@@ -117,6 +118,11 @@ export default function CreatePage() {
         <span className="text-[13.5px]"><b className="font-semibold">New business, no brand yet?</b> <span style={{ color: "var(--s-soft)" }}>Describe it and get a name, colours, fonts, a voice and logos. Free.</span></span>
         <span className="ml-auto text-[13px] shrink-0" style={{ color: "var(--s-accent)" }}>Brand builder →</span>
       </Link>
+
+      <section className="mt-10">
+        <h3 className="s-section-h">Made with BlinkSpot <Link href="/studio/examples" className="s-btn ghost sm normal-case tracking-normal">See how each was made →</Link></h3>
+        <ExamplesGallery limit={8} compact />
+      </section>
 
       <section className="mt-10 mb-6">
         <h3 className="s-section-h">Recent work <Link href="/studio/library" className="s-btn ghost sm normal-case tracking-normal">Open library →</Link></h3>

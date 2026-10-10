@@ -21,6 +21,7 @@ import { AspectRatioSelect, DurationField, promptImpliesAudio } from "@/componen
 import { ShotSetup } from "@/components/studio/video/ShotSetup";
 import { LipSyncSetup } from "@/components/studio/video/LipSyncSetup";
 import { FirstFrame, type FirstFrameState } from "@/components/studio/video/FirstFrame";
+import { wayExample } from "@/lib/examples";
 import { thumbUrl } from "@/components/studio/media";
 import { StorytellingSetup } from "@/components/video/StorytellingSetup";
 import { formatCredits, useCredits } from "@/components/studio/hooks";
@@ -95,7 +96,7 @@ const WAYS: Way[] = [
 ];
 
 /** Example clips per way, shown on hover once BlinkSpot has made them (empty until then). */
-const WAY_EXAMPLES: Record<string, { video: string; poster?: string } | undefined> = {};
+
 
 function StylePicker({ v, onPick }: { v: VideoStudio; onPick: (mode: string) => void }) {
   return (
@@ -104,7 +105,7 @@ function StylePicker({ v, onPick }: { v: VideoStudio; onPick: (mode: string) => 
       <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Pick what you want to make. You can change every setting on the next step.</p>
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {WAYS.map((w) => {
-          const ex = WAY_EXAMPLES[w.mode];
+          const ex = wayExample(w.mode);
           // Creator videos speak, and a voiced Kling shot is priced differently from a silent one.
           const from = w.mode === "lipsync" ? estimateVideoCredits("replicate:prunaai/p-video", 5, { hasAudio: true, videoMode: "audio_to_video", hasStartFrame: true }) ?? 0
             : w.mode === "ugc" ? estimateVideoCredits(AUTO_VIDEO_MODEL, 5, { hasAudio: true, videoMode: "ugc", hasStartFrame: true }) ?? 0

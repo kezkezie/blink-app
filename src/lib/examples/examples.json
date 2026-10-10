@@ -1,0 +1,589 @@
+[
+ {
+  "id": "mavuno-poster",
+  "kind": "image",
+  "brand": "Mavuno",
+  "title": "Juice launch poster",
+  "style": "Poster",
+  "short": "Launch poster for a cold-pressed juice: one bottle, big headline, clean colour.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Mavuno\". Any visible text or signage MUST reflect \"Mavuno\" only. No other brand names, no website URLs, no placeholder logos. render \"MAVUNO\" in bold deep-green serif display font, upper-left, 8% frame height. render \"Pressed This Morning\" in medium weight, 60% headline size, below it. render \"Mango · Passion\" in small clean sans-serif, lower-right corner. GRAPHIC DESIGN POSTER, NOT a lifestyle photograph with text overlaid. BACKGROUND: clean solid warm cream (#F7F3EA). PRODUCT ZONE: a frosted glass bottle of mango-passion cold-pressed juice with a kraft paper label, cold condensation droplets, half a mango and a split passion fruit at its base, standalone studio object, soft drop shadow, gentle rim light, center-right, 55% of frame. Three-point softbox lighting, 85mm, f/8. Text does NOT overlap the product. 10% inset safe zone on all edges. 20% intentional negative space. Single dominant focal point. Professional print quality.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mavuno-poster.jpg?v=6ipwxw",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mavuno-poster-thumb.jpg?v=6ipwxw",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Mavuno%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Mavuno%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20render%20%22MAVUNO%22%20in%20bold%20deep-green%20serif%20display%20font%2C%20upper-left%2C%208%25%20frame%20height.%20render%20%22Pressed%20This%20Morning%22%20in%20medium%20weight%2C%2060%25%20headline%20size%2C%20below%20it.%20render%20%22Mango%20%C2%B7%20Passion%22%20in%20small%20clean%20sans-serif%2C%20lower-right%20corner.%20GRAPHIC%20DESIGN%20POSTER%2C%20NOT%20a%20lifestyle%20photograph%20with%20text%20overlaid.%20BACKGROUND%3A%20clean%20solid%20warm%20cream%20(%23F7F3EA).%20PRODUCT%20ZONE%3A%20a%20frosted%20glass%20bottle%20of%20mango-passion%20cold-pressed%20juice%20with%20a%20kraft%20paper%20label%2C%20cold%20condensation%20droplets%2C%20half%20a%20mango%20and%20a%20split%20passion%20fruit%20at%20its%20base%2C%20standalone%20studio%20object%2C%20soft%20drop%20shadow%2C%20gentle%20rim%20light%2C%20center-right%2C%2055%25%20of%20frame.%20Three-point%20softbox%20lighting%2C%2085mm%2C%20f%2F8.%20Text%20does%20NOT%20overlap%20the%20product.%2010%25%20inset%20safe%20zone%20on%20all%20edges.%2020%25%20intentional%20negative%20space.%20Single%20dominant%20focal%20point.%20Professional%20print%20quality."
+  }
+ },
+ {
+  "id": "kasi-poster",
+  "kind": "image",
+  "brand": "Kasi Runners",
+  "title": "Sneaker drop poster",
+  "style": "Poster",
+  "short": "A bold drop poster: the shoe floating, the date as the headline.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Kasi Runners\". Any visible text or signage MUST reflect \"Kasi Runners\" only. No other brand names, no website URLs, no placeholder logos. render \"KASI\" in heavy condensed black sans-serif, upper-left, 10% frame height. render \"Drop 01 · Friday\" in bold black, smaller than the headline, directly below it. render \"Limited pairs\" in small clean font, lower-right corner. GRAPHIC DESIGN POSTER, NOT a photo with text on top. BACKGROUND: solid signal orange (#FF5A1F). PRODUCT ZONE: one chunky high-top sneaker in cream canvas with a black suede toe cap, black laces and a thick white rubber cupsole; the side panels are completely plain with no logo, no swoosh, no stripes, no brand marks of any kind. Floating at a dynamic 20-degree angle, crisp contact shadow below, center-right, 55% of frame. Hard key light from upper left, 100mm product lens, f/11, ultra-sharp textures. 10% inset safe zone on all edges. 20% intentional negative space. Single dominant focal point. Professional print quality.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kasi-poster.jpg?v=j6y9w4",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kasi-poster-thumb.jpg?v=j6y9w4",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Kasi%20Runners%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Kasi%20Runners%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20render%20%22KASI%22%20in%20heavy%20condensed%20black%20sans-serif%2C%20upper-left%2C%2010%25%20frame%20height.%20render%20%22Drop%2001%20%C2%B7%20Friday%22%20in%20bold%20black%2C%20smaller%20than%20the%20headline%2C%20directly%20below%20it.%20render%20%22Limited%20pairs%22%20in%20small%20clean%20font%2C%20lower-right%20corner.%20GRAPHIC%20DESIGN%20POSTER%2C%20NOT%20a%20photo%20with%20text%20on%20top.%20BACKGROUND%3A%20solid%20signal%20orange%20(%23FF5A1F).%20PRODUCT%20ZONE%3A%20one%20chunky%20high-top%20sneaker%20in%20cream%20canvas%20with%20a%20black%20suede%20toe%20cap%2C%20black%20laces%20and%20a%20thick%20white%20rubber%20cupsole%3B%20the%20side%20panels%20are%20completely%20plain%20with%20no%20logo%2C%20no%20swoosh%2C%20no%20stripes%2C%20no%20brand%20marks%20of%20any%20kind.%20Floating%20at%20a%20dynamic%2020-degree%20angle%2C%20crisp%20contact%20shadow%20below%2C%20center-right%2C%2055%25%20of%20frame.%20Hard%20key%20light%20from%20upper%20left%2C%20100mm%20product%20lens%2C%20f%2F11%2C%20ultra-sharp%20textures.%2010%25%20inset%20safe%20zone%20on%20all%20edges.%2020%25%20intentional%20negative%20space.%20Single%20dominant%20focal%20point.%20Professional%20print%20quality."
+  }
+ },
+ {
+  "id": "aloe-ash-studio",
+  "kind": "image",
+  "brand": "Aloe & Ash",
+  "title": "Skincare studio shot",
+  "style": "Studio",
+  "short": "Clean product photo for a serum, no text, ready for any caption.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Aloe & Ash\". Any visible text or signage MUST reflect \"Aloe & Ash\" only. No other brand names, no website URLs, no placeholder logos. High-end commercial product photography. SUBJECT: a matte frosted amber glass dropper bottle of face serum with a small minimal label reading \"ALOE & ASH\", resting on a slab of raw travertine stone, a fresh aloe leaf cut open beside it showing clear gel. COMPOSITION: single focal point, left-center, 60% of frame, generous negative space on the right. Clean infinite backdrop in soft sand beige. LIGHTING: three-point softbox, gentle shadows, clean catchlights on the glass. CAMERA: macro lens, f/8, deep depth of field, materiality emphasis. No other text.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/aloe-ash-studio.jpg?v=22wb5d",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/aloe-ash-studio-thumb.jpg?v=22wb5d",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Aloe%20%26%20Ash%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Aloe%20%26%20Ash%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20High-end%20commercial%20product%20photography.%20SUBJECT%3A%20a%20matte%20frosted%20amber%20glass%20dropper%20bottle%20of%20face%20serum%20with%20a%20small%20minimal%20label%20reading%20%22ALOE%20%26%20ASH%22%2C%20resting%20on%20a%20slab%20of%20raw%20travertine%20stone%2C%20a%20fresh%20aloe%20leaf%20cut%20open%20beside%20it%20showing%20clear%20gel.%20COMPOSITION%3A%20single%20focal%20point%2C%20left-center%2C%2060%25%20of%20frame%2C%20generous%20negative%20space%20on%20the%20right.%20Clean%20infinite%20backdrop%20in%20soft%20sand%20beige.%20LIGHTING%3A%20three-point%20softbox%2C%20gentle%20shadows%2C%20clean%20catchlights%20on%20the%20glass.%20CAMERA%3A%20macro%20lens%2C%20f%2F8%2C%20deep%20depth%20of%20field%2C%20materiality%20emphasis.%20No%20other%20text."
+  }
+ },
+ {
+  "id": "tano-coffee-lifestyle",
+  "kind": "image",
+  "brand": "Tano Coffee",
+  "title": "Coffee shop lifestyle",
+  "style": "Lifestyle",
+  "short": "A real-feeling cafe moment for an Instagram feed.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Tano Coffee\". Any visible text or signage MUST reflect \"Tano Coffee\" only. No other brand names, no website URLs, no placeholder logos. Authentic lifestyle photography. SUBJECT: a fresh flat white with rosetta latte art in a speckled handmade ceramic cup on a worn oak cafe counter, a barista's hand just letting go of the saucer, a small paper cup sleeve printed \"TANO\" softly out of focus behind. Morning golden-hour light through a window, steam visible. CAMERA: Fujifilm colour science, 35mm, f/2, slight film grain, candid and unposed. COMPOSITION: cup sharp in the lower third, breathing room above.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/tano-coffee-lifestyle.jpg?v=1m2u0bw",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/tano-coffee-lifestyle-thumb.jpg?v=1m2u0bw",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Tano%20Coffee%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Tano%20Coffee%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20Authentic%20lifestyle%20photography.%20SUBJECT%3A%20a%20fresh%20flat%20white%20with%20rosetta%20latte%20art%20in%20a%20speckled%20handmade%20ceramic%20cup%20on%20a%20worn%20oak%20cafe%20counter%2C%20a%20barista's%20hand%20just%20letting%20go%20of%20the%20saucer%2C%20a%20small%20paper%20cup%20sleeve%20printed%20%22TANO%22%20softly%20out%20of%20focus%20behind.%20Morning%20golden-hour%20light%20through%20a%20window%2C%20steam%20visible.%20CAMERA%3A%20Fujifilm%20colour%20science%2C%2035mm%2C%20f%2F2%2C%20slight%20film%20grain%2C%20candid%20and%20unposed.%20COMPOSITION%3A%20cup%20sharp%20in%20the%20lower%20third%2C%20breathing%20room%20above."
+  }
+ },
+ {
+  "id": "mkate-poster",
+  "kind": "image",
+  "brand": "Mkate Bakery",
+  "title": "Bakery weekend offer",
+  "style": "Poster",
+  "short": "Weekend offer poster with a friendly headline and one hero pastry.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Mkate Bakery\". Any visible text or signage MUST reflect \"Mkate Bakery\" only. No other brand names, no website URLs, no placeholder logos. render \"MKATE\" in warm chunky rounded serif, upper-left, 8% frame height, colour deep brown. render \"Fresh at 6AM\" in medium weight, 60% headline size, below it. render \"Saturday 2 for 1\" in small clean font, lower-right corner. GRAPHIC DESIGN POSTER, NOT a lifestyle photograph. BACKGROUND: solid butter yellow (#F6D67A). PRODUCT ZONE: a golden flaky croissant and two sugar-dusted mandazi on a round kraft paper, standalone studio object, soft drop shadow, center-right, 55% of frame. Softbox key light, 85mm, f/8. Text does NOT overlap the food. 10% inset safe zone on all edges. 20% intentional negative space. Single dominant focal point. Professional print quality.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-poster.jpg?v=u0kiyg",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-poster-thumb.jpg?v=u0kiyg",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Mkate%20Bakery%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Mkate%20Bakery%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20render%20%22MKATE%22%20in%20warm%20chunky%20rounded%20serif%2C%20upper-left%2C%208%25%20frame%20height%2C%20colour%20deep%20brown.%20render%20%22Fresh%20at%206AM%22%20in%20medium%20weight%2C%2060%25%20headline%20size%2C%20below%20it.%20render%20%22Saturday%202%20for%201%22%20in%20small%20clean%20font%2C%20lower-right%20corner.%20GRAPHIC%20DESIGN%20POSTER%2C%20NOT%20a%20lifestyle%20photograph.%20BACKGROUND%3A%20solid%20butter%20yellow%20(%23F6D67A).%20PRODUCT%20ZONE%3A%20a%20golden%20flaky%20croissant%20and%20two%20sugar-dusted%20mandazi%20on%20a%20round%20kraft%20paper%2C%20standalone%20studio%20object%2C%20soft%20drop%20shadow%2C%20center-right%2C%2055%25%20of%20frame.%20Softbox%20key%20light%2C%2085mm%2C%20f%2F8.%20Text%20does%20NOT%20overlap%20the%20food.%2010%25%20inset%20safe%20zone%20on%20all%20edges.%2020%25%20intentional%20negative%20space.%20Single%20dominant%20focal%20point.%20Professional%20print%20quality."
+  }
+ },
+ {
+  "id": "kilele-poster",
+  "kind": "image",
+  "brand": "Kilele Homes",
+  "title": "Real estate listing",
+  "style": "Poster",
+  "short": "Property listing post with the price line kept short and readable.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Kilele Homes\". Any visible text or signage MUST reflect \"Kilele Homes\" only. No other brand names, no website URLs, no placeholder logos. render \"KILELE HOMES\" in elegant thin uppercase sans-serif with wide letter spacing, upper-left, 6% frame height, white. render \"2-Bed · Ready December\" in medium weight, below it, white. render \"Book a viewing\" in small clean font inside a thin white outlined pill, lower-right corner. Architectural photography of a modern apartment balcony at blue hour: warm interior lights, a lounge chair, potted palm, city lights bokeh beyond. The upper-left text sits over a calm dark sky area with a subtle dark scrim for legibility, never over the building details. 24mm tilt-shift lens, f/8, balanced exposure. 10% inset safe zone on all edges. 20% intentional negative space. Single dominant focal point. Professional print quality.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kilele-poster.jpg?v=1eymswz",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kilele-poster-thumb.jpg?v=1eymswz",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Kilele%20Homes%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Kilele%20Homes%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20render%20%22KILELE%20HOMES%22%20in%20elegant%20thin%20uppercase%20sans-serif%20with%20wide%20letter%20spacing%2C%20upper-left%2C%206%25%20frame%20height%2C%20white.%20render%20%222-Bed%20%C2%B7%20Ready%20December%22%20in%20medium%20weight%2C%20below%20it%2C%20white.%20render%20%22Book%20a%20viewing%22%20in%20small%20clean%20font%20inside%20a%20thin%20white%20outlined%20pill%2C%20lower-right%20corner.%20Architectural%20photography%20of%20a%20modern%20apartment%20balcony%20at%20blue%20hour%3A%20warm%20interior%20lights%2C%20a%20lounge%20chair%2C%20potted%20palm%2C%20city%20lights%20bokeh%20beyond.%20The%20upper-left%20text%20sits%20over%20a%20calm%20dark%20sky%20area%20with%20a%20subtle%20dark%20scrim%20for%20legibility%2C%20never%20over%20the%20building%20details.%2024mm%20tilt-shift%20lens%2C%20f%2F8%2C%20balanced%20exposure.%2010%25%20inset%20safe%20zone%20on%20all%20edges.%2020%25%20intentional%20negative%20space.%20Single%20dominant%20focal%20point.%20Professional%20print%20quality."
+  }
+ },
+ {
+  "id": "pulse-poster",
+  "kind": "image",
+  "brand": "Pulse Studio",
+  "title": "Gym class promo",
+  "style": "Poster",
+  "short": "Fitness class promo with energy: one athlete, one message.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Pulse Studio\". Any visible text or signage MUST reflect \"Pulse Studio\" only. No other brand names, no website URLs, no placeholder logos. render \"PULSE\" in heavy italic black sans-serif, upper-left, 10% frame height, electric lime (#C6F432). render \"Morning HIIT · 6:30\" in bold white, 50% headline size, below it. render \"First class free\" in small clean white font, lower-right corner. Dramatic fitness photography: one athlete mid-jump-squat in a dark concrete studio, rim-lit by a single lime-green gel light, sweat catching the light, motion frozen at 1/2000s. 50mm, f/2.8. Text sits on the dark empty wall area, never on the athlete. 10% inset safe zone on all edges. 20% intentional negative space. Single dominant focal point. Professional print quality.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/pulse-poster.jpg?v=1szdpvm",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/pulse-poster-thumb.jpg?v=1szdpvm",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Pulse%20Studio%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Pulse%20Studio%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20render%20%22PULSE%22%20in%20heavy%20italic%20black%20sans-serif%2C%20upper-left%2C%2010%25%20frame%20height%2C%20electric%20lime%20(%23C6F432).%20render%20%22Morning%20HIIT%20%C2%B7%206%3A30%22%20in%20bold%20white%2C%2050%25%20headline%20size%2C%20below%20it.%20render%20%22First%20class%20free%22%20in%20small%20clean%20white%20font%2C%20lower-right%20corner.%20Dramatic%20fitness%20photography%3A%20one%20athlete%20mid-jump-squat%20in%20a%20dark%20concrete%20studio%2C%20rim-lit%20by%20a%20single%20lime-green%20gel%20light%2C%20sweat%20catching%20the%20light%2C%20motion%20frozen%20at%201%2F2000s.%2050mm%2C%20f%2F2.8.%20Text%20sits%20on%20the%20dark%20empty%20wall%20area%2C%20never%20on%20the%20athlete.%2010%25%20inset%20safe%20zone%20on%20all%20edges.%2020%25%20intentional%20negative%20space.%20Single%20dominant%20focal%20point.%20Professional%20print%20quality."
+  }
+ },
+ {
+  "id": "night-market-flyer",
+  "kind": "image",
+  "brand": "Nairobi Night Market",
+  "title": "Event flyer",
+  "style": "Poster",
+  "short": "Event flyer: the name, the vibe and the time, nothing else.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Nairobi Night Market\". Any visible text or signage MUST reflect \"Nairobi Night Market\" only. No other brand names, no website URLs, no placeholder logos. render \"NIGHT MARKET\" in bold retro display sans-serif with a soft glow, upper-center, 10% frame height, warm white. render \"Food · Music · Makers\" in medium weight, 50% headline size, below it. render \"Sat · 6PM till late\" in small clean font, lower-right corner. Illustrated poster style: string lights zig-zagging over a few food stalls in silhouette, deep indigo night sky, warm amber and coral highlights, grain texture, flat vector shapes with subtle depth. Text sits in the open sky area above the lights. 10% inset safe zone on all edges. 20% intentional negative space. Single dominant focal point. Professional print quality.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/night-market-flyer.jpg?v=1ywruv6",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/night-market-flyer-thumb.jpg?v=1ywruv6",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Nairobi%20Night%20Market%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Nairobi%20Night%20Market%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20render%20%22NIGHT%20MARKET%22%20in%20bold%20retro%20display%20sans-serif%20with%20a%20soft%20glow%2C%20upper-center%2C%2010%25%20frame%20height%2C%20warm%20white.%20render%20%22Food%20%C2%B7%20Music%20%C2%B7%20Makers%22%20in%20medium%20weight%2C%2050%25%20headline%20size%2C%20below%20it.%20render%20%22Sat%20%C2%B7%206PM%20till%20late%22%20in%20small%20clean%20font%2C%20lower-right%20corner.%20Illustrated%20poster%20style%3A%20string%20lights%20zig-zagging%20over%20a%20few%20food%20stalls%20in%20silhouette%2C%20deep%20indigo%20night%20sky%2C%20warm%20amber%20and%20coral%20highlights%2C%20grain%20texture%2C%20flat%20vector%20shapes%20with%20subtle%20depth.%20Text%20sits%20in%20the%20open%20sky%20area%20above%20the%20lights.%2010%25%20inset%20safe%20zone%20on%20all%20edges.%2020%25%20intentional%20negative%20space.%20Single%20dominant%20focal%20point.%20Professional%20print%20quality."
+  }
+ },
+ {
+  "id": "oud-noir-cinematic",
+  "kind": "image",
+  "brand": "Oud Noir",
+  "title": "Perfume hero shot",
+  "style": "Cinematic",
+  "short": "Moody luxury shot for a perfume launch.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Oud Noir\". Any visible text or signage MUST reflect \"Oud Noir\" only. No other brand names, no website URLs, no placeholder logos. Cinematic luxury product shot. SUBJECT: a heavy faceted black glass perfume bottle with a brushed gold cap and a small engraved \"OUD NOIR\" mark, standing on dark wet slate, thin smoke drifting behind it. LIGHTING: chiaroscuro, one narrow gold-tinted strip light from the left, deep shadows, specular highlights on the facets. CAMERA: 100mm macro, f/5.6. Muted teal and amber palette. Single focal point, center, 50% of frame, lots of black negative space.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/oud-noir-cinematic.jpg?v=wtjb6h",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/oud-noir-cinematic-thumb.jpg?v=wtjb6h",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Oud%20Noir%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Oud%20Noir%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20Cinematic%20luxury%20product%20shot.%20SUBJECT%3A%20a%20heavy%20faceted%20black%20glass%20perfume%20bottle%20with%20a%20brushed%20gold%20cap%20and%20a%20small%20engraved%20%22OUD%20NOIR%22%20mark%2C%20standing%20on%20dark%20wet%20slate%2C%20thin%20smoke%20drifting%20behind%20it.%20LIGHTING%3A%20chiaroscuro%2C%20one%20narrow%20gold-tinted%20strip%20light%20from%20the%20left%2C%20deep%20shadows%2C%20specular%20highlights%20on%20the%20facets.%20CAMERA%3A%20100mm%20macro%2C%20f%2F5.6.%20Muted%20teal%20and%20amber%20palette.%20Single%20focal%20point%2C%20center%2C%2050%25%20of%20frame%2C%20lots%20of%20black%20negative%20space."
+  }
+ },
+ {
+  "id": "pwani-flatlay",
+  "kind": "image",
+  "brand": "Pwani Plate",
+  "title": "Restaurant flatlay",
+  "style": "Flatlay",
+  "short": "Overhead menu shot that makes the food the hero.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Pwani Plate\". Any visible text or signage MUST reflect \"Pwani Plate\" only. No other brand names, no website URLs, no placeholder logos. Overhead flatlay composition. CAMERA: directly above, 90 degrees, deep depth of field, everything sharp. SUBJECT: Swahili coastal meal on a turquoise-painted wooden table: a bowl of spiced pilau, coconut fish curry in a clay pot, two layered chapati, kachumbari salad, a lime wedge and a glass of passion juice, arranged with precise knolling and a symmetrical grid. LIGHTING: soft diffused window light, no harsh shadows. 20% negative space. No text.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/pwani-flatlay.jpg?v=ummk9c",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/pwani-flatlay-thumb.jpg?v=ummk9c",
+  "width": 1600,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "1:1",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Pwani%20Plate%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Pwani%20Plate%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20Overhead%20flatlay%20composition.%20CAMERA%3A%20directly%20above%2C%2090%20degrees%2C%20deep%20depth%20of%20field%2C%20everything%20sharp.%20SUBJECT%3A%20Swahili%20coastal%20meal%20on%20a%20turquoise-painted%20wooden%20table%3A%20a%20bowl%20of%20spiced%20pilau%2C%20coconut%20fish%20curry%20in%20a%20clay%20pot%2C%20two%20layered%20chapati%2C%20kachumbari%20salad%2C%20a%20lime%20wedge%20and%20a%20glass%20of%20passion%20juice%2C%20arranged%20with%20precise%20knolling%20and%20a%20symmetrical%20grid.%20LIGHTING%3A%20soft%20diffused%20window%20light%2C%20no%20harsh%20shadows.%2020%25%20negative%20space.%20No%20text."
+  }
+ },
+ {
+  "id": "kitenge-lookbook",
+  "kind": "image",
+  "brand": "Kitenge Co.",
+  "title": "Fashion lookbook",
+  "style": "Lifestyle",
+  "short": "Lookbook frame for a clothing drop, on a real street.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Kitenge Co.\". Any visible text or signage MUST reflect \"Kitenge Co.\" only. No other brand names, no website URLs, no placeholder logos. Fashion editorial photography. SUBJECT: a confident young East African woman in a tailored orange-and-teal kitenge wrap dress with puffed sleeves, walking toward camera on a sunlit old-town street with whitewashed walls and a carved wooden door. LIGHTING: late golden-hour sun from the side, warm skin tones, soft fill. CAMERA: 85mm, f/2, shallow depth of field, Fujifilm colour science. COMPOSITION: full-length, subject on the left third, breathing room on the right. No text.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kitenge-lookbook.jpg?v=a9box4",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kitenge-lookbook-thumb.jpg?v=a9box4",
+  "width": 1289,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Kitenge%20Co.%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Kitenge%20Co.%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20Fashion%20editorial%20photography.%20SUBJECT%3A%20a%20confident%20young%20East%20African%20woman%20in%20a%20tailored%20orange-and-teal%20kitenge%20wrap%20dress%20with%20puffed%20sleeves%2C%20walking%20toward%20camera%20on%20a%20sunlit%20old-town%20street%20with%20whitewashed%20walls%20and%20a%20carved%20wooden%20door.%20LIGHTING%3A%20late%20golden-hour%20sun%20from%20the%20side%2C%20warm%20skin%20tones%2C%20soft%20fill.%20CAMERA%3A%2085mm%2C%20f%2F2%2C%20shallow%20depth%20of%20field%2C%20Fujifilm%20colour%20science.%20COMPOSITION%3A%20full-length%2C%20subject%20on%20the%20left%20third%2C%20breathing%20room%20on%20the%20right.%20No%20text."
+  }
+ },
+ {
+  "id": "sauti-3d",
+  "kind": "image",
+  "brand": "Sauti",
+  "title": "Earbuds 3D render",
+  "style": "3D",
+  "short": "A clean 3D-style render for a tech product.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Sauti\". Any visible text or signage MUST reflect \"Sauti\" only. No other brand names, no website URLs, no placeholder logos. Abstract 3D product render, Octane render style. SUBJECT: a pair of glossy white wireless earbuds hovering just above an open pebble-shaped charging case with a tiny embossed \"SAUTI\" mark, one earbud slightly rotated. A single soft coral sphere floats behind as an accent. HDRI studio lighting, soft reflections, subtle ground shadow. Background: smooth pale lilac. Restraint: one hero object, generous negative space. No other text.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/sauti-3d.jpg?v=1la07eh",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/sauti-3d-thumb.jpg?v=1la07eh",
+  "width": 1600,
+  "height": 1600,
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "1:1",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=generate&prompt=CRITICAL%20BRAND%20CONSTRAINT%3A%20This%20content%20belongs%20to%20the%20brand%20%22Sauti%22.%20Any%20visible%20text%20or%20signage%20MUST%20reflect%20%22Sauti%22%20only.%20No%20other%20brand%20names%2C%20no%20website%20URLs%2C%20no%20placeholder%20logos.%20Abstract%203D%20product%20render%2C%20Octane%20render%20style.%20SUBJECT%3A%20a%20pair%20of%20glossy%20white%20wireless%20earbuds%20hovering%20just%20above%20an%20open%20pebble-shaped%20charging%20case%20with%20a%20tiny%20embossed%20%22SAUTI%22%20mark%2C%20one%20earbud%20slightly%20rotated.%20A%20single%20soft%20coral%20sphere%20floats%20behind%20as%20an%20accent.%20HDRI%20studio%20lighting%2C%20soft%20reflections%2C%20subtle%20ground%20shadow.%20Background%3A%20smooth%20pale%20lilac.%20Restraint%3A%20one%20hero%20object%2C%20generous%20negative%20space.%20No%20other%20text."
+  }
+ },
+ {
+  "id": "mavuno-remix",
+  "kind": "remix",
+  "brand": "Mavuno",
+  "title": "Inspo Remix",
+  "style": "Remix",
+  "short": "A poster found online, rebuilt in the brand's colours, product and words.",
+  "prompt": "CRITICAL BRAND CONSTRAINT: This content belongs to the brand \"Mavuno\". Any visible text or signage MUST reflect \"Mavuno\" only. No other brand names, no website URLs, no placeholder logos. Recreate the LAYOUT of the reference poster (big headline across the top, one centered drink, splash, clean solid background) for the brand Mavuno. Change everything else: render \"MAVUNO\" in bold deep-green serif display font across the top. render \"Pressed This Morning\" in medium weight below it. Background: solid warm mango orange (#E8913A). The drink is a frosted glass bottle of cold-pressed mango-passion juice with a kraft paper label, splash of juice droplets frozen around it. Do not copy the reference's words or colours. 10% inset safe zone on all edges. 20% intentional negative space. Single dominant focal point. Professional print quality.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mavuno-remix.jpg?v=1aedav1",
+  "thumb": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mavuno-remix-thumb.jpg?v=1aedav1",
+  "before": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/inspo-source-thumb.jpg?v=5m8pij",
+  "settings": {
+   "model": "Nano Banana 2 (4K)",
+   "aspect": "4:5",
+   "credits": 18
+  },
+  "use": {
+   "href": "/studio/image?mode=remix"
+  }
+ },
+ {
+  "id": "mavuno-orbit",
+  "kind": "video",
+  "mode": "showcase",
+  "tab": "Camera move",
+  "brand": "Mavuno",
+  "title": "Product shot: orbit",
+  "short": "One sentence, and the camera moves around the product, with sound.",
+  "prompt": "Slow, smooth 180-degree orbit around a frosted glass bottle of mango juice standing on wet black stone, condensation droplets running down, sliced mango beside it. Soft rim light, steady gimbal motion.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mavuno-orbit.mp4?v=rrbiza",
+  "firstFrame": false,
+  "settings": {
+   "model": "Seedance 2 + sound",
+   "aspect": "16:9",
+   "duration": 5,
+   "credits": 205
+  },
+  "use": {
+   "href": "/studio/video?mode=showcase&aspect=16%3A9&brief=Slow%2C%20smooth%20180-degree%20orbit%20around%20a%20frosted%20glass%20bottle%20of%20mango%20juice%20standing%20on%20wet%20black%20stone%2C%20condensation%20droplets%20running%20down%2C%20sliced%20mango%20beside%20it.%20Soft%20rim%20light%2C%20steady%20gimbal%20motion."
+  }
+ },
+ {
+  "id": "kasi-reveal",
+  "kind": "video",
+  "mode": "showcase",
+  "tab": "Reveal",
+  "brand": "Kasi Runners",
+  "title": "Product shot: reveal",
+  "short": "The box opens and the product rises into the light.",
+  "prompt": "The lid slides off the box and the sneaker rises out of it, slowly rotating in the spotlight, dust drifting through the beam. Slick product reveal, camera slowly pushing in.",
+  "framePrompt": "Photographic first frame of a video, sharp, ready to animate. A matte black shoebox with its lid lifted slightly on a dark studio floor inside a single hard spotlight circle, a chunky cream canvas high-top sneaker with a black suede toe cap and plain logo-free sides just visible inside, dust particles in the beam. Dramatic, 35mm.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kasi-reveal.mp4?v=1lz0van",
+  "input": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kasi-reveal-frame-thumb.jpg?v=1v5yl0p",
+  "firstFrame": true,
+  "settings": {
+   "model": "Pruna video",
+   "aspect": "16:9",
+   "duration": 5,
+   "credits": 38
+  },
+  "use": {
+   "href": "/studio/video?mode=showcase&aspect=16%3A9&brief=The%20lid%20slides%20off%20the%20box%20and%20the%20sneaker%20rises%20out%20of%20it%2C%20slowly%20rotating%20in%20the%20spotlight%2C%20dust%20drifting%20through%20the%20beam.%20Slick%20product%20reveal%2C%20camera%20slowly%20pushing%20in."
+  }
+ },
+ {
+  "id": "sauti-creator",
+  "kind": "video",
+  "mode": "ugc",
+  "brand": "Sauti",
+  "title": "Creator talking",
+  "short": "A selfie-style review: a photo of the creator plus a voice line.",
+  "prompt": "She talks to the camera like a creator review, animated and friendly, small head movements, lifts the earbuds case slightly as she speaks. Handheld phone feel.",
+  "script": "Okay, these Sauti buds last me the whole week. I'm obsessed.",
+  "framePrompt": "Photographic first frame of a video, sharp, ready to animate. Selfie-style phone photo: a young East African woman with long braids in a bright apartment, holding a small unbranded white pebble-shaped earbuds case up near her face, relaxed closed-mouth smile, looking into the lens. Natural window light, slight wide-angle phone look.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/sauti-creator.mp4?v=p272j9",
+  "input": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/sauti-creator-frame-thumb.jpg?v=1n8yqpj",
+  "firstFrame": true,
+  "audio": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/sauti-creator-voice.mp3?v=p272j9",
+  "settings": {
+   "model": "Pruna video",
+   "aspect": "9:16",
+   "duration": 5,
+   "voice": "shimmer",
+   "credits": 39
+  },
+  "use": {
+   "href": "/studio/video?mode=ugc&aspect=9%3A16&brief=She%20talks%20to%20the%20camera%20like%20a%20creator%20review%2C%20animated%20and%20friendly%2C%20small%20head%20movements%2C%20lifts%20the%20earbuds%20case%20slightly%20as%20she%20speaks.%20Handheld%20phone%20feel."
+  }
+ },
+ {
+  "id": "kitenge-tryon",
+  "kind": "video",
+  "mode": "clothing",
+  "brand": "Kitenge Co.",
+  "title": "Try-on",
+  "short": "The outfit on a person, moving so you see the cut and the fabric.",
+  "prompt": "She walks slowly toward the camera, then turns to show the back of the dress, the kitenge fabric and puffed sleeves swaying. Golden-hour light, steady camera, fashion film feel.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kitenge-tryon.mp4?v=1jsq37w",
+  "input": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/kitenge-lookbook-thumb.jpg?v=a9box4",
+  "firstFrame": false,
+  "settings": {
+   "model": "Pruna video",
+   "aspect": "4:5",
+   "duration": 5,
+   "credits": 20
+  },
+  "use": {
+   "href": "/studio/video?mode=clothing&aspect=4%3A5&brief=She%20walks%20slowly%20toward%20the%20camera%2C%20then%20turns%20to%20show%20the%20back%20of%20the%20dress%2C%20the%20kitenge%20fabric%20and%20puffed%20sleeves%20swaying.%20Golden-hour%20light%2C%20steady%20camera%2C%20fashion%20film%20feel."
+  }
+ },
+ {
+  "id": "tano-pour",
+  "kind": "video",
+  "mode": "showcase",
+  "tab": "From your photo",
+  "brand": "Tano Coffee",
+  "title": "Photo to video",
+  "short": "Your own photo brought to life: steam, light and a little movement.",
+  "prompt": "Steam curls up from the latte, the barista's hand slides the saucer forward a few centimetres, warm morning light flickers softly through the window. Gentle, realistic motion, camera almost still.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/tano-pour.mp4?v=5dwyqq",
+  "input": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/tano-coffee-lifestyle-thumb.jpg?v=1m2u0bw",
+  "firstFrame": false,
+  "settings": {
+   "model": "Pruna video",
+   "aspect": "4:5",
+   "duration": 5,
+   "credits": 20
+  },
+  "use": {
+   "href": "/studio/video?mode=showcase&aspect=4%3A5&brief=Steam%20curls%20up%20from%20the%20latte%2C%20the%20barista's%20hand%20slides%20the%20saucer%20forward%20a%20few%20centimetres%2C%20warm%20morning%20light%20flickers%20softly%20through%20the%20window.%20Gentle%2C%20realistic%20motion%2C%20camera%20almost%20still."
+  }
+ },
+ {
+  "id": "oud-noir-push",
+  "kind": "video",
+  "mode": "showcase",
+  "tab": "From your photo",
+  "brand": "Oud Noir",
+  "title": "Photo to video: luxury",
+  "short": "A slow push-in on a still product photo.",
+  "prompt": "Very slow push-in toward the perfume bottle while thin smoke drifts across the frame, the gold strip light glints along the glass facets. Moody, cinematic, no fast motion.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/oud-noir-push.mp4?v=1r560ut",
+  "input": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/oud-noir-cinematic-thumb.jpg?v=wtjb6h",
+  "firstFrame": false,
+  "settings": {
+   "model": "Pruna video",
+   "aspect": "4:5",
+   "duration": 5,
+   "credits": 20
+  },
+  "use": {
+   "href": "/studio/video?mode=showcase&aspect=4%3A5&brief=Very%20slow%20push-in%20toward%20the%20perfume%20bottle%20while%20thin%20smoke%20drifts%20across%20the%20frame%2C%20the%20gold%20strip%20light%20glints%20along%20the%20glass%20facets.%20Moody%2C%20cinematic%2C%20no%20fast%20motion."
+  }
+ },
+ {
+  "id": "mkate-story",
+  "kind": "story",
+  "mode": "storytelling",
+  "brand": "Mkate Bakery",
+  "title": "Scene by scene: bakery story",
+  "short": "Three scenes that tell a story: the oven at dawn, the hands, the customer.",
+  "prompt": "A 15 second story for a neighbourhood bakery: baking before dawn, hands kneading, a customer taking home warm pastries.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-story-1.mp4?v=vcuvw6",
+  "input": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-story-1-frame-thumb.jpg?v=1tgnxch",
+  "scenes": [
+   {
+    "prompt": "The baker slides the tray out of the oven toward the camera, steam rising and curling in the warm light. Gentle handheld, cinematic.",
+    "framePrompt": "Photographic first frame of a video, sharp, ready to animate. Before dawn in a small Nairobi bakery: a baker in a flour-dusted apron pulls a tray of golden mandazi from a glowing open oven, steam rising, warm orange light, 35mm cinematic.",
+    "frame": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-story-1-frame-thumb.jpg?v=1tgnxch",
+    "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-story-1.mp4?v=vcuvw6"
+   },
+   {
+    "prompt": "The hands press, fold and push the dough in a steady rhythm, flour puffing up into the light. Slow motion.",
+    "framePrompt": "Photographic first frame of a video, sharp, ready to animate. Close-up of flour-dusted hands kneading soft dough on a worn wooden counter, morning light from a small window, flour particles floating in the air.",
+    "frame": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-story-2-frame-thumb.jpg?v=w2tow4",
+    "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-story-2.mp4?v=1fyf5hl"
+   },
+   {
+    "prompt": "The customer takes the paper bag, both smile and nod, the shop door light flickers with people passing outside. Warm, natural motion.",
+    "framePrompt": "Photographic first frame of a video, sharp, ready to animate. At the counter of a small neighbourhood bakery in Nairobi, a smiling Kenyan baker in a plain cream apron with no text hands a warm brown paper bag of mandazi to a customer; through the glass door a sunny Nairobi street with matatus and acacia trees, warm and inviting, 35mm. No signs or words anywhere.",
+    "frame": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-story-3-frame-thumb.jpg?v=1ky0vn9",
+    "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mkate-story-3.mp4?v=1nb8lqy"
+   }
+  ],
+  "settings": {
+   "model": "Pruna video",
+   "aspect": "16:9",
+   "duration": 15,
+   "credits": 114
+  },
+  "use": {
+   "href": "/studio/video?mode=storytelling&brief=A%2015%20second%20story%20for%20a%20neighbourhood%20bakery%3A%20baking%20before%20dawn%2C%20hands%20kneading%2C%20a%20customer%20taking%20home%20warm%20pastries."
+  }
+ },
+ {
+  "id": "mavuno-lipsync",
+  "kind": "video",
+  "mode": "lipsync",
+  "brand": "Mavuno",
+  "title": "Lip-sync",
+  "short": "A photo of a face plus a voice line becomes a talking video.",
+  "prompt": "She speaks warmly and naturally to the camera, small natural head movements, friendly expression, blinks normally.",
+  "script": "Hi, I'm Wanjiru from Mavuno. Our juice is pressed this morning, from farms you can name.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mavuno-lipsync.mp4?v=aar5z4",
+  "input": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/wanjiru-portrait-thumb.jpg?v=151rudb",
+  "audio": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/mavuno-lipsync-voice.mp3?v=aar5z4",
+  "settings": {
+   "model": "Pruna lip-sync",
+   "aspect": "9:16",
+   "voice": "nova",
+   "credits": 24
+  },
+  "use": {
+   "href": "/studio/video?mode=lipsync"
+  }
+ },
+ {
+  "id": "voice-mavuno",
+  "kind": "voice",
+  "brand": "Mavuno",
+  "title": "Voiceover: juice ad",
+  "short": "Voice \"nova\"",
+  "prompt": "Mavuno. Cold-pressed this morning, from farms you can name. Order before ten, sip it by noon.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/voice-mavuno.mp3?v=1njeyr8",
+  "settings": {
+   "model": "BlinkSpot voice",
+   "voice": "nova",
+   "credits": 1
+  },
+  "use": {
+   "href": "/studio/video?mode=lipsync"
+  }
+ },
+ {
+  "id": "voice-kilele",
+  "kind": "voice",
+  "brand": "Kilele Homes",
+  "title": "Voiceover: property",
+  "short": "Voice \"onyx\"",
+  "prompt": "Kilele Homes. Two-bedroom apartments in Kileleshwa, ready this December. Book a viewing today.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/voice-kilele.mp3?v=d1gsvk",
+  "settings": {
+   "model": "BlinkSpot voice",
+   "voice": "onyx",
+   "credits": 1
+  },
+  "use": {
+   "href": "/studio/video?mode=lipsync"
+  }
+ },
+ {
+  "id": "voice-night-market",
+  "kind": "voice",
+  "brand": "Nairobi Night Market",
+  "title": "Voiceover: event",
+  "short": "Voice \"shimmer\"",
+  "prompt": "This Saturday, the Nairobi Night Market. Food, music and makers, from six till late.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/voice-night-market.mp3?v=1ssx581",
+  "settings": {
+   "model": "BlinkSpot voice",
+   "voice": "shimmer",
+   "credits": 1
+  },
+  "use": {
+   "href": "/studio/video?mode=lipsync"
+  }
+ },
+ {
+  "id": "logo-mavuno",
+  "kind": "logo",
+  "brand": "Mavuno",
+  "title": "Logo: juice brand",
+  "short": "Drawn as an editable vector, free.",
+  "prompt": "A logo for \"Mavuno\" (cold-pressed juice). A simple droplet shape with a single leaf rising from its top, wordmark \"Mavuno\" below. Square composition, works small, transparent background.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/logo-mavuno.png?v=1wd1l2m",
+  "svg": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/logo-mavuno.svg?v=1wd1l2m",
+  "settings": {
+   "model": "AI vector",
+   "font": "DM Serif Display",
+   "colors": [
+    "#1F4D3A",
+    "#E8913A",
+    "#B8432F"
+   ],
+   "credits": 0
+  },
+  "use": {
+   "href": "/studio/brand-builder"
+  }
+ },
+ {
+  "id": "logo-kasi",
+  "kind": "logo",
+  "brand": "Kasi Runners",
+  "title": "Logo: sneaker brand",
+  "short": "Drawn as an editable vector, free.",
+  "prompt": "A logo for \"Kasi\" (running sneakers). A bold forward-slanted K made of two speed strokes, wordmark \"KASI\" beside it in heavy italic. Works small, transparent background.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/logo-kasi.png?v=gmikqu",
+  "svg": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/logo-kasi.svg?v=gmikqu",
+  "settings": {
+   "model": "AI vector",
+   "font": "Archivo Black",
+   "colors": [
+    "#111111",
+    "#FF5A1F"
+   ],
+   "credits": 0
+  },
+  "use": {
+   "href": "/studio/brand-builder"
+  }
+ },
+ {
+  "id": "logo-tano",
+  "kind": "logo",
+  "brand": "Tano Coffee",
+  "title": "Logo: coffee shop",
+  "short": "Drawn as an editable vector, free.",
+  "prompt": "A logo for \"Tano Coffee\". A round badge: a coffee bean whose centre line forms the number 5, ring text \"TANO COFFEE\" around it. Works small, transparent background.",
+  "url": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/logo-tano.png?v=1onvbyg",
+  "svg": "https://hzkufspjozkgmloznkvp.supabase.co/storage/v1/object/public/assets/examples/logo-tano.svg?v=1onvbyg",
+  "settings": {
+   "model": "AI vector",
+   "font": "Fraunces",
+   "colors": [
+    "#3B2416",
+    "#C8945A",
+    "#F4ECE1"
+   ],
+   "credits": 0
+  },
+  "use": {
+   "href": "/studio/brand-builder"
+  }
+ }
+]
