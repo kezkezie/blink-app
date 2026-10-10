@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Canvas, Rect, Ellipse, Line, Polygon, Textbox, FabricImage, Path, PencilBrush, loadSVGFromString, util,
-  FabricObject, Group, filters, type TPointerEventInfo, type TPointerEvent,
+  FabricObject, Group, filters, Circle as FabricCircle, Point, type TPointerEventInfo, type TPointerEvent,
 } from "fabric";
 import { EraserBrush } from "@erase2d/fabric";
 import {
@@ -33,12 +33,13 @@ import { canvasSafe, loadImage, originalUrl, paletteOf, penPath, shrinkToBlob, s
  * Built on fabric.js; layers are canvas objects with an id and a name.
  */
 
-FabricObject.customProperties = ["id", "name", "erasable", "srcUrl"];
+FabricObject.customProperties = ["id", "name", "erasable", "srcUrl", "anchors", "closed"];
 // fabric 7 positions objects by their centre by default; this editor (and Ask BlinkSpot's
 // coordinates) use the top-left corner, like Photoshop, Figma and SVG.
 FabricObject.ownDefaults.originX = "left";
 FabricObject.ownDefaults.originY = "top";
-type FObj = FabricObject & { id?: string; name?: string; srcUrl?: string };
+type FObj = FabricObject & { id?: string; name?: string; srcUrl?: string; anchors?: PenAnchor[]; closed?: boolean };
+type Handle = FabricCircle & { penIndex?: number; penKind?: "anchor" | "handle" };
 
 type Tool = "select" | "hand" | "text" | "rect" | "ellipse" | "line" | "star" | "polygon" | "pen" | "brush" | "eraser";
 const SHAPES: Tool[] = ["rect", "ellipse", "line", "star", "polygon"];
@@ -128,7 +129,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const brandColors = useMemo(() => [kit?.primaryColor, kit?.secondaryColor].filter((c): c is string => !!c && /^#?[0-9a-f]{3,8}$/i.test(c)).map((c) => (c.startsWith("#") ? c : `#${c}`).toUpperCase()), [kit]);
 
   // ---------- history
-  const snapshot = useCallback(() => JSON.stringify(cv.current!.toObject(["id", "name", "erasable", "srcUrl"])), []);
+  const snapshot = useCallback(() => JSON.stringify(cv.current!.toObject(["id", "name", "erasable", "srcUrl", "anchors", "closed"])), []);
   const record = useCallback(() => {
     const h = history.current;
     if (h.restoring || !cv.current) return;
@@ -159,6 +160,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     if (!started || !elRef.current || cv.current) return;
     const c = new Canvas(elRef.current, { preserveObjectStacking: true, backgroundColor: "#FFFFFF", selectionColor: "rgba(198,244,50,0.08)", selectionBorderColor: "#C6F432" });
     cv.current = c;
+    // Handle for automated browser tests (read-only use; the editor never reads it).
+    (window as unknown as { __blinkEditorCanvas?: Canvas }).__blinkEditorCanvas = c;
     FabricObject.ownDefaults.borderColor = "#C6F432";
     FabricObject.ownDefaults.cornerColor = "#C6F432";
     FabricObject.ownDefaults.cornerStrokeColor = "#0C0D0F";
@@ -196,7 +199,20 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     c.setDimensions({ width: Math.round(size.w * zoom), height: Math.round(size.h * zoom) });
     c.setZoom(zoom);
     c.requestRenderAll();
+    // The canvas is centred in its area, so a resize moves it on screen: fabric must re-measure
+    // where it is, or every click lands offset from the pointer.
+    requestAnimationFrame(() => c.calcOffset());
   }, [zoom, size, started]);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!started || !wrap) return;
+    const sync = () => cv.current?.calcOffset();
+    const ro = new ResizeObserver(sync);
+    ro.observe(wrap);
+    wrap.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("scroll", sync, { passive: true, capture: true });
+    return () => { ro.disconnect(); wrap.removeEventListener("scroll", sync); window.removeEventListener("scroll", sync, { capture: true }); };
+  }, [started]);
   useEffect(() => {
     const c = cv.current;
     if (!c) return;
@@ -291,9 +307,112 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     pen.current = null;
     if (p.anchors.length < 2) return;
     const path = new Path(penPath(p.anchors, closed), { fill: closed ? paint : "", stroke: closed ? undefined : paint, strokeWidth: closed ? 0 : Math.max(2, brushSize / 3), strokeLineCap: "round", strokeLineJoin: "round" }) as FObj;
+    path.set({ anchors: p.anchors.map((a) => ({ ...a })), closed } as Partial<FObj>);
     add(path, closed ? "Shape" : "Path");
     setToolSafe("select");
   }, [add, paint, brushSize, setToolSafe]);
+
+  // ---------- edit the points of a pen shape (drag points and curve handles; Esc or Done to finish)
+  const pointEdit = useRef<{ path: FObj; anchors: PenAnchor[]; handles: Handle[]; lines: Line[] } | null>(null);
+  const [editingPoints, setEditingPoints] = useState(false);
+  const toCanvasAnchors = (p: FObj) => {
+    const m = p.calcTransformMatrix();
+    const off = (p as unknown as Path).pathOffset;
+    const t = (x: number, y: number) => util.transformPoint(new Point(x - off.x, y - off.y), m);
+    return (p.anchors ?? []).map((a) => {
+      const c = t(a.x, a.y);
+      const h = a.hx !== undefined && a.hy !== undefined ? t(a.hx, a.hy) : null;
+      return { x: c.x, y: c.y, ...(h ? { hx: h.x, hy: h.y } : {}) };
+    });
+  };
+  const rebuildEditedPath = useCallback(() => {
+    const c = cv.current, e = pointEdit.current;
+    if (!c || !e) return;
+    const old = e.path;
+    const next = new Path(penPath(e.anchors, !!old.closed), {
+      fill: old.fill, stroke: old.stroke, strokeWidth: old.strokeWidth, strokeLineCap: "round", strokeLineJoin: "round", opacity: old.opacity,
+      selectable: false, evented: false,
+    }) as FObj;
+    next.set({ id: old.id, name: old.name, erasable: true, anchors: e.anchors.map((a) => ({ ...a })), closed: old.closed } as Partial<FObj>);
+    const index = c.getObjects().indexOf(old);
+    history.current.restoring = true;
+    c.remove(old);
+    c.insertAt(Math.max(0, index), next);
+    history.current.restoring = false;
+    e.path = next;
+    // curve-handle lines follow
+    e.lines.forEach((l) => c.remove(l));
+    e.lines = e.anchors.flatMap((a) => (a.hx !== undefined ? [new Line([a.x, a.y, a.hx, a.hy!], { stroke: "#8B7CFF", strokeWidth: 1 / zoom, selectable: false, evented: false, excludeFromExport: true })] : []));
+    e.lines.forEach((l) => c.add(l));
+    e.handles.forEach((h) => c.bringObjectToFront(h));
+    c.requestRenderAll();
+  }, [zoom]);
+  const startPointEdit = useCallback((p: FObj) => {
+    const c = cv.current;
+    if (!c || !p.anchors?.length || pointEdit.current) return;
+    c.discardActiveObject();
+    pointEdit.current = { path: p, anchors: toCanvasAnchors(p), handles: [], lines: [] };
+    rebuildEditedPath();
+    const e = pointEdit.current;
+    const r = 6 / zoom;
+    e.anchors.forEach((a, i) => {
+      const mk = (x: number, y: number, kind: "anchor" | "handle") => {
+        const h = new FabricCircle({ left: x - r, top: y - r, radius: r, fill: kind === "anchor" ? "#FFFFFF" : "#8B7CFF", stroke: "#0C0D0F", strokeWidth: 1.5 / zoom,
+          hasControls: false, hasBorders: false, excludeFromExport: true, hoverCursor: "move" }) as Handle;
+        h.penIndex = i; h.penKind = kind;
+        history.current.restoring = true; c.add(h); history.current.restoring = false;
+        e.handles.push(h);
+      };
+      mk(a.x, a.y, "anchor");
+      if (a.hx !== undefined) mk(a.hx, a.hy!, "handle");
+    });
+    c.selection = false;
+    setEditingPoints(true);
+    c.requestRenderAll();
+  }, [rebuildEditedPath, zoom]);
+  const finishPointEdit = useCallback(() => {
+    const c = cv.current, e = pointEdit.current;
+    if (!c || !e) return;
+    history.current.restoring = true;
+    e.handles.forEach((h) => c.remove(h));
+    e.lines.forEach((l) => c.remove(l));
+    history.current.restoring = false;
+    e.path.set({ selectable: true, evented: true });
+    pointEdit.current = null;
+    setEditingPoints(false);
+    c.selection = toolRef.current === "select";
+    c.setActiveObject(e.path);
+    c.requestRenderAll();
+    record(); bump();
+  }, [record, bump]);
+  useEffect(() => {
+    const c = cv.current;
+    if (!c) return;
+    const moving = (opt: { target?: FabricObject }) => {
+      const h = opt.target as Handle | undefined;
+      const e = pointEdit.current;
+      if (!h || !e || h.penIndex === undefined) return;
+      const a = e.anchors[h.penIndex];
+      const cx = (h.left ?? 0) + (h.radius ?? 0), cy = (h.top ?? 0) + (h.radius ?? 0);
+      if (h.penKind === "anchor") {
+        const dx = cx - a.x, dy = cy - a.y;
+        a.x = cx; a.y = cy;
+        if (a.hx !== undefined) {
+          a.hx += dx; a.hy! += dy;
+          const twin = e.handles.find((x) => x.penIndex === h.penIndex && x.penKind === "handle");
+          twin?.set({ left: a.hx - (twin.radius ?? 0), top: a.hy! - (twin.radius ?? 0) }); twin?.setCoords();
+        }
+      } else { a.hx = cx; a.hy = cy; }
+      rebuildEditedPath();
+    };
+    const dbl = (opt: TPointerEventInfo<TPointerEvent>) => {
+      const t = opt.target as FObj | undefined;
+      if (toolRef.current === "select" && t?.anchors?.length) startPointEdit(t);
+    };
+    c.on("object:moving", moving);
+    c.on("mouse:dblclick", dbl);
+    return () => { c.off("object:moving", moving); c.off("mouse:dblclick", dbl); };
+  }, [started, rebuildEditedPath, startPointEdit]);
 
   useEffect(() => {
     const c = cv.current;
@@ -392,6 +511,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (typing) return;
       if (pen.current && e.key === "Enter") { finishPen(false); return; }
+      if (e.key === "Escape" && pointEdit.current) { finishPointEdit(); return; }
       if (e.key === "Escape") {
         if (pen.current) { if (pen.current.preview) canvas().remove(pen.current.preview); pen.current = null; }
         // Esc also deselects (like Figma), which brings back the canvas panel and "Make a vector".
@@ -407,14 +527,32 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, undo, redo, finishPen, setToolSafe]);
+  }, [started, undo, redo, finishPen, setToolSafe, finishPointEdit]);
+
+  // paste: an image or SVG code from the clipboard becomes a layer
+  useEffect(() => {
+    if (!started) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, [contenteditable]")) return;
+      const file = Array.from(e.clipboardData?.files ?? [])[0];
+      if (file) { e.preventDefault(); void onFile(file); return; }
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (/^\s*<svg[\s>]/i.test(text)) { e.preventDefault(); void addSvg(text, { name: "Pasted vector" }); }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started, addSvg]);
 
   // hand tool: drag the scroll area
   const panning = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
 
   // ---------- starting points
-  async function begin(kind: "blank" | "photo" | "logo", photo?: PickedImage) {
+  async function begin(kind: "blank" | "transparent" | "photo" | "logo", photo?: PickedImage) {
     if (kind === "logo") { setSize(SIZES[4]); setBg("transparent"); }
+    if (kind === "transparent") setBg("transparent");
+    if (kind === "blank") setBg("#FFFFFF");
     if (photo) pendingPhoto.current = photo;
     setStarted(true);
   }
@@ -436,7 +574,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   async function duplicateActive() {
     const o = active;
     if (!o) return;
-    const copy = (await o.clone(["id", "name", "erasable", "srcUrl"])) as FObj;
+    const copy = (await o.clone(["id", "name", "erasable", "srcUrl", "anchors", "closed"])) as FObj;
     copy.set({ left: (o.left ?? 0) + 24, top: (o.top ?? 0) + 24, id: uid(), name: `${o.name ?? "Layer"} copy` } as Partial<FObj>);
     add(copy, copy.name ?? "Layer");
   }
@@ -482,7 +620,12 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   }
   async function onFile(file: File | undefined) {
     if (!file) return;
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { toast.error("Use a JPG, PNG or WebP image."); return; }
+    if (file.type === "image/svg+xml" || /\.svg$/i.test(file.name)) {
+      if (!started) await begin("transparent");
+      setTimeout(async () => { await addSvg(await file.text(), { name: file.name.replace(/\.svg$/i, "").slice(0, 30) || "Vector" }); }, started ? 0 : 120);
+      return;
+    }
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { toast.error("Use a JPG, PNG, WebP or SVG file."); return; }
     try {
       const url = await uploadBlob(file, "editor");
       if (!started) { await begin("photo", { url, contentId: null, title: file.name }); return; }
@@ -699,7 +842,13 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Layers, shapes, pen and brush, real text, and AI right on the canvas: remove a background, swap a face, turn a photo into vectors, or ask for a logo.</p>
         <div className="grid gap-3 sm:grid-cols-3 mb-8">
           <button className="s-card p-5 text-left flex flex-col gap-2" onClick={() => setPicking("photo")}><ImagePlus className="h-5 w-5" style={{ color: "var(--s-accent)" }} /><b className="text-sm">Start from a photo</b><span className="text-xs" style={{ color: "var(--s-mute)" }}>From your Library or your device</span></button>
-          <button className="s-card p-5 text-left flex flex-col gap-2" onClick={() => void begin("blank")}><Square className="h-5 w-5" /><b className="text-sm">Blank canvas</b><span className="text-xs" style={{ color: "var(--s-mute)" }}>Post, story, square or wide</span></button>
+          <div className="s-card p-5 text-left flex flex-col gap-2">
+            <Square className="h-5 w-5" /><b className="text-sm">Blank canvas</b><span className="text-xs" style={{ color: "var(--s-mute)" }}>Post, story, square or wide</span>
+            <div className="flex gap-1.5 mt-1">
+              <button className="s-btn sm flex-1" onClick={() => void begin("blank")} aria-label="Blank canvas, white"><span className="h-3 w-3 rounded-sm bg-white" /> White</button>
+              <button className="s-btn sm flex-1" onClick={() => void begin("transparent")} aria-label="Blank canvas, transparent"><span className="h-3 w-3 rounded-sm" style={{ background: "repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 6px 6px" }} /> Transparent</button>
+            </div>
+          </div>
           <button className="s-card p-5 text-left flex flex-col gap-2" onClick={() => void begin("logo")}><Shapes className="h-5 w-5" style={{ color: "var(--s-ai)" }} /><b className="text-sm">Design a logo</b><span className="text-xs" style={{ color: "var(--s-mute)" }}>Transparent square; ask AI for a vector mark</span></button>
         </div>
         {picking === "photo" && <ImagePicker onPick={(p) => { setPicking(null); void begin("photo", p); }} />}
@@ -737,7 +886,9 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   );
 
   return (
-    <div className="grid min-h-0" style={{ gridTemplateColumns: "52px 1fr 300px", height: "calc(100dvh - 56px - 53px)" }}>
+    // minmax(0, 1fr): the canvas column is always "the space left", never sized by its contents, so a
+    // toolbar change can't widen it and slide the canvas sideways under the pointer.
+    <div className="grid min-h-0" style={{ gridTemplateColumns: "52px minmax(0, 1fr) 300px", height: "calc(100dvh - 56px - 53px)" }}>
       {/* tools */}
       <nav className="flex flex-col items-center gap-1 py-2" aria-label="Tools" style={{ background: "var(--s-panel)", borderRight: "1px solid var(--s-line)" }}>
         {toolButton("select")}
@@ -775,9 +926,10 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       </nav>
 
       {/* canvas */}
-      <div className="flex flex-col min-h-0" style={{ background: "repeating-conic-gradient(#121315 0 25%, #0e0f11 0 50%) 0 0 / 24px 24px" }}>
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2" style={{ borderBottom: "1px solid var(--s-line)", background: "var(--s-bg)" }}>
-          <select className="s-input" data-no-mic style={{ width: "auto", height: 30, fontSize: 12 }} value={size.id} onChange={(e) => setSize(SIZES.find((s) => s.id === e.target.value) ?? SIZES[0])} aria-label="Canvas size">
+      <div className="flex flex-col min-h-0 min-w-0" style={{ background: "repeating-conic-gradient(#121315 0 25%, #0e0f11 0 50%) 0 0 / 24px 24px" }}>
+        {/* one line, always: a wrapping toolbar would move the canvas whenever a tool shows its options */}
+        <div className="flex flex-nowrap items-center gap-2 px-3 py-2 min-w-0 overflow-hidden" style={{ borderBottom: "1px solid var(--s-line)", background: "var(--s-bg)", height: 46 }}>
+          <select className="s-input shrink-0" data-no-mic style={{ width: "auto", height: 30, fontSize: 12 }} value={size.id} onChange={(e) => setSize(SIZES.find((s) => s.id === e.target.value) ?? SIZES[0])} aria-label="Canvas size">
             {SIZES.map((s) => <option key={s.id} value={s.id}>{s.label} · {s.w}×{s.h}</option>)}
           </select>
           <button className="s-btn ghost sm" onClick={undo} disabled={history.current.index <= 0} aria-label="Undo" title="Undo (⌘Z)"><Undo2 className="h-3.5 w-3.5" /></button>
@@ -788,15 +940,21 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
             <button className="s-btn ghost sm" onClick={() => setZoom((z) => Math.min(4, z * 1.25))} aria-label="Zoom in"><ZoomIn className="h-3.5 w-3.5" /></button>
           </span>
           {(tool === "brush" || tool === "eraser" || tool === "pen" || SHAPES.includes(tool) || tool === "text") && (
-            <span className="flex items-center gap-2 text-xs px-2" style={{ color: "var(--s-soft)" }}>
+            <span className="flex items-center gap-2 text-xs px-2 min-w-0 shrink" style={{ color: "var(--s-soft)" }}>
               {tool !== "eraser" && <label className="flex items-center gap-1.5">Colour <input type="color" value={paint} onChange={(e) => setPaint(e.target.value.toUpperCase())} className="h-6 w-8 rounded cursor-pointer" style={{ background: "none", border: "1px solid var(--s-line-2)" }} /></label>}
               {(tool === "brush" || tool === "eraser" || tool === "pen" || tool === "line") && <label className="flex items-center gap-1.5">Size <input type="range" min={1} max={120} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} style={{ accentColor: "var(--s-accent)" }} /> <span className="mono w-6">{brushSize}</span></label>}
-              <span style={{ color: "var(--s-mute)" }}>{TOOL_INFO[tool].tip}</span>
+              <span className="truncate hidden 2xl:inline max-w-[340px]" style={{ color: "var(--s-mute)" }}>{TOOL_INFO[tool].tip}</span>
             </span>
           )}
-          <div className="flex-1" />
+          <div className="flex-1 min-w-0" />
+          {editingPoints && (
+            <span className="s-pill" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 50%, var(--s-line))" }}>
+              Drag the white points; violet dots bend the curve
+              <button className="s-btn primary sm" onClick={finishPointEdit}>Done</button>
+            </span>
+          )}
           {aiBusy && <span className="s-pill"><Loader2 className="h-3 w-3 animate-spin" style={{ color: "var(--s-ai)" }} /> {aiBusy}</span>}
-          <div className="relative group">
+          <div className="relative group shrink-0">
             <button className="s-btn sm"><Download className="h-3.5 w-3.5" /> Export</button>
             <div className="absolute right-0 top-full pt-1 hidden group-hover:block group-focus-within:block z-40">
               <div className="p-1 rounded-xl grid" style={{ background: "var(--s-raised)", border: "1px solid var(--s-line-2)" }}>
@@ -806,7 +964,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               </div>
             </div>
           </div>
-          <button className="s-btn primary sm" onClick={saveToLibrary} disabled={!!aiBusy}><Save className="h-3.5 w-3.5" /> Save to Library</button>
+          <button className="s-btn primary sm shrink-0" onClick={saveToLibrary} disabled={!!aiBusy}><Save className="h-3.5 w-3.5" /> Save to Library</button>
         </div>
         <div
           ref={wrapRef}
@@ -815,13 +973,19 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
           onPointerDown={(e) => { if (tool !== "hand" || !wrapRef.current) return; panning.current = { x: e.clientX, y: e.clientY, sl: wrapRef.current.scrollLeft, st: wrapRef.current.scrollTop }; }}
           onPointerMove={(e) => { const p = panning.current; if (!p || !wrapRef.current) return; wrapRef.current.scrollLeft = p.sl - (e.clientX - p.x); wrapRef.current.scrollTop = p.st - (e.clientY - p.y); }}
           onPointerUp={() => { panning.current = null; }}
+          // Re-measure where the canvas sits before fabric reads the pointer (capture runs first). Any layout
+          // shift (panels, banners, scrollbars) would otherwise make clicks land beside the pointer.
+          onPointerDownCapture={() => cv.current?.calcOffset()}
+          onPointerMoveCapture={() => cv.current?.calcOffset()}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+          onDrop={(e) => { e.preventDefault(); Array.from(e.dataTransfer.files).slice(0, 10).forEach((f) => void onFile(f)); }}
         >
           <div style={{ boxShadow: "0 30px 80px rgba(0,0,0,.55)", background: bg === "transparent" ? "repeating-conic-gradient(#ddd 0 25%, #fff 0 50%) 0 0 / 16px 16px" : undefined, pointerEvents: tool === "hand" ? "none" : undefined }}>
             <canvas ref={elRef} />
           </div>
         </div>
         <div className="px-3 py-1.5 text-[11px] mono flex gap-3" style={{ color: "var(--s-mute)", borderTop: "1px solid var(--s-line)", background: "var(--s-bg)" }}>
-          <span>{size.w} × {size.h}</span><span>{layers.length} layer{layers.length === 1 ? "" : "s"}</span><span className="hidden md:inline">Hover a tool to see what it does · ⌘Z undo · Delete removes · Esc back to Move</span>
+          <span>{size.w} × {size.h}</span><span>{layers.length} layer{layers.length === 1 ? "" : "s"}</span><span className="hidden md:inline">Drop or paste images and SVGs · hover a tool to see what it does · ⌘Z undo · Esc back to Move</span>
         </div>
       </div>
 
@@ -915,6 +1079,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                     </label>
                   )}
                   {active instanceof Group && <button className="s-btn sm justify-start" onClick={() => ungroup(active as Group & FObj)}><Ungroup className="h-3.5 w-3.5" /> Ungroup into layers</button>}
+                  {active.anchors?.length ? <button className="s-btn sm justify-start" onClick={() => startPointEdit(active)}><PenTool className="h-3.5 w-3.5" /> Edit points (or double-click the shape)</button> : null}
                 </div>
               )}
 
@@ -998,7 +1163,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
           </div>
         </div>
       )}
-      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { setPicking(null); void onFile(e.target.files?.[0]); e.target.value = ""; }} />
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml,.svg" className="hidden" onChange={(e) => { setPicking(null); void onFile(e.target.files?.[0]); e.target.value = ""; }} />
     </div>
   );
 }

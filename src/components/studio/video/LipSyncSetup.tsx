@@ -10,6 +10,7 @@ import { allowedDurationsFor, estimateVideoCredits } from "@/lib/video-model-reg
 import type { VideoStudio } from "@/components/video/useVideoStudio";
 import { ImagePicker } from "../ImagePicker";
 import { formatCredits } from "../hooks";
+import { FirstFrame, type FirstFrameState } from "./FirstFrame";
 
 /**
  * Lip-sync: a face + a voice → the face speaks the voice. Same workflow call as the classic Upload →
@@ -51,6 +52,7 @@ export function LipSyncSetup({ v }: { v: VideoStudio }) {
   const [recSeconds, setRecSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [frame, setFrame] = useState<FirstFrameState>({ url: null, approved: false });
   const faceRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLInputElement>(null);
   const rec = useRef<{ r: MediaRecorder; stream: MediaStream; chunks: Blob[] } | null>(null);
@@ -223,6 +225,13 @@ export function LipSyncSetup({ v }: { v: VideoStudio }) {
             );
           })}
         </div>
+        {face && scene.trim().length > 3 && !frame.approved && (
+          <div className="grid gap-1.5 pt-1" style={{ borderTop: "1px solid var(--s-line)" }}>
+            <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>Optional: put the face in your scene first and check it</span>
+            <FirstFrame compact references={[face.url]} describe={`${scene}. The person from image 1 is talking to the camera, mouth clearly visible.`} aspect="9:16" state={frame} setState={setFrame}
+              onApprove={(url) => setFace({ url })} />
+          </div>
+        )}
         <div className="flex justify-between text-xs" style={{ color: "var(--s-soft)" }}><span>Length</span><span className="mono">{seconds} s{voice ? " (fits your voice)" : ""}</span></div>
         <button className="s-btn primary lg w-full" disabled={!ready || busy} onClick={render}>
           {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : <>Make it talk <span className="cost">{formatCredits(cost)} cr</span></>}

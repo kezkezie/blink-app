@@ -20,6 +20,8 @@ import { VideoEditorUI } from "@/components/layout/VideoEditorUI";
 import { AspectRatioSelect, DurationField, promptImpliesAudio } from "@/components/video/VideoOutputControls";
 import { ShotSetup } from "@/components/studio/video/ShotSetup";
 import { LipSyncSetup } from "@/components/studio/video/LipSyncSetup";
+import { FirstFrame, type FirstFrameState } from "@/components/studio/video/FirstFrame";
+import { thumbUrl } from "@/components/studio/media";
 import { StorytellingSetup } from "@/components/video/StorytellingSetup";
 import { formatCredits, useCredits } from "@/components/studio/hooks";
 import { queueForEditor } from "@/components/studio/queue-clips";
@@ -194,7 +196,7 @@ function EnginePicker({ v, pro }: { v: VideoStudio; pro: boolean }) {
   );
 }
 
-function Inspector({ v, total, effectiveModel, onRender }: { v: VideoStudio; total: number; effectiveModel: string; onRender: () => void }) {
+function Inspector({ v, total, effectiveModel, onRender, frame, setFrame }: { v: VideoStudio; total: number; effectiveModel: string; onRender: () => void; frame: FirstFrameState; setFrame: (s: FirstFrameState) => void }) {
   const [pro, setPro] = useState(false);
   const [open, setOpen] = useState<string | null>("quality");
   const { balance } = useCredits();
@@ -255,8 +257,26 @@ function Inspector({ v, total, effectiveModel, onRender }: { v: VideoStudio; tot
         </div>
         <div className="flex justify-between text-[13px]"><span>Estimated total</span><b className="mono font-medium">{formatCredits(total)} cr</b></div>
         {short && <p className="text-xs" style={{ color: "var(--s-warn)" }}>You have {formatCredits(balance)} credits. <Link href="/studio/account/billing" className="underline">Top up</Link> or pick Draft.</p>}
-        <button className="s-btn primary lg w-full" onClick={onRender} disabled={v.isGenerating || missingImage}>
-          {v.isGenerating ? <><Loader2 className="h-4 w-4 animate-spin" /> Queuing…</> : <>Render video <span className="cost">{formatCredits(total)} cr</span></>}
+        {!frame.approved && (
+          <FirstFrame
+            references={[v.primaryPreview, v.secondaryPreview].filter((u): u is string => !!u && /^(https:|data:)/.test(u))}
+            describe={v.prompt}
+            aspect={v.aspectRatio}
+            state={frame}
+            setState={setFrame}
+            onApprove={(url) => { v.setPrimaryFile(null); v.setPrimaryPreview(url); v.setSecondaryFile(null); v.setSecondaryPreview(null); }}
+          />
+        )}
+        {frame.approved && frame.url && (
+          <div className="flex items-center gap-2 text-xs" style={{ color: "var(--s-soft)" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={thumbUrl(frame.url, 160)} alt="" className="h-9 w-14 rounded object-cover" />
+            <span className="flex-1">Starts from your approved frame</span>
+            <button className="s-btn ghost sm" onClick={() => setFrame({ url: null, approved: false })}>Change</button>
+          </div>
+        )}
+        <button className={`s-btn lg w-full ${frame.approved ? "primary" : ""}`} onClick={onRender} disabled={v.isGenerating || missingImage}>
+          {v.isGenerating ? <><Loader2 className="h-4 w-4 animate-spin" /> Queuing…</> : <>{frame.approved ? "Step 2 · Render video" : "Render without preview"} <span className="cost">{formatCredits(total)} cr</span></>}
         </button>
         {missingImage && <p className="text-xs text-center" style={{ color: "var(--s-mute)" }}>Add the {v.activeModeConfig.primaryLabel?.toLowerCase()} first.</p>}
         <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>Charged when the render starts. Failed renders are refunded.</p>
@@ -390,9 +410,12 @@ function VideoStudioInner() {
   };
 
   const [lipsync, setLipsync] = useState(false);
+  // The approved first frame (still preview) for single shots; reset when the style changes.
+  const [frame, setFrame] = useState<FirstFrameState>({ url: null, approved: false });
   const chooseMode = (id: string) => {
     if (id === "lipsync") { setLipsync(true); v.setStep(2); return; }
     setLipsync(false);
+    setFrame({ url: null, approved: false });
     v.setSelectedMode(id);
     v.setPrimaryFile(null);
     v.setPrimaryPreview(null);
@@ -520,7 +543,7 @@ function VideoStudioInner() {
         ) : (
           <div className="flex-1 grid lg:grid-cols-[1fr_336px] min-h-0">
             <div className="p-4 md:p-5 min-w-0"><ProductShotToggle v={v} />{setup}</div>
-            <Inspector v={v} total={total} effectiveModel={effectiveModel} onRender={render} />
+            <Inspector v={v} total={total} effectiveModel={effectiveModel} onRender={render} frame={frame} setFrame={setFrame} />
           </div>
         )
       ) : (
