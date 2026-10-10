@@ -21,7 +21,7 @@ import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
 import { sanitizeSvg } from "@/lib/svg-sanitize";
 import type { CanvasLayer, CanvasOp, CanvasSummary } from "@/lib/canvas-ops";
 import { ImagePicker, type PickedImage } from "../ImagePicker";
-import { useBrandKit, generateBrandImages, generationErrorMessage } from "../generate-image";
+import { useBrandKit, generateBrandImages, generationErrorMessage, nearestImageAspect } from "../generate-image";
 import { useAskStore } from "../ask-store";
 import { useCanvasBridge } from "./canvas-bridge";
 import { canvasSafe, loadImage, originalUrl, paletteOf, penPath, shrinkToBlob, starPoints, type PenAnchor } from "./util";
@@ -668,14 +668,29 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't remove the background."); }
     finally { setAiBusy(null); }
   }
-  async function aiEdit(instruction: string, extraRef?: string) {
-    if (!activeImage || !clientId || !activeBrand || !kit) return;
-    setAiBusy(extraRef ? "Swapping the face…" : "Editing with AI…");
+  async function swapFace(faceUrl: string) {
+    if (!activeImage) return;
+    setAiBusy("Swapping the face…");
     try {
       const url = await imageForAi(activeImage);
+      const res = await fetch("/api/editor/face-swap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, face: faceUrl }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error || "Couldn't swap the face.");
+      await replaceImageSrc(activeImage, data.url);
+      toast.success("Face swapped · 3 credits");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't swap the face."); }
+    finally { setAiBusy(null); }
+  }
+  async function aiEdit(instruction: string, extraRef?: string) {
+    if (!activeImage || !clientId || !activeBrand || !kit) return;
+    setAiBusy("Editing with AI…");
+    try {
+      const url = await imageForAi(activeImage);
+      // Keep the photo's own shape: a fixed 4:5 squashed portraits and left a gap on the canvas.
+      const aspect = nearestImageAspect(`${activeImage.width || 4}:${activeImage.height || 5}`);
       const [out] = await generateBrandImages({
         clientId, brandId: activeBrand.id, kit, prompt: instruction, references: extraRef ? [url, extraRef] : [url],
-        engine: "nb2", aspect: "4:5", style: "studio", caption: instruction, mode: "edit", save: false,
+        engine: "nb2", aspect, style: "studio", caption: instruction, mode: "edit", save: false,
       });
       await replaceImageSrc(activeImage, out.url);
       toast.success("Done · 18 credits");
@@ -1087,7 +1102,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                 <div className="grid gap-2">
                   <span className="s-label">AI on this photo</span>
                   <button className="s-btn ai justify-between" onClick={removeBackground} disabled={!!aiBusy}><span className="flex items-center gap-2"><Scissors className="h-4 w-4" /> Remove background</span><span className="cost">1 cr</span></button>
-                  <button className="s-btn ai justify-between" onClick={() => setPicking("face")} disabled={!!aiBusy}><span className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Swap the face</span><span className="cost">18 cr</span></button>
+                  <button className="s-btn ai justify-between" onClick={() => setPicking("face")} disabled={!!aiBusy}><span className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Swap the face</span><span className="cost">3 cr</span></button>
                   <div className="flex gap-1.5">
                     <input className="s-input" style={{ height: 34 }} value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Change it: e.g. make the sky sunset orange" aria-label="Describe an edit" onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim()) void aiEdit(editPrompt.trim()); }} />
                     <button className="s-btn ai" onClick={() => editPrompt.trim() && aiEdit(editPrompt.trim())} disabled={!!aiBusy || !editPrompt.trim()} title="18 credits"><Wand2 className="h-4 w-4" /></button>
@@ -1157,7 +1172,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                 // face: needs a storage/library URL the workflow trusts
                 let faceUrl = p.url;
                 if (faceUrl.startsWith("blob:")) faceUrl = await uploadBlob(await (await fetch(faceUrl)).blob(), "editor_face");
-                void aiEdit("Replace the face of the person in image 1 with the face of the person in image 2. Match the skin tone, lighting, angle and expression naturally; keep the hair, body, clothes and background of image 1 exactly as they are.", faceUrl);
+                void swapFace(faceUrl);
               }}
             />
           </div>

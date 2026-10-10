@@ -81,6 +81,15 @@ export type GenerateRequest = {
   save?: boolean;
 };
 
+const IMAGE_ASPECTS = ["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3"];
+/** The closest aspect the image models accept, for a "w:h" ratio (any numbers, e.g. pixel sizes). */
+export function nearestImageAspect(aspect: string) {
+  if (IMAGE_ASPECTS.includes(aspect)) return aspect;
+  const [w, h] = aspect.split(":").map(Number);
+  const r = w && h ? w / h : 1;
+  return IMAGE_ASPECTS.reduce((best, a) => { const [x, y] = a.split(":").map(Number); return Math.abs(x / y - r) < Math.abs(best.r - r) ? { a, r: x / y } : best; }, { a: "16:9", r: 16 / 9 }).a;
+}
+
 export type GeneratedImage = { id: string | null; url: string };
 
 export async function generateBrandImages(req: GenerateRequest): Promise<GeneratedImage[]> {

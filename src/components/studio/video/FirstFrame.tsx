@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
-import { generateBrandImages, generationErrorMessage, useBrandKit, type ImageEngine } from "../generate-image";
+import { generateBrandImages, generationErrorMessage, nearestImageAspect, useBrandKit, type ImageEngine } from "../generate-image";
 import { thumbUrl } from "../media";
 import { supabase } from "@/lib/supabase";
 import { canvasSafe } from "../editor/util";
@@ -28,13 +28,7 @@ async function ownedRef(url: string, clientId: string) {
  * the render, so the video begins exactly where the user agreed. Kezie approved 2026-10-10.
  */
 
-const IMAGE_ASPECTS = ["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3"];
-export function nearestImageAspect(aspect: string) {
-  if (IMAGE_ASPECTS.includes(aspect)) return aspect;
-  const [w, h] = aspect.split(":").map(Number);
-  const r = w && h ? w / h : 1;
-  return IMAGE_ASPECTS.reduce((best, a) => { const [x, y] = a.split(":").map(Number); return Math.abs(x / y - r) < Math.abs(best.r - r) ? { a, r: x / y } : best; }, { a: "16:9", r: 16 / 9 }).a;
-}
+export { nearestImageAspect } from "../generate-image";
 
 export type FirstFrameState = { url: string | null; approved: boolean };
 
