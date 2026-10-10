@@ -118,8 +118,35 @@ describe("Ask BlinkSpot agent loop", () => {
     expect(init.headers["anthropic-version"]).toBe("2023-06-01");
     expect(init.headers.Authorization).toBeUndefined();
     expect(init.headers["anthropic-workspace-id"]).toBeUndefined();
-    expect(JSON.parse(init.body).model).toBe("claude-opus-5-5");
     expect(out.provider).toBe("anthropic");
+  });
+
+  it("on Anthropic: plain chat uses Sonnet 5.5, canvas and timeline edits stay on Opus 5.5", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    const fetchImpl = vi.fn().mockImplementation(async () => ok({ stop_reason: "end_turn", content: [{ type: "text", text: "hi" }] }));
+    const chat = await runAssistant([{ role: "user", content: "hi" }], ctx, fetchImpl as unknown as typeof fetch);
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).model).toBe("claude-sonnet-5-5");
+    expect(chat.model).toBe("claude-sonnet-5-5");
+    const canvas = { width: 1080, height: 1350, background: "#FFFFFF", brandColors: [], layers: [] };
+    await runAssistant([{ role: "user", content: "a poster" }], { ...ctx, canvas }, fetchImpl as unknown as typeof fetch);
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body).model).toBe("claude-opus-5-5");
+    process.env.ASSISTANT_CHAT_MODEL = "claude-opus-5-5";
+    await runAssistant([{ role: "user", content: "hi" }], ctx, fetchImpl as unknown as typeof fetch);
+    expect(JSON.parse(fetchImpl.mock.calls[2][1].body).model).toBe("claude-opus-5-5");
+    delete process.env.ASSISTANT_CHAT_MODEL;
+  });
+
+  it("on Anthropic: caches the fixed prompt and the conversation so far, and reports cache tokens", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    const fetchImpl = vi.fn().mockResolvedValue(ok({ stop_reason: "end_turn", usage: { input_tokens: 40, output_tokens: 10, cache_read_input_tokens: 5000, cache_creation_input_tokens: 0 }, content: [{ type: "text", text: "hi" }] }));
+    const out = await runAssistant([{ role: "user", content: "earlier" }, { role: "assistant", content: "ok" }, { role: "user", content: "hi" }], { ...ctx, brief: "Active brand: KYRA" }, fetchImpl as unknown as typeof fetch);
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body.system[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(body.system[0].text).not.toContain("KYRA"); // per-account facts stay out of the shared cached part
+    expect(body.system[1].text).toContain("Active brand: KYRA");
+    expect(body.messages.at(-1).content.at(-1)).toEqual({ type: "text", text: "hi", cache_control: { type: "ephemeral" } });
+    expect(body.messages[0].content).toBe("earlier"); // only the newest message carries the mark
+    expect(out.usage).toEqual({ input: 40, output: 10, cacheRead: 5000, cacheWrite: 0 });
   });
 
   it("runs tools, feeds results back and returns the reply plus proposed actions", async () => {
@@ -133,7 +160,7 @@ describe("Ask BlinkSpot agent loop", () => {
     expect(out.reply).toBe("The button opens Image Studio. About 18 credits.");
     expect(out.actions).toHaveLength(1);
     expect(out.actions[0].href).toMatch(/^\/studio\/image\?prompt=launch\+poster/);
-    expect(out.usage).toEqual({ input: 250, output: 50 });
+    expect(out.usage).toEqual({ input: 250, output: 50, cacheRead: 0, cacheWrite: 0 });
 
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe("https://api.kie.ai/anthropic/v1/messages");

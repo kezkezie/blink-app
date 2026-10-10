@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest } from "@/lib/execution-security";
+import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider } from "@/lib/assistant/agent";
+import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 
 /**
  * Editor → "Make a vector": Claude draws clean, editable SVG (shapes, icons, badges, simple logos)
@@ -21,6 +22,8 @@ Rules:
 export async function POST(request: NextRequest) {
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const limit = await consumeAiLimits(auth.value, ["vector_draw"]);
+  if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status });
   let body: { prompt?: unknown; brandId?: unknown; style?: unknown; colors?: unknown; brandName?: unknown; font?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 800) : "";
@@ -55,7 +58,9 @@ export async function POST(request: NextRequest) {
     signal: AbortSignal.timeout(110_000),
   }).catch(() => null);
   if (!res) return NextResponse.json({ error: "The vector took too long. Try a simpler description." }, { status: 504 });
-  const data = (await res.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }> };
+  const data = (await res.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
+  const usd = estimateUsd(ASSISTANT_MODEL, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 });
+  console.info("vector usage", JSON.stringify({ user: auth.value, ...data.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
   const svg = text.match(/<svg[\s\S]*<\/svg>/i)?.[0];
   if (!res.ok || !svg) return NextResponse.json({ error: "Couldn't draw that. Try describing it differently." }, { status: 502 });

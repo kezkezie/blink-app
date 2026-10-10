@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest } from "@/lib/execution-security";
-import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider } from "@/lib/assistant/agent";
+import { consumeAiLimits } from "@/lib/ai-rate-limit";
+import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
 
 /**
@@ -31,6 +32,8 @@ Rules: colours must have enough contrast for text on the neutral; fonts MUST com
 export async function POST(request: NextRequest) {
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const limit = await consumeAiLimits(auth.value, ["brand_build"]);
+  if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status });
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const s = (k: string, max: number) => (typeof body[k] === "string" ? (body[k] as string).trim().slice(0, max) : "");
@@ -58,7 +61,9 @@ export async function POST(request: NextRequest) {
     signal: AbortSignal.timeout(100_000),
   }).catch(() => null);
   if (!res) return NextResponse.json({ error: "That took too long. Try again." }, { status: 504 });
-  const data = (await res.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }> };
+  const data = (await res.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
+  const usd = estimateUsd(ASSISTANT_MODEL, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 });
+  console.info("brand build usage", JSON.stringify({ user: auth.value, ...data.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
   let out: Record<string, unknown>;
   try { out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch { return NextResponse.json({ error: "Couldn't put the brand together. Try again." }, { status: 502 }); }

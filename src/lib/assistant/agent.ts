@@ -1,5 +1,6 @@
 /**
- * Ask BlinkSpot agent loop: Claude Opus 5.5 with BlinkSpot's own read and propose tools.
+ * Ask BlinkSpot agent loop: Claude (Sonnet 5.5 for chat, Opus 5.5 for canvas and timeline edits)
+ * with BlinkSpot's own read and propose tools.
  *
  * Provider: Kie (Anthropic Messages format at https://api.kie.ai/anthropic/v1/messages, chosen by
  * Kezie 2026-10-08; 320 credits per 1M input tokens, 1,600 per 1M output). Measured 2026-10-09:
@@ -11,6 +12,28 @@ import type { CanvasSummary } from "@/lib/canvas-ops";
 import type { EditorContext } from "./request";
 
 export const ASSISTANT_MODEL = "claude-opus-5-5";
+/**
+ * Plain chat (ideas, how-to, proposing a generation) goes to Sonnet 5.5: half Opus's price
+ * ($2/$10 per MTok vs $4/$20) and faster. Editing a canvas or a timeline, where the model has to
+ * look at pictures and place things precisely, stays on Opus 5.5. Kie only serves Opus here.
+ * Override with ASSISTANT_CHAT_MODEL (e.g. "claude-opus-5-5" to put everything back on Opus).
+ */
+export const ASSISTANT_CHAT_MODEL = "claude-sonnet-5-5";
+export function assistantModelFor(kind: "chat" | "canvas" | "editor", provider: "anthropic" | "kie"): string {
+  if (provider === "kie" || kind !== "chat") return ASSISTANT_MODEL;
+  const env = process.env.ASSISTANT_CHAT_MODEL;
+  return env && /^claude-[a-z0-9-]{3,40}$/.test(env) ? env : ASSISTANT_CHAT_MODEL;
+}
+/** List prices, USD per million tokens, for the cost line in the logs. */
+const PRICE: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
+  "claude-opus-5-5": { in: 4, out: 20, cacheRead: 0.2, cacheWrite: 5 },
+  "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+};
+export function estimateUsd(model: string, u: { input: number; output: number; cacheRead?: number; cacheWrite?: number }) {
+  const p = PRICE[model];
+  if (!p) return null;
+  return (u.input * p.in + u.output * p.out + (u.cacheRead ?? 0) * p.cacheRead + (u.cacheWrite ?? 0) * p.cacheWrite) / 1_000_000;
+}
 const KIE_MESSAGES_URL = "https://api.kie.ai/anthropic/v1/messages";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TURNS = 6;
@@ -46,7 +69,7 @@ export type AgentMessage = { role: "user" | "assistant"; content: string | Conte
 type MessagesResponse = {
   content?: ContentBlock[];
   stop_reason?: string;
-  usage?: { input_tokens?: number; output_tokens?: number };
+  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
   error?: { message?: string } | string;
 };
 
@@ -70,22 +93,42 @@ function textOf(blocks: ContentBlock[] | undefined) {
   return (blocks ?? []).filter((b): b is TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
 }
 
+/**
+ * Mark the end of the conversation so far as cacheable: the next tool turn (and the user's next
+ * message) re-sends it and pays 5% for it instead of full price. Only the newest message carries
+ * the mark, so the request never exceeds the four-breakpoint limit.
+ */
+export function withCacheMark(messages: AgentMessage[]): AgentMessage[] {
+  if (messages.length === 0) return messages;
+  const last = messages[messages.length - 1];
+  const blocks: ContentBlock[] = typeof last.content === "string" ? [{ type: "text", text: last.content }] : [...last.content];
+  if (blocks.length === 0) return messages;
+  blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
+  return [...messages.slice(0, -1), { role: last.role, content: blocks }];
+}
+
 export async function runAssistant(
   history: AgentMessage[],
   ctx: ToolContext & { pageHint?: string; brief?: string; editor?: EditorContext; canvas?: CanvasSummary },
   fetchImpl: typeof fetch = fetch,
-): Promise<{ reply: string; actions: AssistantAction[]; usage: { input: number; output: number }; provider: "anthropic" | "kie" }> {
+): Promise<{ reply: string; actions: AssistantAction[]; usage: { input: number; output: number; cacheRead: number; cacheWrite: number }; provider: "anthropic" | "kie"; model: string }> {
   const provider = assistantProvider();
   const started = Date.now();
 
   const editor = ctx.editor;
-  const system = [
-    SYSTEM_PROMPT,
+  const model = assistantModelFor(ctx.canvas ? "canvas" : editor ? "editor" : "chat", provider.name);
+  // The same for every user on this screen: cached, so repeat turns read it at 5% of the price.
+  const fixed = [SYSTEM_PROMPT, editor ? EDITOR_GUIDE : "", ctx.canvas ? CANVAS_GUIDE : ""].filter(Boolean).join("\n\n");
+  const varying = [
     ctx.brief,
     ctx.pageHint ? `The user is on: ${ctx.pageHint}.` : "",
-    editor ? `${EDITOR_GUIDE}\nTimeline (ids, seconds): ${JSON.stringify(editor.timeline)}` : "",
-    ctx.canvas ? `${CANVAS_GUIDE}\nCanvas (pixels): ${JSON.stringify({ ...ctx.canvas, preview: undefined })}` : "",
+    editor ? `Timeline (ids, seconds): ${JSON.stringify(editor.timeline)}` : "",
+    ctx.canvas ? `Canvas (pixels): ${JSON.stringify({ ...ctx.canvas, preview: undefined })}` : "",
   ].filter(Boolean).join("\n\n");
+  const cache = provider.name === "anthropic";
+  const system = cache
+    ? [{ type: "text", text: fixed, cache_control: { type: "ephemeral" } }, ...(varying ? [{ type: "text", text: varying }] : [])]
+    : [fixed, varying].filter(Boolean).join("\n\n");
   const tools = [...ASSISTANT_TOOLS, ...(editor ? [EDIT_TIMELINE_TOOL] : []), ...(ctx.canvas ? [EDIT_CANVAS_TOOL] : [])];
   const toolCtx: ToolContext = { clientId: ctx.clientId, brandId: ctx.brandId, timeline: editor?.timeline, canvas: ctx.canvas };
   const messages: AgentMessage[] = [...history];
@@ -118,7 +161,7 @@ export async function runAssistant(
     };
   }
   const actions: AssistantAction[] = [];
-  const usage = { input: 0, output: 0 };
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   let reply = "";
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
@@ -126,7 +169,7 @@ export async function runAssistant(
     const res = await fetchImpl(provider.url, {
       method: "POST",
       headers: { ...provider.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: ctx.canvas ? MAX_TOKENS_CANVAS : MAX_TOKENS, system, tools, messages, stream: false }),
+      body: JSON.stringify({ model, max_tokens: ctx.canvas ? MAX_TOKENS_CANVAS : MAX_TOKENS, system, tools, messages: cache ? withCacheMark(messages) : messages, stream: false }),
       signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
     });
     const data = (await res.json().catch(() => ({}))) as MessagesResponse;
@@ -136,6 +179,8 @@ export async function runAssistant(
     }
     usage.input += data.usage?.input_tokens ?? 0;
     usage.output += data.usage?.output_tokens ?? 0;
+    usage.cacheRead += data.usage?.cache_read_input_tokens ?? 0;
+    usage.cacheWrite += data.usage?.cache_creation_input_tokens ?? 0;
     const text = textOf(data.content);
     if (text) reply = text;
 
@@ -152,5 +197,5 @@ export async function runAssistant(
     messages.push({ role: "user", content: results });
   }
 
-  return { reply: reply || (actions.length ? "Here you go." : "Sorry, I could not finish that. Try asking again."), actions, usage, provider: provider.name };
+  return { reply: reply || (actions.length ? "Here you go." : "Sorry, I could not finish that. Try asking again."), actions, usage, provider: provider.name, model };
 }

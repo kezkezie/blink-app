@@ -71,7 +71,7 @@ export function getExecutionRateLimitConfig(
   };
 }
 
-function parseRpcRow(data: unknown) {
+export function parseRpcRow(data: unknown) {
   const row = Array.isArray(data) ? data[0] : data;
   if (!row || typeof row !== "object") return null;
   const value = row as Record<string, unknown>;

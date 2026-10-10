@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { AssistantUnavailableError, runAssistant } from "@/lib/assistant/agent";
+import { AssistantUnavailableError, estimateUsd, runAssistant } from "@/lib/assistant/agent";
+import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { loadAccountBrief } from "@/lib/assistant/tools";
 import { parseAssistantRequest } from "@/lib/assistant/request";
 
@@ -19,8 +20,10 @@ export async function POST(request: NextRequest) {
   const parsed = parseAssistantRequest(body);
   if (!parsed) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+  const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+  const limit = await consumeAiLimits(auth.value, ["assistant_hour", "assistant_day"], client.plan_tier);
+  if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status, headers: limit.retryAfterSeconds ? { "Retry-After": String(limit.retryAfterSeconds) } : undefined });
 
   // The brand must belong to this account and be active; otherwise the assistant works brand-less.
   let brandId: string | null = null;
@@ -34,6 +37,9 @@ export async function POST(request: NextRequest) {
     const ctx = { clientId: client.id, brandId };
     const brief = await loadAccountBrief(ctx).catch(() => undefined);
     const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas });
+    // One line per answer so the Claude bill can be traced to accounts in the Vercel logs.
+    const usd = estimateUsd(result.model, result.usage);
+    console.info("assistant usage", JSON.stringify({ client: client.id, model: result.model, ...result.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof AssistantUnavailableError) return NextResponse.json({ error: err.message }, { status: 503 });
