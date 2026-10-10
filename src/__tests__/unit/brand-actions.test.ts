@@ -8,7 +8,9 @@ vi.mock("@/lib/supabase-server", () => ({
   get supabaseAdmin() { return db.current!.client; },
 }));
 
-import { archiveBrand, createBrandWorkspace, createQuickBrand, getBrandAllowance, saveBrandProfile } from "@/app/actions/brand";
+import {
+  archiveBrand, createBrandWorkspace, createQuickBrand, deleteBrandPermanently, getBrandAllowance, restoreBrand, saveBrandProfile, setBrandLogo,
+} from "@/app/actions/brand";
 
 const ME = "user-me";
 const OTHER = "user-other";
@@ -167,5 +169,80 @@ describe("getBrandAllowance (read-only, for the UI)", () => {
     const before = JSON.stringify(db.current!.tables);
     expect(await getBrandAllowance()).toHaveProperty("error");
     expect(JSON.stringify(db.current!.tables)).toBe(before);
+  });
+});
+
+describe("brand actions: restore, delete forever, set logo (2026-10-10)", () => {
+  it("restoreBrand brings back my archived brand when the plan has room", async () => {
+    seed({ myTier: "starter", myBrands: 1, archived: 1 });
+    expect((await restoreBrand("archived-0")).success).toBe(true);
+    expect(brand("archived-0").is_active).toBe(true);
+  });
+
+  it("restoreBrand refuses when the plan is full, and never touches another customer's brand", async () => {
+    seed({ myTier: "free", myBrands: 1, archived: 1 });
+    expect((await restoreBrand("archived-0")).error).toBeTruthy();
+    expect(brand("archived-0").is_active).toBe(false);
+    seed({ myTier: "agency" });
+    brand("theirs-0").is_active = false;
+    expect((await restoreBrand("theirs-0")).error).toBeTruthy();
+    expect(brand("theirs-0").is_active).toBe(false);
+  });
+
+  function seedWithPosts() {
+    seed({ myTier: "agency", myBrands: 2 });
+    const t = db.current!.tables;
+    t.content = [
+      { id: "post-a", brand_id: "mine-0", client_id: MY_CLIENT },
+      { id: "post-b", brand_id: "mine-0", client_id: MY_CLIENT },
+      { id: "post-keep", brand_id: "mine-1", client_id: MY_CLIENT, retry_of_content_id: "post-a" },
+    ];
+    t.social_accounts = [{ id: "acct-a", brand_id: "mine-0", client_id: MY_CLIENT }];
+    t.content_schedule = [{ id: "sch-a", content_id: "post-a", social_account_id: "acct-a" }, { id: "sch-keep", content_id: "post-keep", social_account_id: null }];
+    t.analytics = [{ id: "an-a", content_schedule_id: "sch-a" }, { id: "an-keep", content_schedule_id: "sch-keep" }];
+    t.conversations = [{ id: "conv-a", social_account_id: "acct-a" }];
+    t.conversation_messages = [{ id: "msg-a", conversation_id: "conv-a" }];
+    t.assets = [{ id: "file-a", related_content_id: "post-b" }];
+    t.generation_billing_ledger = [{ id: "led-a", content_id: "post-a" }];
+  }
+
+  it("deleteBrandPermanently needs the exact brand name typed", async () => {
+    seedWithPosts();
+    expect((await deleteBrandPermanently("mine-0", "Mine")).error).toMatch(/doesn't match/);
+    expect(db.current!.tables.content).toHaveLength(3);
+  });
+
+  it("deleteBrandPermanently removes the brand and its dependents, keeps files, billing and other brands", async () => {
+    seedWithPosts();
+    const r = await deleteBrandPermanently("mine-0", "  mine 0 ");
+    expect(r).toEqual({ success: true, removed: { posts: 2, accounts: 1 } });
+    const t = db.current!.tables;
+    expect(t.brand_profiles.some((b) => b.id === "mine-0")).toBe(false);
+    expect(t.content.map((c) => c.id)).toEqual(["post-keep"]);
+    expect(t.content[0].retry_of_content_id).toBeNull();
+    expect(t.social_accounts).toHaveLength(0);
+    expect(t.content_schedule.map((s) => s.id)).toEqual(["sch-keep"]);
+    expect(t.analytics.map((a) => a.id)).toEqual(["an-keep"]);
+    expect(t.conversations).toHaveLength(0);
+    expect(t.conversation_messages).toHaveLength(0);
+    expect(t.assets).toEqual([{ id: "file-a", related_content_id: null }]);
+    expect(t.generation_billing_ledger).toEqual([{ id: "led-a", content_id: null }]);
+  });
+
+  it("deleteBrandPermanently cannot delete another customer's brand", async () => {
+    seed({ myTier: "agency" });
+    expect((await deleteBrandPermanently("theirs-0", "Victim Brand")).error).toBeTruthy();
+    expect(brand("theirs-0")).toBeTruthy();
+  });
+
+  it("setBrandLogo only accepts a file in my own storage folder, on my own brand", async () => {
+    seed();
+    const mine = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/images/${MY_CLIENT}/logo_x.png`;
+    expect((await setBrandLogo("mine-0", "https://evil.example/logo.png")).error).toBeTruthy();
+    expect((await setBrandLogo("mine-0", mine.replace(MY_CLIENT, THEIR_CLIENT))).error).toBeTruthy();
+    expect((await setBrandLogo("theirs-0", mine)).error).toBeTruthy();
+    expect(brand("theirs-0").logo_url).toBeUndefined();
+    expect((await setBrandLogo("mine-0", mine)).success).toBe(true);
+    expect(brand("mine-0").logo_url).toBe(mine);
   });
 });

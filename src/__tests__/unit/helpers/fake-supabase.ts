@@ -2,7 +2,7 @@
  * Minimal in-memory stand-in for the supabase-js query builder, for tests that
  * must check what the code DOES to data (which rows change) rather than which
  * mocks it calls in which order. Supports the subset BlinkSpot uses:
- * select (incl. count/head), insert, update, eq, maybeSingle, single, awaiting.
+ * select (incl. count/head), insert, update, delete, eq, in, maybeSingle, single, awaiting.
  */
 type Row = Record<string, unknown>;
 type Tables = Record<string, Row[]>;
@@ -12,7 +12,8 @@ const newId = () => `00000000-0000-4000-8000-${String(++idSeq).padStart(12, "0")
 
 class Query implements PromiseLike<{ data: unknown; error: unknown; count?: number | null }> {
   private filters: [string, unknown][] = [];
-  private op: "select" | "insert" | "update" = "select";
+  private inFilters: [string, unknown[]][] = [];
+  private op: "select" | "insert" | "update" | "delete" = "select";
   private payload: Row | Row[] | null = null;
   private countMode = false;
   private headOnly = false;
@@ -30,11 +31,15 @@ class Query implements PromiseLike<{ data: unknown; error: unknown; count?: numb
   }
   insert(payload: Row | Row[]) { this.op = "insert"; this.payload = payload; return this; }
   update(payload: Row) { this.op = "update"; this.payload = payload; return this; }
+  delete() { this.op = "delete"; return this; }
   eq(col: string, val: unknown) { this.filters.push([col, val]); return this; }
+  in(col: string, vals: unknown[]) { this.inFilters.push([col, vals]); return this; }
   single() { this.singleMode = "single"; return this; }
   maybeSingle() { this.singleMode = "maybe"; return this; }
 
-  private matches(r: Row) { return this.filters.every(([c, v]) => r[c] === v); }
+  private matches(r: Row) {
+    return this.filters.every(([c, v]) => r[c] === v) && this.inFilters.every(([c, vs]) => vs.includes(r[c]));
+  }
 
   private run() {
     const rows = (this.tables[this.table] ??= []);
@@ -46,6 +51,9 @@ class Query implements PromiseLike<{ data: unknown; error: unknown; count?: numb
     } else if (this.op === "update") {
       out = rows.filter((r) => this.matches(r));
       for (const r of out) Object.assign(r, this.payload);
+    } else if (this.op === "delete") {
+      out = rows.filter((r) => this.matches(r));
+      this.tables[this.table] = rows.filter((r) => !this.matches(r));
     } else {
       out = rows.filter((r) => this.matches(r));
     }

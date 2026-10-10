@@ -21,6 +21,7 @@ import { supabase } from "@/lib/supabase";
 import { UI_COOKIE, dashboardPathFor, studioSectionFor, studioTitleFor, type StudioSection } from "@/lib/studio-routes";
 import { formatCredits, useCredits, useStudioBrands } from "./hooks";
 import { useAskStore } from "./ask-store";
+import { ManageBrands } from "./ManageBrands";
 
 const PLACES: Array<{ id: StudioSection; label: string; href: string; icon: typeof Sparkles }> = [
   { id: "create", label: "Create", href: "/studio", icon: Sparkles },
@@ -84,6 +85,7 @@ function ActivityChip() {
 function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
   const { activeBrand, availableBrands, setActiveBrand } = useBrandStore();
   const [creating, setCreating] = useState(false);
+  const [managing, setManaging] = useState(false);
   return (
     <>
       <DropdownMenu>
@@ -126,14 +128,21 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
               setCreating(true);
             }}
           >
-            <Plus className="h-4 w-4" /> New brand
+            <Plus className="h-4 w-4" /> New brand (I have one)
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className="gap-3 py-2 cursor-pointer">
+            <Link href="/studio/brand-builder"><Sparkles className="h-4 w-4" style={{ color: "var(--s-accent)" }} /> Build a brand from scratch</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild className="gap-3 py-2 cursor-pointer">
             <Link href="/studio/brand"><Palette className="h-4 w-4" /> Brand settings</Link>
           </DropdownMenuItem>
+          <DropdownMenuItem className="gap-3 py-2 cursor-pointer" onClick={() => setManaging(true)}>
+            <Briefcase className="h-4 w-4" /> Manage brands (archive, restore, delete)
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <BrandCreationModal isOpen={creating} onClose={() => setCreating(false)} onSuccess={onCreated} />
+      <ManageBrands open={managing} onClose={() => setManaging(false)} onChanged={onCreated} />
     </>
   );
 }

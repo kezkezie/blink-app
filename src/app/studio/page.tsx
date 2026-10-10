@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Clapperboard, ImageIcon, PenTool, Shuffle } from "lucide-react";
+import { Clapperboard, ImageIcon, PenTool, Shuffle, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
@@ -111,6 +111,12 @@ export default function CreatePage() {
           ))}
         </div>
       </section>
+
+      <Link href="/studio/brand-builder" className="s-card mt-3 p-4 flex items-center gap-3" style={{ textDecoration: "none" }}>
+        <Sparkles className="h-5 w-5 shrink-0" style={{ color: "var(--s-accent)" }} />
+        <span className="text-[13.5px]"><b className="font-semibold">New business, no brand yet?</b> <span style={{ color: "var(--s-soft)" }}>Describe it and get a name, colours, fonts, a voice and logos. Free.</span></span>
+        <span className="ml-auto text-[13px] shrink-0" style={{ color: "var(--s-accent)" }}>Brand builder →</span>
+      </Link>
 
       <section className="mt-10 mb-6">
         <h3 className="s-section-h">Recent work <Link href="/studio/library" className="s-btn ghost sm normal-case tracking-normal">Open library →</Link></h3>

@@ -21,7 +21,7 @@ Rules:
 export async function POST(request: NextRequest) {
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  let body: { prompt?: unknown; brandId?: unknown; style?: unknown };
+  let body: { prompt?: unknown; brandId?: unknown; style?: unknown; colors?: unknown; brandName?: unknown; font?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 800) : "";
   if (prompt.length < 3) return NextResponse.json({ error: "Describe what to draw." }, { status: 400 });
@@ -34,6 +34,13 @@ export async function POST(request: NextRequest) {
       if (b) brandLine = `Brand: ${b.brand_name}${b.industry ? ` (${b.industry})` : ""}. Brand colours: ${[b.primary_color, b.secondary_color].filter(Boolean).join(", ") || "not set"}.`;
     }
   }
+  // The brand builder draws logos before the brand exists, so it sends the proposed palette and name.
+  if (!brandLine && Array.isArray(body.colors)) {
+    const colors = body.colors.filter((c): c is string => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c)).slice(0, 5);
+    const name = typeof body.brandName === "string" ? body.brandName.trim().slice(0, 60) : "";
+    if (colors.length || name) brandLine = `${name ? `Brand: ${name}. ` : ""}Brand colours: ${colors.join(", ") || "your choice"}.`;
+  }
+  const fontLine = typeof body.font === "string" && /^[A-Za-z0-9 ]{2,40}$/.test(body.font) ? `Wordmark font-family: "${body.font}".` : "";
   const style = body.style === "outline" ? "Line art: strokes only, no fills, consistent stroke width." : body.style === "flat" ? "Flat design: solid fills, no gradients." : "";
 
   let provider;
@@ -44,7 +51,7 @@ export async function POST(request: NextRequest) {
   const res = await fetch(provider.url, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: 6000, system: SYSTEM, messages: [{ role: "user", content: [brandLine, style, `Draw: ${prompt}`].filter(Boolean).join("\n") }] }),
+    body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: 6000, system: SYSTEM, messages: [{ role: "user", content: [brandLine, fontLine, style, `Draw: ${prompt}`].filter(Boolean).join("\n") }] }),
     signal: AbortSignal.timeout(110_000),
   }).catch(() => null);
   if (!res) return NextResponse.json({ error: "The vector took too long. Try a simpler description." }, { status: 504 });

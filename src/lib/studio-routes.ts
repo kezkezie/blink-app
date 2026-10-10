@@ -68,6 +68,7 @@ export function studioTitleFor(pathname: string): string {
     ["/studio/plan/approvals", "Plan"],
     ["/studio/plan/analytics", "Plan"],
     ["/studio/plan", "Plan"],
+    ["/studio/brand-builder", "Brand builder"],
     ["/studio/brand", "Brand"],
     ["/studio/account/billing", "Billing"],
     ["/studio/account/settings", "Settings"],

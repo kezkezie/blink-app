@@ -91,6 +91,10 @@ interface CreateBrandWorkspaceInput {
   // Uploaded URLs (already uploaded client-side to Storage)
   logoUrl: string | null;
   uploadedAssets: string[];
+  // Optional extras from the brand builder
+  secondaryFont?: string | null;
+  dos?: string[];
+  donts?: string[];
 }
 
 interface SaveBrandProfileInput {
@@ -183,6 +187,9 @@ export async function createBrandWorkspace(input: CreateBrandWorkspaceInput): Pr
       accent_color: input.accentColor,
       additional_colors: input.additionalColor ? [input.additionalColor] : [],
       primary_font: input.primaryFont,
+      ...(typeof input.secondaryFont === "string" && input.secondaryFont ? { secondary_font: input.secondaryFont.slice(0, 60) } : {}),
+      ...(Array.isArray(input.dos) ? { dos: input.dos.filter((d) => typeof d === "string").slice(0, 8).join("\n") } : {}),
+      ...(Array.isArray(input.donts) ? { donts: input.donts.filter((d) => typeof d === "string").slice(0, 8).join("\n") } : {}),
       tone_keywords: input.toneKeywords,
       is_active: true,
       logo_url: input.logoUrl,
@@ -335,6 +342,137 @@ export async function archiveBrand(brandId: string): Promise<{ success?: boolean
     .eq("client_id", client.id)
     .select("id");
 
+  if (error || !Array.isArray(data) || data.length !== 1) return { error: "Brand not found." };
+  return { success: true };
+}
+
+// ────────────────────────────────────────────────
+// 5. Archived brands: list and restore (2026-10-10)
+// ────────────────────────────────────────────────
+
+export async function listArchivedBrands(): Promise<{ brands: Array<{ id: string; brand_name: string; logo_url: string | null; updated_at: string | null }> } | { error: string }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client) return { brands: [] };
+  const { data, error } = await supabaseAdmin
+    .from("brand_profiles")
+    .select("id, brand_name, logo_url, updated_at")
+    .eq("client_id", client.id)
+    .eq("is_active", false)
+    .order("updated_at", { ascending: false });
+  if (error) return { error: "Could not load archived brands." };
+  return { brands: (data ?? []) as Array<{ id: string; brand_name: string; logo_url: string | null; updated_at: string | null }> };
+}
+
+/** Bring an archived brand back (everything it had is still there). Respects the plan's brand limit. */
+export async function restoreBrand(brandId: string): Promise<{ success?: boolean; error?: string }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client || typeof brandId !== "string") return { error: "Brand not found." };
+  const used = await activeBrandCount(client.id);
+  const limit = getLimitForTier(client.plan_tier).maxBrands;
+  if (used === null) return { error: "Could not check your brand allowance." };
+  if (used >= limit) return { error: `Your plan allows ${limit} active brand${limit === 1 ? "" : "s"}. Archive one first, then restore this one.` };
+  const { data, error } = await supabaseAdmin
+    .from("brand_profiles")
+    .update({ is_active: true, updated_at: new Date().toISOString() })
+    .eq("id", brandId)
+    .eq("client_id", client.id)
+    .eq("is_active", false)
+    .select("id");
+  if (error || !Array.isArray(data) || data.length !== 1) return { error: "Brand not found." };
+  return { success: true };
+}
+
+// ────────────────────────────────────────────────
+// 6. Delete a brand forever (2026-10-10)
+// ────────────────────────────────────────────────
+
+const CHUNK = 200;
+function chunks<T>(items: T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += CHUNK) out.push(items.slice(i, i + CHUNK));
+  return out;
+}
+
+/**
+ * Permanently deletes a brand, its posts, schedules, social connections and their conversations.
+ * The user must type the brand's name. content.brand_id and social_accounts.brand_id have no
+ * ON DELETE rule, so dependents are removed (or unlinked) first. Billing history is kept: ledger
+ * rows only lose their link to the deleted post. Uploaded files in storage are left in place.
+ */
+export async function deleteBrandPermanently(brandId: string, typedName: string): Promise<{ success?: boolean; error?: string; removed?: { posts: number; accounts: number } }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client || typeof brandId !== "string") return { error: "Brand not found." };
+  const { data: brand } = await supabaseAdmin.from("brand_profiles").select("id, brand_name").eq("id", brandId).eq("client_id", client.id).maybeSingle();
+  if (!brand) return { error: "Brand not found." };
+  if ((typedName ?? "").trim().toLowerCase() !== String(brand.brand_name ?? "").trim().toLowerCase()) return { error: "The name you typed doesn't match the brand." };
+
+  const fail = (step: string) => ({ error: `Couldn't finish deleting the brand (stopped at: ${step}). Some of its posts may already be gone; try again to finish.` });
+
+  const { data: posts, error: pe } = await supabaseAdmin.from("content").select("id").eq("brand_id", brandId).eq("client_id", client.id);
+  const { data: accounts, error: ae } = await supabaseAdmin.from("social_accounts").select("id").eq("brand_id", brandId).eq("client_id", client.id);
+  if (pe || ae) return fail("reading the brand");
+  const postIds = (posts ?? []).map((p) => p.id as string);
+  const accountIds = (accounts ?? []).map((a) => a.id as string);
+
+  // schedules (and their analytics) for these posts or accounts
+  const scheduleIds = new Set<string>();
+  for (const ids of chunks(postIds)) {
+    const { data, error } = await supabaseAdmin.from("content_schedule").select("id").in("content_id", ids);
+    if (error) return fail("reading schedules"); (data ?? []).forEach((r) => scheduleIds.add(r.id as string));
+  }
+  for (const ids of chunks(accountIds)) {
+    const { data, error } = await supabaseAdmin.from("content_schedule").select("id").in("social_account_id", ids);
+    if (error) return fail("reading schedules"); (data ?? []).forEach((r) => scheduleIds.add(r.id as string));
+  }
+  for (const ids of chunks([...scheduleIds])) {
+    if ((await supabaseAdmin.from("analytics").delete().in("content_schedule_id", ids)).error) return fail("removing analytics");
+    if ((await supabaseAdmin.from("content_schedule").delete().in("id", ids)).error) return fail("removing schedules");
+  }
+  // conversations on this brand's social accounts
+  for (const ids of chunks(accountIds)) {
+    const { data: convs, error } = await supabaseAdmin.from("conversations").select("id").in("social_account_id", ids);
+    if (error) return fail("reading conversations");
+    for (const cids of chunks((convs ?? []).map((c) => c.id as string))) {
+      if ((await supabaseAdmin.from("conversation_messages").delete().in("conversation_id", cids)).error) return fail("removing messages");
+      if ((await supabaseAdmin.from("conversations").delete().in("id", cids)).error) return fail("removing conversations");
+    }
+  }
+  // unlink rows that must survive (files, billing history, retries from other posts)
+  for (const ids of chunks(postIds)) {
+    if ((await supabaseAdmin.from("assets").update({ related_content_id: null }).in("related_content_id", ids)).error) return fail("unlinking files");
+    if ((await supabaseAdmin.from("generation_billing_ledger").update({ content_id: null }).in("content_id", ids)).error) return fail("unlinking billing history");
+    if ((await supabaseAdmin.from("content").update({ retry_of_content_id: null }).in("retry_of_content_id", ids)).error) return fail("unlinking retries");
+  }
+  for (const ids of chunks(postIds)) {
+    if ((await supabaseAdmin.from("content").delete().in("id", ids).eq("client_id", client.id)).error) return fail("removing posts");
+  }
+  for (const ids of chunks(accountIds)) {
+    if ((await supabaseAdmin.from("social_accounts").delete().in("id", ids).eq("client_id", client.id)).error) return fail("removing social connections");
+  }
+  const { error: be } = await supabaseAdmin.from("brand_profiles").delete().eq("id", brandId).eq("client_id", client.id);
+  if (be) return fail("removing the brand");
+  return { success: true, removed: { posts: postIds.length, accounts: accountIds.length } };
+}
+
+// ────────────────────────────────────────────────
+// 7. Set a brand's logo after it was created (brand builder, 2026-10-10)
+// ────────────────────────────────────────────────
+
+export async function setBrandLogo(brandId: string, logoUrl: string): Promise<{ success?: boolean; error?: string }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client || typeof brandId !== "string" || typeof logoUrl !== "string") return { error: "Brand not found." };
+  // Only a file in the user's own storage folder can become their logo.
+  const root = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/images/${client.id}/`;
+  if (!logoUrl.startsWith(root)) return { error: "Invalid logo." };
+  const { data, error } = await supabaseAdmin.from("brand_profiles").update({ logo_url: logoUrl, updated_at: new Date().toISOString() }).eq("id", brandId).eq("client_id", client.id).select("id");
   if (error || !Array.isArray(data) || data.length !== 1) return { error: "Brand not found." };
   return { success: true };
 }

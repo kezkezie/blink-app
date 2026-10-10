@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Brain, Archive, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Brain, Archive, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { BrandRefinementModal } from "@/components/brand/BrandRefinementModal";
 import { archiveBrand } from "@/app/actions/brand";
@@ -33,7 +34,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
       const rest = availableBrands.filter((b) => b.id !== activeBrand.id);
       setAvailableBrands(rest);
       setActiveBrand(rest[0] ?? null);
-      toast.success(`Archived "${activeBrand.brand_name || "Unnamed"}". Its posts and history are kept.`);
+      toast.success(`Archived "${activeBrand.brand_name || "Unnamed"}". Restore it any time from the brand menu → Manage brands.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not archive the brand. Please try again.");
     } finally {
@@ -50,6 +51,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
           <h2 className="text-xl font-semibold">{activeBrand?.brand_name || "No brand selected"}</h2>
         </div>
         <div className="flex-1" />
+        <Link href="/studio/brand-builder" className="s-btn ghost"><Sparkles className="h-4 w-4" /> Build a new brand</Link>
         {activeBrand && (
           <>
             <button className="s-btn ai" onClick={() => setTeaching(true)}>
