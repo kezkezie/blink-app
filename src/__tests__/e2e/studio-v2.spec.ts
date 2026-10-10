@@ -82,7 +82,10 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   await page.screenshot({ path: testInfo.outputPath("video-story.png") });
   await page.locator(".s-step", { hasText: "Style" }).click();
   await page.getByRole("button", { name: /^Product shot/ }).click();
-  await expect(page.getByRole("button", { name: /Render video/ })).toBeVisible();
+  // Cheap still first, then the paid render.
+  await expect(page.getByText("Step 1 · See the first frame.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Preview · \d+ cr/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Render without preview/ })).toBeVisible();
   // Product reveal is the other side of Product shot, not a separate style.
   await page.getByRole("tab", { name: "Reveal" }).click();
   await expect(page.getByText(/3D or VFX reveal/)).toBeVisible();
@@ -123,7 +126,7 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   // Image Editor: blank canvas -> text -> rectangle -> layers -> export PNG (no credits).
   await page.getByRole("tab", { name: /Editor/ }).click();
   await expect(page.getByText("Start from a photo")).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: /Blank canvas/ }).click();
+  await page.getByRole("button", { name: "Blank canvas, white" }).click();
   const canvasEl = page.locator("canvas.upper-canvas");
   await expect(canvasEl).toBeVisible({ timeout: 30_000 });
   const box = (await canvasEl.boundingBox())!;
@@ -185,20 +188,29 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   }
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  // Classic look: the old design is intact and stops redirecting.
+  // Vintage look: the old design is intact and stops redirecting.
   await page.goto(`${BASE}/studio/library`);
   await page.getByRole("button", { name: "Account" }).click();
-  await page.getByRole("menuitem", { name: /Classic look/ }).click();
+  await page.getByRole("menuitem", { name: /Vintage look/ }).click();
   await page.waitForURL(/\/dashboard\/content/);
   await page.waitForTimeout(2500);
   await expect(page.getByText("Content Grid").first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("classic-content.png") });
   await page.goto(`${BASE}/dashboard/video`);
   expect(page.url()).toMatch(/\/dashboard\/video/);
-  console.log("CLASSIC look ok");
+  console.log("VINTAGE look ok");
 
-  // Back to the new look for the next person to open the app.
-  await page.goto(`${BASE}/studio`);
+  // "New look" in the vintage top bar comes back to the same place in the new design.
+  await page.getByRole("button", { name: /New look/ }).click();
+  await page.waitForURL(/\/studio\/video/);
+  await expect(page.locator(".s-rail")).toBeVisible();
+  console.log("NEW look button ok");
+
+  // The new look is the default: an account with no look chosen lands on /studio.
+  await context.clearCookies({ name: "ui" });
+  await page.goto(`${BASE}/dashboard`);
+  await page.waitForURL(/\/studio$/);
+  console.log("DEFAULT is the new look");
 
   console.log(`blocked requests: ${blockedHits.length}`);
   expect(pageErrors, pageErrors.join("\n")).toEqual([]);

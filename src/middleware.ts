@@ -68,11 +68,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 6. Two looks, one app. The studio layout turns the new look on when it renders (client side, so
-  // no prefetch or background request can ever flip it); "Classic look" in the studio account menu
-  // turns it off. While it is on, classic /dashboard links (old bookmarks, the post-login redirect,
-  // router.push inside reused pages) land on their /studio home.
-  if (user && pathname.startsWith("/dashboard") && request.cookies.get(UI_COOKIE)?.value === "studio") {
+  // 6. Two looks, one app. The new look (/studio) is the default since 2026-10-10: classic
+  // /dashboard links (old bookmarks, the post-login redirect, router.push inside reused pages) land
+  // on their /studio home. "Vintage look" in the studio account menu sets the cookie to "classic",
+  // which keeps the original design; "New look" in the classic top bar switches back.
+  if (user && pathname.startsWith("/dashboard") && request.cookies.get(UI_COOKIE)?.value !== "classic") {
     const target = studioPathFor(pathname);
     if (target) {
       const url = request.nextUrl.clone();

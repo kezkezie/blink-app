@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { Bell, Brain, Loader2, Sparkles, Wand2, Search, Briefcase, ChevronDown, Check, Plus, Trash2 } from "lucide-react";
@@ -22,6 +22,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { archiveBrand, getBrandAllowance } from "@/app/actions/brand";
+import { UI_COOKIE, studioPathFor } from "@/lib/studio-routes";
 
 interface TopBarProps {
   pageTitle: string;
@@ -30,6 +31,7 @@ interface TopBarProps {
 export function TopBar({ pageTitle }: TopBarProps) {
   const { clientId } = useClient();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Modal States
   const [brandRefinementModalOpen, setBrandRefinementModalOpen] = useState(false);
@@ -280,6 +282,19 @@ export function TopBar({ pageTitle }: TopBarProps) {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Back to the new design (this one is the "Vintage look") */}
+          <button
+            onClick={() => {
+              document.cookie = `${UI_COOKIE}=studio; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+              window.location.href = studioPathFor(pathname) ?? "/studio";
+            }}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#C6F432] border border-[#C6F432]/40 hover:bg-[#C6F432] hover:text-[#191D23] rounded-lg transition-all"
+            title="Switch to the new BlinkSpot design"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden lg:inline uppercase tracking-wider">New look</span>
+          </button>
 
           {/* Refine AI Brain Button */}
           <button

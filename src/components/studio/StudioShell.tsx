@@ -170,12 +170,12 @@ function AccountMenu({ profile }: { profile: { name: string; email: string } | n
         <DropdownMenuItem
           className="gap-3 cursor-pointer"
           onClick={() => {
-            // The classic design is kept as it was. This only switches which one opens.
+            // The first BlinkSpot design, kept exactly as it was (like Blender's older versions).
             document.cookie = `${UI_COOKIE}=classic; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
             window.location.href = dashboardPathFor(pathname);
           }}
         >
-          <Undo2 className="h-4 w-4" /> Classic look
+          <Undo2 className="h-4 w-4" /> Vintage look
         </DropdownMenuItem>
         <DropdownMenuItem
           className="gap-3 cursor-pointer"

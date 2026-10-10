@@ -2,9 +2,10 @@
  * BlinkSpot v2 ("studio") information architecture. The classic UI lives at /dashboard and stays
  * exactly as it was; the new UI lives at /studio. Every classic page has one home in the new UI.
  *
- * When the `ui` cookie is "studio", the middleware sends classic /dashboard links (old bookmarks,
+ * Unless the `ui` cookie is "classic", the middleware sends classic /dashboard links (old bookmarks,
  * router.push calls inside reused pages, the post-login redirect) to their new home, so the two
- * designs never mix. "Classic look" in the account menu sets the cookie back to "classic".
+ * designs never mix. "Vintage look" in the account menu sets the cookie to "classic"; "New look" in
+ * the classic top bar sets it back to "studio".
  */
 
 export const UI_COOKIE = "ui";
