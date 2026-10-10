@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { StudioNav, StudioTopBar } from "@/components/studio/StudioShell";
 import { AskPanel } from "@/components/studio/AskPanel";
+import { Dictation } from "@/components/studio/Dictation";
 import { useAskStore } from "@/components/studio/ask-store";
 import { UI_COOKIE } from "@/lib/studio-routes";
 
@@ -59,6 +60,7 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
           </main>
         </div>
         <AskPanel />
+        <Dictation />
       </div>
     </TooltipProvider>
   );

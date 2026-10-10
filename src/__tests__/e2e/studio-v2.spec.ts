@@ -15,7 +15,7 @@ const BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 
 const BLOCKED = [
   "**/api/workflows**", "**/api/video-jobs**", "**/api/image-jobs**", "**/api/video/**", "**/api/ai/**",
-  "**/api/assistant**", "**/api/tts**", "**/api/social-posts/**", "**/api/brand/**", "**/api/inspo/**",
+  "**/api/assistant**", "**/api/tts**", "**/api/social-posts/**", "**/api/brand/**", "**/api/inspo/**", "**/api/transcribe**",
   "**n8n.srv1166077.hstgr.cloud/**", "**api.replicate.com/**", "**api.kie.ai/**",
 ];
 
@@ -104,6 +104,14 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   await page.goto(`${BASE}/studio/image`);
   await expect(page.getByText("Seen a post you love? Make it yours.")).toBeVisible();
   await expect(page.getByLabel("Inspiration link")).toBeVisible();
+  // Generate is the simple flow; the classic studio is one click away under Pro controls.
+  await page.getByRole("tab", { name: /^Generate/ }).click();
+  await expect(page.getByRole("button", { name: /Get 3 ideas/ })).toBeVisible();
+  // Voice input: a mic appears inside the focused text box.
+  await page.getByLabel("Your idea").click();
+  await expect(page.getByRole("button", { name: "Speak instead of typing" })).toBeVisible();
+  await page.getByRole("button", { name: "Pro controls" }).click();
+  await expect(page.getByRole("button", { name: /Back to simple Generate/ })).toBeVisible();
   await page.getByRole("tab", { name: /Edit with AI/ }).click();
   await expect(page.getByText("Which photo?")).toBeVisible();
   await page.getByRole("tab", { name: /Design/ }).click();

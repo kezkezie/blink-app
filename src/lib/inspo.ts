@@ -36,6 +36,19 @@ export const INSPO_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image
  * The instruction that makes the remix keep the reference's design while making it the brand's own.
  * The brand constraint and colours are added by the workflow payload as usual.
  */
+/**
+ * Contact details on a design must be real. Image models happily invent phone numbers, emails and
+ * handles (a Skylux remix came back with "07061122334"), so only the brand's own are allowed.
+ */
+export function contactRule(website?: string, socials?: string) {
+  const known = [website, socials].filter((v) => typeof v === "string" && v.trim()).join(", ").slice(0, 300);
+  return [
+    "Never invent phone numbers, WhatsApp numbers, emails, street addresses, prices, discounts or dates.",
+    known ? `The only contact details allowed are: ${known}.` : "The brand has no contact details on file, so show none.",
+    "If a design has a contact bar, use the brand name or those details only, or leave it out.",
+  ].join(" ");
+}
+
 export function remixPrompt(brandName: string, purpose: string) {
   const forWhat = purpose.trim() ? ` It is for: ${purpose.trim()}.` : "";
   return [

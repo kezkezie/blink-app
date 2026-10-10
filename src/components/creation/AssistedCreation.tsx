@@ -116,20 +116,6 @@ export function AssistedCreation({ brandId, brandName, onCustomize, onContinue }
     }
   }
 
-  // The studio's Create box already asked "what do you want?", so develop the idea straight away
-  // instead of asking again. Only fires when the studio set the one-shot flag (never in classic).
-  const autoDevelopFor = useAssistedCreationStore((state) => state.autoDevelopFor);
-  const consumeAutoDevelop = useAssistedCreationStore((state) => state.consumeAutoDevelop);
-  useEffect(() => {
-    if (!hasHydrated || autoDevelopFor !== brandId || loading !== null) return;
-    if (idea.trim().length < 8 || concepts.length > 0) return;
-    // Clear the flag inside the timer: clearing it first re-runs this effect, whose cleanup would
-    // cancel the timer before it fires.
-    const t = setTimeout(() => { consumeAutoDevelop(); void request("concepts"); }, 0);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasHydrated, autoDevelopFor, brandId, idea]);
-
   function chooseConcept(concept: CreativeConcept) {
     if (!isSupportedConcept(concept)) return; // quarantined legacy formats never continue
     selectConcept(brandId, concept);

@@ -63,6 +63,11 @@
 body.studio { background: var(--s-bg); }
 /* Reused classic pages: their banner that describes the page is replaced by the studio header. */
 .studio [data-classic-hero] { display: none; }
+/* Room for the voice-input mic that sits inside text boxes (Dictation.tsx). */
+.studio textarea, .studio input[type="text"], .studio input[type="search"], .studio input:not([type]) { padding-right: 40px; }
+.studio [data-no-mic] textarea, .studio [data-no-mic] input, .studio textarea[data-no-mic], .studio input[data-no-mic] { padding-right: revert-layer; }
+/* The engines are not new any more; the green tag only added noise. */
+.studio [data-new-badge] { display: none; }
 .studio h1, .studio h2, .studio h3, .studio h4 { font-family: var(--s-ui); letter-spacing: -0.01em; }
 .studio :focus-visible { outline: 2px solid var(--s-accent); outline-offset: 2px; }
 .studio ::selection { background: color-mix(in oklab, var(--s-accent) 35%, transparent); }

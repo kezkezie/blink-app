@@ -19,6 +19,11 @@ const ALLOWED_PATHS = new Set([
   "blink-suggest-visual",
 ]);
 
+// Synchronous image generations wait here for the whole render (Nano Banana 2 at 4K measured
+// ~113 s on 2026-10-09). Without this the platform's default limit can cut the request off
+// mid-render, so the user sees a failure. Same limit as /api/video/nano-banana.
+export const maxDuration = 300;
+
 function securityResponse(result: { status: number; error: string }) {
   return NextResponse.json({ error: result.error }, { status: result.status });
 }

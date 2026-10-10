@@ -7,12 +7,11 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
-import { useWorkflowStore } from "@/app/store/useWorkflowStore";
-import { triggerWorkflow } from "@/lib/workflows";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { remixPrompt } from "@/lib/inspo";
 import { ImagePicker } from "./ImagePicker";
 import { thumbUrl } from "./media";
+import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage } from "./generate-image";
 
 /**
  * Inspo Remix: drop (or paste a link to) a design you love, and BlinkSpot remakes it for the active
@@ -26,8 +25,7 @@ const ENGINES = [
 ] as const;
 const FORMATS = ["4:5", "1:1", "9:16", "16:9"] as const;
 
-type Brand = { name: string; description?: string; industry?: string; website?: string; primary?: string; secondary?: string; logo?: string };
-type Result = { id: string | null; url: string };
+type Result = GeneratedImage;
 
 export function InspoRemix() {
   const { clientId } = useClient();
@@ -42,24 +40,10 @@ export function InspoRemix() {
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [results, setResults] = useState<Result[]>([]);
-  const [brand, setBrand] = useState<Brand | null>(null);
+  const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const cost = IMAGE_ENGINE_REGISTRY[engine].creditCost;
-
-  useEffect(() => {
-    if (!activeBrand) return;
-    supabase
-      .from("brand_profiles")
-      .select("brand_name, company_name, description, industry, website_url, primary_color, secondary_color, logo_url")
-      .eq("id", activeBrand.id)
-      .maybeSingle()
-      .then(({ data }) => setBrand({
-        name: data?.brand_name || data?.company_name || activeBrand.brand_name,
-        description: data?.description ?? undefined, industry: data?.industry ?? undefined, website: data?.website_url ?? undefined,
-        primary: data?.primary_color ?? undefined, secondary: data?.secondary_color ?? undefined, logo: data?.logo_url ?? undefined,
-      }));
-  }, [activeBrand]);
 
   useEffect(() => {
     if (!busy) return;
@@ -91,11 +75,8 @@ export function InspoRemix() {
   }
 
   async function remix() {
-    if (!inspo || !clientId || !activeBrand || !brand) return;
+    if (!inspo || !clientId || !activeBrand || !kit) return;
     setBusy(true);
-    const { addTask, removeTask } = useWorkflowStore.getState();
-    const taskId = `inspo-${Date.now()}`;
-    addTask(taskId, "Generating Image");
     try {
       let refUrl = inspo.url;
       if (!refUrl && inspo.file) {
@@ -106,60 +87,24 @@ export function InspoRemix() {
         refUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
         setInspo({ ...inspo, url: refUrl });
       }
-      const prompt = remixPrompt(brand.name, purpose);
-      const brandConstraint = [
-        `CRITICAL BRAND CONSTRAINT: This content belongs to the brand "${brand.name}".`,
-        brand.description ? `Brand description: ${brand.description}.` : "",
-        brand.industry ? `Industry: ${brand.industry}.` : "",
-        brand.primary ? `Brand colours: ${[brand.primary, brand.secondary].filter(Boolean).join(", ")}.` : "",
-        `Any text, signage or labels in the image MUST reflect "${brand.name}" only. Do NOT reuse the reference's brand, logo or words.`,
-      ].filter(Boolean).join(" ");
-      const response = await triggerWorkflow("blink-generate-images", {
-        client_id: clientId,
-        brand_id: activeBrand.id,
-        mode: "standard",
-        prompt: purpose.trim() || `Remix for ${brand.name}`,
-        assembled_prompt: `${prompt}\n\n${brandConstraint}`,
-        reference_image_urls: [refUrl],
-        ...(engine === "gpt-image-2-image-to-image" ? { input_urls: [refUrl] } : {}),
-        kie_model: engine === "nb2" ? "nano-banana-2" : engine,
-        imageEngine: engine,
-        aspect_ratio: format,
-        style: "poster",
-        strict_brand_alignment: true,
-        numImages: 1,
-        brand_name: brand.name,
-        brand_website: brand.website,
-        brand_description: brand.description,
-        brand_industry: brand.industry,
-        brand_primary_color: brand.primary,
-        brand_secondary_color: brand.secondary,
-        logo_url: brand.logo,
-        is_sync: true,
+      const saved = await generateBrandImages({
+        clientId, brandId: activeBrand.id, kit,
+        prompt: purpose.trim() || `Remix for ${kit.name}`,
+        assembledPrompt: remixPrompt(kit.name || activeBrand.brand_name, purpose),
+        references: [refUrl], engine, aspect: format, style: "poster",
+        caption: purpose.trim() || "Inspo Remix",
       });
-      const r = (response ?? {}) as { success?: boolean; message?: string; imageUrls?: string[] | string };
-      const urls = Array.isArray(r.imageUrls) ? r.imageUrls : r.imageUrls ? [r.imageUrls] : [];
-      if (r.success === false || urls.length === 0) throw new Error(r.message || "No image came back. If credits were taken they are refunded.");
-      const saved: Result[] = [];
-      for (const url of urls) {
-        const { data } = await supabase
-          .from("content")
-          .insert({ client_id: clientId, brand_id: activeBrand.id, content_type: "post_image", caption: purpose.trim() || "Inspo Remix", status: "draft", image_urls: [url], ai_model: engine === "nb2" ? "nano-banana-2" : engine })
-          .select("id")
-          .single();
-        saved.push({ id: data?.id ?? null, url });
-      }
       setResults((prev) => [...saved, ...prev]);
       toast.success("Remixed for your brand and saved to the Library.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "The remix failed.");
+      toast.error(generationErrorMessage(e), { duration: 10000 });
+      console.error("Inspo Remix failed:", e);
     } finally {
-      removeTask(taskId);
       setBusy(false);
     }
   }
 
-  const name = brand?.name || activeBrand?.brand_name || "your brand";
+  const name = kit?.name || activeBrand?.brand_name || "your brand";
 
   return (
     <div className="max-w-[1180px] mx-auto p-4 md:p-8">
@@ -235,7 +180,7 @@ export function InspoRemix() {
             </div>
           </div>
           <div className="mt-auto grid gap-2">
-            <button className="s-btn primary lg w-full" disabled={!inspo || busy || !brand} onClick={remix}>
+            <button className="s-btn primary lg w-full" disabled={!inspo || busy || !kit} onClick={remix}>
               {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Remaking it for {name}… {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Remix for {name} <span className="cost">{cost} cr</span></>}
             </button>
             <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>

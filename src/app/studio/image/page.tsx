@@ -2,11 +2,11 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, X, Shuffle } from "lucide-react";
+import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, Shuffle } from "lucide-react";
 import { InspoRemix } from "@/components/studio/InspoRemix";
+import { StudioGenerate } from "@/components/studio/StudioGenerate";
 import { supabase } from "@/lib/supabase";
 import { useBrandStore } from "@/app/store/useBrandStore";
-import { useAssistedCreationStore } from "@/app/store/useAssistedCreationStore";
 import ClassicImageStudio from "@/app/dashboard/generate/page";
 import { SemanticImageEditor } from "@/components/image/SemanticImageEditor";
 import { PosterDesigner } from "@/components/studio/PosterDesigner";
@@ -17,12 +17,13 @@ import type { Content } from "@/types/database";
 /**
  * Image Studio = one place for the image jobs:
  *   Inspo Remix  drop a design you love, get the same look for your brand (one click)
- *   Generate  the classic studio (assisted creation, engines, styles, references), unchanged inside
+ *   Generate     idea → three ideas → brief → look, size, quality → images (simple by default)
+ *   Pro controls the classic studio (modes, engines, styles, references), unchanged inside
  *   Edit      X-ray a photo into objects, change colours, materials and text, re-render with
  *             Nano Banana 2 or GPT Image 2 (the classic JSON editor)
  *   Design    set real type and the logo over a photo, pick colours from the photo, export sizes
  */
-type Mode = "remix" | "generate" | "edit" | "design";
+type Mode = "remix" | "generate" | "edit" | "design" | "pro";
 const MODES: Array<{ id: Mode; label: string; icon: typeof Sparkles; hint: string }> = [
   { id: "remix", label: "Inspo Remix", icon: Shuffle, hint: "Drop a design you love, get it for your brand" },
   { id: "generate", label: "Generate", icon: Sparkles, hint: "Make new images from an idea" },
@@ -41,17 +42,14 @@ function ImageStudioInner() {
   const params = useSearchParams();
   const router = useRouter();
   const { activeBrand } = useBrandStore();
-  const setIdea = useAssistedCreationStore((s) => s.setIdea);
-  const requestAutoDevelop = useAssistedCreationStore((s) => s.requestAutoDevelop);
-  const hydrated = useAssistedCreationStore((s) => s.hasHydrated);
   // No mode in the link: a typed idea opens Generate, otherwise Inspo Remix (the fastest way in).
-  const initialMode = (["remix", "generate", "edit", "design"] as const).find((m) => m === params.get("mode")) ?? (params.get("prompt") ? "generate" : "remix");
+  const initialMode = (["remix", "generate", "edit", "design", "pro"] as const).find((m) => m === params.get("mode")) ?? (params.get("prompt") ? "generate" : "remix");
+  // An idea from Create or Ask, read once (the query is cleared after arrival).
+  const [initialIdea] = useState(() => params.get("prompt")?.slice(0, 1000) ?? "");
   const [mode, setMode] = useState<Mode>(initialMode);
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [loadingPick, setLoadingPick] = useState(!!params.get("content"));
   const [designKey, setDesignKey] = useState(0);
-  // Where the prompt came from, read once on arrival (the query is cleared after the hand-off).
-  const [handoff, setHandoff] = useState<string | null>(() => (params.get("prompt") ? (params.get("from") === "ask" ? "Ask BlinkSpot" : "Create") : null));
 
   // ?content= opens Edit or Design on a Library image.
   useEffect(() => {
@@ -60,14 +58,9 @@ function ImageStudioInner() {
     loadPicked(id).then((p) => { setPicked(p); setLoadingPick(false); setDesignKey((k) => k + 1); });
   }, [params]);
 
-  // ?prompt= (from Create or Ask BlinkSpot) becomes the idea in Generate's assisted creation.
   useEffect(() => {
-    const prompt = params.get("prompt")?.slice(0, 1000);
-    if (!prompt || !activeBrand || !hydrated) return;
-    setIdea(activeBrand.id, prompt);
-    requestAutoDevelop(activeBrand.id);
-    router.replace("/studio/image", { scroll: false });
-  }, [params, activeBrand, hydrated, setIdea, requestAutoDevelop, router]);
+    if (params.get("prompt")) router.replace("/studio/image", { scroll: false });
+  }, [params, router]);
 
   if (!activeBrand) {
     return <div className="p-6"><div className="s-empty"><h3>Pick a brand first</h3><p className="text-sm">Image Studio works for one brand at a time. Use the switcher at the top right.</p></div></div>;
@@ -88,15 +81,11 @@ function ImageStudioInner() {
 
       {mode === "remix" && <InspoRemix />}
 
-      {mode === "generate" && (
+      {mode === "generate" && <StudioGenerate initialIdea={initialIdea} autoIdeas={!!initialIdea} onPro={() => setMode("pro")} />}
+
+      {mode === "pro" && (
         <div className="p-4 md:p-6 mx-auto w-full max-w-[1320px]">
-          {handoff && (
-            <div className="s-card px-4 py-3 mb-4 flex flex-wrap items-center gap-2 text-sm" role="status" style={{ borderColor: "color-mix(in oklab, var(--s-accent) 35%, var(--s-line))" }}>
-              <b className="font-medium">Working on your idea from {handoff}.</b>
-              <span style={{ color: "var(--s-soft)" }}>BlinkSpot is writing three directions below. Pick one, or open <b>Customize advanced details</b> to set it up yourself.</span>
-              <button className="s-btn ghost sm ml-auto" onClick={() => setHandoff(null)} aria-label="Dismiss"><X className="h-3.5 w-3.5" /></button>
-            </div>
-          )}
+          <button className="s-btn ghost sm mb-3" onClick={() => setMode("generate")}><ArrowLeft className="h-3.5 w-3.5" /> Back to simple Generate</button>
           <ClassicImageStudio />
         </div>
       )}
