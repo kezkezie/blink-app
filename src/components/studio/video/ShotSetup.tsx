@@ -5,6 +5,7 @@ import { FolderOpen, ImagePlus, Loader2, MessageSquareQuote, Sparkles, X } from 
 import type { VideoStudio } from "@/components/video/useVideoStudio";
 import { ImagePicker } from "../ImagePicker";
 
+import { Overlay } from "../Modal";
 /**
  * One setup for the single shots (Product shot / reveal, Creator talking, Try-on): what goes in
  * the shot (photos), what happens (a sentence, or "Write it for me", or a one-click example), and a
@@ -159,7 +160,7 @@ export function ShotSetup({ v }: { v: VideoStudio }) {
       </div>
 
       {picking && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(0,0,0,.6)" }} onClick={() => setPicking(null)}>
+        <Overlay onClose={() => setPicking(null)}>
           <div className="s-card p-4 w-full max-w-[860px] max-h-[80dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3"><b className="text-sm">Pick from your Library</b><button className="s-btn ghost sm" onClick={() => setPicking(null)} aria-label="Close"><X className="h-4 w-4" /></button></div>
             <ImagePicker allowUpload={false} onPick={(p) => {
@@ -167,7 +168,7 @@ export function ShotSetup({ v }: { v: VideoStudio }) {
               setPicking(null);
             }} />
           </div>
-        </div>
+        </Overlay>
       )}
     </div>
   );

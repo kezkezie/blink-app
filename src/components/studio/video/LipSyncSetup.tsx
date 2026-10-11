@@ -12,6 +12,7 @@ import { ImagePicker } from "../ImagePicker";
 import { formatCredits } from "../hooks";
 import { FirstFrame, type FirstFrameState } from "./FirstFrame";
 
+import { Overlay } from "../Modal";
 /**
  * Lip-sync: a face + a voice → the face speaks the voice. Same workflow call as the classic Upload →
  * Audio to Video tab (/api/video/nano-banana, video_mode "audio_to_video"), with a native layout,
@@ -242,12 +243,12 @@ export function LipSyncSetup({ v }: { v: VideoStudio }) {
       </aside>
 
       {picking && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(0,0,0,.6)" }} onClick={() => setPicking(false)}>
+        <Overlay onClose={() => setPicking(false)}>
           <div className="s-card p-4 w-full max-w-[860px] max-h-[80dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3"><b className="text-sm">Pick the face</b><button className="s-btn ghost sm" onClick={() => setPicking(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
             <ImagePicker allowUpload={false} onPick={(p) => { setFace({ url: p.url }); setPicking(false); }} />
           </div>
-        </div>
+        </Overlay>
       )}
     </div>
   );

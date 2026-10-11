@@ -303,19 +303,19 @@ export async function createQuickBrand(
 //     fills in a whole creation form. Creation still re-checks on the server.
 // ────────────────────────────────────────────────
 
-export async function getBrandAllowance(): Promise<{ used: number; limit: number; canCreate: boolean } | { error: string }> {
+export async function getBrandAllowance(): Promise<{ used: number; limit: number; canCreate: boolean; plan: string } | { error: string }> {
   const userId = await sessionUserId();
   if (!userId) return { error: "Please sign in again." };
   const client = await ownedClient(userId);
   // No client row yet = brand-new user about to create their first brand.
   if (!client) {
     const limit = getLimitForTier("free").maxBrands;
-    return { used: 0, limit, canCreate: limit > 0 };
+    return { used: 0, limit, canCreate: limit > 0, plan: "free" };
   }
   const limit = getLimitForTier(client.plan_tier).maxBrands;
   const used = await activeBrandCount(client.id);
   if (used === null) return { error: "Could not check your brand allowance." };
-  return { used, limit, canCreate: used < limit };
+  return { used, limit, canCreate: used < limit, plan: client.plan_tier || "free" };
 }
 
 // ────────────────────────────────────────────────
@@ -383,6 +383,28 @@ export async function restoreBrand(brandId: string): Promise<{ success?: boolean
     .eq("is_active", false)
     .select("id");
   if (error || !Array.isArray(data) || data.length !== 1) return { error: "Brand not found." };
+  return { success: true };
+}
+
+/**
+ * Swap which brand is active when the plan is full: archive one, restore another, in one step
+ * (an agency pausing one client to work on another). If the restore fails, the archived brand is
+ * switched back on, so the user never ends up with fewer brands than they started with.
+ */
+export async function swapBrands(archiveId: string, restoreId: string): Promise<{ success?: boolean; error?: string }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client || typeof archiveId !== "string" || typeof restoreId !== "string" || archiveId === restoreId) return { error: "Brand not found." };
+  const now = new Date().toISOString();
+  const { data: off, error: offErr } = await supabaseAdmin.from("brand_profiles").update({ is_active: false, updated_at: now })
+    .eq("id", archiveId).eq("client_id", client.id).eq("is_active", true).select("id");
+  if (offErr || !Array.isArray(off) || off.length !== 1) return { error: "Brand not found." };
+  const restored = await restoreBrand(restoreId);
+  if (restored.error) {
+    await supabaseAdmin.from("brand_profiles").update({ is_active: true, updated_at: now }).eq("id", archiveId).eq("client_id", client.id);
+    return { error: restored.error };
+  }
   return { success: true };
 }
 

@@ -26,6 +26,7 @@ import { useAskStore } from "../ask-store";
 import { useCanvasBridge } from "./canvas-bridge";
 import { canvasSafe, loadImage, originalUrl, paletteOf, penPath, shrinkToBlob, starPoints, type PenAnchor } from "./util";
 
+import { Overlay } from "../Modal";
 /**
  * The image Editor: Photoshop/Pixlr-style layers on a canvas. Shapes, pen, brush and eraser, real
  * text, photos, and AI on the canvas (remove background, swap a face, edit with words, turn a photo
@@ -1156,7 +1157,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
 
       {/* pickers */}
       {picking && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(0,0,0,.6)" }} onClick={() => setPicking(null)}>
+        <Overlay onClose={() => setPicking(null)}>
           <div className="s-card p-4 w-full max-w-[860px] max-h-[80dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <b className="text-sm">{picking === "face" ? "Pick the face to use" : "Add a photo"}</b>
@@ -1176,7 +1177,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               }}
             />
           </div>
-        </div>
+        </Overlay>
       )}
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml,.svg" className="hidden" onChange={(e) => { setPicking(null); void onFile(e.target.files?.[0]); e.target.value = ""; }} />
     </div>

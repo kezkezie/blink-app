@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { BrandCreationModal } from "@/components/brand/info";
-import { getBrandAllowance } from "@/app/actions/brand";
+import { getBrandAllowance, listArchivedBrands } from "@/app/actions/brand";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { supabase } from "@/lib/supabase";
@@ -44,7 +44,10 @@ export function StudioNav() {
   return (
     <>
       <nav className="s-rail" aria-label="Main">
-        <Link href="/studio" className="s-logo" aria-label="BlinkSpot home">B</Link>
+        <Link href="/studio" className="s-logo" aria-label="BlinkSpot home">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/mark-lime.png" alt="BlinkSpot" />
+        </Link>
         {links}
         <div className="flex-1" />
         <button className="s-navbtn ask" onClick={() => setOpen(true)} title="Ask BlinkSpot (⌘K)">
@@ -86,9 +89,15 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
   const { activeBrand, availableBrands, setActiveBrand } = useBrandStore();
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState(false);
+  // Shown every time the menu opens, so the plan's brand limit is never a surprise.
+  const [slots, setSlots] = useState<{ used: number; limit: number; archived: number } | null>(null);
+  const loadSlots = async () => {
+    const [a, list] = await Promise.all([getBrandAllowance(), listArchivedBrands()]);
+    if (!("error" in a)) setSlots({ used: a.used, limit: a.limit, archived: "brands" in list ? list.brands.length : 0 });
+  };
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={(o) => { if (o) void loadSlots(); }}>
         <DropdownMenuTrigger asChild>
           <button className="s-btn" style={{ maxWidth: 200 }} aria-label="Switch brand">
             {activeBrand?.logo_url ? (
@@ -102,7 +111,10 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
-          <DropdownMenuLabel className="text-[11px] uppercase tracking-wider" style={{ color: "var(--s-mute)" }}>Working on</DropdownMenuLabel>
+          <DropdownMenuLabel className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={{ color: "var(--s-mute)" }}>
+            Working on
+            {slots && <span className="ml-auto normal-case tracking-normal font-normal" style={{ color: slots.used > slots.limit ? "var(--s-warn)" : "var(--s-mute)" }}>{slots.used} of {slots.limit} brands</span>}
+          </DropdownMenuLabel>
           {availableBrands.map((b) => (
             <DropdownMenuItem key={b.id} onClick={() => setActiveBrand(b)} className="gap-3 py-2 cursor-pointer">
               <span className="h-6 w-6 rounded-md overflow-hidden grid place-items-center shrink-0" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line-2)" }}>
@@ -137,7 +149,8 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
             <Link href="/studio/brand"><Palette className="h-4 w-4" /> Brand settings</Link>
           </DropdownMenuItem>
           <DropdownMenuItem className="gap-3 py-2 cursor-pointer" onClick={() => setManaging(true)}>
-            <Briefcase className="h-4 w-4" /> Manage brands (archive, restore, delete)
+            <Briefcase className="h-4 w-4" /> Manage brands
+            {!!slots?.archived && <span className="ml-auto text-[11px]" style={{ color: "var(--s-mute)" }}>{slots.archived} archived</span>}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

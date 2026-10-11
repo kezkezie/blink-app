@@ -9,7 +9,7 @@ vi.mock("@/lib/supabase-server", () => ({
 }));
 
 import {
-  archiveBrand, createBrandWorkspace, createQuickBrand, deleteBrandPermanently, getBrandAllowance, restoreBrand, saveBrandProfile, setBrandLogo,
+  archiveBrand, createBrandWorkspace, createQuickBrand, deleteBrandPermanently, getBrandAllowance, restoreBrand, saveBrandProfile, setBrandLogo, swapBrands,
 } from "@/app/actions/brand";
 
 const ME = "user-me";
@@ -153,14 +153,14 @@ describe("archiveBrand: soft delete keeps history", () => {
 describe("getBrandAllowance (read-only, for the UI)", () => {
   it("reports used/limit and whether another brand fits", async () => {
     seed({ myTier: "starter", myBrands: 1, archived: 2 });
-    expect(await getBrandAllowance()).toEqual({ used: 1, limit: 2, canCreate: true });
+    expect(await getBrandAllowance()).toEqual({ used: 1, limit: 2, canCreate: true, plan: "starter" });
     seed({ myTier: "starter", myBrands: 2 });
-    expect(await getBrandAllowance()).toEqual({ used: 2, limit: 2, canCreate: false });
+    expect(await getBrandAllowance()).toEqual({ used: 2, limit: 2, canCreate: false, plan: "starter" });
   });
 
   it("a brand-new user can create their first brand", async () => {
     db.current = fakeSupabase({ clients: [], brand_profiles: [] });
-    expect(await getBrandAllowance()).toEqual({ used: 0, limit: 1, canCreate: true });
+    expect(await getBrandAllowance()).toEqual({ used: 0, limit: 1, canCreate: true, plan: "free" });
   });
 
   it("requires a session and changes nothing", async () => {
@@ -244,5 +244,37 @@ describe("brand actions: restore, delete forever, set logo (2026-10-10)", () => 
     expect(brand("theirs-0").logo_url).toBeUndefined();
     expect((await setBrandLogo("mine-0", mine)).success).toBe(true);
     expect(brand("mine-0").logo_url).toBe(mine);
+  });
+});
+
+describe("brand actions: swap when the plan is full (2026-10-11)", () => {
+  it("archives one and restores the other, keeping the active count the same", async () => {
+    seed({ myTier: "starter", myBrands: 2, archived: 1 });
+    expect((await restoreBrand("archived-0")).error).toBeTruthy(); // full: 2 of 2
+    expect((await swapBrands("mine-1", "archived-0")).success).toBe(true);
+    expect(brand("mine-1").is_active).toBe(false);
+    expect(brand("archived-0").is_active).toBe(true);
+    expect(activeMine()).toBe(2);
+  });
+
+  it("rolls the archive back if the restore fails, so no brand is lost", async () => {
+    seed({ myTier: "free", myBrands: 3, archived: 1 }); // over the limit: restore still refused after one swap-out
+    const r = await swapBrands("mine-0", "archived-0");
+    expect(r.error).toBeTruthy();
+    expect(brand("mine-0").is_active).toBe(true);
+    expect(brand("archived-0").is_active).toBe(false);
+  });
+
+  it("can't touch another customer's brands", async () => {
+    seed({ myTier: "agency", myBrands: 1 });
+    brand("theirs-0").is_active = false;
+    expect((await swapBrands("mine-0", "theirs-0")).error).toBeTruthy();
+    expect(brand("mine-0").is_active).toBe(true);
+    expect((await swapBrands("theirs-0", "mine-0")).error).toBeTruthy();
+  });
+
+  it("reports the plan with the allowance", async () => {
+    seed({ myTier: "pro", myBrands: 2 });
+    expect(await getBrandAllowance()).toEqual({ used: 2, limit: 6, canCreate: true, plan: "pro" });
   });
 });

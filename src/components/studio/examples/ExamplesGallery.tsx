@@ -6,6 +6,7 @@ import { ArrowRight, Copy, Pause, Play, X } from "lucide-react";
 import { toast } from "sonner";
 import { EXAMPLES, EXAMPLE_FILTERS, type Example } from "@/lib/examples";
 
+import { Overlay } from "../Modal";
 /**
  * "Made with BlinkSpot": click any example to see exactly how it was made (the prompt, the
  * settings, the photo or voice it started from) and start your own from it. Like Pixlr's
@@ -127,7 +128,7 @@ function Detail({ e, onClose }: { e: Example; onClose: () => void }) {
   const s = e.settings;
   const chips = [s.model, s.aspect, s.duration ? `${s.duration} s` : "", s.voice ? `voice: ${s.voice}` : "", s.font ? `font: ${s.font}` : "", s.credits ? `${s.credits} credits` : "free"].filter(Boolean);
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center p-3 md:p-6" style={{ background: "rgba(0,0,0,.72)" }} onClick={onClose}>
+    <Overlay onClose={onClose} dim={0.72}>
       <div className="s-card w-full max-w-[1080px] max-h-[92dvh] overflow-y-auto grid md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]" onClick={(ev) => ev.stopPropagation()} role="dialog" aria-label={`How "${e.title}" was made`}>
         <div className="p-3 md:p-4 min-w-0" style={{ background: "var(--s-bg)" }}>
           {e.kind === "story" ? <StoryPlayer e={e} />
@@ -190,7 +191,7 @@ function Detail({ e, onClose }: { e: Example; onClose: () => void }) {
           <p className="text-[11px] -mt-2" style={{ color: "var(--s-mute)" }}>Opens with your brand. You see the price before anything is spent.</p>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }
 
