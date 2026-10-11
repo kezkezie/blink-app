@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Check, ChevronRight, Clapperboard, Film, Loader2, Mic, Plus, RotateCcw, Scissors, Shirt, ShoppingBag, Sparkles, UserCircle, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Clapperboard, Film, Loader2, Mic, RotateCcw, Scissors, Shirt, ShoppingBag, Sparkles, UserCircle, X } from "lucide-react";
 import {
   AUTO_VIDEO_MODEL,
   VIDEO_MODEL_REGISTRY,
@@ -286,41 +286,6 @@ function Inspector({ v, total, effectiveModel, onRender, frame, setFrame }: { v:
   );
 }
 
-function SequenceBar({ v, total, onRender }: { v: VideoStudio; total: number; onRender: () => void }) {
-  const seconds = v.bRollScenes.reduce((s, sc) => s + Number(sc.duration || 5), 0);
-  return (
-    <div className="sticky bottom-0 z-10 flex flex-wrap lg:flex-nowrap items-center gap-3 px-4 py-2.5"
-      style={{ background: "color-mix(in oklab, var(--s-panel) 96%, transparent)", backdropFilter: "blur(10px)", borderTop: "1px solid var(--s-line)" }}>
-      <div className="flex items-center gap-2 overflow-x-auto min-w-0 flex-1" aria-label="Scenes in order">
-        {v.bRollScenes.map((sc) => (
-          <div key={sc.id} className="shrink-0 w-[112px] rounded-lg p-1" style={{ background: "var(--s-raised)", border: "1px solid var(--s-line)" }}>
-            <div className="rounded overflow-hidden aspect-video bg-black grid place-items-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {sc.primaryPreview ? <img src={sc.primaryPreview} alt="" className="w-full h-full object-cover" /> : <span className="text-[9px] mono" style={{ color: "var(--s-mute)" }}>no frame yet</span>}
-            </div>
-            <div className="flex justify-between items-center px-0.5 pt-1 text-[10.5px]">
-              <span>Scene {sc.scene_number}</span>
-              <span className="mono" style={{ color: "var(--s-mute)" }}>{sc.duration || 5}s</span>
-            </div>
-          </div>
-        ))}
-        <button className="shrink-0 w-[72px] self-stretch rounded-lg grid place-items-center text-[11px]" style={{ border: "1px dashed var(--s-line-2)", color: "var(--s-mute)" }} onClick={v.addEmptyScene} aria-label="Add a scene">
-          <span className="grid place-items-center gap-0.5"><Plus className="h-4 w-4" /> Scene</span>
-        </button>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="text-right leading-tight">
-          <div className="text-sm">{v.bRollScenes.length} scene{v.bRollScenes.length === 1 ? "" : "s"} · {seconds} s</div>
-          <div className="text-[11px]" style={{ color: "var(--s-mute)" }}>Renders each scene, then join them in Edit</div>
-        </div>
-        <button className="s-btn primary lg" onClick={onRender} disabled={v.isGenerating || v.bRollScenes.length === 0}>
-          {v.isGenerating ? <><Loader2 className="h-4 w-4 animate-spin" /> Queuing…</> : <>Render all scenes <span className="cost">{formatCredits(total)} cr</span></>}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function RenderView({ v, renderStartedAt }: { v: VideoStudio; renderStartedAt: React.RefObject<string | null> }) {
   const [stacking, setStacking] = useState(false);
   async function putTogether() {
@@ -506,6 +471,8 @@ function VideoStudioInner() {
           <StorytellingSetup
             {...sharedProps}
             hideSheetMode
+            look="studio"
+            onOpenEditor={() => v.setActiveTab("editor")}
             bRollConcept={v.bRollConcept} setBRollConcept={v.setBRollConcept}
             bRollScenes={v.bRollScenes} setBRollScenes={v.setBRollScenes}
             handleGenerateScenes={v.handleGenerateScenes} addEmptyScene={v.addEmptyScene}
@@ -537,10 +504,8 @@ function VideoStudioInner() {
         lipsync ? (
           <div className="p-4 md:p-6"><LipSyncSetup v={v} /></div>
         ) : story ? (
-          <div className="flex-1 flex flex-col">
-            <div className="flex-1 p-4 md:p-5">{setup}</div>
-            <SequenceBar v={v} total={total} onRender={render} />
-          </div>
+          // The storyboard brings its own bar: it renders every scene with its locks and shape, in place.
+          <div className="flex-1 p-4 md:p-5">{setup}</div>
         ) : (
           <div className="flex-1 grid lg:grid-cols-[1fr_336px] min-h-0">
             <div className="p-4 md:p-5 min-w-0"><ProductShotToggle v={v} />{setup}</div>

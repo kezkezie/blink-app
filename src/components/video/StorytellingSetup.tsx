@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, Zap } from "lucide-react";
+import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Zap } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -33,8 +33,12 @@ import {
   reconcileAspectRatioFor,
   reconcileDurationFor,
   resolveEffectiveVideoModel,
+  resolveVideoModel,
+  routeVideoModelForFrames,
   videoModelFamily,
 } from "@/lib/video-model-registry";
+import { queueForEditor } from "@/components/studio/queue-clips";
+import "./storyboard.css";
 import { AspectRatioSelect, DurationField } from "./VideoOutputControls";
 import {
   clearActiveSceneJob,
@@ -558,6 +562,10 @@ type DirectorSheetBeat = {
 export interface StorytellingSetupProps extends VideoSetupProps {
   /** The studio look keeps the flow to "a stack of scenes, then the editor" and hides the 4-shot sheet. */
   hideSheetMode?: boolean;
+  /** "studio" (2026-10-11): a board of scene cards with one scene open in a panel. Classic keeps the stack. */
+  look?: "classic" | "studio";
+  /** Studio look: open the editor once the rendered scenes are on its timeline. */
+  onOpenEditor?: () => void;
   bRollConcept: string;
   setBRollConcept: (val: string) => void;
   bRollScenes: StoryboardScene[];
@@ -756,10 +764,16 @@ export function StorytellingSetup({
   setAspectRatio,
   isSuggesting,
   hideSheetMode = false,
+  look = "classic",
+  onOpenEditor,
 }: StorytellingSetupProps) {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
   const router = useRouter();
+  // Studio look: which scene is open, which panel tab, and the "put them together" spinner.
+  const [selIdx, setSelIdx] = useState(0);
+  const [sbTab, setSbTab] = useState<"scene" | "story">("scene");
+  const [stackingScenes, setStackingScenes] = useState(false);
 
   const [actors, setActors] = useState<ActorProfile[]>([]);
   const [isCastingOpen, setIsCastingOpen] = useState(false);
@@ -2515,9 +2529,9 @@ export function StorytellingSetup({
     }
   };
 
-  return (
-    <div className="flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500 w-full items-start pb-10">
-
+  // Dialogs both layouts use (casting room, style question, library picker, preview, actor pick, frame prompt).
+  const sharedModals = (
+    <>
       {/* ✨ RENDER CASTING ROOM MODAL */}
       <CastingRoomModal
         open={isCastingOpen}
@@ -2563,6 +2577,556 @@ export function StorytellingSetup({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AssetSelectionModal open={libraryTarget !== null} onClose={() => setLibraryTarget(null)} onSelect={handleLibrarySelect} mediaType={libraryTarget?.kind === 'motionVideo' ? 'video' : 'image'} />
+
+      {previewModalImg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#191D23]/90 backdrop-blur-md animate-in fade-in" onClick={() => setPreviewModalImg(null)}>
+          <div className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center animate-in zoom-in duration-300" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setPreviewModalImg(null)} className="absolute -top-14 right-0 p-2.5 bg-[#2A2F38] border border-[#57707A]/50 hover:bg-red-500 hover:border-red-400 hover:text-white text-[#DEDCDC] rounded-full transition-all shadow-lg z-50">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none rounded-2xl"></div>
+            <img src={previewModalImg} className="w-full h-full object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-[#57707A]/30 relative z-10 bg-black" alt="Preview Enlarged" />
+          </div>
+        </div>
+      )}
+
+      {/* ✨ CHARACTER LOCK SELECTION MODAL */}
+      <Dialog open={isCharacterLockModalOpen} onOpenChange={(open) => !open && setIsCharacterLockModalOpen(false)}>
+        <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl custom-scrollbar">
+          <DialogHeader className="border-b border-[#57707A]/20 pb-4">
+            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl">
+              <Lock className="w-5 h-5" /> Select Actor {castingTargetSlot + 1}
+            </DialogTitle>
+            <DialogDescription className="text-[#989DAA] font-medium mt-1">
+              Choosing for slot <span className="text-[#C5BAC4] font-bold">Actor {castingTargetSlot + 1}</span>. This actor's character sheet will be injected into every scene.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-5">
+            {actors.length === 0 ? (
+              <div className="text-center py-12 text-[#57707A] bg-[#191D23]/50 rounded-2xl border border-dashed border-[#57707A]/40">
+                <Users className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                <p className="text-sm font-bold text-[#DEDCDC]">No actors yet</p>
+                <p className="text-xs mt-1 text-[#989DAA]">Use the Casting Room to create actors first.</p>
+                <Button size="sm" className="mt-5 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold shadow-md rounded-xl h-10 px-6 transition-all" onClick={() => { setIsCharacterLockModalOpen(false); setIsCastingOpen(true); }}>
+                  <UserPlus className="w-4 h-4 mr-2" /> Open Casting Room
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {actors.map(actor => {
+                  const isSelected = selectedActors[castingTargetSlot] === actor.id;
+                  return (
+                    <button
+                      key={actor.id}
+                      onClick={() => {
+                        setSelectedActors(prev => { const next = [...prev]; next[castingTargetSlot] = isSelected ? "" : actor.id; return next; });
+                      }}
+                      className={cn(
+                        "rounded-2xl p-2.5 flex flex-col gap-3 transition-all text-left border relative overflow-hidden group",
+                        isSelected ? "bg-[#191D23] border-[#C5BAC4] ring-2 ring-[#C5BAC4]/50 shadow-lg" :
+                          "bg-[#191D23]/60 border-[#57707A]/40 hover:border-[#C5BAC4]/60 hover:bg-[#191D23] hover:shadow-md"
+                      )}
+                    >
+                      <div
+                        className="aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-[#57707A]/30 relative cursor-pointer"
+                        onClick={(e) => { e.stopPropagation(); setPreviewModalImg(actor.stitchedSheetUrl); }}
+                      >
+                        <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-50 transition-opacity" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Maximize2 className="w-5 h-5 text-white" /></div>
+                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black px-2 py-0.5 uppercase tracking-widest rounded shadow-md z-10">A{castingTargetSlot + 1}</div>}
+                      </div>
+                      <span className={cn(
+                        "text-xs font-bold text-center truncate px-2 w-full",
+                        isSelected ? "text-[#DEDCDC]" : "text-[#989DAA] group-hover:text-[#DEDCDC] transition-colors"
+                      )}>{actor.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="border-t border-[#57707A]/20 pt-4">
+            <Button variant="outline" onClick={() => setSelectedActors(prev => { const next = [...prev]; next[castingTargetSlot] = ""; return next; })} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 font-bold rounded-xl h-11 px-6">Clear Slot</Button>
+            <Button onClick={() => setIsCharacterLockModalOpen(false)} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-xl h-11 px-8 shadow-lg transition-all border-none">
+              <CheckCircle className="w-4 h-4 mr-2" /> Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={regenDialogState.isOpen} onOpenChange={(open) => !open && setRegenDialogState(prev => ({ ...prev, isOpen: false }))}>
+        <DialogContent className="sm:max-w-[600px] bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl">
+          <DialogHeader className="border-b border-[#57707A]/20 pb-4">
+            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl"><Wand2 className="h-5 w-5" /> Image Prompt · {regenDialogState.slotType === 'primary' ? 'Start Frame' : 'End Frame'}</DialogTitle>
+            <DialogDescription className="text-[#989DAA] font-medium mt-1.5">Controls the still image for this slot in Scene {regenDialogState.index !== null ? regenDialogState.index + 1 : ''} only. Your Scene Director motion prompt stays untouched — the video engine keeps its own script.</DialogDescription>
+          </DialogHeader>
+          <div className="py-5">
+            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Refined Prompt</label>
+            <Textarea
+              value={regenDialogState.promptText}
+              onChange={(e) => setRegenDialogState(prev => ({ ...prev, promptText: e.target.value }))}
+              placeholder="Enter a detailed visual prompt..."
+              className="h-40 resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner text-sm custom-scrollbar"
+            />
+          </div>
+          <DialogFooter className="border-t border-[#57707A]/20 pt-4">
+            <Button variant="outline" onClick={() => setRegenDialogState(prev => ({ ...prev, isOpen: false }))} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 font-bold rounded-xl h-11 px-6">Cancel</Button>
+            <Button onClick={handleConfirmRegen} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-xl h-11 px-6 shadow-lg transition-all border-none">
+              <Sparkles className="h-4 w-4 mr-2" /> Regenerate Slot
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
+  // ───────────── STUDIO LOOK (2026-10-11) ─────────────
+  // Same state and handlers as the classic layout below; only the arrangement differs: a board of
+  // scene cards, one scene open in the panel, the story-wide settings in their own tab, and one bar
+  // to render every scene (in parallel, each with its own locks and shape) and send them to the editor.
+  const sceneInfo = (scene: StoryboardScene) => {
+    const isSeedance2 = scene.aiModel === 'bytedance/seedance-2' || scene.aiModel === 'bytedance/seedance-2-fast';
+    const isGemini = scene.aiModel === 'gemini-omni-video';
+    const isPruna = scene.aiModel === 'replicate:prunaai/p-video';
+    const requested = resolveEffectiveVideoModel(scene.aiModel, scene.mode);
+    const effective = routeVideoModelForFrames(requested);
+    const video = estimateVideoCredits(scene.aiModel, scene.duration || "5", { videoMode: scene.mode, hasAudio: Boolean(scene.dialogue || scene.audioUrl), hasStartFrame: true });
+    const endFrameAllowed = isEndFrameAllowedFor(scene.aiModel, scene.mode);
+    const imageCredits = resolveImageEngine(scene.imageEngine || "nb2")?.creditCost ?? N8N_IMAGE_DEFAULT_COST;
+    const endCost = scene.useEndFrame && endFrameAllowed && !scene.secondaryPreview ? imageCredits : 0;
+    const seedancePreviews: (string | null)[] = ensureArray(scene.seedancePreviews || [scene.primaryPreview || null]);
+    const gemPreviews: (string | null)[] = ensureArray(scene.gptRefPreviews || Array(5).fill(null));
+    const thumb: string | null = scene.primaryPreview || seedancePreviews.find(Boolean) || gemPreviews.find(Boolean) || null;
+    const nativeAudio = isSeedance2 || isGemini || isPruna || ['replicate:openai/sora-2', 'kling-3.0/video', 'auto', 'bytedance/seedance-2-5'].includes(scene.aiModel || 'auto');
+    const imageEngine = scene.imageEngine || 'nb2';
+    return { isSeedance2, isGemini, isPruna, requested, effective, rerouted: requested !== effective, video, credits: video === null ? null : video + endCost, endFrameAllowed, imageCredits, endCost, seedancePreviews, gemPreviews, thumb, nativeAudio, imageEngine,
+      isGptImage2: imageEngine === 'gpt-image-2-text-to-image' || imageEngine === 'gpt-image-2-image-to-image', isGptImg2Img: imageEngine === 'gpt-image-2-image-to-image' };
+  };
+  const sceneState = (scene: StoryboardScene, index: number, thumb: string | null): { label: string; tone: string } => {
+    if (scene.isGeneratingVideo) return { label: "Rendering", tone: "ai" };
+    if (scene.videoUrl) return { label: "Rendered", tone: "ok" };
+    if (generatingSlot?.index === index) return { label: "Making frame", tone: "ai" };
+    if (failedSlots.has(`${index}-primary`) || failedSlots.has(`${index}-secondary`)) return { label: "Frame failed", tone: "danger" };
+    if (thumb) return { label: "Frame ready", tone: "" };
+    if (scene.prompt?.trim()) return { label: "Written", tone: "" };
+    return { label: "Empty", tone: "" };
+  };
+  const changeModel = (scene: StoryboardScene, nextModel: string) => {
+    updateScene(scene.id, "aiModel", nextModel);
+    // Same repairs as the classic picker: a stale end frame, length or shape must not linger.
+    if (scene.useEndFrame && !isEndFrameAllowedFor(nextModel, scene.mode)) updateScene(scene.id, "useEndFrame", false);
+    const d = reconcileDurationFor(nextModel, scene.duration);
+    if (d !== (scene.duration || "5")) updateScene(scene.id, "duration", d);
+    const a = reconcileAspectRatioFor(nextModel, scene.aspectRatio);
+    if (a !== (scene.aspectRatio || "16:9")) updateScene(scene.id, "aspectRatio", a);
+  };
+  const insertIntoPrompt = (scene: StoryboardScene, value: string) => {
+    if (value === "__dialogue") {
+      const fam = getModelFamily(scene.aiModel);
+      value = fam === 'kling' ? '\nCharacter Name (confident tone, English): "Type exact dialogue here" '
+        : fam === 'seedance' ? '\nCharacter Name (confident, English): "Type exact dialogue here" '
+        : fam === 'sora' ? '\n\nDialogue:\nCharacter Name: "Type exact dialogue here" '
+        : ' The character says "Type exact dialogue here" ';
+    }
+    updateScene(scene.id, "prompt", (scene.prompt || "") + value);
+  };
+  const renderAllScenes = async () => {
+    const ready = bRollScenes.map((s, i) => ({ s, i })).filter(({ s }) => !s.videoUrl && !s.isGeneratingVideo);
+    const unwritten = ready.filter(({ s }) => !s.prompt?.trim()).map(({ i }) => i + 1);
+    const go = ready.filter(({ s }) => s.prompt?.trim()).map(({ i }) => i);
+    if (unwritten.length) toast.info(`Scene${unwritten.length === 1 ? "" : "s"} ${unwritten.join(", ")} ${unwritten.length === 1 ? "has" : "have"} nothing written yet, so ${unwritten.length === 1 ? "it was" : "they were"} skipped.`);
+    if (!go.length) return;
+    setIsGeneratingVideos(true);
+    try {
+      // In parallel, started a moment apart (each scene is charged and refunded on its own).
+      await Promise.all(go.map((i, k) => new Promise((r) => setTimeout(r, k * 1200)).then(() => handleGenerateSingleVideo(i))));
+    } finally { setIsGeneratingVideos(false); }
+  };
+  const putScenesTogether = async () => {
+    const done = bRollScenes.filter((s) => s.videoUrl);
+    if (!done.length) return;
+    setStackingScenes(true);
+    try {
+      const n = await queueForEditor(done.map((s) => ({ caption: `Scene ${bRollScenes.indexOf(s) + 1}`, video_urls: [s.videoUrl], image_urls: [], reference_image_url: null })) as unknown as Parameters<typeof queueForEditor>[0]);
+      if (n) toast.success(`${n} scene${n === 1 ? "" : "s"} on the timeline, in order.`);
+      onOpenEditor?.();
+    } finally { setStackingScenes(false); }
+  };
+
+  const slotView = (o: { key: string; preview: string | null; busy: boolean; tag?: string; aspect: string; inputId: string; accept?: string; video?: boolean; locked?: boolean; emptyLabel: string;
+    onFile: (e: React.ChangeEvent<HTMLInputElement>) => void; onDrop?: (e: React.DragEvent<HTMLDivElement>) => void; onGenerate?: () => void; onLibrary?: () => void; onClear?: () => void; cost?: number }) => (
+    <div key={o.key} className="grid gap-1.5 content-start">
+      <div className={`sb-slot${o.preview ? " has" : ""}`} style={{ aspectRatio: o.aspect }} onDragOver={handleDragOver} onDrop={o.locked ? undefined : o.onDrop}>
+        {o.tag && <span className="tag">{o.tag}</span>}
+        {o.busy ? (
+          <span className="grid justify-items-center gap-1.5 text-[11.5px]" style={{ color: "var(--s-soft)" }}><Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--s-ai)" }} />Making it…</span>
+        ) : o.preview ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {o.video ? <video src={o.preview} muted loop autoPlay playsInline /> : <img src={o.preview} alt="" />}
+            <div className="tools">
+              {!o.video && <button type="button" onClick={() => setPreviewModalImg(o.preview)} aria-label="View large"><Maximize2 className="h-3.5 w-3.5" /></button>}
+              {o.onClear && !o.locked && <button type="button" onClick={o.onClear} aria-label="Remove"><X className="h-3.5 w-3.5" /></button>}
+            </div>
+          </>
+        ) : o.locked ? <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>None</span> : (
+          <label htmlFor={o.inputId} className="empty">{o.video ? <Video className="h-5 w-5" /> : <ImageIcon className="h-5 w-5" />}<span>{o.emptyLabel}</span></label>
+        )}
+        {!o.locked && <input id={o.inputId} type="file" accept={o.accept ?? "image/*"} className="hidden" onChange={o.onFile} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />}
+      </div>
+      {!o.locked && (o.onGenerate || o.onLibrary) && (
+        <div className="flex gap-1.5">
+          {o.onGenerate && <button type="button" className="s-btn ai sm flex-1" disabled={generatingSlot !== null || isGeneratingAllImages} onClick={o.onGenerate}><Wand2 className="h-3.5 w-3.5" /> {o.preview ? "Redo" : "Make it"}{o.cost ? <span className="cost">{o.cost} cr</span> : null}</button>}
+          {o.onLibrary && <button type="button" className="s-btn sm flex-1" disabled={generatingSlot !== null || isGeneratingAllImages} onClick={o.onLibrary}><FolderOpen className="h-3.5 w-3.5" /> Library</button>}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderStudio = () => {
+    const total = bRollScenes.length;
+    const sel = Math.min(selIdx, Math.max(0, total - 1));
+    const scene = bRollScenes[sel];
+    const infos = bRollScenes.map(sceneInfo);
+    const toRender = bRollScenes.filter((s) => !s.videoUrl && !s.isGeneratingVideo && s.prompt?.trim());
+    const renderCost = bRollScenes.reduce((sum, s, i) => sum + (!s.videoUrl && !s.isGeneratingVideo && s.prompt?.trim() ? infos[i].credits ?? 0 : 0), 0);
+    const seconds = bRollScenes.reduce((s, sc) => s + Number(sc.duration || 5), 0);
+    const rendered = bRollScenes.filter((s) => s.videoUrl).length;
+    const info = scene ? infos[sel] : null;
+    const aspectCss = (a?: string) => (a || "16:9").replace(":", " / ");
+    const fam = scene ? getModelFamily(scene.aiModel) : 'auto';
+    const injects = INJECT_PRESETS[fam];
+    const locked = !!scene?.videoUrl;
+    return (
+      <div className="sb">
+        {sharedModals}
+        <div className="grid gap-4 min-w-0">
+          {/* The story: one description, split into scenes by the AI */}
+          <div className="s-card p-4 grid gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <b className="text-[15px]">Your story</b>
+              <span className="text-[12.5px]" style={{ color: "var(--s-mute)" }}>Describe it once, with any lines people say. The AI splits it into scenes.</span>
+              <div className="flex-1" />
+              <button type="button" className="s-btn ghost sm" onClick={handleNewStoryboard}><Plus className="h-3.5 w-3.5" /> New story</button>
+            </div>
+            <textarea className="s-input" rows={3} value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder={'e.g. 20 seconds: a busy Nairobi morning, a runner grabs our mango juice at the kiosk, takes a sip and smiles. She says "Fresh, every morning." End on the bottle and our logo.'} aria-label="Your story" />
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="s-btn ai" onClick={handleWriteScript} disabled={isWritingScript || !bRollConcept.trim()}>{isWritingScript ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScrollText className="h-4 w-4" />} Write the scenes</button>
+              <button type="button" className="s-btn" onClick={handleGenerateAllImages} disabled={isGeneratingAllImages || generatingSlot !== null || !bRollConcept.trim()}>{isGeneratingAllImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <Images className="h-4 w-4" />} Make all frames <span className="cost">{filledImageSlots}/{totalImageSlots}</span></button>
+              <div className="flex-1" />
+              <span className="s-pill"><b>{total}</b> scene{total === 1 ? "" : "s"} · {seconds} s</span>
+            </div>
+            {isGeneratingAllImages && <p className="text-[12px]" style={{ color: "var(--s-ai)" }}>Frames are being made in the background. You can leave this page.</p>}
+            {sequenceStatus.hasProgress && (
+              <div role="status" aria-live="polite" data-testid="sequence-status" className="text-[12.5px] flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line)", color: sequenceStatus.state === "succeeded" ? "var(--s-ok)" : sequenceStatus.state === "failed" ? "var(--s-danger)" : sequenceStatus.state === "partial_success" ? "var(--s-warn)" : "var(--s-soft)" }}>
+                {sequenceStatus.isActive && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}<span>{sequenceStatus.message}</span>
+              </div>
+            )}
+          </div>
+
+          {/* The board: every scene at a glance */}
+          <div className="sb-board" role="list" aria-label="Scenes">
+            {bRollScenes.map((s, i) => {
+              const inf = infos[i];
+              const st = sceneState(s, i, inf.thumb);
+              return (
+                <button key={s.id} type="button" role="listitem" className="sb-card" aria-pressed={i === sel} onClick={() => { setSelIdx(i); setSbTab("scene"); if (window.innerWidth < 1180) requestAnimationFrame(() => document.getElementById("sb-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })); }} aria-label={`Scene ${i + 1}, ${st.label}`}>
+                  <div className="th">
+                    {s.videoUrl ? <video src={s.videoUrl} muted loop playsInline preload="metadata" onMouseEnter={(e) => { void e.currentTarget.play().catch(() => {}); }} onMouseLeave={(e) => e.currentTarget.pause()} />
+                      // eslint-disable-next-line @next/next/no-img-element
+                      : inf.thumb ? <img src={inf.thumb} alt="" /> : <span className="ph">{s.prompt?.trim() ? "No frame yet" : "Empty scene"}</span>}
+                    {s.isGeneratingVideo && <span className="absolute inset-0 grid place-items-center" style={{ background: "rgba(12,13,15,.55)" }}><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-ai)" }} /></span>}
+                    <span className="num">{i + 1}</span>
+                    <span className="st"><span className={`s-badge ${st.tone}`}>{st.label}</span></span>
+                  </div>
+                  <div className="meta"><span>{s.duration || 5} s · {s.aspectRatio || "16:9"}</span><span>{s.videoUrl ? "done" : inf.credits !== null ? `≈${inf.credits} cr` : ""}</span></div>
+                  <p className="txt">{s.prompt?.trim() || "Nothing written yet. Write the scenes, or open it and describe it."}</p>
+                </button>
+              );
+            })}
+            <button type="button" className="sb-add" onClick={() => { addEmptyScene(); setSelIdx(total); setSbTab("scene"); }}><span className="grid justify-items-center gap-1.5"><Plus className="h-5 w-5" /> Add a scene</span></button>
+          </div>
+        </div>
+
+        {/* The panel: the open scene, or the story-wide settings */}
+        <aside id="sb-panel" className="s-card sb-panel" aria-label="Scene settings" style={{ scrollMarginTop: 64 }}>
+          <div className="px-3 pt-3 pb-2 flex items-center gap-2" style={{ borderBottom: "1px solid var(--s-line)" }}>
+            <div className="s-seg" role="tablist" aria-label="Panel">
+              <button role="tab" aria-selected={sbTab === "scene"} onClick={() => setSbTab("scene")}>Scene {scene ? sel + 1 : ""}</button>
+              <button role="tab" aria-selected={sbTab === "story"} onClick={() => setSbTab("story")}>Story settings</button>
+            </div>
+            <div className="flex-1" />
+            {sbTab === "scene" && scene && (
+              <>
+                <button type="button" className="s-btn ghost sm" style={{ width: 28, padding: 0 }} disabled={sel === 0} onClick={() => { moveSceneUp(sel); setSelIdx(sel - 1); }} aria-label="Move earlier" title="Move earlier"><ChevronLeft className="h-4 w-4" /></button>
+                <button type="button" className="s-btn ghost sm" style={{ width: 28, padding: 0 }} disabled={sel >= total - 1} onClick={() => { moveSceneDown(sel); setSelIdx(sel + 1); }} aria-label="Move later" title="Move later"><ChevronRight className="h-4 w-4" /></button>
+                {total > 1 && <button type="button" className="s-btn ghost sm" style={{ width: 28, padding: 0 }} onClick={() => { removeScene(scene.id); setSelIdx(Math.max(0, sel - 1)); }} aria-label="Delete scene" title="Delete scene"><Trash2 className="h-3.5 w-3.5" style={{ color: "var(--s-danger)" }} /></button>}
+              </>
+            )}
+          </div>
+
+          {sbTab === "scene" && scene && info ? (
+            <>
+              {/* Frames */}
+              <div className="sb-sec">
+                <div className="h">
+                  <span>{locked ? "The rendered video" : info.isSeedance2 ? "Reference pictures" : info.isGemini ? "Reference pictures (optional)" : "Frames"}</span>
+                  <div className="flex-1" />
+                  {(failedSlots.has(`${sel}-primary`) || failedSlots.has(`${sel}-secondary`)) && generatingSlot === null && (
+                    <button type="button" className="s-btn sm" style={{ color: "var(--s-warn)" }} onClick={() => { if (failedSlots.has(`${sel}-primary`)) handleGenerateSlot(sel, 'primary'); if (failedSlots.has(`${sel}-secondary`)) handleGenerateSlot(sel, 'secondary'); }}><Wand2 className="h-3.5 w-3.5" /> Retry the frame</button>
+                  )}
+                </div>
+                {locked ? (
+                  <>
+                    <video key={scene.videoUrl} src={scene.videoUrl} controls playsInline className="w-full rounded-xl bg-black" style={{ aspectRatio: aspectCss(scene.aspectRatio), maxHeight: 360 }} />
+                    <button type="button" className="s-btn ghost sm justify-self-start" onClick={() => handleDeleteVideo(scene.id)}><Trash2 className="h-3.5 w-3.5" /> Delete the video to change this scene</button>
+                  </>
+                ) : info.isSeedance2 ? (
+                  <>
+                    <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Mention them in the description as <b style={{ color: "var(--s-text)" }}>@Image1</b>, <b style={{ color: "var(--s-text)" }}>@Image2</b>…</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {info.seedancePreviews.map((p, sIdx) => slotView({
+                        key: `sd-${sIdx}`, preview: p, tag: `@Image${sIdx + 1}`, aspect: "4 / 3", inputId: `sb-seedance-${scene.id}-${sIdx}`, emptyLabel: "Drop or pick a picture",
+                        busy: generatingSlot?.index === sel && generatingSlot.type === 'primary' && generatingSlot.seedanceIndex === sIdx,
+                        onFile: (e) => handleSceneFile(e, scene.id, "primary", sIdx), onDrop: (e) => handleDrop(e, scene.id, "primary", sIdx),
+                        onGenerate: () => openRegenModal(scene, sel, 'primary', sIdx), onLibrary: () => setLibraryTarget({ index: sel, type: 'primary', seedanceIndex: sIdx }),
+                        onClear: info.seedancePreviews.length > 1 ? () => removeSeedanceSlot(scene.id, sIdx) : () => clearSlot(scene.id, 'primary', sIdx), cost: info.imageCredits,
+                      }))}
+                    </div>
+                    {info.seedancePreviews.length < Math.max(1, generalReferenceSlotsFor(scene.aiModel, scene.mode) - (enableCharacterLock ? 1 : 0)) && (
+                      <button type="button" className="s-btn ghost sm justify-self-start" onClick={() => addSeedanceSlot(scene.id)}><Plus className="h-3.5 w-3.5" /> Add a picture</button>
+                    )}
+                    <div className="grid gap-1.5">
+                      <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>Motion reference video (optional) · say <b style={{ color: "var(--s-text)" }}>@Video1</b></span>
+                      {slotView({ key: "mv", preview: scene.referenceVideoPreview || null, video: true, aspect: "16 / 7", inputId: `sb-refvideo-${scene.id}`, accept: "video/mp4, video/quicktime", emptyLabel: "Drop a video that moves the way you want", busy: false,
+                        onFile: (e) => handleRefVideoSelect(e, scene.id), onDrop: (e) => handleRefVideoDrop(e, scene.id), onLibrary: () => setLibraryTarget({ index: sel, type: 'primary', kind: 'motionVideo' }),
+                        onClear: () => { updateScene(scene.id, "referenceVideoFile", null); updateScene(scene.id, "referenceVideoPreview", null); } })}
+                    </div>
+                    {info.isGptImg2Img && renderRemixPanel(scene, sel)}
+                  </>
+                ) : info.isGemini ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[0, 1, 2, 3, 4].map((gi) => slotView({
+                        key: `gm-${gi}`, preview: info.gemPreviews[gi] || null, tag: String(gi + 1), aspect: "1 / 1", inputId: `sb-gem-${scene.id}-${gi}`, emptyLabel: "Add",
+                        busy: generatingSlot?.index === sel && generatingSlot.geminiIndex === gi,
+                        onFile: (e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))]; p[gi] = ev.target?.result as string; updateScene(scene.id, "gptRefPreviews", p); }; reader.readAsDataURL(file); },
+                        onGenerate: () => openRegenModal(scene, sel, 'primary', undefined, gi), onLibrary: () => setLibraryTarget({ index: sel, type: 'primary', geminiIndex: gi }),
+                        onClear: () => { const p = [...ensureArray(scene.gptRefPreviews || Array(5).fill(null))]; p[gi] = null; updateScene(scene.id, "gptRefPreviews", p); },
+                      }))}
+                    </div>
+                    {slotView({ key: "gv", preview: scene.referenceVideoPreview || null, video: true, aspect: "16 / 7", inputId: `sb-gemvid-${scene.id}`, accept: "video/mp4,video/quicktime", emptyLabel: "Reference video (optional, uses 2 slots)", busy: false,
+                      onFile: (e) => handleRefVideoSelect(e, scene.id), onDrop: (e) => handleRefVideoDrop(e, scene.id), onLibrary: () => setLibraryTarget({ index: sel, type: 'primary', kind: 'motionVideo' }),
+                      onClear: () => { updateScene(scene.id, "referenceVideoFile", null); updateScene(scene.id, "referenceVideoPreview", null); } })}
+                    {info.isGptImg2Img && renderRemixPanel(scene, sel)}
+                  </>
+                ) : (
+                  <>
+                    <div className={`grid gap-2 ${scene.useEndFrame ? "grid-cols-2" : "grid-cols-1"}`}>
+                      {slotView({ key: "start", preview: scene.primaryPreview || null, tag: scene.useEndFrame ? "Start" : undefined, aspect: aspectCss(scene.aspectRatio), inputId: `sb-primary-${scene.id}`, emptyLabel: "Drop the opening frame, or leave it empty to start from words",
+                        busy: generatingSlot?.index === sel && generatingSlot.type === 'primary', onFile: (e) => handleSceneFile(e, scene.id, "primary"), onDrop: (e) => handleDrop(e, scene.id, "primary"),
+                        onGenerate: () => openRegenModal(scene, sel, 'primary'), onLibrary: () => setLibraryTarget({ index: sel, type: 'primary' }), onClear: () => clearSlot(scene.id, "primary"), cost: info.imageCredits })}
+                      {scene.useEndFrame && slotView({ key: "end", preview: scene.secondaryPreview || null, tag: "End", aspect: aspectCss(scene.aspectRatio), inputId: `sb-secondary-${scene.id}`, emptyLabel: "Drop the closing frame",
+                        busy: generatingSlot?.index === sel && generatingSlot.type === 'secondary', onFile: (e) => handleSceneFile(e, scene.id, "secondary"), onDrop: (e) => handleDrop(e, scene.id, "secondary"),
+                        onGenerate: () => openRegenModal(scene, sel, 'secondary'), onLibrary: () => setLibraryTarget({ index: sel, type: 'secondary' }), onClear: () => clearSlot(scene.id, "secondary"), cost: info.imageCredits })}
+                    </div>
+                    {info.isGptImg2Img && renderRemixPanel(scene, sel)}
+                  </>
+                )}
+              </div>
+
+              {/* What happens */}
+              {!locked && (
+                <div className="sb-sec">
+                  <div className="h"><span>What happens</span><div className="flex-1" />
+                    <button type="button" className="s-btn ai sm" onClick={() => handleSuggestPrompt(scene.id, sel)} disabled={suggestingPromptIndex === sel}>{suggestingPromptIndex === sel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write it for me</button>
+                  </div>
+                  <div className="rounded-xl px-3 pt-2.5 pb-2" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line-2)" }}>
+                    <textarea className="sb-prompt" value={scene.prompt || ""} aria-label={`What happens in scene ${sel + 1}`}
+                      onChange={(e) => { updateScene(scene.id, "prompt", e.target.value); if (!e.target.value.trim()) updateScene(scene.id, "imagePrompt", ""); }}
+                      placeholder={info.isGptImg2Img ? "What to do with your pictures, e.g. place this exact bottle on a marble counter at golden hour, label sharp." : scene.mode === 'ugc' ? "The creator holds the product, looks at the camera and…" : info.nativeAudio ? 'e.g. Slow push-in on the kiosk. The runner sips and says "Fresh, every morning."' : "e.g. Tracking shot through a sunlit forest, leaves drifting."} />
+                    <div className="flex items-center gap-2 pt-1.5" style={{ borderTop: "1px solid var(--s-line)" }}>
+                      <select className="s-input" style={{ height: 28, fontSize: 12, width: "auto" }} value="" onChange={(e) => { if (e.target.value) insertIntoPrompt(scene, e.target.value); e.target.value = ""; }} aria-label="Add to the description">
+                        <option value="" disabled hidden>＋ Add camera, sound, physics…</option>
+                        <optgroup label="Camera">{injects.camera.map((p) => <option key={p.label} value={p.value}>{p.label}</option>)}</optgroup>
+                        {injects.sound.length > 0 && <optgroup label="Sound">{injects.sound.map((p) => <option key={p.label} value={p.value}>{p.label}</option>)}</optgroup>}
+                        <optgroup label="Physics">{injects.physics.map((p) => <option key={p.label} value={p.value}>{p.label}</option>)}</optgroup>
+                        {injects.timing.length > 0 && <optgroup label="Timing">{injects.timing.map((p) => <option key={p.label} value={p.value}>{p.label}</option>)}</optgroup>}
+                        {info.nativeAudio && <optgroup label="Speech"><option value="__dialogue">A line someone says</option></optgroup>}
+                      </select>
+                      <div className="flex-1" />
+                      <span className="mono text-[11px]" style={{ color: (scene.prompt?.length || 0) > 500 ? "var(--s-danger)" : "var(--s-mute)" }}>{scene.prompt?.length || 0}/500</span>
+                    </div>
+                  </div>
+                  <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{info.nativeAudio ? "This engine makes its own sound. Add a line someone says and they speak it." : "This engine makes silent video. Add a voiceover in the editor."}</p>
+                </div>
+              )}
+
+              {/* Engine and format */}
+              {!locked && (
+                <div className="sb-sec">
+                  <div className="h"><span>Engine and format</span></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="grid gap-1 col-span-2"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Video engine</span>
+                      <select className="s-input" value={scene.aiModel || "auto"} onChange={(e) => changeModel(scene, e.target.value)}>
+                        <option value="auto">Auto (best for this scene)</option>
+                        <option value="bytedance/seedance-2">Seedance 2 · cinematic, with sound</option>
+                        <option value="bytedance/seedance-2-fast">Seedance 2 · fast</option>
+                        <option value="bytedance/seedance-2-5">Seedance 2.5 · 1080p, up to 30 s</option>
+                        <option value="replicate:prunaai/p-video">Pruna · fast drafts</option>
+                        <option value="replicate:openai/sora-2">Sora 2</option>
+                        <option value="gemini-omni-video">Gemini Omni Video</option>
+                        <option value="kling-3.0/video">Kling 3.0 (paused: renders on Seedance 2)</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Shape</span>
+                      <AspectRatioSelect model={scene.aiModel} videoMode={scene.mode} value={scene.aspectRatio || "16:9"} onChange={(next) => updateScene(scene.id, "aspectRatio", next)} className="s-input" />
+                    </label>
+                    <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Length</span>
+                      <DurationField model={scene.aiModel} videoMode={scene.mode} value={scene.duration || "5"} onChange={(next) => updateScene(scene.id, "duration", next)} hasAudio={Boolean(scene.dialogue || scene.audioUrl)} className="s-input" />
+                    </label>
+                    {(info.isGemini || info.isGptImage2) && (
+                      <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Resolution</span>
+                        <select className="s-input" value={scene.videoResolution || (info.isGemini ? "720p" : "1K")} onChange={(e) => updateScene(scene.id, "videoResolution", e.target.value)}>
+                          {info.isGemini ? <><option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4K</option></> : <><option value="1K">1K</option><option value="2K">2K</option><option value="4K">4K</option></>}
+                        </select>
+                      </label>
+                    )}
+                    {info.isGemini && (
+                      <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Seed (optional)</span>
+                        <input type="number" className="s-input" value={scene.seed ?? ""} min={0} max={2147483647} onChange={(e) => updateScene(scene.id, "seed", e.target.value === "" ? null : Number(e.target.value))} />
+                      </label>
+                    )}
+                  </div>
+                  <div className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Pictures made with</span>
+                    <div className="s-seg" role="group" aria-label="Picture engine">
+                      {([{ id: 'nb2', label: 'Best', title: 'Nano Banana 2: best all-round frames' }, { id: 'gpt-image-2-text-to-image', label: 'Words only', title: 'GPT Image 2 from text, no references' }, { id: 'gpt-image-2-image-to-image', label: 'Remix mine', title: 'Transform your own pictures' }] as const).map((o) => (
+                        <button key={o.id} type="button" title={o.title} aria-pressed={info.imageEngine === o.id} onClick={() => updateScene(scene.id, "imageEngine", o.id)}>{o.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {info.isPruna && <label className="flex items-center gap-2 text-[12.5px] cursor-pointer"><input type="checkbox" checked={scene.prunaDraft || false} onChange={(e) => updateScene(scene.id, "prunaDraft", e.target.checked)} style={{ accentColor: "var(--s-accent)" }} /> Draft mode (4× faster preview)</label>}
+                  {info.endFrameAllowed && !startFrameOnly && !info.isSeedance2 && !info.isGemini && (
+                    <label className="flex items-center gap-2 text-[12.5px] cursor-pointer"><input type="checkbox" checked={scene.useEndFrame || false} onChange={(e) => updateScene(scene.id, "useEndFrame", e.target.checked)} style={{ accentColor: "var(--s-accent)" }} /> End on a chosen frame {scene.secondaryPreview ? "" : <span className="mono text-[11px]" style={{ color: "var(--s-mute)" }}>+{info.imageCredits} cr</span>}</label>
+                  )}
+                </div>
+              )}
+
+              {/* Render */}
+              <div className="sb-sec">
+                {scene.isGeneratingVideo ? (
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--s-ai)" }} /><b className="text-[13.5px]">Rendering scene {sel + 1}…</b></div>
+                    <p className="text-[12px]" style={{ color: "var(--s-mute)" }}>Usually 2 to 6 minutes. It runs in the background; you can leave this page.</p>
+                    <button type="button" className="s-btn ghost sm justify-self-start" onClick={() => updateScene(scene.id, "isGeneratingVideo", false)}>Stop waiting here</button>
+                  </div>
+                ) : locked ? (
+                  <p className="text-[12.5px] flex items-center gap-1.5" style={{ color: "var(--s-ok)" }}><CheckCircle className="h-4 w-4" /> Rendered. Put the scenes together when they&apos;re all done.</p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="leading-tight flex-1 min-w-[150px]">
+                      <div className="text-[12.5px] truncate">{resolveVideoModel(info.effective)?.label ?? info.effective} · {scene.duration || 5} s</div>
+                      <div className="text-[11px]" style={{ color: "var(--s-mute)" }}>{scene.primaryPreview || info.thumb ? "Starts from your frame" : "Starts from words only"}</div>
+                    </div>
+                    <button type="button" className="s-btn primary" onClick={() => handleGenerateSingleVideo(sel)} disabled={!scene.prompt?.trim()} title={scene.prompt?.trim() ? "" : "Write what happens first"}><Film className="h-4 w-4" /> Render scene <span className="cost">≈{info.credits ?? "?"} cr</span></button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : sbTab === "scene" ? (
+            <div className="sb-sec"><p className="text-[13px]" style={{ color: "var(--s-soft)" }}>No scenes yet. Write the scenes from your story, or add one.</p></div>
+          ) : (
+            <>
+              <div className="sb-sec">
+                <div className="h"><span>How the AI writes</span></div>
+                <label className="flex items-start gap-2.5 cursor-pointer"><input type="checkbox" className="mt-0.5" checked={aiEnhance} onChange={(e) => setAiEnhance(e.target.checked)} style={{ accentColor: "var(--s-accent)" }} />
+                  <span className="grid"><span className="text-[13px]">Improve my descriptions</span><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Off sends your words exactly as written.</span></span></label>
+                <div className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Engines when writing the scenes</span>
+                  <div className="s-seg" role="group" aria-label="Engine choice">
+                    <button type="button" aria-pressed={modelConsistency === "dynamic"} onClick={() => setModelConsistency("dynamic")}>Best per scene</button>
+                    <button type="button" aria-pressed={modelConsistency === "consistent"} onClick={() => setModelConsistency("consistent")}>Same for all</button>
+                  </div>
+                </div>
+              </div>
+              <div className="sb-sec">
+                <div className="h"><Users className="h-3.5 w-3.5" /><span>Characters</span><div className="flex-1" />
+                  <label className="flex items-center gap-1.5 text-[12px] cursor-pointer" style={{ color: "var(--s-soft)" }}><input type="checkbox" checked={enableCharacterLock} onChange={(e) => { setEnableCharacterLock(e.target.checked); if (e.target.checked && actors.length > 0) setIsCharacterLockModalOpen(true); }} style={{ accentColor: "var(--s-accent)" }} /> Same people in every scene</label>
+                </div>
+                {enableCharacterLock && [0, 1, 2].map((slot) => {
+                  const actor = actors.find((a) => a.id === selectedActors[slot]);
+                  return (
+                    <div key={slot} className="flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line)" }}>
+                      <span className="mono text-[11px] w-7" style={{ color: "var(--s-mute)" }}>A{slot + 1}</span>
+                      {actor ? (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <button type="button" onClick={() => setPreviewModalImg(actor.stitchedSheetUrl)} className="h-8 w-8 rounded-md overflow-hidden shrink-0"><img src={actor.stitchedSheetUrl} alt="" className="h-full w-full object-cover" /></button>
+                          <span className="text-[12.5px] flex-1 truncate">{actor.name}</span>
+                          <button type="button" className="s-btn ghost sm" onClick={() => { setCastingTargetSlot(slot); setIsCharacterLockModalOpen(true); }}>Change</button>
+                        </>
+                      ) : <button type="button" className="flex-1 text-left text-[12.5px] flex items-center gap-1.5" style={{ color: "var(--s-soft)" }} onClick={() => { setCastingTargetSlot(slot); setIsCharacterLockModalOpen(true); }}><UserPlus className="h-3.5 w-3.5" /> Add a character</button>}
+                    </div>
+                  );
+                })}
+                {enableCharacterLock && selectedStyle === 'none' && styleLockUrl && selectedActors.some(Boolean) && (
+                  <label className="flex items-center gap-2 text-[12.5px] cursor-pointer"><input type="checkbox" checked={castFollowsCustomStyle} onChange={() => setCastFollowsCustomStyle((v) => !v)} style={{ accentColor: "var(--s-accent)" }} /> Draw the characters in my style picture too</label>
+                )}
+                <button type="button" className="s-btn sm justify-self-start" onClick={() => setIsCastingOpen(true)}><Users className="h-3.5 w-3.5" /> Casting room</button>
+              </div>
+              <div className="sb-sec">
+                <div className="h"><Palette className="h-3.5 w-3.5" /><span>Look</span></div>
+                <select className="s-input" value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} aria-label="Look">
+                  {VISUAL_STYLES.map((s) => <option key={s.id} value={s.id}>{s.id === "none" ? "My own style picture" : s.label}</option>)}
+                </select>
+                {selectedStyle === 'none' && (() => {
+                  const stylePreview = frameReferencePreview || styleLockUrl;
+                  return slotView({ key: "style", preview: stylePreview || null, aspect: "16 / 7", inputId: "sb-style-upload", emptyLabel: "Drop a painting, screenshot or mood board: every frame takes its style", busy: false,
+                    onFile: handleFrameReferenceSelect, onDrop: handleRefDrop,
+                    onClear: () => { setFrameReferenceFile(null); setFrameReferencePreview(null); setStyleLockUrl(null); try { localStorage.removeItem(STYLE_LOCK_KEY); } catch { /* private mode */ } } });
+                })()}
+                <label className="flex items-start gap-2.5 cursor-pointer"><input type="checkbox" className="mt-0.5" checked={startFrameOnly} onChange={toggleStartFrameOnly} style={{ accentColor: "var(--s-accent)" }} />
+                  <span className="grid"><span className="text-[13px]">Opening frames only</span><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Skips closing frames: half the picture credits. Turn off for reveals and morphs.</span></span></label>
+              </div>
+              <div className="sb-sec">
+                <div className="h"><Lock className="h-3.5 w-3.5" /><span>Location</span></div>
+                {slotView({ key: "env", preview: environmentLockUrl || null, aspect: "16 / 7", inputId: "sb-env-upload", emptyLabel: "Drop a photo of the place: every scene keeps it", busy: false, onFile: handleEnvironmentSelect, onClear: clearEnvironmentLock })}
+              </div>
+            </>
+          )}
+        </aside>
+
+        {/* One bar for the whole video */}
+        <div className="sb-bar">
+          <div className="sb-strip" aria-label="Scenes in order">
+            {bRollScenes.map((s, i) => (
+              <button key={s.id} type="button" aria-pressed={i === sel} onClick={() => { setSelIdx(i); setSbTab("scene"); }} aria-label={`Scene ${i + 1}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {s.videoUrl ? <video src={s.videoUrl} muted preload="metadata" /> : infos[i].thumb ? <img src={infos[i].thumb!} alt="" /> : null}
+                <span>{i + 1}</span>
+              </button>
+            ))}
+          </div>
+          <div className="text-right leading-tight sb-sum">
+            <div className="text-[13px]">{total} scene{total === 1 ? "" : "s"} · {seconds} s</div>
+            <div className="text-[11px]" style={{ color: "var(--s-mute)" }}>{rendered ? `${rendered} of ${total} rendered` : "Render, then put them together"}</div>
+          </div>
+          <button type="button" className="s-btn" onClick={putScenesTogether} disabled={!rendered || stackingScenes}>{stackingScenes ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />} Put them together</button>
+          <button type="button" className="s-btn primary lg" onClick={renderAllScenes} disabled={isGeneratingVideos || toRender.length === 0}>
+            {isGeneratingVideos ? <><Loader2 className="h-4 w-4 animate-spin" /> Rendering…</> : toRender.length === 0 ? <>Render scenes</> : <>Render {toRender.length === total ? "all" : toRender.length} <span className="cost">{renderCost} cr</span></>}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  if (look === "studio") return renderStudio();
+
+  return (
+    <div className="flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500 w-full items-start pb-10">
+
+      {sharedModals}
 
       {/* ── LEFT PANE: STORYBOARD ROWS ── */}
       {/* min-w-0 lets flex-1 actually shrink; without it content min-width forces
@@ -3762,107 +4326,6 @@ export function StorytellingSetup({
 
       </div>
 
-      <AssetSelectionModal open={libraryTarget !== null} onClose={() => setLibraryTarget(null)} onSelect={handleLibrarySelect} mediaType={libraryTarget?.kind === 'motionVideo' ? 'video' : 'image'} />
-
-      {previewModalImg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#191D23]/90 backdrop-blur-md animate-in fade-in" onClick={() => setPreviewModalImg(null)}>
-          <div className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center animate-in zoom-in duration-300" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setPreviewModalImg(null)} className="absolute -top-14 right-0 p-2.5 bg-[#2A2F38] border border-[#57707A]/50 hover:bg-red-500 hover:border-red-400 hover:text-white text-[#DEDCDC] rounded-full transition-all shadow-lg z-50">
-              <X className="h-5 w-5" />
-            </button>
-            <div className="absolute inset-0 bg-[url('/checkers.png')] opacity-10 pointer-events-none rounded-2xl"></div>
-            <img src={previewModalImg} className="w-full h-full object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-[#57707A]/30 relative z-10 bg-black" alt="Preview Enlarged" />
-          </div>
-        </div>
-      )}
-
-      {/* ✨ CHARACTER LOCK SELECTION MODAL */}
-      <Dialog open={isCharacterLockModalOpen} onOpenChange={(open) => !open && setIsCharacterLockModalOpen(false)}>
-        <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl custom-scrollbar">
-          <DialogHeader className="border-b border-[#57707A]/20 pb-4">
-            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl">
-              <Lock className="w-5 h-5" /> Select Actor {castingTargetSlot + 1}
-            </DialogTitle>
-            <DialogDescription className="text-[#989DAA] font-medium mt-1">
-              Choosing for slot <span className="text-[#C5BAC4] font-bold">Actor {castingTargetSlot + 1}</span>. This actor's character sheet will be injected into every scene.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-5">
-            {actors.length === 0 ? (
-              <div className="text-center py-12 text-[#57707A] bg-[#191D23]/50 rounded-2xl border border-dashed border-[#57707A]/40">
-                <Users className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                <p className="text-sm font-bold text-[#DEDCDC]">No actors yet</p>
-                <p className="text-xs mt-1 text-[#989DAA]">Use the Casting Room to create actors first.</p>
-                <Button size="sm" className="mt-5 bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold shadow-md rounded-xl h-10 px-6 transition-all" onClick={() => { setIsCharacterLockModalOpen(false); setIsCastingOpen(true); }}>
-                  <UserPlus className="w-4 h-4 mr-2" /> Open Casting Room
-                </Button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {actors.map(actor => {
-                  const isSelected = selectedActors[castingTargetSlot] === actor.id;
-                  return (
-                    <button
-                      key={actor.id}
-                      onClick={() => {
-                        setSelectedActors(prev => { const next = [...prev]; next[castingTargetSlot] = isSelected ? "" : actor.id; return next; });
-                      }}
-                      className={cn(
-                        "rounded-2xl p-2.5 flex flex-col gap-3 transition-all text-left border relative overflow-hidden group",
-                        isSelected ? "bg-[#191D23] border-[#C5BAC4] ring-2 ring-[#C5BAC4]/50 shadow-lg" :
-                          "bg-[#191D23]/60 border-[#57707A]/40 hover:border-[#C5BAC4]/60 hover:bg-[#191D23] hover:shadow-md"
-                      )}
-                    >
-                      <div
-                        className="aspect-video rounded-xl overflow-hidden bg-[#0F1115] border border-[#57707A]/30 relative cursor-pointer"
-                        onClick={(e) => { e.stopPropagation(); setPreviewModalImg(actor.stitchedSheetUrl); }}
-                      >
-                        <img src={actor.stitchedSheetUrl} className="w-full h-full object-cover opacity-90 group-hover:opacity-50 transition-opacity" />
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Maximize2 className="w-5 h-5 text-white" /></div>
-                        {isSelected && <div className="absolute top-1.5 left-1.5 bg-[#C5BAC4] text-[#191D23] text-[9px] font-black px-2 py-0.5 uppercase tracking-widest rounded shadow-md z-10">A{castingTargetSlot + 1}</div>}
-                      </div>
-                      <span className={cn(
-                        "text-xs font-bold text-center truncate px-2 w-full",
-                        isSelected ? "text-[#DEDCDC]" : "text-[#989DAA] group-hover:text-[#DEDCDC] transition-colors"
-                      )}>{actor.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          <DialogFooter className="border-t border-[#57707A]/20 pt-4">
-            <Button variant="outline" onClick={() => setSelectedActors(prev => { const next = [...prev]; next[castingTargetSlot] = ""; return next; })} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 font-bold rounded-xl h-11 px-6">Clear Slot</Button>
-            <Button onClick={() => setIsCharacterLockModalOpen(false)} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-xl h-11 px-8 shadow-lg transition-all border-none">
-              <CheckCircle className="w-4 h-4 mr-2" /> Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={regenDialogState.isOpen} onOpenChange={(open) => !open && setRegenDialogState(prev => ({ ...prev, isOpen: false }))}>
-        <DialogContent className="sm:max-w-[600px] bg-[#2A2F38] border-[#57707A]/50 text-[#DEDCDC] shadow-2xl">
-          <DialogHeader className="border-b border-[#57707A]/20 pb-4">
-            <DialogTitle className="flex items-center gap-2 text-[#C5BAC4] font-display text-xl"><Wand2 className="h-5 w-5" /> Image Prompt · {regenDialogState.slotType === 'primary' ? 'Start Frame' : 'End Frame'}</DialogTitle>
-            <DialogDescription className="text-[#989DAA] font-medium mt-1.5">Controls the still image for this slot in Scene {regenDialogState.index !== null ? regenDialogState.index + 1 : ''} only. Your Scene Director motion prompt stays untouched — the video engine keeps its own script.</DialogDescription>
-          </DialogHeader>
-          <div className="py-5">
-            <label className="text-[10px] font-bold text-[#57707A] uppercase tracking-wider mb-2 block">Refined Prompt</label>
-            <Textarea
-              value={regenDialogState.promptText}
-              onChange={(e) => setRegenDialogState(prev => ({ ...prev, promptText: e.target.value }))}
-              placeholder="Enter a detailed visual prompt..."
-              className="h-40 resize-none bg-[#191D23] border-[#57707A]/40 text-[#DEDCDC] placeholder:text-[#57707A] focus-visible:ring-[#C5BAC4] rounded-xl shadow-inner text-sm custom-scrollbar"
-            />
-          </div>
-          <DialogFooter className="border-t border-[#57707A]/20 pt-4">
-            <Button variant="outline" onClick={() => setRegenDialogState(prev => ({ ...prev, isOpen: false }))} className="bg-transparent border-[#57707A]/50 text-[#DEDCDC] hover:bg-[#57707A]/20 font-bold rounded-xl h-11 px-6">Cancel</Button>
-            <Button onClick={handleConfirmRegen} className="bg-[#C5BAC4] hover:bg-white text-[#191D23] font-bold rounded-xl h-11 px-6 shadow-lg transition-all border-none">
-              <Sparkles className="h-4 w-4 mr-2" /> Regenerate Slot
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div >
   );
 }

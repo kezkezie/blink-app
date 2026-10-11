@@ -1,0 +1,63 @@
+/* The storyboard in the studio look (2026-10-11). Components layer, so utilities still win. */
+@layer components {
+  .sb { display: grid; gap: 16px; align-items: start; padding-bottom: 84px; }
+  @media (min-width: 1180px) { .sb { grid-template-columns: minmax(0, 1fr) 420px; } }
+  .sb-board { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+  .sb-card { text-align: left; border-radius: 14px; background: var(--s-panel); border: 1px solid var(--s-line); overflow: hidden;
+    transition: border-color .15s, transform .15s, box-shadow .15s; display: flex; flex-direction: column; min-width: 0; }
+  .sb-card:hover { border-color: var(--s-line-2); transform: translateY(-1px); }
+  .sb-card[aria-pressed="true"] { border-color: var(--s-text); box-shadow: 0 0 0 1px var(--s-text); }
+  .sb-card .th { position: relative; aspect-ratio: 16 / 9; background: #000; overflow: hidden; }
+  .sb-card .th img, .sb-card .th video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sb-card .num { position: absolute; left: 8px; top: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center;
+    font: 600 11px var(--s-mono); background: rgba(12,13,15,.72); color: #fff; backdrop-filter: blur(6px); }
+  .sb-card .st { position: absolute; right: 8px; top: 8px; }
+  .sb-card .st .s-badge { background: rgba(12,13,15,.72); backdrop-filter: blur(6px); }
+  .sb-card .ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--s-mute); font-size: 11.5px;
+    background: repeating-linear-gradient(135deg, var(--s-bg) 0 10px, color-mix(in oklab, var(--s-line) 50%, var(--s-bg)) 10px 11px); }
+  .sb-card .meta { display: flex; justify-content: space-between; gap: 6px; padding: 8px 10px 0; font: 500 11px var(--s-mono); color: var(--s-mute); }
+  .sb-card .txt { padding: 4px 10px 10px; font-size: 12.5px; line-height: 1.4; color: var(--s-soft); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.8em; }
+  .sb-add { border-radius: 14px; border: 1.5px dashed var(--s-line-2); color: var(--s-mute); display: grid; place-items: center; min-height: 180px; font-size: 13px; transition: border-color .15s, color .15s; }
+  .sb-add:hover { border-color: var(--s-accent); color: var(--s-text); }
+  .sb-panel { position: sticky; top: 72px; max-height: calc(100dvh - 160px); overflow-y: auto; display: flex; flex-direction: column; }
+  @media (max-width: 1179px) { .sb-panel { position: static; max-height: none; } }
+  .sb-sec { padding: 14px 16px; border-bottom: 1px solid var(--s-line); display: grid; gap: 10px; }
+  .sb-sec:last-child { border-bottom: 0; }
+  .sb-sec > .h { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--s-mute); }
+  .sb-slot { position: relative; border-radius: 11px; overflow: hidden; background: var(--s-bg); border: 1px dashed var(--s-line-2); display: grid; place-items: center; transition: border-color .15s, background .15s; }
+  .sb-slot.has { border-style: solid; border-color: var(--s-line); }
+  .sb-slot:hover { border-color: var(--s-mute); }
+  .sb-slot img, .sb-slot video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sb-slot .tag { position: absolute; left: 6px; top: 6px; font: 600 10px var(--s-mono); padding: 2px 6px; border-radius: 6px; background: rgba(12,13,15,.72); color: #fff; z-index: 2; }
+  .sb-slot .tools { position: absolute; right: 6px; top: 6px; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; z-index: 2; }
+  .sb-slot:hover .tools, .sb-slot:focus-within .tools { opacity: 1; }
+  @media (hover: none) { .sb-slot .tools { opacity: 1; } }
+  .sb-slot .tools button { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: rgba(12,13,15,.78); color: #fff; border: 1px solid rgba(255,255,255,.12); }
+  .sb-slot .tools button:hover { background: rgba(12,13,15,.95); }
+  .sb-slot .empty { display: grid; justify-items: center; gap: 4px; padding: 10px; text-align: center; color: var(--s-mute); font-size: 11.5px; cursor: pointer; width: 100%; height: 100%; align-content: center; }
+  .sb-slot .empty:hover { color: var(--s-text); }
+  .sb-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: color-mix(in oklab, var(--s-panel) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--s-line); }
+  @media (min-width: 768px) { .sb-bar { left: 76px; } }
+  @media (max-width: 767px) { .sb-bar { bottom: 62px; } }
+  .sb-strip { display: flex; gap: 4px; overflow-x: auto; min-width: 0; flex: 1; }
+  .sb-strip button { flex-shrink: 0; width: 64px; height: 36px; border-radius: 6px; overflow: hidden; background: var(--s-bg); border: 1px solid var(--s-line); position: relative; }
+  .sb-strip button[aria-pressed="true"] { border-color: var(--s-text); }
+  .sb-strip img, .sb-strip video { width: 100%; height: 100%; object-fit: cover; }
+  .sb-strip span { position: absolute; left: 3px; bottom: 2px; font: 600 9px var(--s-mono); color: #fff; text-shadow: 0 1px 2px #000; }
+  .sb-prompt { width: 100%; background: transparent; border: 0; outline: none; resize: vertical; font-size: 13.5px; line-height: 1.55; color: var(--s-text); min-height: 120px; }
+  .sb-prompt::placeholder { color: var(--s-mute); }
+}
+
+/* Phones: two scene cards per row, a lean bottom bar. */
+@layer components {
+  @media (max-width: 560px) {
+    .sb-board { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .sb-card .meta { padding: 6px 8px 0; font-size: 10px; }
+    .sb-card .txt { padding: 3px 8px 8px; font-size: 11.5px; }
+    .sb-add { min-height: 120px; }
+    .sb-bar { gap: 8px; }
+    .sb-bar .sb-strip, .sb-bar .sb-sum { display: none; }
+    .sb-bar > button { flex: 1; }
+  }
+}

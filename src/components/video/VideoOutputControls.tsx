@@ -106,7 +106,7 @@ export function DurationField({
   useEffect(() => { if (!allowed) onChange(fallbackValue); }, [allowed, fallbackValue, onChange]);
   const reroutedNote = rerouted ? (
     <span className="text-[10px] text-[#989DAA]" data-testid="video-model-rerouted">
-      Kling image-to-video is paused. Rendering on {resolveVideoModel(effective)?.label ?? effective}.
+      Kling is paused (its clips came back frozen). Rendering on {resolveVideoModel(effective)?.label ?? effective}.
     </span>
   ) : null;
 
