@@ -5,8 +5,16 @@ import { useRouter } from "next/navigation";
 import {
   Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music,
   Image as ImageIcon, UploadCloud, Settings, Download,
-  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check, Maximize2, Minimize2
+  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check, Maximize2, Minimize2,
+  Scissors, Copy, Sparkles, Wand2, Undo2, AudioLines, Subtitles
 } from "lucide-react";
+import { toast } from "sonner";
+import { useCredits } from "@/components/studio/hooks";
+import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
+import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
+import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
+import { canvasSize, drawtextFilter, frameAt, normalizeFilter, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
+import "./video-editor.css";
 import { Button } from "@/components/ui/button";
 import { cn, cloudinaryVideoPoster } from "@/lib/utils";
 import { useClient } from "@/hooks/useClient";
@@ -54,6 +62,8 @@ interface TextLayer {
   maxDuration: number;
   opacity?: number;
   trackRow?: number;
+  /** "caption": outlined, for words people read along (studio, 2026-10-11). */
+  style?: "plain" | "caption";
 }
 
 /**
@@ -99,6 +109,21 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   const [textLayers, setTextLayers] = useState<TextLayer[]>([]);
 
   const [selectedElement, setSelectedElement] = useState<{ id: string; type: "text" | "video" | "audio"; } | null>(null);
+  // Canvas shape and framing (both looks export them; the classic look stays 16:9 / fit).
+  const [canvasAspect, setCanvasAspect] = useState<CanvasAspect>("16:9");
+  const [fitMode, setFitMode] = useState<FitMode>("fit");
+  // Studio look: left rail, AI tools state, waveforms, beat markers, measured canvas width.
+  const [rail, setRail] = useState<"media" | "scenes" | "audio" | "text" | "ai">("media");
+  const [peaks, setPeaks] = useState<Record<string, number[]>>({});
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
+  const [cutEvery, setCutEvery] = useState<1 | 2 | 4>(2);
+  const [beatLength, setBeatLength] = useState(30);
+  const [beatMarks, setBeatMarks] = useState<number[]>([]);
+  const [shortTarget, setShortTarget] = useState<15 | 30 | 60>(30);
+  const [shorts, setShorts] = useState<{ source: { url: string; name: string; duration: number }; highlights: Highlight[]; segments: Segment[]; credits: number } | null>(null);
+  const [canvasW, setCanvasW] = useState(960);
+  const { plan } = useCredits();
+  const aiLocked = plan !== null && !isPaidPlan(plan);
 
   // Ask BlinkSpot can read and edit this timeline through the editor bridge (smart editing).
   // Nothing visual changes here; an AI edit is applied only when the user presses Apply.
@@ -332,6 +357,32 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     return `/api/fetch-media?url=${encodeURIComponent(originalUrl)}`;
   };
 
+  /** A photo as a JPEG no bigger than `max` px on its long side (decoded in the browser, same-origin via the proxy). */
+  async function imageForExport(url: string, max: number): Promise<Uint8Array> {
+    const blob = await (await fetch(getProxyUrl(url))).blob();
+    const bmp = await createImageBitmap(blob);
+    const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
+    const jpg = await new Promise<Blob | null>((r) => c.toBlob(r, "image/jpeg", 0.92));
+    if (!jpg) return fetchFile(getProxyUrl(url));
+    return new Uint8Array(await jpg.arrayBuffer());
+  }
+
+  async function ensureFfmpeg() {
+    const ffmpeg = ffmpegRef.current;
+    if (!ffmpeg.loaded) {
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+    }
+    return ffmpeg;
+  }
+
   const handleRender = async () => {
     if (!clientId) return;
     const orderedVideos = [...videoClips].sort((a, b) => a.timelineStart - b.timelineStart);
@@ -344,26 +395,24 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     setRenderStatusText("Booting AI Render Engine...");
 
     try {
-      const ffmpeg = ffmpegRef.current;
+      const ffmpeg = await ensureFfmpeg();
       ffmpeg.on('log', ({ message }) => console.log('[FFmpeg]', message));
-
-      if (!ffmpeg.loaded) {
-        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-        await ffmpeg.load({
-          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-        });
-      }
+      const { W, H } = canvasSize(canvasAspect);
 
       setRenderProgress(15);
 
       let hasFont = false;
       if (textLayers.length > 0) {
         setRenderStatusText("Loading font libraries...");
+        // Our own copy (the old one came through the media proxy, which refused the host, so an error
+        // page was saved as the font and every export with text failed). Checked before use.
         try {
-          const fontData = await fetchFile(getProxyUrl('https://raw.githubusercontent.com/ffmpegwasm/testdata/master/arial.ttf'));
-          await ffmpeg.writeFile('arial.ttf', fontData);
-          hasFont = true;
+          const fontData = await fetchFile('/fonts/Inter-ExtraBold.ttf');
+          const sig = String.fromCharCode(...fontData.slice(0, 4));
+          if (fontData.length > 10_000 && (sig === "\u0000\u0001\u0000\u0000" || sig === "OTTO" || sig === "true")) {
+            await ffmpeg.writeFile('font.ttf', fontData);
+            hasFont = true;
+          } else console.warn("Font file looked wrong; exporting without text.");
         } catch (e) {
           console.warn("Could not load font.", e);
         }
@@ -373,18 +422,23 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       const filterSteps: string[] = [];
       let concatStreams = "";
 
+      // Each file is fetched and written once (a beat cut reuses the same clips many times), and photos
+      // are shrunk to about the export size first: a looped 4K PNG was decoded 30 times a second.
+      const written = new Map<string, string>();
       for (let i = 0; i < orderedVideos.length; i++) {
         setRenderStatusText(`Processing visual media ${i + 1} of ${orderedVideos.length}...`);
         const clip = orderedVideos[i];
         const isImg = clip.type === 'image';
-        const ext = isImg ? 'png' : 'mp4';
-        const fileName = `media_${i}.${ext}`;
         const duration = clip.trimEnd - clip.trimStart;
-
-        try {
-          await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
-        } catch (err) {
-          throw new Error(`Failed to download media item ${i + 1}.`);
+        let fileName = written.get(clip.url);
+        if (!fileName) {
+          fileName = `media_${written.size}.${isImg ? 'jpg' : 'mp4'}`;
+          try {
+            await ffmpeg.writeFile(fileName, isImg ? await imageForExport(clip.url, Math.max(W, H)) : await fetchFile(getProxyUrl(clip.url)));
+          } catch (err) {
+            throw new Error(`Failed to download media item ${i + 1}.`);
+          }
+          written.set(clip.url, fileName);
         }
 
         if (isImg) {
@@ -393,7 +447,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
           inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
         }
 
-        filterSteps.push(`[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p[v${i}]`);
+        filterSteps.push(normalizeFilter(i, W, H, fitMode));
         concatStreams += `[v${i}]`;
 
         setRenderProgress(15 + Math.floor((i / orderedVideos.length) * 30));
@@ -407,15 +461,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       if (textLayers.length > 0 && hasFont) {
         setRenderStatusText("Baking text layers...");
         let textFilters: string[] = [];
-        textLayers.forEach((layer) => {
-          const start = layer.timelineStart;
-          const end = layer.timelineStart + (layer.trimEnd - layer.trimStart);
-          const x = `(w*${layer.x}/100)`;
-          const y = `(h*${layer.y}/100)`;
-          const size = layer.fontSize * 2;
-          const safeText = layer.text.replace(/'/g, "\u2019").replace(/:/g, "\\:");
-          textFilters.push(`drawtext=fontfile=arial.ttf:text='${safeText}':fontcolor=${layer.color || 'white'}:fontsize=${size}:x=${x}:y=${y}:enable='between(t,${start},${end})'`);
-        });
+        // Centred on its point like the preview, sized for the canvas width, captions outlined.
+        textLayers.forEach((layer) => textFilters.push(drawtextFilter(layer, W)));
         if (textFilters.length > 0) {
           filterSteps.push(`[outv]${textFilters.join(',')}[textout]`);
           finalVideoMap = '[textout]';
@@ -798,6 +845,568 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   if (zoom < 5) rulerStep = 5;
   if (zoom < 1) rulerStep = 30;
   if (zoom < 0.2) rulerStep = 60;
+
+  // Font sizes on the studio preview scale with the canvas width (export uses the same rule).
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => setCanvasW(Math.round(e.contentRect.width) || 960));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [studio, canvasAspect]);
+
+  // ───────────── STUDIO LOOK (2026-10-11) ─────────────
+  // Same engine as the classic layout below (playback, trims, snapping, export, Ask's edits); a new
+  // arrangement after Kezie's references: tool rail, media bin, big preview, inspector, and a timeline
+  // with filmstrips, waveforms and beat markers. Plus split / duplicate / shortcuts, 9:16 and 1:1,
+  // and three AI tools: cut to the beat (local, free), captions and shorts (transcribed, per minute).
+  const totalLength = Math.max(0, ...videoClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), ...audioClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), ...textLayers.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)));
+  const fmt = (s: number) => { const m = Math.floor(s / 60); const r = s - m * 60; return `${String(m).padStart(2, "0")}:${r.toFixed(1).padStart(4, "0")}`; };
+  const snapshot = () => { aiUndo.current = liveTimeline.current; useEditorBridge.setState({ canUndo: true }); };
+  const canUndo = useEditorBridge((b) => b.canUndo);
+
+  function splitAtPlayhead() {
+    const t = globalTime;
+    const hit = (c: { timelineStart: number; trimStart: number; trimEnd: number }) => t > c.timelineStart + 0.1 && t < c.timelineStart + (c.trimEnd - c.trimStart) - 0.1;
+    const pick = <T extends { id: string; timelineStart: number; trimStart: number; trimEnd: number }>(list: T[], type: string) =>
+      (selectedElement?.type === type ? list.filter((c) => c.id === selectedElement.id) : list).find(hit);
+    const v = pick(videoClips, "video"), a = !v ? pick(audioClips, "audio") : undefined, x = !v && !a ? pick(textLayers, "text") : undefined;
+    const target = v ?? a ?? x;
+    if (!target) { toast.info("Put the playhead over a clip to split it."); return; }
+    snapshot();
+    const cut = target.trimStart + (t - target.timelineStart);
+    const left = { ...target, trimEnd: cut };
+    const right = { ...target, id: crypto.randomUUID(), timelineStart: t, trimStart: cut };
+    if (v) setVideoClips((p) => p.flatMap((c) => (c.id === v.id ? [left as TrackClip, right as TrackClip] : [c])));
+    else if (a) setAudioClips((p) => p.flatMap((c) => (c.id === a.id ? [left as TrackClip, right as TrackClip] : [c])));
+    else setTextLayers((p) => p.flatMap((c) => (c.id === x!.id ? [left as TextLayer, right as TextLayer] : [c])));
+    setSelectedElement({ id: right.id, type: v ? "video" : a ? "audio" : "text" });
+  }
+  function duplicateSelected() {
+    if (!selectedElement) return;
+    snapshot();
+    const copy = <T extends { id: string; timelineStart: number; trimStart: number; trimEnd: number }>(c: T): T => ({ ...c, id: crypto.randomUUID(), timelineStart: c.timelineStart + (c.trimEnd - c.trimStart) });
+    if (selectedElement.type === "video") { const c = videoClips.find((x) => x.id === selectedElement.id); if (c) { const n = copy(c); setVideoClips((p) => [...p, n]); setSelectedElement({ id: n.id, type: "video" }); } }
+    if (selectedElement.type === "audio") { const c = audioClips.find((x) => x.id === selectedElement.id); if (c) { const n = copy(c); setAudioClips((p) => [...p, n]); setSelectedElement({ id: n.id, type: "audio" }); } }
+    if (selectedElement.type === "text") { const c = textLayers.find((x) => x.id === selectedElement.id); if (c) { const n = copy(c); setTextLayers((p) => [...p, n]); setSelectedElement({ id: n.id, type: "text" }); } }
+  }
+  /** Add a bin item at the playhead (tap-friendly alternative to dragging). */
+  function addAssetAtPlayhead(asset: MediaAsset) {
+    if (asset.type === "audio") addClipToTimeline(asset, "audio", globalTime, 0);
+    else {
+      const end = Math.max(0, ...videoClips.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (c.trimEnd - c.trimStart)));
+      addClipToTimeline(asset, "video", videoClips.length ? end : 0, 0);
+    }
+  }
+  function addTextPreset(kind: "title" | "subtitle" | "caption") {
+    const id = crypto.randomUUID();
+    const base = { id, x: 50, timelineStart: globalTime, trimStart: 0, trimEnd: kind === "caption" ? 3 : 4, maxDuration: 3600, opacity: 100, trackRow: 0 };
+    const layer: TextLayer = kind === "title" ? { ...base, text: "Your headline", y: 22, fontSize: 56, color: "#FFFFFF", style: "plain" }
+      : kind === "subtitle" ? { ...base, text: "A short supporting line", y: 32, fontSize: 30, color: "#FFFFFF", style: "plain" }
+      : { ...base, text: "Words people read along", y: 82, fontSize: 34, color: "#FFFFFF", style: "caption" };
+    setTextLayers((p) => [...p, layer]);
+    setSelectedElement({ id, type: "text" });
+  }
+
+  // Studio shortcuts: Space play, S split, D duplicate, Delete/Backspace remove, arrows nudge the playhead.
+  useEffect(() => {
+    if (!studio) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+      else if (e.key === "s" || e.key === "S") { e.preventDefault(); splitAtPlayhead(); }
+      else if (e.key === "d" || e.key === "D") { e.preventDefault(); duplicateSelected(); }
+      else if ((e.key === "Delete" || e.key === "Backspace") && selectedElement) { e.preventDefault(); deleteSelected(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); setGlobalTime((t) => t + (e.shiftKey ? 1 : 1 / 30)); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); setGlobalTime((t) => Math.max(0, t - (e.shiftKey ? 1 : 1 / 30))); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Waveforms for audio clips (decoded once per file).
+  useEffect(() => {
+    if (!studio) return;
+    for (const c of audioClips) {
+      if (peaks[c.url] !== undefined) continue;
+      setPeaks((p) => ({ ...p, [c.url]: [] }));
+      void decodeAudio(c.url).then(({ samples }) => setPeaks((p) => ({ ...p, [c.url]: waveformPeaks(samples, 1200) }))).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioClips, studio]);
+
+  async function decodeAudio(url: string): Promise<{ samples: Float32Array; sr: number }> {
+    const buf = await (await fetch(getProxyUrl(url))).arrayBuffer();
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Ctx();
+    try {
+      const audio = await ctx.decodeAudioData(buf);
+      const out = new Float32Array(audio.length);
+      for (let ch = 0; ch < audio.numberOfChannels; ch++) { const d = audio.getChannelData(ch); for (let i = 0; i < d.length; i++) out[i] += d[i] / audio.numberOfChannels; }
+      return { samples: out, sr: audio.sampleRate };
+    } finally { void ctx.close(); }
+  }
+
+  /** The audio of [from, from+len) of a video as a small mp3 in the user's edits folder (for transcription). */
+  async function extractAudioToStorage(url: string, from: number, len: number): Promise<string> {
+    const ffmpeg = await ensureFfmpeg();
+    const name = `clipsrc_${Date.now()}`;
+    await ffmpeg.writeFile(name, await fetchFile(getProxyUrl(url)));
+    const code = await ffmpeg.exec(["-ss", String(Math.max(0, from)), "-t", String(Math.max(1, len)), "-i", name, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", `${name}.mp3`]);
+    if (code !== 0) throw new Error("Couldn't read the sound from this video.");
+    const data = await ffmpeg.readFile(`${name}.mp3`);
+    void ffmpeg.deleteFile(name).catch(() => {}); void ffmpeg.deleteFile(`${name}.mp3`).catch(() => {});
+    const blob = new Blob([new Uint8Array(data as Uint8Array)], { type: "audio/mpeg" });
+    const path = `edits/${clientId}/clip_audio_${Date.now()}.mp3`;
+    const { error } = await supabase.storage.from("assets").upload(path, blob, { contentType: "audio/mpeg" });
+    if (error) throw new Error("Couldn't upload the sound for transcription.");
+    return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+  }
+  async function transcribe(body: Record<string, unknown>) {
+    const res = await fetch("/api/editor/highlights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, brandId: activeBrand?.id, hint: activeBrand?.brand_name }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "That didn't work. Try again.");
+    return data as { segments: Segment[]; duration: number; credits: number; highlights?: Highlight[]; note?: string };
+  }
+
+  async function cutToBeat() {
+    const music = audioClips.find((c) => c.id === selectedElement?.id) ?? audioClips[0];
+    if (!music) { toast.info("Add a song to the audio track first (Audio in the left rail, or drop a file)."); setRail("audio"); handleFilterSwitch("audio"); return; }
+    const vids = videoClips.filter((c) => (c.trackRow ?? 0) === 0).sort((a, b) => a.timelineStart - b.timelineStart);
+    if (!vids.length) { toast.info("Add some clips or photos to the video track first."); return; }
+    setAiBusy("Listening for the beat…");
+    try {
+      const { samples, sr } = await decodeAudio(music.url);
+      const r = detectBeats(samples, sr);
+      if (!r.bpm || r.beats.length < 4) { toast.info("Couldn't find a steady beat in this track. Try a song with drums."); return; }
+      const beatsTl = r.beats.filter((b) => b >= music.trimStart && b <= music.trimEnd).map((b) => music.timelineStart + (b - music.trimStart));
+      const from = music.timelineStart, to = music.timelineStart + (music.trimEnd - music.trimStart);
+      const pieces = beatCut(vids.map((v) => ({ id: v.id, maxDuration: v.type === "image" ? 3600 : v.maxDuration, trimStart: v.trimStart })), beatsTl, { from, to: Math.min(to, from + beatLength), every: cutEvery });
+      if (!pieces.length) { toast.info("The song is too short for that. Pick a longer stretch."); return; }
+      snapshot();
+      const byId = new Map(vids.map((v) => [v.id, v]));
+      const cut = pieces.map((p) => ({ ...byId.get(p.sourceId)!, id: crypto.randomUUID(), timelineStart: p.timelineStart, trimStart: p.trimStart, trimEnd: p.trimEnd, trackRow: 0 }));
+      setVideoClips((prev) => [...prev.filter((c) => (c.trackRow ?? 0) !== 0), ...cut]);
+      setBeatMarks(beatsTl);
+      toast.success(`${cut.length} cuts on the beat · ${Math.round(r.bpm)} BPM. Undo is one click.`);
+    } catch (e) { console.error(e); toast.error("Couldn't read that song. Try another file."); }
+    finally { setAiBusy(null); }
+  }
+
+  async function addCaptions() {
+    const targets = (selectedElement?.type === "video" ? videoClips.filter((c) => c.id === selectedElement.id) : videoClips).filter((c) => c.type === "video");
+    if (!targets.length) { toast.info("Add a video with talking in it first."); return; }
+    setAiBusy("Listening to what's said…");
+    try {
+      const layers: TextLayer[] = [];
+      let spent = 0;
+      for (const c of targets) {
+        const len = c.trimEnd - c.trimStart;
+        const audioUrl = await extractAudioToStorage(c.url, c.trimStart, len);
+        const r = await transcribe({ mode: "captions", audioUrl, seconds: len });
+        spent += r.credits;
+        for (const ch of captionChunks(r.segments, 0, len)) {
+          layers.push({ id: crypto.randomUUID(), text: ch.text, x: 50, y: 82, fontSize: 34, color: "#FFFFFF", style: "caption", timelineStart: c.timelineStart + ch.start, trimStart: 0, trimEnd: Math.max(0.3, ch.end - ch.start), maxDuration: 3600, opacity: 100, trackRow: 0 });
+        }
+      }
+      if (!layers.length) { toast.info(`Nobody speaks in ${targets.length === 1 ? "this clip" : "these clips"}, so there's nothing to caption. ${spent} credits used.`); return; }
+      snapshot();
+      setTextLayers((p) => [...p, ...layers]);
+      toast.success(`${layers.length} captions added · ${spent} credits. Edit any of them in the inspector.`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't make captions."); }
+    finally { setAiBusy(null); }
+  }
+
+  async function findShorts(source: { url: string; name: string; duration: number }) {
+    setAiBusy("Watching the whole video for the best moments…");
+    setShorts(null);
+    try {
+      const audioUrl = await extractAudioToStorage(source.url, 0, source.duration);
+      const r = await transcribe({ mode: "highlights", audioUrl, seconds: source.duration, count: 3, target: shortTarget });
+      setShorts({ source, highlights: r.highlights ?? [], segments: r.segments, credits: r.credits });
+      if (r.note) toast.info(r.note);
+      else toast.success(`Found ${r.highlights?.length ?? 0} moments · ${r.credits} credits.`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't find the moments."); }
+    finally { setAiBusy(null); }
+  }
+  function applyShort(h: Highlight) {
+    if (!shorts) return;
+    snapshot();
+    const len = h.end - h.start;
+    const assetId = crypto.randomUUID();
+    setAssets((p) => (p.some((a) => a.url === shorts.source.url) ? p : [{ id: assetId, type: "video", url: shorts.source.url, thumb: shorts.source.url, name: shorts.source.name, duration: shorts.source.duration }, ...p]));
+    setVideoClips([{ id: crypto.randomUUID(), assetId, url: shorts.source.url, type: "video", name: h.title, timelineStart: 0, trimStart: h.start, trimEnd: h.end, maxDuration: shorts.source.duration, opacity: 100, volume: 100, trackRow: 0 }]);
+    const caps: TextLayer[] = captionChunks(shorts.segments, h.start, h.end).map((ch) => ({ id: crypto.randomUUID(), text: ch.text, x: 50, y: 80, fontSize: 40, color: "#FFFFFF", style: "caption", timelineStart: ch.start, trimStart: 0, trimEnd: Math.max(0.3, ch.end - ch.start), maxDuration: 3600, opacity: 100, trackRow: 0 }));
+    const hook: TextLayer[] = h.hook ? [{ id: crypto.randomUUID(), text: h.hook.length > 34 ? `${h.hook.slice(0, 33)}…` : h.hook, x: 50, y: 14, fontSize: 44, color: "#FFFFFF", style: "caption", timelineStart: 0, trimStart: 0, trimEnd: Math.min(2.6, len), maxDuration: 3600, opacity: 100, trackRow: 1 }] : [];
+    setTextLayers([...caps, ...hook]);
+    setCanvasAspect("9:16"); setFitMode("fill"); setGlobalTime(0); setSelectedElement(null);
+    toast.success(`"${h.title}" is on the timeline as a 9:16 short with captions. Export when it looks right.`);
+  }
+
+  const renderStudio = () => {
+    const shape = canvasAspect === "9:16" ? 9 / 16 : canvasAspect === "1:1" ? 1 : 16 / 9;
+    const pps = PIXELS_PER_SECOND;
+    const objectFit = fitMode === "fill" ? "cover" : "contain";
+    const trackH = { video: 58, text: 34, audio: 50 };
+    const selVideo = selectedElement?.type === "video" ? videoClips.find((c) => c.id === selectedElement.id) : undefined;
+    const selAudio = selectedElement?.type === "audio" ? audioClips.find((c) => c.id === selectedElement.id) : undefined;
+    const selText = selectedElement?.type === "text" ? textLayers.find((c) => c.id === selectedElement.id) : undefined;
+    const fontPx = (n: number) => `calc(${n}px * var(--cw, 960) / 960)`;
+    const longSource = selVideo && selVideo.type === "video" ? { url: selVideo.url, name: selVideo.name, duration: selVideo.maxDuration } : null;
+    const captionSeconds = (selVideo?.type === "video" ? [selVideo] : videoClips.filter((c) => c.type === "video")).reduce((s, c) => s + (c.trimEnd - c.trimStart), 0);
+    const range = (label: string, value: number, min: number, max: number, on: (v: number) => void, unit = "%") => (
+      <label className="ve-row"><span>{label}</span><input type="range" min={min} max={max} value={value} onChange={(e) => on(parseInt(e.target.value))} /><span className="v">{value}{unit}</span></label>
+    );
+    const railBtn = (id: typeof rail, label: string, Icon: typeof Video, cls = "") => (
+      <button type="button" className={cls} aria-pressed={rail === id} onClick={() => { setRail(id); if (id === "media") handleFilterSwitch("library"); if (id === "scenes") handleFilterSwitch("sequence"); if (id === "audio") handleFilterSwitch("audio"); }}><Icon className="h-[18px] w-[18px]" />{label}</button>
+    );
+    return (
+      <div className="ve">
+        {isRendering && (
+          <div className="absolute inset-0 z-50 grid place-items-center" style={{ background: "rgba(12,13,15,.9)", backdropFilter: "blur(6px)" }}>
+            {!renderComplete ? (
+              <div className="grid justify-items-center gap-3 text-center">
+                <Loader2 className="h-8 w-8 animate-spin" style={{ color: "var(--s-accent)" }} />
+                <b className="text-[16px]">Exporting your video</b>
+                <span className="text-[13px]" style={{ color: "var(--s-soft)" }}>{renderStatusText}</span>
+                <div className="w-64 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--s-line)" }}><div className="h-full" style={{ width: `${renderProgress}%`, background: "var(--s-accent)", transition: "width .3s" }} /></div>
+                <span className="mono text-[11px]" style={{ color: "var(--s-mute)" }}>{renderProgress}% · it runs on this computer; keep the tab open</span>
+              </div>
+            ) : (
+              <div className="grid justify-items-center gap-3 text-center">
+                <span className="h-14 w-14 rounded-full grid place-items-center" style={{ background: "color-mix(in oklab, var(--s-ok) 15%, transparent)" }}><Check className="h-7 w-7" style={{ color: "var(--s-ok)" }} /></span>
+                <b className="text-[18px]">Exported</b>
+                <span className="text-[13px] max-w-[380px]" style={{ color: "var(--s-soft)" }}>It downloaded to this computer and is saved in your Library as a draft, ready to caption and schedule.</span>
+                <div className="flex gap-2 mt-2">
+                  <button type="button" className="s-btn" onClick={() => { setIsRendering(false); setRenderComplete(false); }}>Back to the edit</button>
+                  <button type="button" className="s-btn primary" onClick={() => router.push("/studio/library")}>Open the Library</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Top bar */}
+        <div className="ve-top">
+          <b className="text-[13.5px]">Edit</b>
+          <span className="mono text-[11.5px]" style={{ color: "var(--s-mute)" }}>{fmt(totalLength)}</span>
+          {canUndo && <button type="button" className="s-btn ghost sm" onClick={() => useEditorBridge.getState().undo?.()}><Undo2 className="h-3.5 w-3.5" /> Undo</button>}
+          <div className="flex-1" />
+          <div className="s-seg" role="group" aria-label="Shape">
+            {(["9:16", "1:1", "16:9"] as const).map((a) => <button key={a} type="button" aria-pressed={canvasAspect === a} onClick={() => setCanvasAspect(a)} title={a === "9:16" ? "Reels, TikTok, Shorts" : a === "1:1" ? "Feed posts" : "YouTube, websites"}>{a}</button>)}
+          </div>
+          <div className="s-seg" role="group" aria-label="Framing">
+            <button type="button" aria-pressed={fitMode === "fill"} onClick={() => setFitMode("fill")} title="Crop to fill the frame">Fill</button>
+            <button type="button" aria-pressed={fitMode === "fit"} onClick={() => setFitMode("fit")} title="Show the whole picture, with bars">Fit</button>
+          </div>
+          <button type="button" className="s-btn ghost sm" onClick={() => setFocusPreview((f) => !f)} aria-pressed={focusPreview} title="Bigger preview">{focusPreview ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}</button>
+          <button type="button" className="s-btn primary" onClick={handleRender} disabled={isRendering || videoClips.length === 0}><Download className="h-4 w-4" /> Export</button>
+        </div>
+
+        <div className={`ve-main${focusPreview ? " focus" : ""}`}>
+          {/* Tool rail */}
+          <nav className="ve-rail" aria-label="Editor tools">
+            {railBtn("media", "Media", ImageIcon)}
+            {railBtn("scenes", "Scenes", Layers)}
+            {railBtn("audio", "Audio", Music)}
+            {railBtn("text", "Text", Type)}
+            {railBtn("ai", "AI", Sparkles, "ai")}
+          </nav>
+
+          {/* Bin */}
+          <div className="ve-bin">
+            {rail === "text" ? (
+              <>
+                <div className="ve-bin-h"><b className="text-[13px]">Text</b></div>
+                <div className="grid gap-2 px-3 pb-3">
+                  <button type="button" className="ve-card text-left" onClick={() => addTextPreset("title")}><b className="text-[18px] leading-tight">Headline</b><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Big, near the top</span></button>
+                  <button type="button" className="ve-card text-left" onClick={() => addTextPreset("subtitle")}><span className="text-[14px]">Supporting line</span><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Smaller, under the headline</span></button>
+                  <button type="button" className="ve-card text-left" onClick={() => addTextPreset("caption")}><span className="text-[14px] font-bold" style={{ textShadow: "0 0 3px #000, 0 0 3px #000" }}>Caption</span><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Outlined, near the bottom</span></button>
+                  <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Adds at the playhead. Drag it on the preview to move it.</p>
+                </div>
+              </>
+            ) : rail === "ai" ? (
+              <>
+                <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}</div>
+                <div className="grid gap-2.5 px-3 pb-3">
+                  {aiLocked && <div className="ve-card ai text-[12px]" style={{ color: "var(--s-soft)" }}><span>{EDITOR_AI_UPGRADE}</span><a href="/studio/account/billing" className="s-btn ai sm justify-center">See plans</a></div>}
+                  <div className="ve-card ai">
+                    <b className="text-[13px] flex items-center gap-1.5"><AudioLines className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Cut to the beat</b>
+                    <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Re-cuts your video track so every cut lands on the music&apos;s beat. Uses the song on the audio track.</span>
+                    <div className="s-seg" role="group" aria-label="Cut every">
+                      {([1, 2, 4] as const).map((n) => <button key={n} type="button" aria-pressed={cutEvery === n} onClick={() => setCutEvery(n)}>{n === 1 ? "Every beat" : n === 2 ? "Every 2" : "Every bar"}</button>)}
+                    </div>
+                    <div className="s-seg" role="group" aria-label="Length">
+                      {[15, 30, 60].map((n) => <button key={n} type="button" aria-pressed={beatLength === n} onClick={() => setBeatLength(n)}>{n} s</button>)}
+                    </div>
+                    <button type="button" className="s-btn ai sm" disabled={!!aiBusy || aiLocked} onClick={cutToBeat}><Wand2 className="h-3.5 w-3.5" /> Cut it <span className="cost">free</span></button>
+                  </div>
+                  <div className="ve-card ai">
+                    <b className="text-[13px] flex items-center gap-1.5"><Subtitles className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Captions</b>
+                    <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Writes what&apos;s said as outlined captions, timed to the words. {selVideo ? "For the selected clip." : "For every video on the timeline."}</span>
+                    <button type="button" className="s-btn ai sm" disabled={!!aiBusy || aiLocked || captionSeconds <= 0} onClick={addCaptions}><Subtitles className="h-3.5 w-3.5" /> Add captions <span className="cost">{captionSeconds > 0 ? transcribeCredits(captionSeconds) : 0} cr</span></button>
+                  </div>
+                  <div className="ve-card ai">
+                    <b className="text-[13px] flex items-center gap-1.5"><Scissors className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Shorts from a long video</b>
+                    <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Finds the 3 best moments of a talk, interview or vlog, and makes each a 9:16 short with captions.</span>
+                    <div className="s-seg" role="group" aria-label="Short length">
+                      {([15, 30, 60] as const).map((n) => <button key={n} type="button" aria-pressed={shortTarget === n} onClick={() => setShortTarget(n)}>~{n} s</button>)}
+                    </div>
+                    {longSource ? (
+                      <button type="button" className="s-btn ai sm" disabled={!!aiBusy || aiLocked} onClick={() => findShorts(longSource)}><Sparkles className="h-3.5 w-3.5" /> Find moments in &quot;{longSource.name.slice(0, 18)}&quot; <span className="cost">{transcribeCredits(longSource.duration)} cr</span></button>
+                    ) : (
+                      <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Select a long video on the timeline, or upload one:</span>
+                    )}
+                    <label className="s-btn sm cursor-pointer"><UploadCloud className="h-3.5 w-3.5" /> Upload a long video
+                      <input type="file" accept="video/*" className="hidden" disabled={!!aiBusy || aiLocked} onChange={(e) => {
+                        const f = e.target.files?.[0]; e.target.value = "";
+                        if (!f) return;
+                        const url = URL.createObjectURL(f);
+                        const probe = document.createElement("video");
+                        probe.preload = "metadata"; probe.src = url;
+                        probe.onloadedmetadata = () => { const d = Number.isFinite(probe.duration) ? probe.duration : 0; if (d < 20) { toast.info("That video is short already. Use it as it is."); return; } void findShorts({ url, name: f.name, duration: d }); };
+                      }} />
+                    </label>
+                    {shorts && (
+                      <div className="grid gap-1.5 mt-1">
+                        {shorts.highlights.length === 0 && <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>No clean moments found this time.</span>}
+                        {shorts.highlights.map((h) => (
+                          <button key={`${h.start}-${h.end}`} type="button" className="ve-hl text-left" onClick={() => applyShort(h)}>
+                            <span className="flex items-center gap-2"><b className="text-[12.5px] flex-1">{h.title}</b><span className="mono text-[10.5px]" style={{ color: "var(--s-mute)" }}>{fmt(h.start)}–{fmt(h.end)}</span></span>
+                            {h.hook && <span className="text-[11.5px] line-clamp-2" style={{ color: "var(--s-soft)" }}>&ldquo;{h.hook}&rdquo;</span>}
+                            <span className="text-[11px]" style={{ color: "var(--s-ai)" }}>Use this one →</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {canUndo && <button type="button" className="s-btn ghost sm" onClick={() => useEditorBridge.getState().undo?.()}><Undo2 className="h-3.5 w-3.5" /> Undo the last AI change</button>}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="ve-bin-h">
+                  <b className="text-[13px]">{rail === "scenes" ? "Your scenes" : rail === "audio" ? "Voiceovers and music" : "Your Library"}</b>
+                  {isLoadingDB && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-mute)" }} />}
+                  <div className="flex-1" />
+                  <button type="button" className="s-btn ghost sm" onClick={() => fileInputRef.current?.click()} title="Upload from this device"><UploadCloud className="h-3.5 w-3.5" /></button>
+                  <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" onChange={handleManualUpload} />
+                </div>
+                <div className="ve-assets">
+                  {assets.map((asset) => (
+                    <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className={`ve-asset${asset.type === "audio" ? " audio" : ""}`} title={asset.name}>
+                      {asset.type === "video" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        cloudinaryVideoPoster(asset.url) ? <img src={cloudinaryVideoPoster(asset.url)} alt="" /> : <video src={asset.url} preload="metadata" muted playsInline />
+                      ) : asset.type === "audio" ? <AudioLines className="h-6 w-6" />
+                        // eslint-disable-next-line @next/next/no-img-element
+                        : <img src={asset.thumb} alt="" />}
+                      <span className="k">{asset.type === "video" ? "VIDEO" : asset.type === "audio" ? "AUDIO" : "PHOTO"}</span>
+                      <button type="button" className="add" onClick={() => addAssetAtPlayhead(asset)} aria-label={`Add ${asset.name} to the timeline`}><Plus className="h-3.5 w-3.5" /></button>
+                      <button type="button" className="del" onClick={() => deleteAsset(asset.id, asset.name)} aria-label={`Delete ${asset.name}`}><X className="h-3.5 w-3.5" /></button>
+                      <span className="nm">{asset.name}</span>
+                    </div>
+                  ))}
+                </div>
+                {assets.length === 0 && !isLoadingDB && <p className="text-[12px] px-3" style={{ color: "var(--s-mute)" }}>{rail === "scenes" ? "No scenes yet. Render some in the storyboard." : rail === "audio" ? "No voiceovers or music yet. Upload a song, or make a voiceover in Video Studio." : "Nothing here yet. Upload, or make something in Create."}</p>}
+                {hasMoreAssets && assets.length > 0 && <button type="button" className="s-btn ghost sm mx-3 mb-3" onClick={() => setAssetPageLimit((n) => n + 8)}><ChevronDown className="h-3.5 w-3.5" /> More</button>}
+                <p className="text-[11px] px-3 pb-3 mt-auto" style={{ color: "var(--s-mute)" }}>Drag onto the timeline, or press + to add at the end.</p>
+              </>
+            )}
+          </div>
+
+          {/* Preview */}
+          <div className="ve-stage" onClick={() => setSelectedElement(null)}>
+            <div className="ve-canvaswrap">
+              <div ref={canvasRef} className="ve-canvas" style={{ aspectRatio: String(shape), height: shape < 1 ? "100%" : undefined, width: shape >= 1 ? "100%" : undefined, ["--cw" as string]: String(canvasW) }}>
+                {[...videoClips].sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
+                  const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart);
+                  return (
+                    <div key={`canvas-${clip.id}`} className="absolute inset-0 pointer-events-none" style={{ opacity: isActive ? (clip.opacity ?? 100) / 100 : 0, zIndex: clip.trackRow || 0, display: isActive ? "block" : "none" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      {clip.type === "image" ? <img src={clip.url} alt="" className="w-full h-full" style={{ objectFit }} />
+                        : <video ref={(el) => { videoRefs.current[clip.id] = el; }} src={clip.url} className="w-full h-full" style={{ objectFit }} playsInline />}
+                    </div>
+                  );
+                })}
+                {!videoClips.some((clip) => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart)) && (
+                  <div className="absolute inset-0 grid place-items-center text-center px-4" style={{ color: "var(--s-mute)" }}>
+                    <span className="grid justify-items-center gap-2 text-[12.5px]"><Film className="h-7 w-7" />{videoClips.length ? "Nothing at the playhead" : "Drag clips from the left onto the timeline"}</span>
+                  </div>
+                )}
+                <div className="hidden">
+                  {videoClips.filter((c) => c.type === "video").map((clip) => (<video key={clip.id} src={clip.url} preload="metadata" onLoadedMetadata={(e) => handleLoadedMetadata(clip.id, e.currentTarget.duration, "video")} />))}
+                  {audioClips.map((clip) => (<video key={`canvas-audio-${clip.id}`} ref={(el) => { audioRefs.current[clip.id] = el; }} src={clip.url} preload="metadata" onLoadedMetadata={(e) => handleLoadedMetadata(clip.id, e.currentTarget.duration, "audio")} />))}
+                </div>
+                {[...textLayers].sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((layer) => {
+                  const isVisible = globalTime >= layer.timelineStart && globalTime < layer.timelineStart + (layer.trimEnd - layer.trimStart);
+                  if (!isVisible) return null;
+                  return (
+                    <div key={layer.id}
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedElement({ id: layer.id, type: "text" }); dragTextRef.current = { id: layer.id, startX: e.clientX, startY: e.clientY, initX: layer.x, initY: layer.y }; }}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap px-1.5 rounded cursor-grab"
+                      style={{ top: `${layer.y}%`, left: `${layer.x}%`, color: layer.color, fontSize: fontPx(layer.fontSize), opacity: (layer.opacity ?? 100) / 100, zIndex: 100 + (layer.trackRow || 0), fontFamily: "BlinkExport, Inter, Arial, sans-serif", fontWeight: 800,
+                        textShadow: layer.style === "caption" ? "0 0 3px #000, 0 0 3px #000, 0 0 2px #000, 0 2px 6px rgba(0,0,0,.6)" : "0 2px 10px rgba(0,0,0,.6)",
+                        outline: selectedElement?.id === layer.id ? "1.5px dashed var(--s-accent)" : "none" }}>
+                      {layer.text}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="ve-transport" onClick={(e) => e.stopPropagation()}>
+              <span className="mono text-[12px] w-[72px] text-right">{fmt(globalTime)}</span>
+              <button type="button" className="s-btn ghost sm" style={{ width: 30, padding: 0 }} onClick={() => setGlobalTime(0)} aria-label="Back to start"><SkipBack className="h-4 w-4" /></button>
+              <button type="button" className="ve-play" onClick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"}>{isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current ml-0.5" />}</button>
+              <span className="mono text-[12px] w-[72px]" style={{ color: "var(--s-mute)" }}>{fmt(totalLength)}</span>
+            </div>
+          </div>
+
+          {/* Inspector */}
+          <aside className="ve-insp" aria-label="Properties">
+            {selText ? (
+              <>
+                <div className="ve-sec"><div className="h"><Type className="h-3.5 w-3.5" /> Text</div>
+                  <textarea className="s-input" rows={2} value={selText.text} onChange={(e) => updateTextLayer(selText.id, { text: e.target.value })} aria-label="Text" />
+                  <div className="s-seg" role="group" aria-label="Text style">
+                    <button type="button" aria-pressed={(selText.style ?? "plain") === "plain"} onClick={() => updateTextLayer(selText.id, { style: "plain" })}>Plain</button>
+                    <button type="button" aria-pressed={selText.style === "caption"} onClick={() => updateTextLayer(selText.id, { style: "caption" })}>Outlined</button>
+                  </div>
+                  <label className="ve-row"><span>Colour</span><input type="color" value={/^#[0-9a-f]{6}$/i.test(selText.color) ? selText.color : "#ffffff"} onChange={(e) => updateTextLayer(selText.id, { color: e.target.value.toUpperCase() })} className="h-7 w-full rounded" style={{ background: "transparent" }} /><span className="v">{selText.color}</span></label>
+                  {range("Size", selText.fontSize, 12, 120, (v) => updateTextLayer(selText.id, { fontSize: v }), "")}
+                  {range("Opacity", selText.opacity ?? 100, 0, 100, (v) => updateTextLayer(selText.id, { opacity: v }))}
+                  {range("Across", Math.round(selText.x), 5, 95, (v) => updateTextLayer(selText.id, { x: v }))}
+                  {range("Down", Math.round(selText.y), 5, 95, (v) => updateTextLayer(selText.id, { y: v }))}
+                </div>
+                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selText.timelineStart)} · {(selText.trimEnd - selText.trimStart).toFixed(1)} s</span></div>
+              </>
+            ) : selVideo ? (
+              <>
+                <div className="ve-sec"><div className="h">{selVideo.type === "image" ? <ImageIcon className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />} {selVideo.name}</div>
+                  {range("Opacity", selVideo.opacity ?? 100, 0, 100, (v) => updateVideoClip(selVideo.id, { opacity: v }))}
+                  {selVideo.type === "video" && range("Volume", selVideo.volume ?? 100, 0, 100, (v) => updateVideoClip(selVideo.id, { volume: v }))}
+                  <label className="ve-row"><span>Layer</span>
+                    <span className="flex gap-1"><button type="button" className="s-btn sm" onClick={() => updateVideoClip(selVideo.id, { trackRow: Math.max(0, (selVideo.trackRow || 0) - 1) })}><ArrowUp className="h-3.5 w-3.5" /></button><button type="button" className="s-btn sm" onClick={() => updateVideoClip(selVideo.id, { trackRow: (selVideo.trackRow || 0) + 1 })}><ArrowDown className="h-3.5 w-3.5" /></button></span>
+                    <span className="v">V{(selVideo.trackRow || 0) + 1}</span></label>
+                </div>
+                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selVideo.timelineStart)} · {(selVideo.trimEnd - selVideo.trimStart).toFixed(1)} s of {selVideo.type === "image" ? "a photo" : `${selVideo.maxDuration.toFixed(1)} s`}</span></div>
+              </>
+            ) : selAudio ? (
+              <>
+                <div className="ve-sec"><div className="h"><Music className="h-3.5 w-3.5" /> {selAudio.name}</div>
+                  {range("Volume", selAudio.volume ?? 100, 0, 100, (v) => updateAudioClip(selAudio.id, { volume: v }))}
+                  <button type="button" className="s-btn ai sm justify-self-start" disabled={!!aiBusy || aiLocked} onClick={() => { setRail("ai"); void cutToBeat(); }}><AudioLines className="h-3.5 w-3.5" /> Cut the video to this song</button>
+                </div>
+                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selAudio.timelineStart)} · {(selAudio.trimEnd - selAudio.trimStart).toFixed(1)} s</span></div>
+              </>
+            ) : (
+              <>
+                <div className="ve-sec"><div className="h">Project</div>
+                  <span className="text-[12.5px]" style={{ color: "var(--s-soft)" }}>{canvasAspect === "9:16" ? "9:16 · Reels, TikTok, Shorts" : canvasAspect === "1:1" ? "1:1 · feed posts" : "16:9 · YouTube, websites"} · {fitMode === "fill" ? "fills the frame" : "whole picture"}</span>
+                  <span className="mono text-[12px]">{videoClips.length} clip{videoClips.length === 1 ? "" : "s"} · {textLayers.length} text · {audioClips.length} audio · {fmt(totalLength)}</span>
+                </div>
+                <div className="ve-sec"><div className="h">Shortcuts</div>
+                  <div className="grid gap-1.5 text-[12px]" style={{ color: "var(--s-soft)" }}>
+                    {[["Space", "Play / pause"], ["S", "Split at the playhead"], ["D", "Duplicate"], ["Delete", "Remove"], ["← →", "Step a frame (Shift: a second)"]].map(([k, l]) => <span key={k} className="flex items-center gap-2"><span className="s-kbd">{k}</span>{l}</span>)}
+                  </div>
+                </div>
+                <div className="ve-sec"><div className="h">Ask BlinkSpot</div><span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Say the cut you want (&quot;a 15 s reel with a hook&quot;) and Ask edits this timeline. You press Apply.</span></div>
+              </>
+            )}
+          </aside>
+        </div>
+
+        {/* Timeline */}
+        <div className={`ve-tl${focusPreview ? " focus" : ""}`}>
+          <div className="ve-tlbar">
+            <button type="button" className="s-btn ghost sm" onClick={splitAtPlayhead} title="Split at the playhead (S)"><Scissors className="h-3.5 w-3.5" /> Split</button>
+            <button type="button" className="s-btn ghost sm" onClick={duplicateSelected} disabled={!selectedElement} title="Duplicate (D)"><Copy className="h-3.5 w-3.5" /> Duplicate</button>
+            <button type="button" className="s-btn ghost sm" onClick={deleteSelected} disabled={!selectedElement} title="Delete"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+            <div className="flex-1" />
+            {beatMarks.length > 0 && <span className="text-[11px] mono" style={{ color: "var(--s-ai)" }}>♪ {beatMarks.length} beats</span>}
+            <button type="button" className="s-btn ghost sm" aria-pressed={isMagnetEnabled} onClick={() => setIsMagnetEnabled(!isMagnetEnabled)} title={isMagnetEnabled ? "Snapping on" : "Snapping off"} style={isMagnetEnabled ? { color: "var(--s-accent)" } : undefined}><Magnet className="h-3.5 w-3.5" /></button>
+            <ZoomOut className="h-3.5 w-3.5" style={{ color: "var(--s-mute)" }} />
+            <input type="range" min="0.1" max="20" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-28" style={{ accentColor: "var(--s-accent)" }} aria-label="Zoom" />
+            <ZoomIn className="h-3.5 w-3.5" style={{ color: "var(--s-mute)" }} />
+          </div>
+          <div className="ve-tlbody">
+            <div className="ve-labels">
+              <div style={{ height: 22, borderBottom: "1px solid var(--s-line)" }} />
+              {Array.from({ length: videoTrackCount }).map((_, i) => <div key={`vl${i}`} className="ve-label" style={{ height: trackH.video }}><Video className="h-3.5 w-3.5" /> V{i + 1}</div>)}
+              {Array.from({ length: textTrackCount }).map((_, i) => <div key={`tl${i}`} className="ve-label" style={{ height: trackH.text }}><Type className="h-3.5 w-3.5" /> T{i + 1}</div>)}
+              {Array.from({ length: audioTrackCount }).map((_, i) => <div key={`al${i}`} className="ve-label" style={{ height: trackH.audio }}><Music className="h-3.5 w-3.5" /> A{i + 1}</div>)}
+            </div>
+            <div ref={timelineRef} className="ve-tracks" onMouseDown={handleTimelineMouseDown} onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}>
+              <div style={{ width: `${maxVisibleTime * pps}px`, minWidth: "100%", position: "relative" }}>
+                <div className="ve-ruler">
+                  {Array.from({ length: Math.ceil(maxVisibleTime / rulerStep) }).map((_, i) => <span key={i} style={{ left: `${i * rulerStep * pps}px` }}>{i * rulerStep}s</span>)}
+                  {beatMarks.map((b, i) => <i key={i} className="ve-beat" style={{ left: `${b * pps}px` }} />)}
+                </div>
+                {Array.from({ length: videoTrackCount }).map((_, i) => (
+                  <div key={`vr${i}`} className={`ve-track${hoveredTrackInfo?.type === "video" && hoveredTrackInfo.row === i ? " over" : ""}`} style={{ height: trackH.video }}
+                    onDragOver={(e) => { e.preventDefault(); setHoveredTrackInfo({ type: "video", row: i }); }} onDragLeave={() => setHoveredTrackInfo(null)} onDrop={(e) => handleDropOnTrack(e, "video", i)}>
+                    {videoClips.filter((c) => (c.trackRow || 0) === i).map((clip) => {
+                      const width = (clip.trimEnd - clip.trimStart) * pps;
+                      const tile = 80;
+                      const frames = clip.type === "video" ? Array.from({ length: Math.min(24, Math.max(1, Math.ceil(width / tile))) }, (_, k) => frameAt(clip.url, clip.trimStart + ((clip.trimEnd - clip.trimStart) * k) / Math.max(1, Math.ceil(width / tile)))).filter(Boolean) : [];
+                      const bg = clip.type === "image" ? `url("${clip.url}")` : frames.length ? frames.map((f) => `url("${f}")`).join(",") : cloudinaryVideoPoster(clip.url) ? `url("${cloudinaryVideoPoster(clip.url)}")` : undefined;
+                      const positions = frames.length > 1 ? frames.map((_, k) => `${k * tile}px 0`).join(",") : undefined;
+                      return (
+                        <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "video")} className={`ve-clip ${clip.type === "image" ? "image" : "video"}${selectedElement?.id === clip.id ? " sel" : ""}`}
+                          style={{ left: `${clip.timelineStart * pps}px`, width: `${width}px`, backgroundImage: bg, backgroundPosition: positions, backgroundSize: frames.length > 1 ? `${tile}px 100%` : "auto 100%", backgroundRepeat: frames.length > 1 ? "no-repeat" : "repeat-x" }}>
+                          <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "start")} />
+                          <span className="nm">{clip.name}</span>
+                          <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "end")} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                {Array.from({ length: textTrackCount }).map((_, i) => (
+                  <div key={`tr${i}`} className="ve-track" style={{ height: trackH.text }}>
+                    {textLayers.filter((l) => (l.trackRow || 0) === i).map((layer) => (
+                      <div key={layer.id} onMouseDown={(e) => onClipMouseDown(e, layer.id, "text")} className={`ve-clip text${selectedElement?.id === layer.id ? " sel" : ""}`} style={{ left: `${layer.timelineStart * pps}px`, width: `${(layer.trimEnd - layer.trimStart) * pps}px`, top: 3, bottom: 3 }}>
+                        <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "start")} />
+                        <span className="nm">{layer.text}</span>
+                        <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "end")} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {Array.from({ length: audioTrackCount }).map((_, i) => (
+                  <div key={`ar${i}`} className={`ve-track${hoveredTrackInfo?.type === "audio" && hoveredTrackInfo.row === i ? " over" : ""}`} style={{ height: trackH.audio }}
+                    onDragOver={(e) => { e.preventDefault(); setHoveredTrackInfo({ type: "audio", row: i }); }} onDragLeave={() => setHoveredTrackInfo(null)} onDrop={(e) => handleDropOnTrack(e, "audio", i)}>
+                    {audioClips.filter((c) => (c.trackRow || 0) === i).map((clip) => {
+                      const p = peaks[clip.url] ?? [];
+                      const dur = Math.max(0.01, clip.maxDuration);
+                      const from = Math.floor((clip.trimStart / dur) * p.length), to = Math.ceil((clip.trimEnd / dur) * p.length);
+                      const width = (clip.trimEnd - clip.trimStart) * pps;
+                      const bars = p.slice(from, to);
+                      const step = Math.max(1, Math.ceil(bars.length / Math.max(8, Math.floor(width / 3))));
+                      const shown = bars.filter((_, k) => k % step === 0);
+                      return (
+                        <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "audio")} className={`ve-clip audio${/music|song|beat|\.mp3/i.test(clip.name) ? " music" : ""}${selectedElement?.id === clip.id ? " sel" : ""}`} style={{ left: `${clip.timelineStart * pps}px`, width: `${width}px` }}>
+                          {shown.length > 0 && <span className="ve-wave">{shown.map((v, k) => <i key={k} style={{ height: `${Math.max(6, v * 100)}%` }} />)}</span>}
+                          <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, clip.id, "audio", "start")} />
+                          <span className="nm">{clip.name}</span>
+                          <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, clip.id, "audio", "end")} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                <div className="ve-head" style={{ left: `${globalTime * pps}px` }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (studio) return renderStudio();
 
   return (
     <div className={cn(

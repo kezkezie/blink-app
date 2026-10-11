@@ -12,7 +12,7 @@ import { planOf, type PlanTier } from "@/lib/plans";
  * migration 20260728_video_execution_rate_limits.sql is applied (it generalises the name check).
  */
 
-export type AiOperation = "assistant_hour" | "assistant_day" | "brand_build" | "vector_draw" | "site_build";
+export type AiOperation = "assistant_hour" | "assistant_day" | "brand_build" | "vector_draw" | "site_build" | "clip_ai";
 type Plan = PlanTier;
 
 /** Messages per day by plan, plus a burst cap per hour for everyone. */
@@ -22,6 +22,8 @@ const FIXED: Record<Exclude<AiOperation, "assistant_day">, { limit: number; wind
   brand_build: { limit: 12, windowSeconds: 60 * 60 },
   vector_draw: { limit: 45, windowSeconds: 60 * 60 },
   site_build: { limit: 20, windowSeconds: 60 * 60 },
+  // Editor shorts and captions: each run is also charged credits per minute.
+  clip_ai: { limit: 20, windowSeconds: 60 * 60 },
 };
 
 export function aiRateLimitsEnabled() {
