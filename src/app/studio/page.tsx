@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Clapperboard, Globe, ImageIcon, PenTool, Shuffle, Sparkles } from "lucide-react";
@@ -25,6 +25,12 @@ function greeting() {
   const h = new Date().getHours();
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
+/** The greeting uses the viewer's clock, so it is blank on the server (UTC) and filled in after
+ *  hydration; computing it during render made a hydration mismatch for hours every day. */
+const noop = () => () => {};
+function useGreeting() {
+  return useSyncExternalStore(noop, greeting, () => "");
+}
 
 /** Create: one box to start anything, the ways to start, and what you made recently. */
 export default function CreatePage() {
@@ -32,6 +38,7 @@ export default function CreatePage() {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
   const { profile } = useStudioBrands();
+  const hello = useGreeting();
   const [kind, setKind] = useState<Kind>("video");
   const [brief, setBrief] = useState("");
   const [recent, setRecent] = useState<Content[] | null>(null);
@@ -78,7 +85,7 @@ export default function CreatePage() {
 
   return (
     <div className="max-w-[1040px] mx-auto pt-4 md:pt-10">
-      <p className="text-sm mb-2" style={{ color: "var(--s-soft)" }}>{greeting()}{name ? `, ${name}` : ""}</p>
+      <p className="text-sm mb-2" style={{ color: "var(--s-soft)" }}>{hello || "Hello"}{name ? `, ${name}` : ""}</p>
       <h2 className="text-[28px] md:text-[34px] font-semibold leading-tight tracking-tight mb-6">
         What are we making{activeBrand ? <> for <span style={{ color: "var(--s-accent)" }}>{activeBrand.brand_name}</span></> : null} today?
       </h2>
