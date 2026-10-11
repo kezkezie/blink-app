@@ -5,6 +5,10 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { loadBrandBrain, retrieve } from "@/lib/sites/brain";
 import { placeImages, slugify, validateSections, validateSpec, validateTheme, type SiteSection, type SiteSpec } from "@/lib/sites/spec";
+import { playbookFor } from "@/lib/sites/playbooks";
+import { extractInspiration, inspirationBrief } from "@/lib/sites/inspiration";
+import { normaliseWebsite } from "@/lib/brand-autofill";
+import { safeFetchBytes } from "@/lib/safe-fetch";
 
 /**
  * Landing-page builder: the AI plans the page from the Brand Brain (sections, copy, which of the
@@ -37,6 +41,7 @@ Reply with JSON only (no markdown):
   {"type":"contact","title":"...","sub":"optional"}
  ]}
 Pick the sections that suit THIS brand, in the best order: always a hero first and contact last; products only if there are products; a gallery when there are 4+ images; faq only if the facts answer real questions (3-5 items).
+If the owner gave a site they like, follow its section order, density and feel as closely as our section types allow (and its light/dark and boldness when choosing style and mode). Otherwise follow the playbook for this kind of business.
 ${RULES}`;
 
 const ONE = (type: string) => `You are a senior web designer and copywriter. Rewrite ONE section of a landing page, type "${type}", following the user's note.
@@ -46,7 +51,7 @@ ${RULES}`;
 export async function POST(request: NextRequest) {
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  let body: { brandId?: unknown; mode?: unknown; sectionIndex?: unknown; instruction?: unknown };
+  let body: { brandId?: unknown; mode?: unknown; sectionIndex?: unknown; instruction?: unknown; inspirationUrl?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const brandId = typeof body.brandId === "string" && /^[0-9a-f-]{36}$/i.test(body.brandId) ? body.brandId : null;
   const mode = body.mode === "section" ? "section" : "full";
@@ -84,7 +89,19 @@ export async function POST(request: NextRequest) {
     ].join("\n\n");
   } else {
     system = FULL;
+    // Kezie's two ways in: a site the owner likes (structure and feel only), or what usually works
+    // for this kind of business.
+    let inspiration = "";
+    const rawUrl = typeof body.inspirationUrl === "string" ? body.inspirationUrl.trim().slice(0, 300) : "";
+    if (rawUrl) {
+      const url = normaliseWebsite(rawUrl);
+      const got = url ? await safeFetchBytes(url, { maxBytes: 2_500_000, timeoutMs: 12_000, headers: { "User-Agent": "Mozilla/5.0 (compatible; BlinkSpotBot/1.0; +https://www.blinkspot.io)", Accept: "text/html" } }) : null;
+      if (!got || !got.ok || !/html/i.test(got.contentType)) return NextResponse.json({ error: "Couldn't open that site. Check the link, or build from what works for your kind of business." }, { status: 400 });
+      inspiration = inspirationBrief(extractInspiration(new TextDecoder().decode(got.bytes), got.finalUrl));
+    }
+    const playbook = playbookFor(brain.industry, brain.description);
     user = [
+      inspiration || `Playbook for ${playbook.label}: ${playbook.guide} Suggested style: ${playbook.style}.`,
       `Brand brief:\n${brain.brief}`,
       `Products (${brain.products.length}): ${JSON.stringify(brain.products.map((p) => ({ id: p.id, name: p.name, price: p.price, currency: p.currency, about: p.description })))}`,
       `Images (${brain.images.length}): ${JSON.stringify(brain.images.map((i) => ({ id: i.id, caption: i.caption })))}`,

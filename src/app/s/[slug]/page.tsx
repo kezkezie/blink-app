@@ -9,8 +9,9 @@ export const revalidate = 60;
 
 async function load(slug: string): Promise<SiteSpec | null> {
   if (!/^[a-z0-9-]{3,48}$/.test(slug)) return null;
-  const { data } = await supabaseAdmin.from("sites").select("spec").eq("slug", slug).eq("published", true).maybeSingle();
-  const spec = data?.spec as SiteSpec | undefined;
+  // The published snapshot, not the draft the builder autosaves to.
+  const { data } = await supabaseAdmin.from("sites").select("published_spec").eq("slug", slug).eq("published", true).maybeSingle();
+  const spec = data?.published_spec as SiteSpec | undefined;
   return spec && Array.isArray(spec.sections) ? spec : null;
 }
 

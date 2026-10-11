@@ -17,6 +17,8 @@ export type BrandBrain = {
   logoUrl: string | null;
   tagline?: string;
   brief: string;
+  industry?: string;
+  description?: string;
   dna: BrandDna;
   products: SiteProduct[];
   images: SiteImage[];
@@ -91,7 +93,7 @@ export async function loadBrandBrain(clientId: string, brandId: string): Promise
   // "mama njeri kitchen" → "Mama Njeri Kitchen" for display; names with their own casing are kept.
   const rawName = (b.brand_name as string) || "Your brand";
   const name = rawName === rawName.toLowerCase() ? rawName.replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : rawName;
-  return { brandId, name, logoUrl: (b.logo_url as string) || null, tagline: dna.tagline, brief, dna, products: prods, images: images.slice(0, 40), contact, theme, chunks };
+  return { brandId, name, logoUrl: (b.logo_url as string) || null, tagline: dna.tagline, brief, industry: (b.industry as string) || undefined, description: (b.description as string) || undefined, dna, products: prods, images: images.slice(0, 40), contact, theme, chunks };
 }
 
 const STOP = new Set("the a an and or of to in for on with our your my we you is are it this that be at by from as".split(" "));

@@ -5,6 +5,7 @@ import { createServerClient } from "@supabase/ssr";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { loadBrandBrain } from "@/lib/sites/brain";
 import { slugify, validateSpec, type SiteSpec } from "@/lib/sites/spec";
+import { playbookFor } from "@/lib/sites/playbooks";
 
 /** Landing pages: read, save edits, refresh brand data, publish at /s/<slug>. Scoped to the caller. */
 
@@ -17,16 +18,18 @@ async function owner(): Promise<{ clientId: string } | null> {
   return client?.id ? { clientId: client.id as string } : null;
 }
 
-type SiteRow = { spec: SiteSpec | null; slug: string | null; published: boolean; suggestedSlug: string };
+type SiteRow = { spec: SiteSpec | null; slug: string | null; published: boolean; suggestedSlug: string; playbook: { label: string; line: string }; unpublishedChanges: boolean };
 
 export async function getSite(brandId: string): Promise<SiteRow | { error: string }> {
   const o = await owner();
   if (!o) return { error: "Please sign in again." };
-  const { data: brand } = await supabaseAdmin.from("brand_profiles").select("brand_name").eq("id", brandId).eq("client_id", o.clientId).maybeSingle();
+  const { data: brand } = await supabaseAdmin.from("brand_profiles").select("brand_name, industry, description").eq("id", brandId).eq("client_id", o.clientId).maybeSingle();
   if (!brand) return { error: "Brand not found." };
-  const { data } = await supabaseAdmin.from("sites").select("spec, slug, published").eq("brand_id", brandId).eq("client_id", o.clientId).maybeSingle();
+  const { data } = await supabaseAdmin.from("sites").select("spec, published_spec, slug, published").eq("brand_id", brandId).eq("client_id", o.clientId).maybeSingle();
   const spec = data?.spec && Array.isArray((data.spec as SiteSpec).sections) ? (data.spec as SiteSpec) : null;
-  return { spec, slug: data?.slug ?? null, published: !!data?.published, suggestedSlug: slugify(String(brand.brand_name || "my-brand")) };
+  const unpublishedChanges = !!data?.published && JSON.stringify(data.spec) !== JSON.stringify(data.published_spec);
+  const pb = playbookFor(brand.industry as string | null, brand.description as string | null);
+  return { spec, slug: data?.slug ?? null, published: !!data?.published, suggestedSlug: slugify(String(brand.brand_name || "my-brand")), playbook: { label: pb.label, line: pb.line }, unpublishedChanges };
 }
 
 /** Save edits from the builder. Images, products and contact always come from the stored copy, never the browser. */
@@ -65,9 +68,10 @@ export async function publishSite(brandId: string, slugInput: string): Promise<{
   if (!o) return { error: "Please sign in again." };
   const slug = slugify(slugInput);
   if (!SLUG.test(slug) || RESERVED.has(slug)) return { error: "Pick another address: 3 to 48 letters, numbers or dashes." };
-  const { data } = await supabaseAdmin.from("sites").select("id").eq("brand_id", brandId).eq("client_id", o.clientId).maybeSingle();
+  const { data } = await supabaseAdmin.from("sites").select("id, spec").eq("brand_id", brandId).eq("client_id", o.clientId).maybeSingle();
   if (!data) return { error: "Build the page first." };
-  const { error } = await supabaseAdmin.from("sites").update({ slug, published: true, published_at: new Date().toISOString() }).eq("id", data.id);
+  // The live page is a snapshot: edits after this stay private until the next Publish.
+  const { error } = await supabaseAdmin.from("sites").update({ slug, published: true, published_at: new Date().toISOString(), published_spec: data.spec }).eq("id", data.id);
   if (error) return { error: error.code === "23505" ? "That address is taken. Try another." : "Couldn't publish." };
   return { slug };
 }

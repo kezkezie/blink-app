@@ -187,7 +187,11 @@ export function SiteBuilder() {
   const brandId = activeBrand?.id;
   const [spec, setSpec] = useState<SiteSpec | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [meta, setMeta] = useState<{ slug: string | null; published: boolean; suggestedSlug: string }>({ slug: null, published: false, suggestedSlug: "" });
+  const [meta, setMeta] = useState<{ slug: string | null; published: boolean; suggestedSlug: string; changes?: boolean }>({ slug: null, published: false, suggestedSlug: "" });
+  // Where the design starts: what works for this kind of business, or a site the owner likes.
+  const [playbook, setPlaybook] = useState<{ label: string; line: string } | null>(null);
+  const [start, setStart] = useState<"playbook" | "inspo">("playbook");
+  const [inspoUrl, setInspoUrl] = useState("");
   const [building, setBuilding] = useState<null | "full" | number>(null);
   const [note, setNote] = useState("");
   const [notes, setNotes] = useState<Record<number, string>>({});
@@ -202,7 +206,7 @@ export function SiteBuilder() {
     if (!brandId) return Promise.resolve();
     return getSite(brandId).then((r) => {
       if ("error" in r) { toast.error(r.error); return; }
-      setSpec(r.spec); setMeta({ slug: r.slug, published: r.published, suggestedSlug: r.suggestedSlug }); setSlug(r.slug ?? r.suggestedSlug); setLoaded(true);
+      setSpec(r.spec); setMeta({ slug: r.slug, published: r.published, suggestedSlug: r.suggestedSlug, changes: r.unpublishedChanges }); setSlug(r.slug ?? r.suggestedSlug); setPlaybook(r.playbook); setLoaded(true);
     });
   }, [brandId]);
   useEffect(() => { void load(); }, [load]);
@@ -217,7 +221,7 @@ export function SiteBuilder() {
     }, 1200);
     return () => clearTimeout(t);
   }, [spec, brandId]);
-  const edit = (next: SiteSpec) => { dirty.current = true; setSaving("idle"); setSpec(next); };
+  const edit = (next: SiteSpec) => { dirty.current = true; setSaving("idle"); setSpec(next); setMeta((m) => (m.published ? { ...m, changes: true } : m)); };
   const setSection = (i: number, s: SiteSection) => spec && edit({ ...spec, sections: spec.sections.map((x, j) => (j === i ? s : x)) });
   const move = (i: number, d: -1 | 1) => {
     if (!spec) return;
@@ -231,11 +235,11 @@ export function SiteBuilder() {
     if (!brandId) return;
     setBuilding(mode === "full" ? "full" : sectionIndex!);
     try {
-      const res = await fetch("/api/sites/build", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, mode, sectionIndex, instruction: mode === "full" ? note : notes[sectionIndex!] ?? "" }) });
+      const res = await fetch("/api/sites/build", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, mode, sectionIndex, instruction: mode === "full" ? note : notes[sectionIndex!] ?? "", ...(mode === "full" && start === "inspo" && inspoUrl.trim() ? { inspirationUrl: inspoUrl.trim() } : {}) }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.spec) throw new Error(data.error || "Couldn't build the page.");
       dirty.current = false;
-      setSpec(data.spec); setMeta((m) => ({ ...m, suggestedSlug: data.suggestedSlug || m.suggestedSlug })); if (!meta.slug) setSlug(data.suggestedSlug || slug);
+      setSpec(data.spec); setMeta((m) => ({ ...m, suggestedSlug: data.suggestedSlug || m.suggestedSlug, changes: m.published ? true : m.changes })); if (!meta.slug) setSlug(data.suggestedSlug || slug);
       if (mode === "section") setNotes((n) => ({ ...n, [sectionIndex!]: "" }));
       toast.success(mode === "full" ? "Your page is ready. Change anything on the left." : "Section rewritten.");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't build the page."); }
@@ -251,9 +255,20 @@ export function SiteBuilder() {
         <p className="text-sm mb-1" style={{ color: "var(--s-soft)" }}>Website · for {activeBrand.brand_name}</p>
         <h2 className="text-[28px] md:text-[36px] font-semibold tracking-tight leading-tight">A landing page that already knows your brand</h2>
         <p className="text-[15px] mt-3 max-w-[620px]" style={{ color: "var(--s-soft)" }}>BlinkSpot reads your Brand page, your products and your best Library images, then writes and designs a one-page site in your colours and fonts. Edit any section, then publish it at blinkspot.io/s/your-name.</p>
-        <div className="s-card p-4 mt-8 grid gap-3">
+        <div className="grid gap-2 mt-8 sm:grid-cols-2" role="radiogroup" aria-label="Start from">
+          <button type="button" role="radio" aria-checked={start === "playbook"} className="s-card p-4 text-left grid gap-1" style={{ borderColor: start === "playbook" ? "var(--s-accent)" : undefined }} onClick={() => setStart("playbook")}>
+            <b className="text-[14px]">What works for {playbook?.label.toLowerCase() ?? "your kind of business"}</b>
+            <span className="text-[12.5px]" style={{ color: "var(--s-soft)" }}>{playbook?.line ?? "The sections that sell for businesses like yours, in your colours."}</span>
+          </button>
+          <div role="radio" aria-checked={start === "inspo"} tabIndex={0} className="s-card p-4 text-left grid gap-2 cursor-pointer" style={{ borderColor: start === "inspo" ? "var(--s-accent)" : undefined }} onClick={() => setStart("inspo")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setStart("inspo"); }}>
+            <b className="text-[14px]">Like a site I love</b>
+            <span className="text-[12.5px]" style={{ color: "var(--s-soft)" }}>Paste a link. We copy its layout and feel, never its words or pictures.</span>
+            {start === "inspo" && <input className="s-input" value={inspoUrl} onChange={(e) => setInspoUrl(e.target.value)} onClick={(e) => e.stopPropagation()} placeholder="e.g. a competitor or a brand you admire" aria-label="A website you like" autoFocus />}
+          </div>
+        </div>
+        <div className="s-card p-4 mt-3 grid gap-3">
           <textarea className="s-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional: anything it should know, e.g. push the weekend platter, keep it short" aria-label="Note for the page" />
-          <button className="s-btn primary w-fit" onClick={() => build("full")} disabled={building !== null}>
+          <button className="s-btn primary w-fit" onClick={() => build("full")} disabled={building !== null || (start === "inspo" && !inspoUrl.trim())}>
             {building === "full" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Build my landing page <span className="cost">free</span>
           </button>
           {building === "full" && <p className="text-[12px]" style={{ color: "var(--s-mute)" }}>Writing and designing it, about 30 to 60 seconds…</p>}
@@ -274,6 +289,7 @@ export function SiteBuilder() {
           <div className="flex items-center gap-2">
             <b className="text-[14px]">Website</b>
             <span className={`s-badge ${meta.published ? "ok" : ""}`}>{meta.published ? "Live" : "Draft"}</span>
+            {meta.published && meta.changes && <span className="s-badge warn" title="Your edits are saved but not on the live page until you press Publish changes">changes not live</span>}
             <span className="ml-auto text-[11px]" style={{ color: "var(--s-mute)" }}>{saving === "saving" ? "Saving…" : saving === "saved" ? "Saved" : ""}</span>
           </div>
           <div className="grid grid-cols-2 gap-1.5">
@@ -320,7 +336,7 @@ export function SiteBuilder() {
         </div>
         <div className="mt-auto p-3 grid gap-2" style={{ borderTop: "1px solid var(--s-line)" }}>
           <div className="flex gap-1.5">
-            <input className="s-input" style={{ height: 32 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Rebuild the whole page with a note" aria-label="Rebuild note" />
+            <input className="s-input" style={{ height: 32 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder={start === "inspo" && inspoUrl ? "Rebuild (still like the site you gave)" : "Rebuild the whole page with a note"} aria-label="Rebuild note" />
             <button type="button" className="s-btn sm" disabled={building !== null} onClick={() => build("full")}>{building === "full" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Rebuild</button>
           </div>
           <button type="button" className="s-btn ghost sm w-fit" onClick={async () => { if (!brandId) return; const r = await refreshSiteData(brandId); if (r.error || !r.spec) toast.error(r.error || "Couldn't refresh."); else { setSpec(r.spec); toast.success("Brand info, products and images updated."); } }}><RefreshCw className="h-3.5 w-3.5" /> Refresh brand info</button>
@@ -357,7 +373,7 @@ export function SiteBuilder() {
             if (dirty.current) { dirty.current = false; await saveSite(brandId, spec); }
             const r = await publishSite(brandId, slug);
             if (r.error || !r.slug) { toast.error(r.error || "Couldn't publish."); return; }
-            setMeta((m) => ({ ...m, slug: r.slug!, published: true }));
+            setMeta((m) => ({ ...m, slug: r.slug!, published: true, changes: false }));
             const url = `${window.location.origin}/s/${r.slug}`;
             void navigator.clipboard?.writeText(url).catch(() => {});
             toast.success(`Live at ${url.replace(/^https?:\/\//, "")} (link copied).`);
