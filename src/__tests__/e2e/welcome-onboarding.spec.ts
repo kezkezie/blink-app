@@ -44,6 +44,7 @@ test("sign up, answer the brand questions, land in the studio", async ({ page })
     const sb = admin();
     const { data: client } = await sb.from("clients").select("id").eq("contact_email", email).maybeSingle();
     const { data: brand } = await sb.from("brand_profiles").select("brand_name, description, tone_keywords, dna").eq("client_id", client!.id).single();
+    if (!brand) throw new Error("brand not created");
     expect(brand.brand_name).toBe("Test Juice Bar");
     expect(brand.dna).toMatchObject({ role: "business", audience: "Gym goers and office workers", location: "Nairobi", whatsapp: "+254 712 345 678", photoVibes: ["Bright & clean"] });
     expect(brand.dna.languages).toEqual(["English", "Swahili"]);

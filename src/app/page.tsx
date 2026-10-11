@@ -1,269 +1,370 @@
-"use client";
+import "@/app/studio/studio.css";
+import "@/components/home/home.css";
+import Link from "next/link";
+import { ArrowRight, Check, Clapperboard, Languages, Layers, MessageCircle, Mic, PenTool, Shuffle, Sparkles, Store, Users, Wand2, Wrench } from "lucide-react";
+import { EXAMPLES } from "@/lib/examples";
+import { ExamplesGallery } from "@/components/studio/examples/ExamplesGallery";
+import { HeroDemo } from "@/components/home/HeroDemo";
+import { BeforeAfter, HomeNav, LazyVideo, VoiceRow } from "@/components/home/HomeBits";
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Calendar,
-  Zap,
-  Video,
-  Palette,
-  ArrowRight,
-  Menu,
-  X,
-  Layers,
-  Share2,
-  Wand2,
-  Bot,
-  BrainCircuit,
-} from 'lucide-react';
-import Image from "next/image";
-import Link from 'next/link';
-import { BentoHero } from '@/components/landing/BentoHero';
+/**
+ * blinkspot.io (2026-10-11). Every picture and clip on this page was made in BlinkSpot for a
+ * made-up brand (the examples gallery). No mock-ups, no invented numbers or testimonials.
+ */
 
-// ─── Mockups ─────────────────────────────────────────────────────────────────
+const ex = (id: string) => EXAMPLES.find((e) => e.id === id);
+const thumbs = EXAMPLES.filter((e) => e.kind === "image" || e.kind === "remix").map((e) => ({ src: e.thumb ?? e.url, title: e.title, brand: e.brand }));
 
-const CalendarMockup = ({ className = "" }) => (
-  <div className={`bg-[#191D23]/90 rounded-2xl border border-[#57707A]/30 p-4 shadow-2xl ${className}`}>
-    <div className="flex justify-between items-center mb-4">
-      <div className="h-2 w-16 bg-[#2A2F38] rounded" />
-      <div className="flex gap-1">
-        {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#57707A]/40" />)}
+function StartButton({ children = "Start free" }: { children?: React.ReactNode }) {
+  return <Link href="/get-started" className="h-btn">{children} <span className="h-ico"><ArrowRight className="h-4 w-4" /></span></Link>;
+}
+
+function Marquee({ items, reverse = false }: { items: typeof thumbs; reverse?: boolean }) {
+  const loop = [...items, ...items];
+  return (
+    <div className="h-marquee-mask overflow-hidden">
+      <div className={`h-marquee ${reverse ? "rev" : ""}`}>
+        {loop.map((t, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={i} src={t.src} alt={i < items.length ? `${t.title} for ${t.brand}` : ""} loading="lazy" className="h-[240px] md:h-[300px] w-auto rounded-2xl object-cover" style={{ aspectRatio: "4 / 5" }} />
+        ))}
       </div>
     </div>
-    <div className="grid grid-cols-7 gap-1.5">
-      {Array.from({ length: 21 }).map((_, i) => (
-        <div key={i} className={`aspect-square rounded-sm ${i === 8 ? 'bg-[#C5BAC4]/40' : i === 13 ? 'bg-[#B3FF00]/30' : 'bg-[#2A2F38]/50'}`} />
-      ))}
-    </div>
-  </div>
-);
-
-// ─── Navbar ───────────────────────────────────────────────────────────────────
-
-const Navbar = () => {
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 50);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const links = [
-    { label: "Features", href: "#features" },
-    { label: "How it works", href: "#workflow" },
-  ];
-
-  return (
-    <>
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 px-4 sm:px-6 py-4 ${scrolled ? 'bg-[#191D23]/90 backdrop-blur-xl border-b border-[#57707A]/30' : ''}`}>
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 group cursor-pointer">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-[#C5BAC4] rounded-xl flex items-center justify-center group-hover:rotate-12 transition-transform shadow-lg shadow-[#C5BAC4]/20">
-              <Image src="/bsw.png" alt="BlinkSpot" width={22} height={22} className="shrink-0" />
-            </div>
-            <span className="text-lg sm:text-xl font-display font-bold tracking-tighter text-[#DEDCDC]">BlinkSpot</span>
-          </Link>
-
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-8 text-sm font-bold text-[#989DAA]">
-            {links.map(l => (
-              <a key={l.href} href={l.href} className="hover:text-[#DEDCDC] transition-colors">{l.label}</a>
-            ))}
-            <a href="/login" className="hover:text-[#DEDCDC] transition-colors">Sign In</a>
-            <a href="/get-started" className="bg-[#C5BAC4] text-[#191D23] px-6 py-2.5 rounded-full hover:bg-white transition-colors shadow-md">
-              Get Started
-            </a>
-          </div>
-
-          {/* Mobile toggle */}
-          <button
-            className="md:hidden w-10 h-10 flex items-center justify-center text-[#989DAA] hover:text-[#DEDCDC] transition-colors"
-            onClick={() => setMobileOpen(v => !v)}
-            aria-label="Toggle menu"
-          >
-            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-      </nav>
-
-      {/* Mobile drawer */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="fixed top-[65px] left-0 right-0 z-40 bg-[#191D23]/95 backdrop-blur-xl border-b border-[#57707A]/30 px-6 py-6 flex flex-col gap-5 md:hidden"
-          >
-            {links.map(l => (
-              <a key={l.href} href={l.href} onClick={() => setMobileOpen(false)}
-                className="text-lg font-bold text-[#989DAA] hover:text-[#DEDCDC] transition-colors">
-                {l.label}
-              </a>
-            ))}
-            <a href="/login" onClick={() => setMobileOpen(false)}
-              className="text-lg font-bold text-[#989DAA] hover:text-[#DEDCDC] transition-colors">
-              Sign In
-            </a>
-            <a href="/get-started" onClick={() => setMobileOpen(false)}
-              className="bg-[#C5BAC4] text-[#191D23] px-6 py-4 rounded-2xl font-bold text-lg text-center hover:bg-white transition-colors mt-2">
-              Get Started Free
-            </a>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
   );
-};
+}
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+const STEPS = [
+  {
+    n: "01", title: "Teach it your brand, once.",
+    text: "Your logo, colours, fonts, who you sell to, how you talk and how people reach you. Add your website and BlinkSpot fills most of it in. No brand yet? It builds one with you.",
+    visual: "brand",
+  },
+  {
+    n: "02", title: "Say what you want, in a sentence.",
+    text: "Type it, say it, or drop a post you love from Pinterest. Ask BlinkSpot turns it into ideas, picks the settings and shows the price before anything is made.",
+    visual: "ask",
+  },
+  {
+    n: "03", title: "See it first, then post it.",
+    text: "Videos start from a still you approve, so you never pay for a bad render. Edit in the Editor, send it for approval, put it on the calendar.",
+    visual: "frame",
+  },
+] as const;
 
-export default function App() {
-
-
+function StepVisual({ kind }: { kind: (typeof STEPS)[number]["visual"] }) {
+  if (kind === "brand") {
+    const logo = ex("logo-mavuno");
+    return (
+      <div className="h-panel p-6 md:p-8 grid gap-5">
+        <div className="flex items-center gap-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {logo && <img src={logo.url} alt="Mavuno logo" className="h-16 w-16 rounded-2xl object-contain p-1.5" style={{ background: "#F5F3EF" }} />}
+          <div><div className="text-[22px] font-semibold tracking-tight">Mavuno</div><div className="text-[13px] h-muted">Cold-pressed juice · Nairobi</div></div>
+          <span className="ml-auto h-chip" style={{ color: "var(--s-accent)" }}>Brand strength 92%</span>
+        </div>
+        <div className="flex gap-2">{["#1F4D3A", "#E8913A", "#B8432F", "#F7F3EA"].map((c) => <span key={c} className="h-14 flex-1 rounded-xl" style={{ background: c }} title={c} />)}</div>
+        <div className="grid grid-cols-2 gap-3 text-[13px]">
+          <div className="rounded-xl p-3" style={{ background: "var(--s-bg)" }}><div className="h-muted text-[11px] uppercase tracking-wider mb-1">For</div>Gym goers and office teams</div>
+          <div className="rounded-xl p-3" style={{ background: "var(--s-bg)" }}><div className="h-muted text-[11px] uppercase tracking-wider mb-1">Voice</div>Warm · Honest · a little Swahili</div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">{["Mango passion · KES 350", "Green detox · KES 380", "Order on WhatsApp"].map((c) => <span key={c} className="h-chip">{c}</span>)}</div>
+      </div>
+    );
+  }
+  if (kind === "ask") {
+    return (
+      <div className="h-panel p-5 md:p-6 grid gap-3">
+        <div className="flex items-center gap-2 text-[13px] h-muted"><MessageCircle className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Ask BlinkSpot</div>
+        <div className="justify-self-end max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[14px]" style={{ background: "var(--s-raised)" }}>A poster for our weekend family platter, 20% off. Make it warm.</div>
+        <div className="max-w-[92%] rounded-2xl rounded-bl-md px-4 py-3 text-[14px] grid gap-2.5" style={{ background: "color-mix(in oklab, var(--s-ai) 10%, var(--s-bg))" }}>
+          <span>Three ways to do it, in your colours:</span>
+          {["Overhead platter on your wooden table, big “20% OFF” stamp", "Family hands reaching in, warm golden light, offer in the corner", "Bold orange poster, the platter floating, WhatsApp to order"].map((t, k) => (
+            <span key={k} className="flex gap-2 text-[13px]" style={{ color: "var(--s-soft)" }}><span className="h-5 w-5 rounded-full grid place-items-center text-[11px] shrink-0" style={{ background: "var(--s-raised)" }}>{k + 1}</span>{t}</span>
+          ))}
+          <span className="h-btn justify-self-start" style={{ height: 36, fontSize: 13, padding: "0 16px" }}>Make number 1 · 18 credits</span>
+        </div>
+      </div>
+    );
+  }
+  const frame = ex("kitenge-tryon");
   return (
-    <div className="relative bg-[#191D23] text-[#DEDCDC] overflow-x-hidden">
-      <Navbar />
+    <div className="h-panel p-5 md:p-6 grid grid-cols-2 gap-3">
+      <div className="grid gap-2">
+        <span className="text-[11px] uppercase tracking-wider h-muted">Step 1 · the still · 6 cr</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={frame?.input} alt="The approved first frame" className="w-full rounded-xl object-cover" style={{ aspectRatio: "4 / 5" }} />
+        <span className="h-chip justify-self-start" style={{ color: "var(--s-ok)" }}><Check className="h-3 w-3" /> Approved</span>
+      </div>
+      <div className="grid gap-2">
+        <span className="text-[11px] uppercase tracking-wider h-muted">Step 2 · the video</span>
+        {frame && <LazyVideo src={frame.url} poster={frame.input} className="w-full rounded-xl object-cover" style={{ aspectRatio: "4 / 5" }} />}
+        <span className="h-chip justify-self-start">Paid only once you like it</span>
+      </div>
+    </div>
+  );
+}
 
-      <BentoHero />
+const PLANS = [
+  { name: "Free", price: "$0", brands: "1 brand", credits: "100 credits a month", note: "Try everything" },
+  { name: "Starter", price: "$25", brands: "2 brands", credits: "1,500 credits", note: "One business, posting weekly" },
+  { name: "Pro", price: "$49", brands: "6 brands", credits: "3,000 credits", note: "Growing teams, approvals", pop: true },
+  { name: "Agency", price: "$99", brands: "10 brands", credits: "6,000 credits", note: "Client work, analytics" },
+];
 
-      {/* ── Problem ───────────────────────────────────────────────────────── */}
-      <section className="py-24 sm:py-32 bg-[#191D23] border-t border-[#57707A]/20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="space-y-10">
-            <h2 className="text-3xl sm:text-5xl md:text-6xl font-bold font-display">
-              Stop juggling tools.<br /><span className="text-[#C5BAC4]">Start shipping content.</span>
-            </h2>
-            <div className="grid sm:grid-cols-3 gap-6 text-left">
-              {[
-                { icon: Layers, title: "Scattered workflow", desc: "Canva for design, CapCut for video, Buffer for scheduling, ChatGPT for captions. Every switch costs you time." },
-                { icon: Bot, title: "Generic AI output", desc: "Other tools don't know your brand. Every generated piece needs manual editing to sound and look like you." },
-                { icon: Share2, title: "Inconsistent presence", desc: "You post in bursts, then go quiet. The algorithm punishes it. Your audience stops paying attention." }
-              ].map((item, i) => (
-                <div key={i} className="p-6 sm:p-8 rounded-3xl bg-[#2A2F38]/30 border border-[#57707A]/30 hover:bg-[#2A2F38]/50 transition-colors">
-                  <item.icon className="text-[#C5BAC4] mb-5" size={24} />
-                  <h4 className="text-base sm:text-lg font-bold mb-2 text-[#DEDCDC]">{item.title}</h4>
-                  <p className="text-[#989DAA] text-sm leading-relaxed">{item.desc}</p>
+const FAQ = [
+  { q: "What can I make?", a: "Posters, product photos and lifestyle shots, short videos (product shots, reveals, creators talking, try-ons, lip-sync, scene-by-scene stories), voiceovers, logos and captions. All in your brand's look." },
+  { q: "Do I need design skills?", a: "No. Say what you want and Ask BlinkSpot does the rest. If you are a designer, the Editor gives you layers, pen, shapes, text and AI tools, and every setting is open." },
+  { q: "How do credits work?", a: "Each thing you make costs credits, and the price is on the button before you press it: an image from 6 credits, a 5-second video from 20. Failed renders are refunded. Logos and brand building are free." },
+  { q: "Will it use my real products and contacts?", a: "Yes. You add your products, prices and contact details once. BlinkSpot never invents phone numbers, prices or offers; it only uses what you gave it." },
+  { q: "Can I write in Swahili or Sheng?", a: "Yes. Pick your languages on the Brand page and captions, scripts and on-image text follow them." },
+  { q: "I run an agency. Can I manage clients?", a: "Yes. Each client is its own brand with its own look and voice. Send posts for approval, archive a client when they pause and bring them back any time." },
+];
+
+export default function Home() {
+  const remix = ex("mavuno-remix");
+  const remixBefore = remix?.before ? { url: remix.before, thumb: remix.before } : undefined;
+  const pour = ex("tano-pour");
+  const talk = ex("mavuno-lipsync");
+  const creator = ex("sauti-creator");
+  const logos = EXAMPLES.filter((e) => e.kind === "logo");
+  const voices = EXAMPLES.filter((e) => e.kind === "voice");
+  const editorImg = ex("kasi-poster");
+  return (
+    <div className="studio home min-h-dvh">
+      <div className="h-grain" aria-hidden />
+      <HomeNav />
+
+      {/* Hero */}
+      <section className="relative pt-28 md:pt-36 pb-16 md:pb-24" style={{ background: "radial-gradient(60% 50% at 10% 0%, color-mix(in oklab, var(--s-accent) 10%, transparent), transparent 60%)" }}>
+        <div className="h-wrap grid gap-12 lg:grid-cols-[1.05fr_1fr] items-center relative z-[2]">
+          <div>
+            <p className="h-eyebrow">The AI content studio for brands</p>
+            <h1 className="h-h1 mt-5">Your brand&apos;s posts, ads and videos. <span className="h-dim">From one sentence.</span></h1>
+            <p className="h-lead mt-6">BlinkSpot learns your brand once, then makes on-brand images, videos, voiceovers and captions for every channel. You see a preview before you pay for a video.</p>
+            <div className="flex flex-wrap items-center gap-3 mt-9">
+              <StartButton />
+              <a href="#examples" className="h-btn ghost">See real examples</a>
+            </div>
+            <p className="text-[13px] h-muted mt-5">Free to start · No card needed · Prices on every button</p>
+          </div>
+          <HeroDemo />
+        </div>
+      </section>
+
+      {/* Wall of work */}
+      <section className="relative z-[2] grid gap-3.5 pb-8" aria-label="Made with BlinkSpot">
+        <Marquee items={thumbs} />
+        <Marquee items={[...thumbs].reverse()} reverse />
+        <p className="h-wrap text-[12.5px] h-muted mt-3">Every picture on this page was made in BlinkSpot, for brands we made up to show you.</p>
+      </section>
+
+      {/* How it works */}
+      <section id="how" className="h-section">
+        <div className="h-wrap">
+          <p className="h-eyebrow">How it works</p>
+          <h2 className="h-h2 mt-4 max-w-[16ch]">Three steps. Then it&apos;s just you saying what you need.</h2>
+          <div className="grid gap-20 md:gap-28 mt-16 md:mt-24">
+            {STEPS.map((s, i) => (
+              <div key={s.n} className={`h-reveal grid gap-8 md:gap-16 items-center md:grid-cols-[1fr_1.15fr] ${i % 2 ? "md:[&>*:first-child]:order-2" : ""}`}>
+                <div>
+                  <span className="font-mono text-[13px]" style={{ color: "var(--s-accent)" }}>{s.n}</span>
+                  <h3 className="text-[28px] md:text-[36px] font-semibold tracking-tight leading-tight mt-3">{s.title}</h3>
+                  <p className="h-lead mt-4">{s.text}</p>
                 </div>
+                <StepVisual kind={s.visual} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features bento */}
+      <section id="features" className="h-section h-divider">
+        <div className="h-wrap">
+          <div className="grid gap-6 md:grid-cols-[1fr_1fr] items-end">
+            <div><p className="h-eyebrow">What you can make</p><h2 className="h-h2 mt-4">A whole studio. One brand kit.</h2></div>
+            <p className="h-lead">Image Studio, Video Studio, an Editor with layers and AI, voiceovers and a brand builder. Each one already knows your colours, your products and your voice.</p>
+          </div>
+          <div className="grid gap-4 mt-14 md:grid-cols-12">
+            {remixBefore && remix && (
+              <div className="h-reveal md:col-span-7 h-panel overflow-hidden grid md:grid-cols-[1fr_1.05fr]">
+                <div className="p-7 md:p-8 flex flex-col">
+                  <Shuffle className="h-5 w-5" style={{ color: "var(--s-accent)" }} />
+                  <h3 className="text-[22px] font-semibold tracking-tight mt-4">Inspo Remix</h3>
+                  <p className="text-[14.5px] mt-2 leading-relaxed" style={{ color: "var(--s-soft)" }}>Drop a post you love from Pinterest or anywhere. Get the same feel with your product, your colours and your words. Drag the line to compare.</p>
+                  <span className="h-chip mt-auto pt-0 w-fit" style={{ marginTop: 24 }}>18 credits · about 40 seconds</span>
+                </div>
+                <div className="relative min-h-[360px]"><BeforeAfter before={remixBefore.thumb ?? remixBefore.url} after={remix.thumb ?? remix.url} labelBefore="Found online" labelAfter="Your brand" /></div>
+              </div>
+            )}
+            {pour && (
+              <div className="h-reveal md:col-span-5 h-panel overflow-hidden flex flex-col">
+                <div className="relative flex-1 min-h-[300px]"><LazyVideo src={pour.url} poster={pour.input} className="absolute inset-0 w-full h-full object-cover" /></div>
+                <div className="p-6"><Clapperboard className="h-5 w-5" style={{ color: "#5EC8FF" }} /><h3 className="text-[19px] font-semibold tracking-tight mt-3">Your photo, moving</h3><p className="text-[14px] mt-1.5" style={{ color: "var(--s-soft)" }}>Steam, light, a hand, a slow push-in. From 20 credits.</p></div>
+              </div>
+            )}
+            {talk && creator && (
+              <div className="h-reveal md:col-span-5 h-panel overflow-hidden flex flex-col">
+                <div className="relative flex-1 min-h-[320px] grid grid-cols-2 gap-1">
+                  <LazyVideo src={talk.url} poster={talk.input} className="w-full h-full object-cover" />
+                  <LazyVideo src={creator.url} poster={creator.input} className="w-full h-full object-cover" />
+                </div>
+                <div className="p-6"><Mic className="h-5 w-5" style={{ color: "#E68BFF" }} /><h3 className="text-[19px] font-semibold tracking-tight mt-3">Creators that talk</h3><p className="text-[14px] mt-1.5" style={{ color: "var(--s-soft)" }}>A face photo and a line of script, or your own recorded voice, becomes a talking video.</p></div>
+              </div>
+            )}
+            {editorImg && (
+              <div className="h-reveal md:col-span-7 h-panel overflow-hidden grid md:grid-cols-[1fr_200px]">
+                <div className="relative min-h-[320px] p-6 grid place-items-center" style={{ background: "repeating-conic-gradient(#17191c 0% 25%, #121316 0% 50%) 50% / 22px 22px" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={editorImg.thumb ?? editorImg.url} alt="A poster open in the Editor" className="max-h-[300px] rounded-md shadow-2xl" style={{ outline: "1.5px solid var(--s-accent)", outlineOffset: 4 }} />
+                </div>
+                <div className="p-5 grid content-start gap-2" style={{ borderLeft: "1px solid var(--s-line)" }}>
+                  <PenTool className="h-5 w-5" style={{ color: "#FF8A5C" }} />
+                  <h3 className="text-[19px] font-semibold tracking-tight mt-1">The Editor</h3>
+                  <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>Layers, pen, shapes, real text. Remove a background, swap a face, turn a photo into vectors.</p>
+                  <div className="grid gap-1 mt-2 text-[12px]">
+                    {["Headline · KASI", "Date · Drop 01", "Sneaker (cut out)", "Background"].map((l, k) => <span key={l} className="flex items-center gap-2 rounded-md px-2 py-1.5" style={{ background: k === 0 ? "color-mix(in oklab, var(--s-accent) 14%, transparent)" : "var(--s-bg)" }}><Layers className="h-3 w-3 h-muted" />{l}</span>)}
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="h-reveal md:col-span-6 h-panel p-7">
+              <Wand2 className="h-5 w-5" style={{ color: "var(--s-accent)" }} />
+              <h3 className="text-[19px] font-semibold tracking-tight mt-3">No brand yet? Build one.</h3>
+              <p className="text-[14px] mt-1.5" style={{ color: "var(--s-soft)" }}>Describe the business. Get names, colours, fonts, a voice and three logos you can edit. Free.</p>
+              <div className="flex gap-3 mt-5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {logos.map((l) => <img key={l.id} src={l.url} alt={l.title} className="h-20 w-20 md:h-24 md:w-24 rounded-2xl object-contain p-2" style={{ background: "#F5F3EF" }} />)}
+              </div>
+            </div>
+            <div className="h-reveal md:col-span-6 h-panel p-7">
+              <Languages className="h-5 w-5" style={{ color: "#5EC8FF" }} />
+              <h3 className="text-[19px] font-semibold tracking-tight mt-3">Voiceovers, in your voice or ours</h3>
+              <p className="text-[14px] mt-1.5 mb-3" style={{ color: "var(--s-soft)" }}>Ads, property tours, event promos. Press play.</p>
+              {voices.map((v) => <VoiceRow key={v.id} src={v.url} title={v.title.replace("Voiceover: ", "")} script={v.prompt} voice={v.settings.voice ?? ""} />)}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Examples with recipes */}
+      <section id="examples" className="h-section h-divider">
+        <div className="h-wrap">
+          <div className="grid gap-6 md:grid-cols-[1fr_1fr] items-end mb-12">
+            <div><p className="h-eyebrow">Every example shows its recipe</p><h2 className="h-h2 mt-4">Click one. See exactly how it was made.</h2></div>
+            <p className="h-lead">The prompt, the settings, the price and the photo it started from. Then make your own from it.</p>
+          </div>
+          <ExamplesGallery limit={12} />
+        </div>
+      </section>
+
+      {/* Two speeds */}
+      <section className="h-section h-divider">
+        <div className="h-wrap">
+          <p className="h-eyebrow">Two ways to work</p>
+          <h2 className="h-h2 mt-4 max-w-[18ch]">Let it do the work, or take every control.</h2>
+          <div className="grid gap-4 mt-14 md:grid-cols-[1.1fr_1fr]">
+            <div className="h-reveal h-panel p-8 md:p-10" style={{ background: "radial-gradient(120% 120% at 0% 0%, color-mix(in oklab, var(--s-accent) 12%, transparent), transparent 55%), var(--s-panel)" }}>
+              <Sparkles className="h-6 w-6" style={{ color: "var(--s-accent)" }} />
+              <h3 className="text-[26px] font-semibold tracking-tight mt-5">Do it for me</h3>
+              <p className="h-lead mt-3">Tell Ask BlinkSpot what you need: “plan my week”, “a poster for Saturday”, “make this punchier”. It plans, picks the model and shows the price. You press go.</p>
+            </div>
+            <div className="h-reveal h-panel p-8 md:p-10">
+              <Wrench className="h-6 w-6" style={{ color: "var(--s-soft)" }} />
+              <h3 className="text-[26px] font-semibold tracking-tight mt-5">I&apos;ll use the tools</h3>
+              <p className="h-lead mt-3">Pick the exact model, aspect and length. Edit layers and timelines. Every setting is one click away, for designers and marketers who like control.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Who it's for */}
+      <section className="h-section h-divider">
+        <div className="h-wrap grid gap-10 md:grid-cols-[1fr_1.3fr]">
+          <div><p className="h-eyebrow">Built for</p><h2 className="h-h2 mt-4">Whoever runs the posting.</h2></div>
+          <div className="grid">
+            {[
+              { icon: Store, t: "Businesses", d: "Restaurants, shops, salons, property. Fresh posts every week without hiring a designer.", tags: ["Your products and prices", "WhatsApp to order"] },
+              { icon: Users, t: "Agencies and freelancers", d: "Every client is its own brand. Approvals, archiving and swapping clients in and out of your plan.", tags: ["Up to 10 brands", "Client approvals"] },
+              { icon: Mic, t: "Creators", d: "Talking videos, voiceovers and thumbnails that look like you, in your language.", tags: ["Lip-sync", "Your own voice"] },
+            ].map((r) => (
+              <div key={r.t} className="h-reveal grid gap-3 py-7" style={{ borderTop: "1px solid var(--s-line)" }}>
+                <div className="flex items-center gap-3"><r.icon className="h-5 w-5" style={{ color: "var(--s-accent)" }} /><h3 className="text-[22px] font-semibold tracking-tight">{r.t}</h3></div>
+                <p className="text-[15px]" style={{ color: "var(--s-soft)" }}>{r.d}</p>
+                <div className="flex flex-wrap gap-1.5">{r.tags.map((t) => <span key={t} className="h-chip">{t}</span>)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section id="pricing" className="h-section h-divider">
+        <div className="h-wrap grid gap-12 lg:grid-cols-[1fr_1.35fr]">
+          <div>
+            <p className="h-eyebrow">Pricing</p>
+            <h2 className="h-h2 mt-4">Pay for what you make.</h2>
+            <p className="h-lead mt-5">Every plan comes with credits. The price is on every button before you press it, and a failed render is refunded.</p>
+            <div className="grid gap-2 mt-8 text-[14px]">
+              {[["An image", "from 6 credits"], ["A 5-second video", "from 20 credits"], ["A voiceover", "1 credit"], ["Logos and brand building", "free"], ["Top up any time", "800 credits for $5"]].map(([a, b]) => (
+                <div key={a} className="flex justify-between py-2.5" style={{ borderBottom: "1px solid var(--s-line)" }}><span style={{ color: "var(--s-soft)" }}>{a}</span><span className="font-mono">{b}</span></div>
               ))}
             </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ── Features ──────────────────────────────────────────────────────── */}
-      <section id="features" className="py-24 sm:py-32 border-t border-[#57707A]/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-14 sm:mb-20">
-            <h2 className="text-4xl sm:text-5xl md:text-7xl font-bold font-display leading-tight">Everything<br />in one OS.</h2>
-            <p className="text-[#989DAA] max-w-xs text-base md:text-lg font-medium">Built specifically for creators and agencies who can't afford to be slow.</p>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 sm:gap-6">
-            {/* Large card */}
-            <div className="lg:col-span-8 bg-[#2A2F38]/40 rounded-[2rem] p-8 sm:p-12 border border-[#57707A]/30 relative overflow-hidden group hover:bg-[#2A2F38]/60 transition-colors">
-              <div className="relative z-10 max-w-md">
-                <Wand2 className="text-[#B3FF00] mb-6" size={36} />
-                <h3 className="text-2xl sm:text-3xl font-bold mb-3 text-[#DEDCDC]">Brand-aware AI Generation</h3>
-                <p className="text-[#989DAA] leading-relaxed">Upload your brand profile once — name, colors, voice, style guidelines. Every image, video, and caption BlinkSpot generates automatically reflects your brand. No prompt engineering needed.</p>
-              </div>
-              <div className="absolute top-8 sm:top-12 -right-16 sm:-right-20 w-[320px] sm:w-[400px] opacity-20 group-hover:opacity-40 transition-opacity transform group-hover:-translate-x-2 pointer-events-none">
-                <CalendarMockup />
-              </div>
-            </div>
-
-            {/* Accent card */}
-            <div className="lg:col-span-4 bg-[#C5BAC4] rounded-[2rem] p-8 sm:p-12 text-[#191D23] shadow-lg shadow-[#C5BAC4]/10">
-              <Zap className="mb-6" size={36} />
-              <h3 className="text-xl sm:text-2xl font-bold mb-3">Multi-platform publish</h3>
-              <p className="opacity-80 text-sm leading-relaxed font-medium">One click sends your content to Instagram, TikTok, LinkedIn, Twitter, and more. Schedules it for the optimal time automatically.</p>
-            </div>
-
-            {/* Feature card */}
-            <div className="lg:col-span-4 bg-[#2A2F38]/80 rounded-[2rem] p-8 sm:p-12 border border-[#57707A]/40 hover:border-[#C5BAC4]/50 transition-colors">
-              <Palette className="text-[#B3FF00] mb-6" size={36} />
-              <h3 className="text-xl sm:text-2xl font-bold mb-3 text-[#DEDCDC]">Image &amp; Video Studio</h3>
-              <p className="text-[#989DAA] text-sm leading-relaxed">Generate AI images with Nano Banana 2, GPT Image 2, and Gemini Omni. Produce cinematic video with Kling 3.0, Seedance 2, and Sora 2 — all from one interface.</p>
-            </div>
-
-            {/* Feature card */}
-            <div className="lg:col-span-8 bg-[#191D23] rounded-[2rem] p-8 sm:p-12 border border-[#57707A]/30 relative overflow-hidden hover:border-[#57707A]/60 transition-colors shadow-inner">
-              <div className="flex flex-col sm:flex-row gap-8 sm:gap-12 items-start sm:items-center">
-                <div className="flex-1">
-                  <Video className="text-[#C5BAC4] mb-6" size={36} />
-                  <h3 className="text-2xl sm:text-3xl font-bold mb-3 text-[#DEDCDC]">Client Approval Workflows</h3>
-                  <p className="text-[#989DAA] leading-relaxed text-sm sm:text-base">Agencies can route every post through a client approval queue before scheduling. Notifications via Telegram when a decision is needed.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {PLANS.map((p) => (
+              <div key={p.name} className="h-reveal h-panel p-6 flex flex-col" style={p.pop ? { borderColor: "color-mix(in oklab, var(--s-accent) 55%, var(--s-line))" } : undefined}>
+                <div className="flex items-center justify-between"><b className="text-[16px]">{p.name}</b>{p.pop && <span className="h-chip" style={{ height: 22, fontSize: 11, color: "var(--s-accent)" }}>Most teams</span>}</div>
+                <div className="mt-4"><span className="text-[40px] font-semibold tracking-tight">{p.price}</span><span className="h-muted text-[13px]"> / month</span></div>
+                <p className="text-[13px] mt-1" style={{ color: "var(--s-soft)" }}>{p.note}</p>
+                <div className="grid gap-1.5 mt-5 text-[13.5px]">
+                  {[p.brands, p.credits, "Every studio and the Editor"].map((f) => <span key={f} className="flex gap-2"><Check className="h-4 w-4 shrink-0" style={{ color: "var(--s-accent)" }} />{f}</span>)}
                 </div>
-                <div className="w-full sm:w-auto flex flex-col gap-3 shrink-0 sm:min-w-[200px]">
-                  {["Draft", "Pending Approval", "Approved", "Scheduled"].map((s, i) => (
-                    <div key={s} className={`rounded-xl px-4 py-2.5 text-xs font-bold border ${i === 2 ? "bg-[#B3FF00]/15 border-[#B3FF00]/30 text-[#B3FF00]" : i === 1 ? "bg-[#C5BAC4]/10 border-[#C5BAC4]/20 text-[#C5BAC4]" : "bg-[#2A2F38]/50 border-[#57707A]/25 text-[#57707A]"}`}>{s}</div>
-                  ))}
-                </div>
+                <Link href="/get-started" className="h-btn ghost mt-6 justify-center" style={{ height: 44 }}>{p.price === "$0" ? "Start free" : `Choose ${p.name}`}</Link>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── How it works ──────────────────────────────────────────────────── */}
-      <section id="workflow" className="py-24 sm:py-32 bg-[#191D23] border-t border-[#57707A]/20">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6">
-          <h2 className="text-3xl sm:text-5xl font-bold font-display mb-16 sm:mb-20 text-center">Up and running<br /><span className="text-[#C5BAC4]">in three steps.</span></h2>
-          <div className="space-y-16 sm:space-y-24">
-            {[
-              { step: "01", title: "Define your Brand DNA", desc: "Connect your social accounts and fill in your brand profile — name, voice, colors, dos and don'ts. BlinkSpot uses this as the foundation for every AI generation.", icon: BrainCircuit },
-              { step: "02", title: "Generate in seconds", desc: "Describe what you need, pick a style, and let the AI Studio produce images, videos, and captions that already match your brand. Refine with one click.", icon: Wand2, reverse: true },
-              { step: "03", title: "Schedule and publish", desc: "Drop content onto the calendar, pick your platforms and time slots, and hit publish. BlinkSpot handles the rest — including approval routing if you need it.", icon: Calendar }
-            ].map((item) => (
-              <motion.div
-                key={item.step}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-80px" }}
-                className={`flex flex-col ${item.reverse ? 'sm:flex-row-reverse' : 'sm:flex-row'} gap-8 sm:gap-12 items-start sm:items-center`}
-              >
-                <div className="text-7xl sm:text-9xl font-black text-[#2A2F38] select-none font-display shrink-0">{item.step}</div>
-                <div className="flex-1">
-                  <item.icon size={28} className="text-[#C5BAC4] mb-4" />
-                  <h3 className="text-2xl sm:text-4xl font-bold mb-3 text-[#DEDCDC]">{item.title}</h3>
-                  <p className="text-base sm:text-lg text-[#989DAA] leading-relaxed">{item.desc}</p>
-                </div>
-              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Footer ────────────────────────────────────────────────────────── */}
-      <footer className="py-14 sm:py-20 px-4 sm:px-6 border-t border-[#57707A]/30 bg-[#191D23]">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 mb-10">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-[#C5BAC4] rounded-lg flex items-center justify-center shadow-sm">
-                <Image src="/bsw.png" alt="BlinkSpot" width={20} height={20} />
-              </div>
-              <span className="text-lg font-bold text-[#DEDCDC] font-display">BlinkSpot</span>
-            </div>
-            <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm text-[#989DAA] font-semibold">
-              <a href="#features" className="hover:text-[#DEDCDC] transition-colors">Features</a>
-              <Link href="/dashboard/billing" className="hover:text-[#DEDCDC] transition-colors">Pricing</Link>
-              <Link href="/contact" className="hover:text-[#DEDCDC] transition-colors">Contact</Link>
-              <Link href="/privacy" className="hover:text-[#DEDCDC] transition-colors">Privacy</Link>
-              <Link href="/terms" className="hover:text-[#DEDCDC] transition-colors">Terms</Link>
-              <Link href="/cookies" className="hover:text-[#DEDCDC] transition-colors">Cookies</Link>
-              <Link href="/acceptable-use" className="hover:text-[#DEDCDC] transition-colors">Acceptable Use</Link>
-            </div>
+      {/* FAQ */}
+      <section className="h-section h-divider">
+        <div className="h-wrap grid gap-10 md:grid-cols-[1fr_1.4fr]">
+          <div><p className="h-eyebrow">Questions</p><h2 className="h-h2 mt-4">The short answers.</h2></div>
+          <div>
+            {FAQ.map((f) => (
+              <details key={f.q} className="group py-5" style={{ borderTop: "1px solid var(--s-line)" }}>
+                <summary className="flex items-center justify-between cursor-pointer list-none text-[17px] font-medium">{f.q}<span className="h-8 w-8 rounded-full grid place-items-center transition-transform group-open:rotate-45" style={{ background: "var(--s-raised)" }}>+</span></summary>
+                <p className="text-[15px] mt-3 leading-relaxed max-w-[62ch]" style={{ color: "var(--s-soft)" }}>{f.a}</p>
+              </details>
+            ))}
           </div>
-          <div className="border-t border-[#57707A]/20 pt-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <p className="text-sm text-[#57707A]">© 2026 Mubia Investment Limited (operating as BlinkSpot). All rights reserved.</p>
-            <p className="text-sm text-[#57707A]">
-              Questions? <a href="mailto:info@blinkspot.io" className="text-[#989DAA] hover:text-[#C5BAC4] transition-colors">info@blinkspot.io</a>
-            </p>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="h-section">
+        <div className="h-wrap">
+          <div className="h-panel p-10 md:p-16 relative overflow-hidden" style={{ background: "radial-gradient(80% 120% at 100% 0%, color-mix(in oklab, var(--s-accent) 16%, transparent), transparent 60%), var(--s-panel)" }}>
+            <h2 className="h-h2 max-w-[14ch]">Your next post is one sentence away.</h2>
+            <p className="h-lead mt-5">Set up your brand in two minutes. Your first images are on us.</p>
+            <div className="flex flex-wrap gap-3 mt-9"><StartButton>Create your account</StartButton><Link href="/login" className="h-btn ghost">Sign in</Link></div>
           </div>
+        </div>
+      </section>
+
+      <footer className="relative z-[2] py-12 h-divider">
+        <div className="h-wrap grid gap-8 md:grid-cols-[1fr_auto] items-start">
+          <div className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/mark-lime.png" alt="" className="h-7 w-7 object-contain" />
+            <span className="text-[15px] font-semibold">BlinkSpot</span>
+          </div>
+          <nav className="flex flex-wrap gap-x-7 gap-y-2 text-[13.5px] h-muted" aria-label="Footer">
+            <a href="#features">Features</a><a href="#pricing">Pricing</a><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link><Link href="/acceptable-use">Acceptable use</Link>
+          </nav>
+          <p className="text-[12.5px] h-muted">© 2026 Mubia Investment Limited (operating as BlinkSpot). All rights reserved.</p>
+          <p className="text-[12.5px] h-muted">Questions? <a href="mailto:info@blinkspot.io" className="underline">info@blinkspot.io</a></p>
         </div>
       </footer>
     </div>
