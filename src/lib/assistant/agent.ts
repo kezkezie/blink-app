@@ -37,7 +37,8 @@ export function estimateUsd(model: string, u: { input: number; output: number; c
 const KIE_MESSAGES_URL = "https://api.kie.ai/anthropic/v1/messages";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TURNS = 6;
-const MAX_TOKENS = 1500;
+// A posting plan for 20 posts is ~1,500 tokens on its own (ids and times), so 1,500 cut it off.
+const MAX_TOKENS = 4000;
 /** Drawing vectors on the canvas needs room for SVG paths. */
 const MAX_TOKENS_CANVAS = 8000;
 const CALL_TIMEOUT_MS = 120_000;
@@ -86,8 +87,9 @@ How you help:
 - Be quick: when the request is clear, propose in your first reply instead of asking questions.
 - You never spend credits and never publish. propose_video, propose_image and open_page give the user a button; they check the price in the studio and press Generate themselves. Say so if they ask you to "just do it".
 - If the balance is lower than the price, say so and suggest a shorter or Draft version.
+- To plan or schedule posts, call get_schedule, then propose_schedule once with a date and time for each post. Spread them out (one a day, two at most), avoid times already taken, and use good local times for the audience unless the user says otherwise (weekdays 12:00-13:00 or 18:00-21:00, weekends 10:00-12:00). Say which posts have no platforms yet: they go on the calendar but only post once platforms are picked. The user presses Apply.
 
-Style: short, warm, plain English. No emoji, no em dashes. Two to five sentences unless the user asks for a plan. When you propose something, say in one line what the button will do and what it costs.`;
+Style: short, warm, plain English. No emoji, no em dashes, no markdown (the chat shows text as typed: no ** or #; use "- " for a list). Two to five sentences unless the user asks for a plan. When you propose something, say in one line what the button will do and what it costs.`;
 
 function textOf(blocks: ContentBlock[] | undefined) {
   return (blocks ?? []).filter((b): b is TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
@@ -130,7 +132,7 @@ export async function runAssistant(
     ? [{ type: "text", text: fixed, cache_control: { type: "ephemeral" } }, ...(varying ? [{ type: "text", text: varying }] : [])]
     : [fixed, varying].filter(Boolean).join("\n\n");
   const tools = [...ASSISTANT_TOOLS, ...(editor ? [EDIT_TIMELINE_TOOL] : []), ...(ctx.canvas ? [EDIT_CANVAS_TOOL] : [])];
-  const toolCtx: ToolContext = { clientId: ctx.clientId, brandId: ctx.brandId, timeline: editor?.timeline, canvas: ctx.canvas };
+  const toolCtx: ToolContext = { clientId: ctx.clientId, brandId: ctx.brandId, timeline: editor?.timeline, canvas: ctx.canvas, tz: ctx.tz, tzOffset: ctx.tzOffset };
   const messages: AgentMessage[] = [...history];
   // The canvas preview rides on the latest user message (once), like video frames.
   if (ctx.canvas?.preview) {

@@ -5,13 +5,15 @@ import type { EditOp } from "@/lib/editor-ops";
 import type { CanvasOp } from "@/lib/canvas-ops";
 
 export type AskAction = {
-  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas";
+  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas" | "apply_schedule";
   label: string;
   href?: string;
   /** apply_edit: the edit and what it changes, applied only when the user presses Apply. */
   ops?: EditOp[];
   changes?: string[];
   canvasOps?: CanvasOp[];
+  /** apply_schedule: posts and UTC times, placed only when the user presses Apply. */
+  schedule?: Array<{ id: string; at: string; label: string }>;
   /** Credits the action will cost when the user runs it in the studio (never spent by the assistant). */
   estimatedCredits?: number;
   note?: string;

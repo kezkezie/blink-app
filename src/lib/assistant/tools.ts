@@ -13,8 +13,9 @@ import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { describeEditOps, validateEditOps, type EditOp, type TimelineSummary } from "@/lib/editor-ops";
 import { describeCanvasOps, validateCanvasOps, type CanvasOp, type CanvasSummary } from "@/lib/canvas-ops";
 
+export type ScheduleItem = { id: string; at: string; label: string };
 export type AssistantAction = {
-  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas";
+  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas" | "apply_schedule";
   label: string;
   href?: string;
   estimatedCredits?: number;
@@ -24,9 +25,11 @@ export type AssistantAction = {
   changes?: string[];
   /** apply_canvas only: validated image Editor operations. */
   canvasOps?: CanvasOp[];
+  /** apply_schedule only: posts and the UTC times they go on the calendar when the user presses Apply. */
+  schedule?: ScheduleItem[];
 };
 
-export type ToolContext = { clientId: string; brandId: string | null; timeline?: TimelineSummary; canvas?: CanvasSummary };
+export type ToolContext = { clientId: string; brandId: string | null; timeline?: TimelineSummary; canvas?: CanvasSummary; tz?: string; tzOffset?: number };
 export type ToolResult = { content: string; action?: AssistantAction };
 
 const VIDEO_STYLES = ["storytelling", "showcase", "logo_reveal", "ugc", "clothing"] as const;
@@ -133,6 +136,24 @@ export const ASSISTANT_TOOLS = [
     },
   },
   {
+    name: "get_schedule",
+    description: "Read the calendar for the active brand: the current local date and time, the connected social platforms, posts that are ready to schedule (id, type, caption, status, platforms) and what is already scheduled in the next 30 days (local times). Call this before propose_schedule.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "propose_schedule",
+    description: "Propose dates and times for posts. Shown to the user as a list with an Apply button; nothing changes until they press it. Times are the user's local time as YYYY-MM-DDTHH:mm, in the future. Use ids from get_schedule (ready posts, or scheduled ones to move).",
+    input_schema: {
+      type: "object",
+      properties: {
+        summary: { type: "string", maxLength: 300, description: "One line: the plan, e.g. 'Five posts over the next week, evenings on weekdays'." },
+        posts: { type: "array", maxItems: 30, items: { type: "object", properties: { id: { type: "string" }, at: { type: "string", description: "Local time, YYYY-MM-DDTHH:mm" } }, required: ["id", "at"] } },
+      },
+      required: ["summary", "posts"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "open_page",
     description: "Offer a button to a page: inspo (Inspo Remix: the user drops a design they love and gets it remade for their brand), library, upload, plan (calendar), approvals, brand, billing, settings.",
     input_schema: {
@@ -223,6 +244,34 @@ export async function loadAccountBrief(ctx: ToolContext): Promise<string> {
     runAssistantTool("get_credits", {}, ctx),
   ]);
   return `Active brand (already loaded, no need to call get_brand): ${brand.content}\nAccount (already loaded, no need to call get_credits): ${balance.content}\n${priceSheet()}`;
+}
+
+const NOT_POSTS = "(sequence_clip,raw_clip,story_sequence,storyboard,generated_audio)";
+const NOT_STORYBOARD = 'caption.is.null,caption.not.ilike."Storyboard: Scene*"';
+const urlsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : typeof v === "string" && v ? (() => { try { const p = JSON.parse(v); return Array.isArray(p) ? p.filter((x) => typeof x === "string") : [v]; } catch { return [v]; } })() : []);
+const platformsOf = (v: unknown): string[] => {
+  let s: unknown = v;
+  if (typeof v === "string") { try { s = JSON.parse(v); } catch { return []; } }
+  if (Array.isArray(s)) return s.filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase());
+  return s && typeof s === "object" ? Object.entries(s as Record<string, { enabled?: boolean }>).filter(([, c]) => c?.enabled).map(([k]) => k) : [];
+};
+
+/** "2026-10-14T18:30" in the user's local time → a UTC Date (tzOffset as from getTimezoneOffset()). */
+export function localToUtc(local: string, tzOffset = 0): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/.exec(local.trim());
+  if (!m) return null;
+  const [y, mo, d, h, mi] = m.slice(1).map(Number);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
+  const wall = Date.UTC(y, mo - 1, d, h, mi);
+  if (new Date(wall).getUTCDate() !== d) return null; // 31 Nov and the like
+  return new Date(wall + tzOffset * 60_000);
+}
+/** A UTC time as the user's wall clock: "Tue 14 Oct, 18:30" (or "2026-10-14 18:30" with iso). */
+export function localLabel(utc: Date | string, tzOffset = 0, iso = false) {
+  const w = new Date(new Date(utc).getTime() - tzOffset * 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (iso) return `${w.getUTCFullYear()}-${pad(w.getUTCMonth() + 1)}-${pad(w.getUTCDate())} ${pad(w.getUTCHours())}:${pad(w.getUTCMinutes())}`;
+  return `${w.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}, ${pad(w.getUTCHours())}:${pad(w.getUTCMinutes())}`;
 }
 
 export async function runAssistantTool(name: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
@@ -328,6 +377,57 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
       return {
         content: `Proposed ${ops.length} change(s) to the user as an Apply button. Nothing changes until they press it.`,
         action: { kind: "apply_canvas", label: "Apply to canvas", note: str(input.summary, 300) || "Canvas edit", canvasOps: ops, changes: describeCanvasOps(ops, ctx.canvas) },
+      };
+    }
+    case "get_schedule": {
+      if (!ctx.brandId) return { content: "No brand is open." };
+      const off = ctx.tzOffset ?? 0;
+      const now = new Date();
+      const until = new Date(now.getTime() + 30 * 86_400_000);
+      const cols = "id, content_type, caption, caption_short, status, image_urls, video_urls, reference_image_url, target_platforms, scheduled_at";
+      const [ready, scheduled, accounts] = await Promise.all([
+        supabaseAdmin.from("content").select(cols).eq("client_id", ctx.clientId).eq("brand_id", ctx.brandId).is("scheduled_at", null)
+          .not("content_type", "in", NOT_POSTS).or(NOT_STORYBOARD).in("status", ["draft", "approved", "pending_approval"]).order("created_at", { ascending: false }).limit(30),
+        supabaseAdmin.from("content").select(cols).eq("client_id", ctx.clientId).eq("brand_id", ctx.brandId)
+          .gte("scheduled_at", now.toISOString()).lt("scheduled_at", until.toISOString()).order("scheduled_at"),
+        supabaseAdmin.from("social_accounts").select("platform").eq("client_id", ctx.clientId).eq("brand_id", ctx.brandId).eq("is_active", true),
+      ]);
+      const hasMedia = (r: Record<string, unknown>) => urlsOf(r.image_urls).length > 0 || urlsOf(r.video_urls).length > 0 || !!r.reference_image_url;
+      return {
+        content: JSON.stringify({
+          now: `${localLabel(now, off)} ${now.getUTCFullYear()}${ctx.tz ? ` (${ctx.tz})` : ""}`,
+          connected_platforms: [...new Set((accounts.data ?? []).map((a) => String(a.platform).toLowerCase()))],
+          ready: (ready.data ?? []).filter(hasMedia).slice(0, 20).map((r) => ({ id: r.id, type: r.content_type, caption: str(r.caption_short || r.caption, 100), status: r.status, platforms: platformsOf(r.target_platforms) })),
+          scheduled: (scheduled.data ?? []).map((r) => ({ id: r.id, at: localLabel(r.scheduled_at as string, off, true), caption: str(r.caption_short || r.caption, 60), platforms: platformsOf(r.target_platforms) })),
+        }),
+      };
+    }
+    case "propose_schedule": {
+      if (!ctx.brandId) return { content: "No brand is open." };
+      const off = ctx.tzOffset ?? 0;
+      const asked = Array.isArray(input.posts) ? (input.posts as Array<Record<string, unknown>>).slice(0, 30) : [];
+      const ids = [...new Set(asked.map((p) => (typeof p?.id === "string" ? p.id : "")).filter((x) => /^[0-9a-f-]{36}$/i.test(x)))];
+      if (!ids.length) return { content: "No valid post ids. Call get_schedule and use its ids." };
+      const { data } = await supabaseAdmin.from("content").select("id, caption, caption_short, status, scheduled_at, target_platforms")
+        .eq("client_id", ctx.clientId).eq("brand_id", ctx.brandId).in("id", ids);
+      const rows = new Map((data ?? []).map((r) => [r.id as string, r]));
+      const soonest = Date.now() + 5 * 60_000, latest = Date.now() + 120 * 86_400_000;
+      const schedule: ScheduleItem[] = [];
+      const skipped: string[] = [];
+      for (const p of asked) {
+        const row = typeof p?.id === "string" ? rows.get(p.id) : undefined;
+        const at = typeof p?.at === "string" ? localToUtc(p.at, off) : null;
+        if (!row || row.status === "posted") { skipped.push(`${String(p?.id).slice(0, 8)}: not a schedulable post of this brand`); continue; }
+        if (!at || at.getTime() < soonest || at.getTime() > latest) { skipped.push(`${String(p.id).slice(0, 8)}: time must be YYYY-MM-DDTHH:mm, in the next 120 days`); continue; }
+        if (schedule.some((s) => s.id === row.id)) continue;
+        const platforms = platformsOf(row.target_platforms);
+        schedule.push({ id: row.id as string, at: at.toISOString(), label: `${localLabel(at, off)} · ${str(row.caption_short || row.caption, 48) || "Untitled post"}${platforms.length ? "" : " (no platforms yet)"}` });
+      }
+      if (!schedule.length) return { content: `Nothing could be proposed. ${skipped.join("; ")}` };
+      schedule.sort((a, b) => a.at.localeCompare(b.at));
+      return {
+        content: `Proposed ${schedule.length} post(s) as an Apply button; nothing changes until the user presses it.${skipped.length ? ` Skipped: ${skipped.join("; ")}.` : ""}`,
+        action: { kind: "apply_schedule", label: `Put ${schedule.length} post${schedule.length === 1 ? "" : "s"} on the calendar`, note: str(input.summary, 300) || "Posting plan", schedule, changes: schedule.map((s) => s.label) },
       };
     }
     case "open_page": {

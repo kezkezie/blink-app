@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUp, Check, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
+import { ArrowUp, CalendarCheck, Check, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { enabledPlatforms, placeOnCalendar } from "./plan/schedule";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useEditorBridge } from "@/components/video/editor-bridge";
 import { useCanvasBridge } from "./editor/canvas-bridge";
@@ -28,7 +30,7 @@ const CANVAS_STARTERS = [
 const STARTERS = [
   "Plan a 30 second launch video for my brand",
   "Make a poster for this weekend's offer",
-  "What did I make last week?",
+  "Plan my ready posts on the calendar for next week",
   "How many credits would a 1080p 15 s video cost?",
 ];
 
@@ -47,6 +49,8 @@ export function AskPanel() {
   const canvasOpen = useCanvasBridge((b) => b.attached);
   const canvasCanUndo = useCanvasBridge((b) => b.canUndo);
   const [error, setError] = useState<string | null>(null);
+  // apply_schedule results, per action: "placing" while it runs, then a one-line summary.
+  const [placed, setPlaced] = useState<Record<string, string>>({});
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -90,7 +94,11 @@ export function AskPanel() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, brandId: activeBrand?.id ?? null, page: pathname, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}) }),
+        body: JSON.stringify({
+          messages: history, brandId: activeBrand?.id ?? null, page: pathname, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}),
+          // The user's own clock, so "Tuesday 6 pm" is planned in their time.
+          tz: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })(), tzOffset: new Date().getTimezoneOffset(),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "The assistant could not answer just now.");
@@ -101,6 +109,28 @@ export function AskPanel() {
       setBusy(false);
       setStage(null);
     }
+  }
+
+  async function applySchedule(a: AskAction, key: string) {
+    const items = a.schedule ?? [];
+    if (!items.length) return;
+    setPlaced((s) => ({ ...s, [key]: "placing" }));
+    const { data } = await supabase.from("content").select("id, client_id, target_platforms, postforme_tracking_id").in("id", items.map((i) => i.id));
+    let onCal = 0, queued = 0, noPlatforms = 0;
+    const problems: string[] = [];
+    for (const item of items) {
+      const row = (data ?? []).find((r) => r.id === item.id);
+      if (!row) { problems.push("a post that no longer exists"); continue; }
+      const r = await placeOnCalendar(row.client_id as string, row as { id: string; target_platforms?: unknown; postforme_tracking_id?: string | null }, item.at);
+      if (!r.ok) { problems.push(r.error || "one couldn't be saved"); continue; }
+      onCal++;
+      if (r.queued) queued++;
+      else if (!enabledPlatforms(row.target_platforms).length) noPlatforms++;
+      else problems.push(r.error || "one couldn't be queued");
+    }
+    window.dispatchEvent(new Event("blink:calendar-changed"));
+    const parts = [`${onCal} on the calendar`, queued ? `${queued} queued to post` : "", noPlatforms ? `${noPlatforms} need platforms picked` : "", problems.length ? `problems: ${[...new Set(problems)].slice(0, 2).join("; ")}` : ""].filter(Boolean);
+    setPlaced((s) => ({ ...s, [key]: parts.join(" · ") }));
   }
 
   function applyEdit(a: AskAction, key: string) {
@@ -132,7 +162,7 @@ export function AskPanel() {
                 ? "I can see your timeline and look at your clips. Tell me the cut you want; I'll show the changes and you press Apply. Undo is one click, and editing is free."
                 : canvasOpen
                 ? "I can see your canvas and its layers. Ask me to lay out a design, draw a vector or logo, add text, or tidy things up. You press Apply; Undo is one click."
-                : <>Tell me what you want to make{activeBrand ? ` for ${activeBrand.brand_name}` : ""}. I&apos;ll read your brand, plan it, price it and open the right studio with everything filled in. I never spend credits; you press Generate.</>}
+                : <>Tell me what you want to make{activeBrand ? ` for ${activeBrand.brand_name}` : ""}. I&apos;ll read your brand, plan it, price it and open the right studio with everything filled in. I can also plan your posts on the calendar. I never spend credits; you press Generate or Apply.</>}
             </p>
             <div className="flex flex-col gap-2">
               {(editorOpen ? EDITOR_STARTERS : canvasOpen ? CANVAS_STARTERS : STARTERS).map((s) => (
@@ -160,6 +190,25 @@ export function AskPanel() {
                     ) : (
                       <button className="s-btn primary" disabled={!canvasOpen} onClick={async () => { await useCanvasBridge.getState().apply?.(a.canvasOps ?? []); setApplied(key); }}>
                         {canvasOpen ? a.label : "Open the Editor to apply"}
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+              if (a.kind === "apply_schedule") {
+                const state = placed[key];
+                return (
+                  <div key={j} className="act">
+                    <div className="text-xs font-medium">{a.note}</div>
+                    <ul className="text-xs grid gap-1" style={{ color: "var(--s-soft)" }}>{a.changes?.slice(0, 30).map((c, k) => <li key={k}>· {c}</li>)}</ul>
+                    {state && state !== "placing" ? (
+                      <div className="grid gap-2">
+                        <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--s-ok)" }}><Check className="h-3.5 w-3.5" /> {state}</span>
+                        <Link href="/studio/plan" className="s-btn sm" onClick={() => { if (window.innerWidth < 1200) setOpen(false); }}>Open the calendar</Link>
+                      </div>
+                    ) : (
+                      <button className="s-btn primary" disabled={state === "placing"} onClick={() => void applySchedule(a, key)}>
+                        {state === "placing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />} {a.label}
                       </button>
                     )}
                   </div>
@@ -224,7 +273,7 @@ export function AskPanel() {
           </button>
         </div>
         <div className="flex items-center justify-between gap-2 mt-2 px-1">
-          <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Claude Opus 5.5 · {editorOpen ? "editing your timeline" : canvasOpen ? "designing on your canvas" : "reads your brand, library and credits"} · <span className="s-kbd">⌘K</span></p>
+          <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>{editorOpen || canvasOpen ? "Claude Opus 5.5" : "Claude Sonnet 5.5"} · {editorOpen ? "editing your timeline" : canvasOpen ? "designing on your canvas" : "reads your brand, library and credits"} · <span className="s-kbd">⌘K</span></p>
           {editorOpen && (
             <label className="flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: "var(--s-soft)" }}>
               <input type="checkbox" checked={watch} onChange={(e) => setWatch(e.target.checked)} style={{ accentColor: "var(--s-accent)" }} /> Look at clips

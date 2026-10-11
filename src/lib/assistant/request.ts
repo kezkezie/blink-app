@@ -66,7 +66,7 @@ export function parseCanvasContext(raw: unknown): CanvasSummary | null {
 }
 
 /** Only plain user/assistant text is accepted from the browser; tool traffic is rebuilt server side. */
-export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; brandId: string | null; page?: string; editor?: EditorContext; canvas?: CanvasSummary } | null {
+export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; brandId: string | null; page?: string; editor?: EditorContext; canvas?: CanvasSummary; tz?: string; tzOffset?: number } | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
   if (!Array.isArray(b.messages) || b.messages.length === 0 || b.messages.length > MAX_MESSAGES) return null;
@@ -86,5 +86,8 @@ export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]
   const page = typeof b.page === "string" && /^\/studio[\w/-]{0,80}$/.test(b.page) ? b.page : undefined;
   const editor = parseEditorContext(b.editor) ?? undefined;
   const canvas = parseCanvasContext(b.canvas) ?? undefined;
-  return { messages, brandId, page, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}) };
+  // The browser's time zone, so "Tuesday at 6 pm" means the user's 6 pm (scheduling).
+  const tz = typeof b.tz === "string" && /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(b.tz) && b.tz.length <= 40 ? b.tz : undefined;
+  const tzOffset = typeof b.tzOffset === "number" && Number.isInteger(b.tzOffset) && Math.abs(b.tzOffset) <= 840 ? b.tzOffset : undefined;
+  return { messages, brandId, page, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}), ...(tz ? { tz } : {}), ...(tzOffset !== undefined ? { tzOffset } : {}) };
 }

@@ -1,0 +1,469 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, CalendarPlus, Check, Clock, Film, LayoutTemplate, Loader2, MessageSquareWarning, RefreshCw, Save, Send, Sparkles, Trash2, Wand2, X, ZoomIn, Zap } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { useClient } from "@/hooks/useClient";
+import { useBrandStore } from "@/app/store/useBrandStore";
+import { cloudinaryStreamUrl, cloudinaryVideoPoster } from "@/lib/utils";
+import { MARKETING_STYLES } from "@/lib/marketing-styles";
+import { Modal } from "@/components/studio/Modal";
+import { ImagePicker } from "@/components/studio/ImagePicker";
+import { STATUS_LABEL, cleanCaption, resolveMedia, thumbUrl } from "@/components/studio/media";
+import { useBrandKit, generateBrandImages, generationErrorMessage, nearestImageAspect, type ImageEngine } from "@/components/studio/generate-image";
+import { InstagramTroubleshootModal } from "@/components/publishing/InstagramTroubleshootModal";
+import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
+import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, publishNow, settingsFor, takeOffCalendar, toLocalInput, whenLabel, type CalRow } from "@/components/studio/plan/schedule";
+
+/**
+ * A post in the studio look (2026-10-11; the classic page stays at /dashboard/content/[id]).
+ * Everything the classic page did: captions (long/short, AI-written), hashtags, platforms,
+ * post now or schedule, approvals, remake the image, delete. Plus: schedule a date right here
+ * instead of "drag it on the calendar", and an honest queued / not queued state.
+ */
+type Post = CalRow & { caption_short?: string | null; hashtags?: string | null; call_to_action?: string | null; rejection_reason?: string | null; ai_model?: string | null; image_prompt_used?: string | null };
+
+const ENGINES: Array<{ id: ImageEngine; label: string; cost: number }> = [
+  { id: "nb2", label: "Best quality", cost: 18 },
+  { id: "gpt-image-2-text-to-image", label: "Fast", cost: 6 },
+];
+
+export function PostDetail({ id }: { id: string }) {
+  const router = useRouter();
+  const search = useSearchParams();
+  const { clientId } = useClient();
+  const { activeBrand } = useBrandStore();
+  const [post, setPost] = useState<Post | null | undefined>(undefined);
+  const [connected, setConnected] = useState<string[]>([]);
+  const [caption, setCaption] = useState("");
+  const [short, setShort] = useState("");
+  const [hashtags, setHashtags] = useState("");
+  const [choice, setChoice] = useState<"long" | "short">("long");
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [writing, setWriting] = useState<"long" | "short" | null>(null);
+  const [processing, setProcessing] = useState(() => search.get("processing") === "true");
+  const [zoom, setZoom] = useState(false);
+  const [whenOpen, setWhenOpen] = useState(false);
+  const [whenValue, setWhenValue] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [igHelp, setIgHelp] = useState(false);
+  // Remake the image
+  const [remakeOpen, setRemakeOpen] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [engine, setEngine] = useState<ImageEngine>("nb2");
+  const [style, setStyle] = useState<(typeof MARKETING_STYLES)[number]["id"]>("studio");
+  const [useCurrent, setUseCurrent] = useState(true);
+  const [extraRefs, setExtraRefs] = useState<string[]>([]);
+  const [pickRef, setPickRef] = useState(false);
+  const [aspect, setAspect] = useState("1:1");
+
+  const brandId = (post?.brand_id as string | undefined) ?? activeBrand?.id ?? null;
+  const kit = useBrandKit(brandId, activeBrand?.brand_name);
+
+  const load = useCallback(async () => {
+    if (!clientId) return;
+    const { data } = await supabase.from("content").select("*").eq("id", id).eq("client_id", clientId).maybeSingle();
+    const row = (data ?? null) as Post | null;
+    setPost(row);
+    if (!row) return;
+    setCaption(row.caption ?? ""); setShort(row.caption_short ?? ""); setHashtags(row.hashtags ?? "");
+    setPlatforms(enabledPlatforms(row.target_platforms));
+    setDirty(false);
+    if (row.brand_id) {
+      const { data: acc } = await supabase.from("social_accounts").select("platform").eq("brand_id", row.brand_id).eq("is_active", true);
+      setConnected([...new Set((acc ?? []).map((a) => String(a.platform).toLowerCase()))]);
+    }
+  }, [clientId, id]);
+  useEffect(() => { void load(); }, [load]);
+
+  // Opened right after an AI edit (?processing=true): wait for the new media, like the classic page.
+  useEffect(() => {
+    if (!processing) return;
+    const done = () => { setProcessing(false); router.replace(`/studio/library/${id}`, { scroll: false }); };
+    const channel = supabase.channel(`post-${id}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "content", filter: `id=eq.${id}` }, (payload) => {
+      const row = payload.new as Post;
+      if (resolveMedia(row).url) { setPost((p) => (p ? { ...p, ...row } : p)); done(); }
+    }).subscribe();
+    const t = setTimeout(() => { void load().then(done); }, 90_000);
+    return () => { clearTimeout(t); void supabase.removeChannel(channel); };
+  }, [processing, id, load, router]);
+
+  const media = useMemo(() => (post ? resolveMedia(post) : null), [post]);
+  const isVideo = !!media?.isVideo;
+
+  async function save(quiet = false) {
+    if (!post || !clientId) return false;
+    const { error } = await supabase.from("content").update({
+      caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms),
+    } as Record<string, unknown>).eq("id", post.id).eq("client_id", clientId);
+    if (error) { toast.error("Couldn't save your changes."); return false; }
+    setPost({ ...post, caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms) });
+    setDirty(false);
+    if (!quiet) toast.success("Saved.");
+    return true;
+  }
+  const edit = <T,>(set: (v: T) => void) => (v: T) => { set(v); setDirty(true); };
+
+  async function writeCaption(length: "long" | "short") {
+    if (!post || !clientId) return;
+    setWriting(length);
+    try {
+      const imgs = media?.images ?? [];
+      const mediaUrl = imgs[0] || media?.url || null;
+      const res = await fetch("/api/content/analyze", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId, contentId: post.id, mediaUrl, mediaType: mediaUrl && !imgs[0] && isVideo ? "video/mp4" : "image/jpeg", lengthPreference: length,
+          brandContext: kit ? { name: kit.name, industry: kit.industry, description: kit.description, imageStyle: kit.imageStyle, brandVoice: kit.brandVoice, logoUrl: kit.logoUrl, websiteUrl: kit.websiteUrl } : null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't write the caption.");
+      if (length === "long") setCaption(data.caption_long || ""); else setShort(data.caption_short || "");
+      if (data.hashtags && !hashtags.trim()) setHashtags(data.hashtags);
+      setDirty(true);
+      toast.success("Written · 1 credit. Check it, then Save.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't write the caption."); }
+    finally { setWriting(null); }
+  }
+
+  async function doPublishNow() {
+    if (!post || !clientId) return;
+    if (!platforms.length) { toast.info("Pick at least one platform first."); return; }
+    setBusy("publish");
+    if (!(await save(true))) { setBusy(null); return; }
+    await supabase.from("content").update({ status: "approved", approved_at: new Date().toISOString(), approved_by: "admin" } as Record<string, unknown>).eq("id", post.id).eq("client_id", clientId);
+    const r = await publishNow(clientId, post.id, settingsFor(platforms), choice);
+    setBusy(null);
+    if (!r.ok) { toast.error(r.error || "Couldn't publish it."); await load(); return; }
+    const ig = platforms.includes("instagram");
+    toast.success(`Sent to ${platforms.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}.${ig ? " If it doesn't show on Instagram in 5 minutes, check the account's status." : ""}`, { duration: 8000 });
+    await load();
+  }
+  async function doSchedule() {
+    if (!post || !clientId || !whenValue) return;
+    const at = new Date(whenValue);
+    if (at.getTime() < Date.now() + 5 * 60_000) { toast.info("Pick a time at least a few minutes from now."); return; }
+    setWhenOpen(false);
+    setBusy("schedule");
+    if (!(await save(true))) { setBusy(null); return; }
+    const iso = at.toISOString();
+    const r = await placeOnCalendar(clientId, { id: post.id, target_platforms: settingsFor(platforms), postforme_tracking_id: post.postforme_tracking_id }, iso, { captionChoice: choice });
+    setBusy(null);
+    if (!r.ok) toast.error(r.error || "Couldn't schedule it.");
+    else if (r.queued) toast.success(`Scheduled for ${whenLabel(iso)}.`);
+    else if (!platforms.length) toast(`On the calendar for ${whenLabel(iso)}. Pick where it posts so it goes out.`);
+    else toast.error(`On the calendar, but not queued: ${r.error}`, { duration: 9000 });
+    await load();
+  }
+  async function unschedule() {
+    if (!post) return;
+    setBusy("unschedule");
+    const r = await takeOffCalendar(post.id);
+    setBusy(null);
+    if (!r.ok) toast.error(r.error || "Couldn't take it off the calendar."); else toast.success("Taken off the calendar.");
+    await load();
+  }
+  async function setStatus(status: string, extra: Record<string, unknown> = {}, message?: string) {
+    if (!post || !clientId) return;
+    setBusy(status);
+    const { error } = await supabase.from("content").update({ status, ...extra } as Record<string, unknown>).eq("id", post.id).eq("client_id", clientId);
+    setBusy(null);
+    if (error) { toast.error("Couldn't update the post."); return; }
+    if (message) toast.success(message);
+    await load();
+  }
+  async function remove() {
+    if (!post || !clientId) return;
+    setBusy("delete");
+    if (post.postforme_tracking_id && post.scheduled_at && new Date(post.scheduled_at).getTime() > Date.now()) {
+      const r = await takeOffCalendar(post.id);
+      if (!r.ok) { setBusy(null); toast.error(r.error || "Couldn't cancel its schedule, so it wasn't deleted."); return; }
+    }
+    const { error } = await supabase.from("content").delete().eq("id", post.id).eq("client_id", clientId);
+    setBusy(null);
+    if (error) { toast.error("Couldn't delete it."); return; }
+    toast.success("Deleted.");
+    router.push("/studio/library");
+  }
+
+  function openRemake() {
+    setPrompt(""); setExtraRefs([]); setUseCurrent(true); setEngine("nb2"); setStyle("studio"); setRemakeOpen(true);
+  }
+  async function remake() {
+    if (!post || !clientId || !kit || !brandId) return;
+    setRemakeOpen(false);
+    setBusy("remake");
+    const before = post.image_urls;
+    const refs = [...(useCurrent && media?.url && !isVideo ? [media.url] : []), ...extraRefs];
+    const finalEngine: ImageEngine = refs.length && engine !== "nb2" ? "gpt-image-2-image-to-image" : engine;
+    try {
+      const out = await generateBrandImages({
+        clientId, brandId, kit, prompt: prompt.trim() || cleanCaption(short || caption).slice(0, 300) || "A professional post for the brand",
+        references: refs, engine: finalEngine, aspect, style, caption: cleanCaption(caption).slice(0, 300), save: false,
+      });
+      const urls = out.map((o) => o.url);
+      const { error } = await supabase.from("content").update({ image_urls: urls, updated_at: new Date().toISOString() } as Record<string, unknown>).eq("id", post.id).eq("client_id", clientId);
+      if (error) throw new Error("The image was made but couldn't be saved to this post.");
+      toast.success(`New image in · ${ENGINES.find((e) => e.id === engine)?.cost ?? 18} credits`, {
+        action: { label: "Undo", onClick: () => { void supabase.from("content").update({ image_urls: before } as Record<string, unknown>).eq("id", post.id).eq("client_id", clientId).then(() => load()); } },
+        duration: 10000,
+      });
+      await load();
+    } catch (e) { toast.error(generationErrorMessage(e), { duration: 9000 }); }
+    finally { setBusy(null); }
+  }
+
+  if (post === undefined) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (post === null) return (
+    <div className="s-empty"><h3>Post not found</h3><p className="text-[13px]">It may have been deleted, or it belongs to another account.</p><Link href="/studio/library" className="s-btn sm mt-3">Back to Library</Link></div>
+  );
+
+  const status = STATUS_LABEL[post.status] ?? { label: post.status };
+  const scheduledFuture = !!post.scheduled_at && new Date(post.scheduled_at).getTime() > Date.now();
+  const st = post.scheduled_at ? postState(post) : null;
+  const image = !isVideo ? media?.url ?? null : null;
+  const title = cleanCaption(short || caption).split("\n")[0].slice(0, 80) || (isVideo ? "Video" : "Image");
+  const canEdit = post.status !== "posted";
+
+  return (
+    <div className="grid gap-5 s-reading">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href="/studio/library" className="s-btn ghost sm -ml-2"><ArrowLeft className="h-3.5 w-3.5" /> Library</Link>
+        <h2 className="text-[16px] font-semibold truncate max-w-[52ch]" title={title}>{title}</h2>
+        <span className={`s-badge ${status.tone ?? ""}`}>{status.label}</span>
+        <div className="flex-1" />
+        {image && (
+          <>
+            <Link href={`/studio/image?mode=design&content=${post.id}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> Open in Editor</Link>
+            <Link href={`/studio/library/${post.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>
+            <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>
+          </>
+        )}
+        <button className="s-btn ghost sm" onClick={() => setDeleteOpen(true)} aria-label="Delete"><Trash2 className="h-3.5 w-3.5" style={{ color: "var(--s-danger)" }} /></button>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,1fr)] items-start">
+        <div className="grid gap-3">
+          <div className="relative rounded-2xl overflow-hidden grid place-items-center" style={{ background: "#000", border: "1px solid var(--s-line)", minHeight: 320, maxHeight: "74dvh" }}>
+            {media?.url ? (
+              isVideo ? (
+                <video src={cloudinaryStreamUrl(media.url)} poster={cloudinaryVideoPoster(media.url)} controls playsInline preload="metadata" className="w-full h-full object-contain" style={{ maxHeight: "74dvh" }} />
+              ) : (
+                <button className="group relative w-full h-full grid place-items-center" onClick={() => setZoom(true)} aria-label="View full size">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumbUrl(media.url, 1600)} alt={title} className="max-w-full object-contain" style={{ maxHeight: "74dvh" }} />
+                  <span className="s-pill absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"><ZoomIn className="h-3.5 w-3.5" /> Full size</span>
+                </button>
+              )
+            ) : <span className="text-[13px] py-24" style={{ color: "var(--s-mute)" }}>No media yet</span>}
+            {(processing || busy === "remake") && (
+              <div className="absolute inset-0 grid place-items-center" style={{ background: "rgba(12,13,15,.72)", backdropFilter: "blur(6px)" }}>
+                <div className="grid gap-2 justify-items-center text-center px-6"><Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--s-ai)" }} /><b className="text-[14px]">{busy === "remake" ? "Making the new image…" : "Applying your edit…"}</b><span className="text-[12px]" style={{ color: "var(--s-soft)" }}>This usually takes under a minute.</span></div>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[12px] mono" style={{ color: "var(--s-mute)" }}>
+            <span>{post.content_type.replace(/_/g, " ")}</span>·<span>made {new Date(post.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+            {post.ai_model && <>·<span>{post.ai_model}</span></>}
+            <div className="flex-1" />
+            {image && canEdit && <button className="s-btn ai sm" disabled={!!busy} onClick={openRemake}><RefreshCw className="h-3.5 w-3.5" /> Remake the image</button>}
+          </div>
+        </div>
+
+        <div className="grid gap-3">
+          {post.status === "rejected" && (
+            <div className="s-card p-4 grid gap-2" style={{ borderColor: "color-mix(in oklab, var(--s-danger) 40%, var(--s-line))" }}>
+              <b className="text-[13px] flex items-center gap-1.5"><MessageSquareWarning className="h-4 w-4" style={{ color: "var(--s-danger)" }} /> Changes asked for</b>
+              <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>{post.rejection_reason || "No note was left."}</p>
+              <button className="s-btn sm justify-self-start" disabled={!!busy} onClick={() => setStatus("draft", { rejection_reason: null }, "Back to draft. Make the changes, then send it again.")}>Edit and resubmit</button>
+            </div>
+          )}
+
+          <section className="s-card p-4 grid gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="s-label" style={{ margin: 0 }}>Caption</span>
+              <div className="s-seg" role="group" aria-label="Which caption to post">
+                <button aria-pressed={choice === "long"} onClick={() => setChoice("long")}>Post long</button>
+                <button aria-pressed={choice === "short"} onClick={() => setChoice("short")}>Post short</button>
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <div className="flex items-center justify-between"><span className="text-[12px]" style={{ color: choice === "long" ? "var(--s-text)" : "var(--s-mute)" }}>Long{choice === "long" && " · this one posts"}</span>
+                <button className="s-btn ai sm" disabled={!!writing || !canEdit} onClick={() => writeCaption("long")}>{writing === "long" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write with AI <span className="cost">1 cr</span></button></div>
+              <textarea className="s-input" rows={6} value={caption} onChange={(e) => edit(setCaption)(e.target.value)} disabled={!canEdit} placeholder="What should people read under this post?" aria-label="Long caption" />
+            </div>
+            <div className="grid gap-1.5">
+              <div className="flex items-center justify-between"><span className="text-[12px]" style={{ color: choice === "short" ? "var(--s-text)" : "var(--s-mute)" }}>Short{choice === "short" && " · this one posts"}</span>
+                <button className="s-btn ai sm" disabled={!!writing || !canEdit} onClick={() => writeCaption("short")}>{writing === "short" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write with AI <span className="cost">1 cr</span></button></div>
+              <input className="s-input" value={short} onChange={(e) => edit(setShort)(e.target.value)} disabled={!canEdit} placeholder="A one-line hook" aria-label="Short caption" />
+            </div>
+            <div className="grid gap-1.5">
+              <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>Hashtags</span>
+              <input className="s-input" value={hashtags} onChange={(e) => edit(setHashtags)(e.target.value)} disabled={!canEdit} placeholder="#nairobi #freshjuice" aria-label="Hashtags" />
+            </div>
+          </section>
+
+          <section className="s-card p-4 grid gap-3">
+            <span className="s-label" style={{ margin: 0 }}>Where it posts</span>
+            {connected.length === 0 ? (
+              <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>No social accounts connected for this brand. <Link href="/studio/account/settings" className="underline" style={{ color: "var(--s-text)" }}>Connect them in Settings</Link>.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {connected.map((p) => {
+                  const on = platforms.includes(p);
+                  return <button key={p} className="s-chip" aria-pressed={on} disabled={!canEdit} onClick={() => edit(setPlatforms)(on ? platforms.filter((x) => x !== p) : [...platforms, p])}><PlatformGlyph platform={p} /> {PLATFORM_LABEL[p] ?? p}</button>;
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="s-card p-4 grid gap-3">
+            <span className="s-label" style={{ margin: 0 }}>When</span>
+            {post.status === "posted" ? (
+              <p className="text-[13px] flex items-center gap-1.5" style={{ color: "var(--s-ok)" }}><Check className="h-4 w-4" /> Posted{post.scheduled_at ? ` · ${whenLabel(post.scheduled_at)}` : ""}</p>
+            ) : scheduledFuture && st ? (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Clock className="h-4 w-4" style={{ color: "var(--s-soft)" }} /><b className="text-[14px]">{whenLabel(post.scheduled_at!)}</b>
+                  <span className={`s-badge ${st.tone === "ok" ? "ok" : st.tone === "danger" ? "danger" : "warn"}`}>{st.label}</span>
+                </div>
+                {st.label !== "Queued" && <p className="text-[12px]" style={{ color: "var(--s-warn)" }}>{platforms.length ? "It's on the calendar but not queued with your accounts yet. Press Change time and save to try again." : "Pick where it posts above and Save, so it actually goes out."}</p>}
+                <div className="flex flex-wrap gap-1.5">
+                  <button className="s-btn sm" disabled={!!busy} onClick={() => { setWhenValue(toLocalInput(post.scheduled_at)); setWhenOpen(true); }}><Clock className="h-3.5 w-3.5" /> Change time</button>
+                  <button className="s-btn sm" disabled={!!busy || !platforms.length} onClick={doPublishNow}>{busy === "publish" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />} Post now instead</button>
+                  <button className="s-btn ghost sm" disabled={!!busy} onClick={unschedule}>{busy === "unschedule" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />} Take off the calendar</button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                <button className="s-btn primary" disabled={!!busy || !platforms.length || !resolveMedia(post).url} onClick={doPublishNow} title={platforms.length ? "" : "Pick a platform first"}>{busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Post now</button>
+                <button className="s-btn" disabled={!!busy} onClick={() => { setWhenValue(toLocalInput(null)); setWhenOpen(true); }}>{busy === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />} Schedule</button>
+                <Link href="/studio/plan" className="s-btn ghost">Open the calendar</Link>
+              </div>
+            )}
+            {post.status === "draft" && <button className="s-btn ghost sm justify-self-start -ml-2" disabled={!!busy} onClick={() => setStatus("pending_approval", {}, "Sent for approval.")}><Send className="h-3.5 w-3.5" /> Send for approval first</button>}
+            {post.status === "pending_approval" && (
+              <div className="flex flex-wrap gap-1.5 pt-1" style={{ borderTop: "1px solid var(--s-line)" }}>
+                <span className="text-[12px] w-full pt-2" style={{ color: "var(--s-warn)" }}>Waiting for approval.</span>
+                <button className="s-btn sm primary" disabled={!!busy} onClick={() => setStatus("approved", { approved_at: new Date().toISOString(), approved_by: "admin" }, "Approved.")}><Check className="h-3.5 w-3.5" /> Approve</button>
+                <button className="s-btn sm" disabled={!!busy} onClick={() => { setReason(""); setRejectOpen(true); }}><MessageSquareWarning className="h-3.5 w-3.5" /> Ask for changes</button>
+              </div>
+            )}
+            {platforms.includes("instagram") && <button className="text-[11.5px] justify-self-start" style={{ color: "var(--s-mute)" }} onClick={() => setIgHelp(true)}>Posted but not showing on Instagram? →</button>}
+          </section>
+
+          {canEdit && (
+            <div className="sticky bottom-[78px] md:bottom-3 z-10 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: "color-mix(in oklab, var(--s-panel) 92%, transparent)", border: `1px solid ${dirty ? "var(--s-line-2)" : "var(--s-line)"}`, backdropFilter: "blur(8px)" }}>
+              <span className="text-[12px] flex-1" style={{ color: dirty ? "var(--s-warn)" : "var(--s-mute)" }}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
+              <button className="s-btn primary sm" disabled={!dirty || !!busy} onClick={() => void save()}><Save className="h-3.5 w-3.5" /> Save</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Modal open={zoom && !!image} onClose={() => setZoom(false)} label="Full size" width={1400}>
+        <div className="relative bg-black grid place-items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {image && <img src={image} alt={title} className="max-w-full object-contain" style={{ maxHeight: "86dvh" }} />}
+          <button className="s-btn sm absolute top-3 right-3" onClick={() => setZoom(false)} aria-label="Close"><X className="h-4 w-4" /></button>
+        </div>
+      </Modal>
+
+      <Modal open={whenOpen} onClose={() => setWhenOpen(false)} label="Schedule" width={420} padded>
+        <div className="flex items-center justify-between mb-3"><b className="text-sm">When should it go out?</b><button className="s-btn ghost sm" onClick={() => setWhenOpen(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
+        <input type="datetime-local" className="s-input" value={whenValue} min={toLocalInput(new Date(Date.now() + 10 * 60_000).toISOString())} onChange={(e) => setWhenValue(e.target.value)} aria-label="Date and time" style={{ colorScheme: "dark" }} />
+        {!platforms.length && <p className="text-[12px] mt-2" style={{ color: "var(--s-warn)" }}>No platforms picked yet: it goes on the calendar, but won&apos;t post until you pick where.</p>}
+        <div className="flex justify-end gap-2 mt-4">
+          <button className="s-btn ghost sm" onClick={() => setWhenOpen(false)}>Cancel</button>
+          <button className="s-btn primary sm" disabled={!whenValue} onClick={doSchedule}>Schedule</button>
+        </div>
+      </Modal>
+
+      <Modal open={rejectOpen} onClose={() => setRejectOpen(false)} label="Ask for changes" width={480} padded>
+        <div className="flex items-center justify-between mb-3"><b className="text-sm">What should change?</b><button className="s-btn ghost sm" onClick={() => setRejectOpen(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
+        <textarea className="s-input" rows={4} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Use the green bottle, and make the price bigger" aria-label="What should change" />
+        <div className="flex justify-end gap-2 mt-3">
+          <button className="s-btn ghost sm" onClick={() => setRejectOpen(false)}>Cancel</button>
+          <button className="s-btn primary sm" disabled={!reason.trim()} onClick={() => { setRejectOpen(false); void setStatus("rejected", { rejection_reason: reason.trim() }, "Sent back with your note."); }}>Send back</button>
+        </div>
+      </Modal>
+
+      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} label="Delete this post" width={420} padded>
+        <b className="text-sm">Delete this post?</b>
+        <p className="text-[13px] mt-2" style={{ color: "var(--s-soft)" }}>It&apos;s removed from your Library{scheduledFuture ? " and taken off the calendar" : ""}. This can&apos;t be undone.</p>
+        <div className="flex justify-end gap-2 mt-4">
+          <button className="s-btn ghost sm" onClick={() => setDeleteOpen(false)}>Cancel</button>
+          <button className="s-btn sm" style={{ background: "var(--s-danger)", color: "#fff", borderColor: "transparent" }} disabled={busy === "delete"} onClick={remove}>{busy === "delete" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Delete</button>
+        </div>
+      </Modal>
+
+      <Modal open={remakeOpen} onClose={() => setRemakeOpen(false)} label="Remake the image" width={620} padded>
+        <div className="flex items-center justify-between mb-1"><b className="text-sm">Remake the image</b><button className="s-btn ghost sm" onClick={() => setRemakeOpen(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
+        <p className="text-[12px] mb-3" style={{ color: "var(--s-mute)" }}>The new picture replaces this one on the post; captions and schedule stay. You can undo right after.</p>
+        <div className="grid gap-3">
+          <label className="grid gap-1.5"><span className="s-label" style={{ margin: 0 }}>What should change?</span>
+            <textarea className="s-input" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={cleanCaption(short || caption).slice(0, 120) || "e.g. the same drink on a sunny Nairobi rooftop, close-up"} />
+          </label>
+          <div className="grid gap-1.5"><span className="s-label" style={{ margin: 0 }}>Style</span>
+            <div className="flex flex-wrap gap-1.5">{MARKETING_STYLES.map((s) => <button key={s.id} className="s-chip" aria-pressed={style === s.id} onClick={() => setStyle(s.id)}>{s.label.replace(/^[^\p{L}]+/u, "")}</button>)}</div>
+          </div>
+          <div className="grid gap-1.5"><span className="s-label" style={{ margin: 0 }}>References</span>
+            <div className="flex flex-wrap gap-2 items-center">
+              {media?.url && !isVideo && (
+                <button className="relative h-14 w-14 rounded-lg overflow-hidden" style={{ outline: useCurrent ? "2px solid var(--s-accent)" : "1px solid var(--s-line-2)", opacity: useCurrent ? 1 : 0.45 }} onClick={() => setUseCurrent((v) => !v)} title={useCurrent ? "Using this image (click to drop it)" : "Not using this image"}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumbUrl(media.url, 200)} alt="" className="h-full w-full object-cover" />
+                </button>
+              )}
+              {extraRefs.map((u) => (
+                <button key={u} className="relative h-14 w-14 rounded-lg overflow-hidden" style={{ outline: "2px solid var(--s-accent)" }} onClick={() => setExtraRefs((x) => x.filter((y) => y !== u))} title="Remove">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumbUrl(u, 200)} alt="" className="h-full w-full object-cover" />
+                </button>
+              ))}
+              {extraRefs.length < 3 && <button className="s-btn sm" onClick={() => setPickRef(true)}>Add from Library</button>}
+            </div>
+          </div>
+          <div className="grid gap-1.5"><span className="s-label" style={{ margin: 0 }}>Shape</span>
+            <div className="flex flex-wrap gap-1.5">{["1:1", "4:5", "9:16", "16:9"].map((a) => <button key={a} className="s-chip" aria-pressed={aspect === a} onClick={() => setAspect(a)}>{a}</button>)}</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="s-seg" role="group" aria-label="Quality">{ENGINES.map((e) => <button key={e.id} aria-pressed={engine === e.id} onClick={() => setEngine(e.id)}>{e.label}</button>)}</div>
+            <div className="flex-1" />
+            <button className="s-btn primary" disabled={!kit} onClick={remake}><RefreshCw className="h-4 w-4" /> Remake <span className="cost">{ENGINES.find((e) => e.id === engine)?.cost} cr</span></button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={pickRef} onClose={() => setPickRef(false)} label="Pick a reference" width={860} padded>
+        <div className="flex items-center justify-between mb-3"><b className="text-sm">Pick a reference from your Library</b><button className="s-btn ghost sm" onClick={() => setPickRef(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
+        <ImagePicker allowUpload={false} onPick={(p) => { setPickRef(false); if (!p.url.startsWith("blob:")) setExtraRefs((x) => [...new Set([...x, p.url])].slice(0, 3)); }} />
+      </Modal>
+
+      <InstagramTroubleshootModal open={igHelp} onClose={() => setIgHelp(false)} />
+      {/* The aspect of the current image, so a remake keeps its shape by default. */}
+      {image && <AspectProbe url={image} onAspect={(a) => setAspect(nearestImageAspect(a))} />}
+    </div>
+  );
+}
+
+/** Reads an image's real size once and reports it as "w:h". */
+function AspectProbe({ url, onAspect }: { url: string; onAspect: (a: string) => void }) {
+  useEffect(() => {
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled && img.naturalWidth && img.naturalHeight) onAspect(`${img.naturalWidth}:${img.naturalHeight}`); };
+    img.src = thumbUrl(url, 400);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
+  return null;
+}
