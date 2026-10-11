@@ -9,7 +9,7 @@ vi.mock("@/lib/supabase-server", () => ({
 }));
 
 import {
-  archiveBrand, createBrandWorkspace, createQuickBrand, deleteBrandPermanently, getBrandAllowance, restoreBrand, saveBrandProfile, setBrandLogo, swapBrands,
+  archiveBrand, createBrandWorkspace, createQuickBrand, deleteBrandPermanently, deleteProduct, getBrandAllowance, restoreBrand, saveBrandDna, saveBrandProfile, saveProduct, setBrandLogo, swapBrands,
 } from "@/app/actions/brand";
 
 const ME = "user-me";
@@ -276,5 +276,37 @@ describe("brand actions: swap when the plan is full (2026-10-11)", () => {
   it("reports the plan with the allowance", async () => {
     seed({ myTier: "pro", myBrands: 2 });
     expect(await getBrandAllowance()).toEqual({ used: 2, limit: 6, canCreate: true, plan: "pro" });
+  });
+});
+
+describe("brand actions: Brand page v2 (2026-10-11)", () => {
+  it("saveBrandDna saves my brand, cleans the DNA, and never touches another customer's", async () => {
+    seed();
+    const r = await saveBrandDna("mine-0", { brand_name: "Renamed", primary_color: "#abcdef", dna: { audience: "offices", junk: 1 } } as never);
+    expect(r.success).toBe(true);
+    expect(brand("mine-0").brand_name).toBe("Renamed");
+    expect(brand("mine-0").primary_color).toBe("#ABCDEF");
+    expect(brand("mine-0").dna).toEqual({ audience: "offices" });
+    expect((await saveBrandDna("theirs-0", { brand_name: "Hacked" } as never)).error).toBeTruthy();
+    expect(brand("theirs-0").brand_name).toBe("Victim Brand");
+  });
+
+  it("saveBrandDna refuses a logo that isn't one of my own files", async () => {
+    seed();
+    await saveBrandDna("mine-0", { brand_name: "Mine 0", logo_url: "https://evil.example/logo.png" } as never);
+    expect(brand("mine-0").logo_url).toBeUndefined();
+  });
+
+  it("products belong to my brand only", async () => {
+    seed();
+    db.current!.tables.products = [];
+    const r = await saveProduct("mine-0", { name: "Platter", price: 1800, currency: "KES" });
+    expect(r.product?.name).toBe("Platter");
+    expect(db.current!.tables.products[0]).toMatchObject({ brand_id: "mine-0", client_id: MY_CLIENT, price: 1800 });
+    expect((await saveProduct("theirs-0", { name: "Sneaky" })).error).toBeTruthy();
+    const id = db.current!.tables.products[0].id as string;
+    expect((await deleteProduct("theirs-0", id)).error).toBeTruthy();
+    expect((await deleteProduct("mine-0", id)).success).toBe(true);
+    expect(db.current!.tables.products).toHaveLength(0);
   });
 });

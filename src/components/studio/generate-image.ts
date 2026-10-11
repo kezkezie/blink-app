@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { BrandDna } from "@/lib/brand-dna";
 import { supabase } from "@/lib/supabase";
 import { triggerWorkflow } from "@/lib/workflows";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
@@ -13,7 +14,7 @@ import { contactRule } from "@/lib/inspo";
  * refunds and Library rows as the classic Image Studio's synchronous path.
  */
 
-export type BrandKit = BrandContext & { socials?: string };
+export type BrandKit = BrandContext & { socials?: string; dna?: BrandDna };
 export type ImageEngine = "nb2" | "gpt-image-2-text-to-image" | "gpt-image-2-image-to-image" | "z-image";
 
 /** The active brand's identity, as the classic Image Studio loads it. */
@@ -24,7 +25,7 @@ export function useBrandKit(brandId: string | null | undefined, fallbackName?: s
     let cancelled = false;
     supabase
       .from("brand_profiles")
-      .select("brand_name, company_name, website_url, social_urls, description, industry, image_style, brand_voice, logo_url, primary_color, secondary_color, primary_font")
+      .select("brand_name, company_name, website_url, social_urls, description, industry, image_style, brand_voice, logo_url, primary_color, secondary_color, primary_font, dna")
       .eq("id", brandId)
       .maybeSingle()
       .then(({ data }) => {
@@ -41,6 +42,7 @@ export function useBrandKit(brandId: string | null | undefined, fallbackName?: s
           primaryFont: data?.primary_font ?? undefined,
           websiteUrl: data?.website_url ?? undefined,
           socials: typeof data?.social_urls === "string" ? data.social_urls : undefined,
+          dna: data?.dna && typeof data.dna === "object" ? (data.dna as BrandDna) : undefined,
         });
       });
     return () => { cancelled = true; };
@@ -49,15 +51,22 @@ export function useBrandKit(brandId: string | null | undefined, fallbackName?: s
 }
 
 export function brandConstraintFor(kit: BrandKit) {
+  const dna = kit.dna ?? {};
+  // Contact details the brand gave us (Brand page → Contact) are the only ones allowed on an image.
+  const contacts = [kit.socials, dna.whatsapp && `WhatsApp ${dna.whatsapp}`, dna.phone && `phone ${dna.phone}`, dna.email].filter(Boolean).join(", ");
   return [
     `CRITICAL BRAND CONSTRAINT: This content belongs to the brand "${kit.name}".`,
     kit.websiteUrl ? `The website is ${kit.websiteUrl}.` : "",
     kit.description ? `Brand description: ${kit.description}.` : "",
     kit.industry ? `Industry: ${kit.industry}.` : "",
+    dna.audience ? `It is for: ${dna.audience}.` : "",
+    dna.location ? `Set for ${dna.location}: local people, places and details where it fits.` : "",
     kit.primaryColor ? `Brand colours: ${[kit.primaryColor, kit.secondaryColor].filter(Boolean).join(", ")}.` : "",
+    dna.languages?.length ? `Write any on-image text in ${dna.languages.slice(0, 2).join(" or ")}.` : "",
+    dna.avoidVisual ? `Never show: ${dna.avoidVisual}.` : "",
     `Do NOT invent fictional brand names, fake website URLs, placeholder logos, or generic company names.`,
     `Any text, signage, labels, or website URLs visible in the image MUST reflect "${kit.name}" only.`,
-    contactRule(kit.websiteUrl, kit.socials),
+    contactRule(kit.websiteUrl, contacts || undefined),
   ].filter(Boolean).join(" ");
 }
 

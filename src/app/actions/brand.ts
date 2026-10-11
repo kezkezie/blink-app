@@ -498,3 +498,117 @@ export async function setBrandLogo(brandId: string, logoUrl: string): Promise<{ 
   if (error || !Array.isArray(data) || data.length !== 1) return { error: "Brand not found." };
   return { success: true };
 }
+
+// ────────────────────────────────────────────────
+// 8. Brand DNA v2: the new Brand page and onboarding (2026-10-11)
+// ────────────────────────────────────────────────
+
+const HEX6 = /^#[0-9a-f]{6}$/i;
+const textOrNull = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : null);
+
+export type BrandDnaPayload = {
+  brand_name: string; description?: string; industry?: string; website_url?: string; social_urls?: string; logo_url?: string | null;
+  primary_color?: string; secondary_color?: string; accent_color?: string; additional_colors?: string[];
+  primary_font?: string; secondary_font?: string; brand_voice?: string; tone_keywords?: string[]; visual_style_guide?: string;
+  uploaded_assets?: string[]; vocabulary_notes?: string; dos?: string[]; donts?: string[]; dna?: unknown;
+};
+
+/** Everything the Brand page shows, in one call. Scoped to the caller's own brand. */
+export async function loadBrandDna(brandId: string): Promise<{ brand: Record<string, unknown>; products: Array<Record<string, unknown>>; plan: string } | { error: string }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client || typeof brandId !== "string") return { error: "Brand not found." };
+  const [{ data: brand }, { data: products }] = await Promise.all([
+    supabaseAdmin.from("brand_profiles").select("*").eq("id", brandId).eq("client_id", client.id).maybeSingle(),
+    supabaseAdmin.from("products").select("id, name, description, price, currency, image_url, created_at").eq("brand_id", brandId).eq("client_id", client.id).order("created_at", { ascending: true }),
+  ]);
+  if (!brand) return { error: "Brand not found." };
+  return { brand, products: products ?? [], plan: client.plan_tier || "free" };
+}
+
+/** Save the Brand page. Only the caller's own brand; every field typed and sized here. */
+export async function saveBrandDna(brandId: string, p: BrandDnaPayload): Promise<{ success?: boolean; error?: string }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client || typeof brandId !== "string" || !p || typeof p !== "object") return { error: "Brand not found." };
+  const name = cleanName(p.brand_name);
+  if (!name) return { error: "Your brand needs a name." };
+  const { cleanDna } = await import("@/lib/brand-dna");
+  const color = (v: unknown) => (typeof v === "string" && HEX6.test(v) ? v.toUpperCase() : undefined);
+  const strings = (v: unknown, n: number, max: number) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((x) => x.trim().slice(0, max)).filter(Boolean).slice(0, n) : undefined);
+  // A logo must be one of the user's own files (their storage folders), never an arbitrary URL.
+  const storage = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/`;
+  const ownLogo = (v: unknown) => v === null ? null : typeof v === "string" && (v.startsWith(`${storage}images/${client.id}/`) || v.startsWith(`${storage}brands/${brandId}/`)) ? v : undefined;
+  // Photos already on the brand are always kept (older brands stored them elsewhere); new ones must be the user's own files.
+  const { data: current } = await supabaseAdmin.from("brand_profiles").select("uploaded_assets").eq("id", brandId).eq("client_id", client.id).maybeSingle();
+  const existing = new Set(Array.isArray(current?.uploaded_assets) ? (current.uploaded_assets as unknown[]).filter((u): u is string => typeof u === "string") : []);
+  const ownAssets = (v: unknown) => strings(v, 24, 600)?.filter((u) => existing.has(u) || u.startsWith(`${storage}images/${client.id}/`) || u.startsWith(`${storage}brands/${brandId}/`));
+  const update: Record<string, unknown> = {
+    brand_name: name,
+    company_name: name,
+    description: textOrNull(p.description, 1200),
+    industry: textOrNull(p.industry, 80),
+    website_url: textOrNull(p.website_url, 300),
+    social_urls: textOrNull(p.social_urls, 1200),
+    primary_color: color(p.primary_color),
+    secondary_color: color(p.secondary_color),
+    accent_color: color(p.accent_color),
+    additional_colors: (strings(p.additional_colors, 3, 7) ?? []).map(color).filter(Boolean),
+    primary_font: textOrNull(p.primary_font, 60),
+    secondary_font: textOrNull(p.secondary_font, 60),
+    brand_voice: textOrNull(p.brand_voice, 800),
+    tone_keywords: strings(p.tone_keywords, 8, 30) ?? [],
+    visual_style_guide: textOrNull(p.visual_style_guide, 800),
+    vocabulary_notes: textOrNull(p.vocabulary_notes, 600),
+    dos: (strings(p.dos, 8, 140) ?? []).join("\n"),
+    donts: (strings(p.donts, 8, 140) ?? []).join("\n"),
+    dna: cleanDna(p.dna),
+    updated_at: new Date().toISOString(),
+  };
+  const logo = ownLogo(p.logo_url);
+  if (logo !== undefined) update.logo_url = logo;
+  const assets = ownAssets(p.uploaded_assets);
+  if (assets) update.uploaded_assets = assets;
+  for (const k of Object.keys(update)) if (update[k] === undefined) delete update[k];
+  const { data, error } = await supabaseAdmin.from("brand_profiles").update(update).eq("id", brandId).eq("client_id", client.id).select("id");
+  if (error || !Array.isArray(data) || data.length !== 1) return { error: "Couldn't save. Try again." };
+  return { success: true };
+}
+
+export async function saveProduct(brandId: string, p: { id?: string; name: string; description?: string; price?: number | null; currency?: string; image_url?: string | null }): Promise<{ product?: Record<string, unknown>; error?: string }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client || typeof brandId !== "string" || !p) return { error: "Brand not found." };
+  const { data: brand } = await supabaseAdmin.from("brand_profiles").select("id").eq("id", brandId).eq("client_id", client.id).maybeSingle();
+  if (!brand) return { error: "Brand not found." };
+  const name = cleanName(p.name, 100);
+  if (!name) return { error: "Give it a name." };
+  const storage = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/images/${client.id}/`;
+  const row = {
+    name,
+    description: textOrNull(p.description, 300),
+    price: typeof p.price === "number" && Number.isFinite(p.price) && p.price >= 0 && p.price < 1e9 ? p.price : null,
+    currency: typeof p.currency === "string" && /^[A-Z]{3}$/.test(p.currency) ? p.currency : "KES",
+    image_url: typeof p.image_url === "string" && p.image_url.startsWith(storage) ? p.image_url : null,
+    updated_at: new Date().toISOString(),
+  };
+  const q = p.id
+    ? supabaseAdmin.from("products").update(row).eq("id", p.id).eq("brand_id", brandId).eq("client_id", client.id).select("id, name, description, price, currency, image_url").single()
+    : supabaseAdmin.from("products").insert({ ...row, client_id: client.id, brand_id: brandId }).select("id, name, description, price, currency, image_url").single();
+  const { data, error } = await q;
+  if (error || !data) return { error: "Couldn't save the product." };
+  return { product: data };
+}
+
+export async function deleteProduct(brandId: string, productId: string): Promise<{ success?: boolean; error?: string }> {
+  const userId = await sessionUserId();
+  if (!userId) return { error: "Please sign in again." };
+  const client = await ownedClient(userId);
+  if (!client) return { error: "Brand not found." };
+  const { data, error } = await supabaseAdmin.from("products").delete().eq("id", productId).eq("brand_id", brandId).eq("client_id", client.id).select("id");
+  if (error || !Array.isArray(data) || data.length !== 1) return { error: "Product not found." };
+  return { success: true };
+}

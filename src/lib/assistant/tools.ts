@@ -7,6 +7,7 @@
  * the signed-in client and the brand they have open.
  */
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { brandBrief, cleanDna } from "@/lib/brand-dna";
 import { estimateVideoCredits, resolveEffectiveVideoModel, resolveVideoModel } from "@/lib/video-model-registry";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { describeEditOps, validateEditOps, type EditOp, type TimelineSummary } from "@/lib/editor-ops";
@@ -228,14 +229,19 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
   switch (name) {
     case "get_brand": {
       if (!ctx.brandId) return { content: "No brand is open. Ask the user to pick or create a brand (brand switcher, top right)." };
-      const { data } = await supabaseAdmin
-        .from("brand_profiles")
-        .select("brand_name, company_name, industry, description, brand_voice, image_style, primary_color, secondary_color, primary_font, website_url")
-        .eq("id", ctx.brandId)
-        .eq("client_id", ctx.clientId)
-        .eq("is_active", true)
-        .maybeSingle();
-      return { content: data ? JSON.stringify(data) : "Brand not found." };
+      const [{ data }, { data: products }] = await Promise.all([
+        supabaseAdmin
+          .from("brand_profiles")
+          .select("brand_name, industry, description, brand_voice, tone_keywords, image_style, visual_style_guide, primary_color, secondary_color, accent_color, primary_font, secondary_font, website_url, vocabulary_notes, dos, donts, dna")
+          .eq("id", ctx.brandId)
+          .eq("client_id", ctx.clientId)
+          .eq("is_active", true)
+          .maybeSingle(),
+        supabaseAdmin.from("products").select("name, description, price, currency").eq("brand_id", ctx.brandId).eq("client_id", ctx.clientId).limit(12),
+      ]);
+      if (!data) return { content: "Brand not found." };
+      // The Brand page's answers as plain lines (who it's for, where, products, voice, contacts).
+      return { content: brandBrief(data, cleanDna(data.dna), products ?? []) };
     }
     case "get_credits": {
       const [{ data: bal }, { data: client }] = await Promise.all([

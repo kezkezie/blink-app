@@ -13,6 +13,8 @@ import { estimateVideoCredits } from "@/lib/video-model-registry";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { MediaCard, NOT_STORYBOARD_FRAME, PART_TYPES } from "@/components/studio/media";
 import { useStudioBrands } from "@/components/studio/hooks";
+import { useAskStore } from "@/components/studio/ask-store";
+import { toast } from "sonner";
 
 type Kind = "video" | "image";
 const KIND_LABEL: Record<Kind, string> = { video: "Video", image: "Image" };
@@ -33,6 +35,20 @@ export default function CreatePage() {
   const [kind, setKind] = useState<Kind>("video");
   const [brief, setBrief] = useState("");
   const [recent, setRecent] = useState<Content[] | null>(null);
+  const { ask } = useAskStore();
+
+  // Arriving from /welcome: "Do it for me" opens Ask with a first job ready; "tools" just says hello.
+  useEffect(() => {
+    const w = new URLSearchParams(window.location.search).get("welcome");
+    if (!w) return;
+    router.replace("/studio", { scroll: false });
+    if (w === "auto") {
+      ask("Plan my first week of posts: 3 images and 1 short video. Use my brand, show me the ideas and the price first.");
+      toast.success("You're set. Ask BlinkSpot has a first job ready: press send, or change it.", { duration: 7000 });
+    } else {
+      toast.success("You're set. Start from a card below, or open the Editor.", { duration: 6000 });
+    }
+  }, [router, ask]);
 
   useEffect(() => {
     if (!clientId || !activeBrand) return;

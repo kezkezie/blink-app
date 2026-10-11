@@ -16,6 +16,10 @@
 
 import { test, expect, Page } from '@playwright/test';
 
+// The classic sign-up → /dashboard → BrandCreationModal flow was replaced on 2026-10-11 by
+// /get-started → /welcome (brand questions) → /studio. Covered by welcome-onboarding.spec.ts.
+test.skip(true, "Classic onboarding replaced by /welcome; see welcome-onboarding.spec.ts");
+
 // ── Shared test data ──────────────────────────────────────────────────────────
 
 function freshEmail(): string {
