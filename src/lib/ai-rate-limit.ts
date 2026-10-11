@@ -11,7 +11,7 @@ import { parseRpcRow } from "@/lib/execution-rate-limit";
  * migration 20260728_video_execution_rate_limits.sql is applied (it generalises the name check).
  */
 
-export type AiOperation = "assistant_hour" | "assistant_day" | "brand_build" | "vector_draw";
+export type AiOperation = "assistant_hour" | "assistant_day" | "brand_build" | "vector_draw" | "site_build";
 type Plan = "free" | "starter" | "pro" | "agency";
 
 /** Messages per day by plan, plus a burst cap per hour for everyone. */
@@ -20,6 +20,7 @@ const FIXED: Record<Exclude<AiOperation, "assistant_day">, { limit: number; wind
   assistant_hour: { limit: 40, windowSeconds: 60 * 60 },
   brand_build: { limit: 12, windowSeconds: 60 * 60 },
   vector_draw: { limit: 45, windowSeconds: 60 * 60 },
+  site_build: { limit: 20, windowSeconds: 60 * 60 },
 };
 
 export function aiRateLimitsEnabled() {

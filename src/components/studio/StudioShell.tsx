@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Sparkles, LayoutGrid, CalendarDays, Palette, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2 } from "lucide-react";
+import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -28,6 +28,7 @@ const PLACES: Array<{ id: StudioSection; label: string; href: string; icon: type
   { id: "library", label: "Library", href: "/studio/library", icon: LayoutGrid },
   { id: "plan", label: "Plan", href: "/studio/plan", icon: CalendarDays },
   { id: "brand", label: "Brand", href: "/studio/brand", icon: Palette },
+  { id: "site", label: "Website", href: "/studio/sites", icon: Globe },
 ];
 
 /** The four places. A rail on desktop, a bottom tab bar on phones (with Ask as the fifth tab). */

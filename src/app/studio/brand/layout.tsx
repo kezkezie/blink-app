@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Brain, Archive, Loader2, Sparkles } from "lucide-react";
+import { Brain, Archive, Globe, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { BrandRefinementModal } from "@/components/brand/BrandRefinementModal";
 import { archiveBrand } from "@/app/actions/brand";
@@ -56,6 +56,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         </div>
         <div className="flex-1" />
         <Link href="/studio/brand-builder" className="s-btn ghost"><Sparkles className="h-4 w-4" /> Build a new brand</Link>
+        <Link href="/studio/sites" className="s-btn ghost"><Globe className="h-4 w-4" /> Website</Link>
         {activeBrand && (
           <>
             <button className="s-btn ai" onClick={() => setTeaching(true)}>

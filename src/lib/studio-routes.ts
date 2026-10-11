@@ -48,12 +48,13 @@ export function dashboardPathFor(studioPath: string): string {
   return "/dashboard";
 }
 
-export type StudioSection = "create" | "library" | "plan" | "brand" | "account";
+export type StudioSection = "create" | "library" | "plan" | "brand" | "site" | "account";
 
 /** Which of the four places (plus the account menu) a /studio path belongs to. */
 export function studioSectionFor(pathname: string): StudioSection {
   if (pathname.startsWith("/studio/library")) return "library";
   if (pathname.startsWith("/studio/plan")) return "plan";
+  if (pathname.startsWith("/studio/sites")) return "site";
   if (pathname.startsWith("/studio/brand")) return "brand";
   if (pathname.startsWith("/studio/account")) return "account";
   return "create"; // /studio, /studio/video, /studio/image
@@ -71,6 +72,7 @@ export function studioTitleFor(pathname: string): string {
     ["/studio/plan", "Plan"],
     ["/studio/brand-builder", "Brand builder"],
     ["/studio/examples", "Examples"],
+    ["/studio/sites", "Website"],
     ["/studio/brand", "Brand"],
     ["/studio/account/billing", "Billing"],
     ["/studio/account/settings", "Settings"],

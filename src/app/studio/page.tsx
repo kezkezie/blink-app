@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Clapperboard, ImageIcon, PenTool, Shuffle, Sparkles } from "lucide-react";
+import { Clapperboard, Globe, ImageIcon, PenTool, Shuffle, Sparkles } from "lucide-react";
 import { ExamplesGallery } from "@/components/studio/examples/ExamplesGallery";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -133,6 +133,11 @@ export default function CreatePage() {
         <Sparkles className="h-5 w-5 shrink-0" style={{ color: "var(--s-accent)" }} />
         <span className="text-[13.5px]"><b className="font-semibold">New business, no brand yet?</b> <span style={{ color: "var(--s-soft)" }}>Describe it and get a name, colours, fonts, a voice and logos. Free.</span></span>
         <span className="ml-auto text-[13px] shrink-0" style={{ color: "var(--s-accent)" }}>Brand builder →</span>
+      </Link>
+      <Link href="/studio/sites" className="s-card mt-2 p-4 flex items-center gap-3" style={{ textDecoration: "none" }}>
+        <Globe className="h-5 w-5 shrink-0" style={{ color: "#5EC8FF" }} />
+        <span className="text-[13.5px]"><b className="font-semibold">Need a website?</b> <span style={{ color: "var(--s-soft)" }}>A landing page written and designed from your brand, live at blinkspot.io/s/your-name.</span></span>
+        <span className="ml-auto text-[13px] shrink-0" style={{ color: "#5EC8FF" }}>Website →</span>
       </Link>
 
       <section className="mt-10">

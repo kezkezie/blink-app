@@ -1,0 +1,31 @@
+/* Published landing pages (2026-10-11). Everything scoped to .bs-site; colours and fonts come from the brand. */
+.bs-site { --ease: cubic-bezier(0.16, 1, 0.3, 1); background: var(--bg); color: var(--ink); font-family: var(--font-body), system-ui, sans-serif; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+.bs-site * { box-sizing: border-box; }
+.bs-site a { color: inherit; text-decoration: none; }
+.bs-site img { display: block; max-width: 100%; }
+.bs-site .w { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+@media (min-width: 768px) { .bs-site .w { padding: 0 40px; } }
+.bs-site .h { font-family: var(--font-head), Georgia, serif; font-weight: var(--h-weight); letter-spacing: var(--h-track); line-height: 1.02; text-transform: var(--h-case); margin: 0; }
+.bs-site .h1 { font-size: clamp(42px, 6.6vw, 88px); }
+.bs-site .h2 { font-size: clamp(30px, 4.2vw, 54px); }
+.bs-site .h3 { font-size: clamp(19px, 1.8vw, 23px); line-height: 1.2; letter-spacing: -0.01em; text-transform: none; }
+.bs-site .muted { color: var(--muted); }
+.bs-site .eyebrow { font-size: 12.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: var(--eyebrow); }
+.bs-site .lead { font-size: clamp(16px, 1.4vw, 19px); color: var(--muted); max-width: 58ch; }
+.bs-site .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 50px; padding: 0 24px; border-radius: var(--btn-radius); font-weight: 600; font-size: 15px; white-space: nowrap; transition: transform .3s var(--ease), opacity .3s var(--ease); cursor: pointer; }
+.bs-site .btn:hover { transform: translateY(-1px); }
+.bs-site .btn.primary { background: var(--accent); color: var(--on-accent); }
+.bs-site .btn.ghost { box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.bs-site .card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--line); overflow: hidden; }
+.bs-site .sec { padding: 88px 0; }
+@media (min-width: 1024px) { .bs-site .sec { padding: 120px 0; } }
+.bs-site .line { border-top: 1px solid var(--line); }
+.bs-site .frame { border-radius: var(--radius); overflow: hidden; background: var(--card); }
+.bs-site details summary { list-style: none; cursor: pointer; }
+.bs-site details summary::-webkit-details-marker { display: none; }
+.bs-site details[open] .plus { transform: rotate(45deg); }
+.bs-site .plus { transition: transform .3s var(--ease); }
+.bs-site .masonry { columns: 2; column-gap: 12px; }
+@media (min-width: 900px) { .bs-site .masonry { columns: 3; column-gap: 16px; } }
+.bs-site .masonry > * { break-inside: avoid; margin-bottom: 12px; }
+/* No scroll-driven fades on published pages: they hid sections from screenshots and link previews. */
