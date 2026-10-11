@@ -1220,7 +1220,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
           {/* Preview */}
           <div className="ve-stage" onClick={() => setSelectedElement(null)}>
             <div className="ve-canvaswrap">
-              <div ref={canvasRef} className="ve-canvas" style={{ aspectRatio: String(shape), height: shape < 1 ? "100%" : undefined, width: shape >= 1 ? "100%" : undefined, ["--cw" as string]: String(canvasW) }}>
+              <div ref={canvasRef} className="ve-canvas" style={{ aspectRatio: String(shape), width: `min(100cqw, calc(100cqh * ${shape}))`, ["--cw" as string]: String(canvasW) }}>
                 {[...videoClips].sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
                   const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart);
                   return (

@@ -105,7 +105,7 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
 
   // Deep link from Create / Ask: the brief lands in the story concept.
   await page.goto(`${BASE}/studio/video?mode=storytelling&brief=${encodeURIComponent("farm at dawn, the harvest, the plate")}`);
-  await expect(page.getByRole("button", { name: /Render all scenes/ })).toBeVisible();
+  await expect(page.locator(".sb-bar").getByRole("button", { name: /Render scenes|Render (all|\d+)/ })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("textarea").filter({ hasText: "farm at dawn" }).first()).toBeVisible();
   console.log("VIDEO deep link ok");
 
@@ -150,13 +150,21 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
 
   // Editor: "Edit with AI" opens the assistant in editing mode (it can see the timeline).
   await page.goto(`${BASE}/studio/video?tab=editor`);
-  await page.getByRole("button", { name: "Focus" }).click();
+  // Bigger preview hides the bin and inspector, so the canvas grows; pressing it again puts them back.
+  await expect(page.locator(".ve-canvas")).toBeVisible({ timeout: 30_000 });
+  const before = (await page.locator(".ve-canvas").boundingBox())!;
+  const focusBtn = page.getByRole("button", { name: "Bigger preview" });
+  await focusBtn.click();
+  await expect(focusBtn).toHaveAttribute("aria-pressed", "true");
   await page.waitForTimeout(400);
-  const preview = await page.locator("[class*='aspect-video']").first().boundingBox();
-  console.log(`EDITOR preview in focus: ${Math.round(preview?.width ?? 0)}x${Math.round(preview?.height ?? 0)}`);
-  expect(preview?.width ?? 0).toBeGreaterThan(850); // was ~400 px wide before the studio layout
+  const preview = (await page.locator(".ve-canvas").boundingBox())!;
+  console.log(`EDITOR preview: ${Math.round(before.width)}x${Math.round(before.height)} -> focus ${Math.round(preview.width)}x${Math.round(preview.height)}`);
+  expect(preview.width).toBeGreaterThan(before.width * 1.1);
+  // The canvas keeps its shape (16:9 here) rather than stretching to the room.
+  for (const box of [before, preview]) expect(Math.abs(box.width / box.height - 16 / 9)).toBeLessThan(0.02);
   await page.screenshot({ path: testInfo.outputPath("editor-focus.png") });
-  await page.getByRole("button", { name: "Exit focus" }).click();
+  await focusBtn.click();
+  await expect(page.locator(".ve-bin")).toBeVisible();
   await page.getByRole("button", { name: "Edit with AI" }).click();
   await expect(page.getByText(/I can see your timeline/)).toBeVisible();
   await expect(page.getByText("Look at clips")).toBeVisible();
