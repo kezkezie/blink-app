@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { AuthField, AuthShell } from "@/components/auth/AuthShell";
+import { LEAKED_PASSWORD_MESSAGE, pwnedCount } from "@/lib/pwned-password";
 
 export default function GetStartedPage() {
   const router = useRouter();
@@ -27,6 +28,10 @@ export default function GetStartedPage() {
     e.preventDefault();
     setSubmitting(true);
     setMessage(null);
+    if (password.length < 8) { setMessage({ tone: "error", text: "Use at least 8 characters." }); setSubmitting(false); return; }
+    // Known-breached passwords are refused (Supabase's own check needs their Pro plan).
+    const leaks = await pwnedCount(password);
+    if (leaks !== null && leaks > 0) { setMessage({ tone: "error", text: LEAKED_PASSWORD_MESSAGE }); setSubmitting(false); return; }
     const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
     if (error) { setMessage({ tone: "error", text: error.message }); setSubmitting(false); return; }
     if (data.user) {
@@ -52,7 +57,7 @@ export default function GetStartedPage() {
       <form onSubmit={handleSignUp} className="grid gap-4">
         <AuthField label="Your name" type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" autoComplete="name" />
         <AuthField label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" autoComplete="email" />
-        <AuthField label="Password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+        <AuthField label="Password" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
         {message && (
           <p role="alert" className="text-[13px] rounded-lg px-3 py-2" style={{ background: message.tone === "error" ? "color-mix(in oklab, var(--s-danger) 12%, transparent)" : "color-mix(in oklab, var(--s-ok) 12%, transparent)", color: message.tone === "error" ? "var(--s-danger)" : "var(--s-ok)" }}>{message.text}</p>
         )}

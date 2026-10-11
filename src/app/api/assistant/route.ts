@@ -6,6 +6,7 @@ import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { loadAccountBrief } from "@/lib/assistant/tools";
 import { parseAssistantRequest } from "@/lib/assistant/request";
 import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
+import { EFFORT_INFO, effortFor } from "@/lib/assistant/effort";
 
 // A reply can take several model turns; Kie alone has measured 70-80 s per turn.
 export const maxDuration = 300;
@@ -30,7 +31,9 @@ export async function POST(request: NextRequest) {
       actions: [{ kind: "open_page", label: "See plans", href: "/studio/account/billing" }],
     });
   }
-  const limit = await consumeAiLimits(auth.value, ["assistant_hour", "assistant_day"], client.plan_tier);
+  // Deeper thinking costs more, so it counts as more of the day's messages (Thorough 2, Extra high 3, Max 4).
+  const effort = effortFor(parsed.effort, client.plan_tier);
+  const limit = await consumeAiLimits(auth.value, ["assistant_hour", ...Array<"assistant_day">(EFFORT_INFO[effort].weight).fill("assistant_day")], client.plan_tier);
   if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status, headers: limit.retryAfterSeconds ? { "Retry-After": String(limit.retryAfterSeconds) } : undefined });
 
   // The brand must belong to this account and be active; otherwise the assistant works brand-less.
@@ -44,10 +47,10 @@ export async function POST(request: NextRequest) {
   try {
     const ctx = { clientId: client.id, brandId, tz: parsed.tz, tzOffset: parsed.tzOffset };
     const brief = await loadAccountBrief(ctx).catch(() => undefined);
-    const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas });
+    const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas, effort });
     // One line per answer so the Claude bill can be traced to accounts in the Vercel logs.
     const usd = estimateUsd(result.model, result.usage);
-    console.info("assistant usage", JSON.stringify({ client: client.id, model: result.model, ...result.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+    console.info("assistant usage", JSON.stringify({ client: client.id, model: result.model, effort, ...result.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof AssistantUnavailableError) return NextResponse.json({ error: err.message }, { status: 503 });

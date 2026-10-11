@@ -183,13 +183,13 @@ describe("capabilities", () => {
 describe("estimateVideoCredits (display only — n8n is the billing authority)", () => {
   it("multiplies the per-second rate by duration", () => {
     expect(estimateVideoCredits("bytedance/seedance-2", "5")).toBe(205); // 41 * 5
-    expect(estimateVideoCredits("kling-3.0/video", 10)).toBe(270); // 27 * 10
+    expect(estimateVideoCredits("kling-3.0/video", 10)).toBe(410); // Kling renders on Seedance 2 (2026-10-11): 41 * 10
     expect(estimateVideoCredits("replicate:prunaai/p-video", "5")).toBe(20); // 4 * 5
   });
 
   it("adds the audio surcharge exactly as n8n does", () => {
     // Kling and Seedance rates already include audio: no surcharge on top.
-    expect(estimateVideoCredits("kling-3.0/video", "5", { hasAudio: true })).toBe(27 * 5);
+    expect(estimateVideoCredits("kling-3.0/video", "5", { hasAudio: true })).toBe(41 * 5); // rerouted to Seedance 2
     expect(estimateVideoCredits("bytedance/seedance-2-5", "5", { hasAudio: true })).toBe(158 * 5);
     // Models whose base rate excludes audio still get it.
     expect(estimateVideoCredits("replicate:prunaai/p-video", "5", { hasAudio: true }))
@@ -395,9 +395,11 @@ describe("REJECTION: unsupported combinations are refused, not clamped", () => {
 describe("COST: one validated duration drives display, validation and billing", () => {
   it("UI estimate equals the mirrored n8n deduction for every offered duration", () => {
     for (const spec of SPECS) {
-      for (const secs of allowedDurationsFor(spec.id)) {
+      // n8n prices the model that actually renders (Kling is rerouted to Seedance 2).
+      const renders = routeVideoModelForFrames(spec.id);
+      for (const secs of allowedDurationsFor(spec.id).filter((s) => allowedDurationsFor(renders).includes(s))) {
         const estimate = estimateVideoCredits(spec.id, secs);
-        const n8nWouldCharge = Number(secs) * n8nPerSecondCost(spec.id);
+        const n8nWouldCharge = Number(secs) * n8nPerSecondCost(renders);
         expect(estimate, `${spec.id} @ ${secs}s`).toBe(n8nWouldCharge);
       }
     }
@@ -406,8 +408,9 @@ describe("COST: one validated duration drives display, validation and billing", 
   it("applies the audio surcharge identically to n8n", () => {
     for (const spec of SPECS) {
       const withAudio = estimateVideoCredits(spec.id, "5", { hasAudio: true });
-      const audioIncluded = spec.id.includes("kling") || spec.id.includes("seedance"); // same rule as n8n
-      expect(withAudio).toBe(5 * (n8nPerSecondCost(spec.id) + (audioIncluded ? 0 : AUDIO_SURCHARGE_PER_SECOND)));
+      const renders = routeVideoModelForFrames(spec.id);
+      const audioIncluded = renders.includes("kling") || renders.includes("seedance"); // same rule as n8n
+      expect(withAudio).toBe(5 * (n8nPerSecondCost(renders) + (audioIncluded ? 0 : AUDIO_SURCHARGE_PER_SECOND)));
     }
   });
 
@@ -425,8 +428,8 @@ describe("COST: one validated duration drives display, validation and billing", 
   });
 
   it("estimates `auto` using the model n8n will actually pick", () => {
-    // ugc -> Kling (27/sec), not the default Seedance (41/sec).
-    expect(estimateVideoCredits("auto", "5", { videoMode: "ugc" })).toBe(135);
+    // ugc -> Kling, which renders on Seedance 2 (41/sec) since 2026-10-11.
+    expect(estimateVideoCredits("auto", "5", { videoMode: "ugc" })).toBe(205);
     expect(estimateVideoCredits("auto", "5", { videoMode: "clothing" })).toBe(20);
     expect(estimateVideoCredits("auto", "5", { videoMode: "showcase" })).toBe(205);
   });
@@ -708,26 +711,28 @@ describe("PRUNA: UI selection repair is not clamping", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KLING IMAGE-TO-VIDEO FALLBACK (2026-10-09): Kling i2v on Kie returned frozen clips 5/5.
-// Mirrors n8n "Parse Inputs & Calculate Cost" (klingRerouted), so quote == charge.
+// KLING FALLBACK (2026-10-11): Kling on Kie returned frozen clips (i2v 5/5, t2v 9/9). Every Kling job
+// renders on Seedance 2. Mirrors n8n "Parse Inputs & Calculate Cost" (klingRerouted), so quote == charge.
 // ─────────────────────────────────────────────────────────────────────────────
-import { routeVideoModelForFrames, KLING_I2V_FALLBACK_MODEL } from "@/lib/video-model-registry";
+import { routeVideoModelForFrames, KLING_FALLBACK_MODEL } from "@/lib/video-model-registry";
 
-describe("Kling image-to-video fallback", () => {
-  it("routes image-led Kling without voice to Seedance 2.5", () => {
-    expect(routeVideoModelForFrames("kling-3.0/video", { hasStartFrame: true, hasAudio: false })).toBe(KLING_I2V_FALLBACK_MODEL);
-  });
-  it("keeps Kling for talking/dialogue jobs and for text-only jobs", () => {
-    expect(routeVideoModelForFrames("kling-3.0/video", { hasStartFrame: true, hasAudio: true })).toBe("kling-3.0/video");
-    expect(routeVideoModelForFrames("kling-3.0/video", { hasStartFrame: false })).toBe("kling-3.0/video");
+describe("Kling fallback", () => {
+  it("routes every Kling job to Seedance 2: from a photo, from text, talking or silent", () => {
+    expect(KLING_FALLBACK_MODEL).toBe("bytedance/seedance-2");
+    for (const o of [{ hasStartFrame: true, hasAudio: false }, { hasStartFrame: true, hasAudio: true }, { hasStartFrame: false }, {}]) {
+      expect(routeVideoModelForFrames("kling-3.0/video", o)).toBe(KLING_FALLBACK_MODEL);
+    }
   });
   it("never touches other models", () => {
     expect(routeVideoModelForFrames("bytedance/seedance-2", { hasStartFrame: true })).toBe("bytedance/seedance-2");
+    expect(routeVideoModelForFrames("bytedance/seedance-2-5", { hasStartFrame: true })).toBe("bytedance/seedance-2-5");
     expect(routeVideoModelForFrames("replicate:prunaai/p-video", { hasStartFrame: true })).toBe("replicate:prunaai/p-video");
   });
-  it("prices the rerouted job as Seedance 2.5, including auto+ugc", () => {
-    expect(estimateVideoCredits("kling-3.0/video", "5", { hasStartFrame: true })).toBe(158 * 5);
-    expect(estimateVideoCredits("auto", "5", { videoMode: "ugc", hasStartFrame: true })).toBe(158 * 5);
-    expect(estimateVideoCredits("kling-3.0/video", "5", { hasStartFrame: true, hasAudio: true })).toBe(27 * 5);
+  it("prices the rerouted job as Seedance 2, including auto+ugc (creator talking)", () => {
+    const perSec = resolveVideoModel("bytedance/seedance-2")!.creditsPerSecond;
+    expect(estimateVideoCredits("kling-3.0/video", "5", { hasStartFrame: true })).toBe(perSec * 5);
+    expect(estimateVideoCredits("auto", "5", { videoMode: "ugc", hasStartFrame: true })).toBe(perSec * 5);
+    expect(estimateVideoCredits("kling-3.0/video", "5", { hasStartFrame: true, hasAudio: true })).toBe(perSec * 5);
+    expect(estimateVideoCredits("kling-3.0/video", "10", {})).toBe(perSec * 10);
   });
 });

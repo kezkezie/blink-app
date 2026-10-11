@@ -10,6 +10,7 @@
 import { ASSISTANT_TOOLS, CANVAS_GUIDE, EDITOR_GUIDE, EDIT_CANVAS_TOOL, EDIT_TIMELINE_TOOL, runAssistantTool, type AssistantAction, type ToolContext } from "./tools";
 import type { CanvasSummary } from "@/lib/canvas-ops";
 import type { EditorContext } from "./request";
+import { EFFORT_INFO, type Effort } from "./effort";
 
 export const ASSISTANT_MODEL = "claude-opus-5-5";
 /**
@@ -37,8 +38,7 @@ export function estimateUsd(model: string, u: { input: number; output: number; c
 const KIE_MESSAGES_URL = "https://api.kie.ai/anthropic/v1/messages";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TURNS = 6;
-// A posting plan for 20 posts is ~1,500 tokens on its own (ids and times), so 1,500 cut it off.
-const MAX_TOKENS = 4000;
+// Reply budgets are per effort level (effort.ts). A posting plan for 20 posts is ~1,500 tokens on its own.
 /** Drawing vectors on the canvas needs room for SVG paths. */
 const MAX_TOKENS_CANVAS = 8000;
 const CALL_TIMEOUT_MS = 120_000;
@@ -111,14 +111,20 @@ export function withCacheMark(messages: AgentMessage[]): AgentMessage[] {
 
 export async function runAssistant(
   history: AgentMessage[],
-  ctx: ToolContext & { pageHint?: string; brief?: string; editor?: EditorContext; canvas?: CanvasSummary },
+  ctx: ToolContext & { pageHint?: string; brief?: string; editor?: EditorContext; canvas?: CanvasSummary; effort?: Effort },
   fetchImpl: typeof fetch = fetch,
-): Promise<{ reply: string; actions: AssistantAction[]; usage: { input: number; output: number; cacheRead: number; cacheWrite: number }; provider: "anthropic" | "kie"; model: string }> {
+): Promise<{ reply: string; actions: AssistantAction[]; usage: { input: number; output: number; cacheRead: number; cacheWrite: number }; provider: "anthropic" | "kie"; model: string; effort: Effort }> {
   const provider = assistantProvider();
   const started = Date.now();
 
   const editor = ctx.editor;
-  const model = assistantModelFor(ctx.canvas ? "canvas" : editor ? "editor" : "chat", provider.name);
+  // The effort dial: low/medium chat on Sonnet, high and above on Opus; canvas and timeline edits stay on Opus.
+  const effort: Effort = ctx.effort ?? "medium";
+  const info = EFFORT_INFO[effort];
+  const model = assistantModelFor(ctx.canvas ? "canvas" : editor ? "editor" : info.model === "opus" ? "editor" : "chat", provider.name);
+  const maxTokens = ctx.canvas ? Math.max(MAX_TOKENS_CANVAS, info.maxTokens) : info.maxTokens;
+  // Deep levels think for longer; give each call more room (the route allows 300 s in all).
+  const callTimeout = effort === "max" || effort === "xhigh" ? 240_000 : CALL_TIMEOUT_MS;
   // The same for every user on this screen: cached, so repeat turns read it at 5% of the price.
   const fixed = [SYSTEM_PROMPT, editor ? EDITOR_GUIDE : "", ctx.canvas ? CANVAS_GUIDE : ""].filter(Boolean).join("\n\n");
   const varying = [
@@ -167,12 +173,16 @@ export async function runAssistant(
   let reply = "";
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    if (turn > 0 && Date.now() - started > TURN_BUDGET_MS) break;
+    if (turn > 0 && Date.now() - started > (effort === "max" || effort === "xhigh" ? 250_000 : TURN_BUDGET_MS)) break;
     const res = await fetchImpl(provider.url, {
       method: "POST",
       headers: { ...provider.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: ctx.canvas ? MAX_TOKENS_CANVAS : MAX_TOKENS, system, tools, messages: cache ? withCacheMark(messages) : messages, stream: false }),
-      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      body: JSON.stringify({
+        model, max_tokens: maxTokens, system, tools, messages: cache ? withCacheMark(messages) : messages, stream: false,
+        // Anthropic only (Kie's endpoint doesn't take it). Without it Sonnet 5.5 runs at "high".
+        ...(provider.name === "anthropic" ? { output_config: { effort } } : {}),
+      }),
+      signal: AbortSignal.timeout(callTimeout),
     });
     const data = (await res.json().catch(() => ({}))) as MessagesResponse;
     if (!res.ok || !Array.isArray(data.content)) {
@@ -199,5 +209,5 @@ export async function runAssistant(
     messages.push({ role: "user", content: results });
   }
 
-  return { reply: reply || (actions.length ? "Here you go." : "Sorry, I could not finish that. Try asking again."), actions, usage, provider: provider.name, model };
+  return { reply: reply || (actions.length ? "Here you go." : "Sorry, I could not finish that. Try asking again."), actions, usage, provider: provider.name, model, effort };
 }

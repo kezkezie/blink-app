@@ -471,18 +471,23 @@ export function resolveAutoModel(videoMode: string | null | undefined): string {
  * and deducts the real amount, and no price is ever accepted from the browser.
  */
 /**
- * Kling 3.0 image-to-video on Kie returns FROZEN clips: the start frame held for the whole
- * duration, billed in full (5/5 runs on 2026-10-08, including a direct minimal Kie call).
- * Until it is re-verified, an image-led Kling job with no voice/dialogue renders on Seedance 2.5.
+ * Kling 3.0 on Kie returns FROZEN clips: the start frame (or a still) held for the whole duration,
+ * billed in full. Image-to-video 5/5 (2026-10-08, including a direct minimal Kie call) and
+ * text-to-video 9/9 (2026-10-10, std and pro, sound on and off). Kezie approved rerouting every
+ * Kling job on 2026-10-11: until Kling is re-verified, it renders on Seedance 2 (moves, makes its own
+ * sound, 41 cr/s). That replaces the 2026-10-09 rule (image-led only, to Seedance 2.5 at 158 cr/s).
  * Mirrored exactly in n8n "Parse Inputs & Calculate Cost", so the quote matches the charge.
- * Kling still runs when there is audio/dialogue (talking UGC), which was not part of the finding.
  */
-export const KLING_I2V_FALLBACK_MODEL = "bytedance/seedance-2-5";
+export const KLING_FALLBACK_MODEL = "bytedance/seedance-2";
+/** @deprecated kept for older imports; same as KLING_FALLBACK_MODEL. */
+export const KLING_I2V_FALLBACK_MODEL = KLING_FALLBACK_MODEL;
 export function routeVideoModelForFrames(
   modelId: string,
-  options: { hasStartFrame?: boolean; hasAudio?: boolean } = {},
+  // Kept for callers; the reroute no longer depends on frames or audio.
+  _options: { hasStartFrame?: boolean; hasAudio?: boolean } = {},
 ): string {
-  return modelId.includes("kling") && options.hasStartFrame && !options.hasAudio ? KLING_I2V_FALLBACK_MODEL : modelId;
+  void _options;
+  return modelId.includes("kling") ? KLING_FALLBACK_MODEL : modelId;
 }
 
 export function estimateVideoCredits(

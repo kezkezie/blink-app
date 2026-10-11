@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUp, CalendarCheck, Check, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
+import { ArrowUp, CalendarCheck, Check, ChevronUp, Loader2, Lock, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
+import { EFFORTS, EFFORT_INFO, allowedEfforts, planFor, type Effort } from "@/lib/assistant/effort";
+import { useCredits } from "./hooks";
 import { supabase } from "@/lib/supabase";
 import { enabledPlatforms, placeOnCalendar } from "./plan/schedule";
 import { useBrandStore } from "@/app/store/useBrandStore";
@@ -36,7 +38,12 @@ const STARTERS = [
 
 /** Ask BlinkSpot: a chat panel that reads the account and proposes actions as buttons. It never spends. */
 export function AskPanel() {
-  const { open, setOpen, draft, setDraft, messages, push, reset } = useAskStore();
+  const { open, setOpen, draft, setDraft, messages, push, reset, effort, setEffort } = useAskStore();
+  const { plan } = useCredits();
+  const [dialOpen, setDialOpen] = useState(false);
+  // What the plan allows; the server clamps too.
+  const allowed = allowedEfforts(plan);
+  const level: Effort = allowed.includes(effort) ? effort : allowed[allowed.length - 1];
   const { activeBrand } = useBrandStore();
   const pathname = usePathname();
   const [busy, setBusy] = useState(false);
@@ -98,6 +105,7 @@ export function AskPanel() {
           messages: history, brandId: activeBrand?.id ?? null, page: pathname, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}),
           // The user's own clock, so "Tuesday 6 pm" is planned in their time.
           tz: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })(), tzOffset: new Date().getTimezoneOffset(),
+          effort: level,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -273,7 +281,36 @@ export function AskPanel() {
           </button>
         </div>
         <div className="flex items-center justify-between gap-2 mt-2 px-1">
-          <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>{editorOpen || canvasOpen ? "Claude Opus 5.5" : "Claude Sonnet 5.5"} · {editorOpen ? "editing your timeline" : canvasOpen ? "designing on your canvas" : "reads your brand, library and credits"} · <span className="s-kbd">⌘K</span></p>
+          <div className="relative flex items-center gap-1.5 min-w-0">
+            <button type="button" className="flex items-center gap-1.5 text-[11px] rounded-md px-1.5 py-0.5 hover:bg-[var(--s-raised)]" style={{ color: "var(--s-soft)" }} onClick={() => setDialOpen((v) => !v)} aria-haspopup="menu" aria-expanded={dialOpen} title="How hard Ask thinks">
+              <EffortBars level={level} />
+              <span>{EFFORT_INFO[level].label}</span>
+              <span style={{ color: "var(--s-mute)" }}>· {editorOpen || canvasOpen || EFFORT_INFO[level].model === "opus" ? "Opus 5.5" : "Sonnet 5.5"}</span>
+              <ChevronUp className="h-3 w-3" style={{ color: "var(--s-mute)" }} />
+            </button>
+            <span className="s-kbd hidden sm:inline">⌘K</span>
+            {dialOpen && (
+              <div role="menu" className="absolute bottom-7 left-0 z-10 w-[260px] rounded-xl p-1.5 grid gap-0.5" style={{ background: "var(--s-raised)", border: "1px solid var(--s-line-2)", boxShadow: "0 18px 40px rgba(0,0,0,.5)" }}>
+                <span className="px-2 pt-1 pb-1.5 text-[10.5px] uppercase tracking-wider" style={{ color: "var(--s-mute)" }}>How hard Ask thinks</span>
+                {EFFORTS.map((e) => {
+                  const ok = allowed.includes(e);
+                  const info = EFFORT_INFO[e];
+                  return (
+                    <button key={e} role="menuitemradio" aria-checked={level === e} disabled={!ok} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left disabled:cursor-not-allowed" style={{ background: level === e ? "var(--s-hover)" : "transparent", opacity: ok ? 1 : 0.55 }}
+                      onClick={() => { setEffort(e); setDialOpen(false); }}>
+                      <EffortBars level={e} />
+                      <span className="flex-1 min-w-0">
+                        <span className="text-[12.5px] font-medium flex items-center gap-1.5">{info.label}{level === e && <Check className="h-3 w-3" style={{ color: "var(--s-accent)" }} />}</span>
+                        <span className="text-[11px] block truncate" style={{ color: "var(--s-mute)" }}>{info.line}</span>
+                      </span>
+                      <span className="text-[10.5px] mono text-right shrink-0" style={{ color: "var(--s-mute)" }}>{ok ? (info.weight === 1 ? "1 msg" : `${info.weight} msgs`) : <span className="flex items-center gap-1"><Lock className="h-3 w-3" />{planFor(e)}</span>}</span>
+                    </button>
+                  );
+                })}
+                <span className="px-2 pt-1.5 pb-1 text-[10.5px] leading-snug" style={{ color: "var(--s-mute)" }}>Deeper thinking is slower and counts as more of your daily messages. Credits are never used.</span>
+              </div>
+            )}
+          </div>
           {editorOpen && (
             <label className="flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: "var(--s-soft)" }}>
               <input type="checkbox" checked={watch} onChange={(e) => setWatch(e.target.checked)} style={{ accentColor: "var(--s-accent)" }} /> Look at clips
@@ -282,5 +319,15 @@ export function AskPanel() {
         </div>
       </form>
     </aside>
+  );
+}
+
+/** Five little bars, filled up to the level (like a signal meter). */
+function EffortBars({ level }: { level: Effort }) {
+  const n = EFFORTS.indexOf(level) + 1;
+  return (
+    <span className="inline-flex items-end gap-[2px] h-3" aria-hidden>
+      {EFFORTS.map((e, i) => <span key={e} className="w-[3px] rounded-sm" style={{ height: 4 + i * 2, background: i < n ? (i >= 2 ? "var(--s-ai)" : "var(--s-accent)") : "var(--s-line-2)" }} />)}
+    </span>
   );
 }

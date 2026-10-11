@@ -2,19 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Brain, Archive, Globe, Loader2, Sparkles } from "lucide-react";
+import { Archive, Globe, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { BrandRefinementModal } from "@/components/brand/BrandRefinementModal";
 import { archiveBrand } from "@/app/actions/brand";
 import { useBrandStore } from "@/app/store/useBrandStore";
 
 /**
- * Brand = the brand's DNA (identity, colours, fonts, voice, logo) plus "Teach the AI" (the classic
- * "Refine AI Brain") and archiving, which used to hide in the top bar and the brand menu.
+ * Brand = the brand's DNA (identity, colours, fonts, voice, logo, contacts) and archiving, which used
+ * to hide in the top bar and the brand menu. "Teach the AI" (the classic "Refine AI Brain") was
+ * removed 2026-10-11: the Look and Voice sections ask the same things; it stays in Vintage look.
  */
 export default function BrandLayout({ children }: { children: React.ReactNode }) {
   const { activeBrand, availableBrands, setActiveBrand, setAvailableBrands } = useBrandStore();
-  const [teaching, setTeaching] = useState(false);
   const [armed, setArmed] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
@@ -59,9 +58,6 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         <Link href="/studio/sites" className="s-btn ghost"><Globe className="h-4 w-4" /> Website</Link>
         {activeBrand && (
           <>
-            <button className="s-btn ai" onClick={() => setTeaching(true)}>
-              <Brain className="h-4 w-4" /> Teach the AI
-            </button>
             <button className="s-btn ghost" onClick={onArchive} disabled={archiving} style={armed ? { color: "var(--s-danger)" } : undefined}>
               {archiving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}
               {armed ? "Archive? Click again" : "Archive brand"}
@@ -70,7 +66,6 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         )}
       </div>
       <div className="max-w-[1180px] mx-auto">{children}</div>
-      <BrandRefinementModal open={teaching} onOpenChange={setTeaching} />
     </>
   );
 }

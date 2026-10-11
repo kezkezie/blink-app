@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, Globe, ImagePlus, Loader2, Package, Plus, Sparkles, Upload, Wand2, X } from "lucide-react";
+import { Check, ImagePlus, Loader2, Package, Plus, Sparkles, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { deleteProduct, loadBrandDna, saveBrandDna, saveProduct } from "@/app/actions/brand";
 import { useBrandStore } from "@/app/store/useBrandStore";
@@ -305,8 +305,10 @@ export function BrandEditor() {
             </ul>
           )}
           {strength.missing.length > 0 && (
-            <button className="s-btn ai sm w-full justify-center mt-3" onClick={() => autofill("gaps")} disabled={busy === "gaps"}>
-              {busy === "gaps" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Fill the gaps with AI
+            // One way to fill (Kezie, 2026-10-11): from the website when there is one, otherwise from what's written.
+            <button className="s-btn ai sm w-full justify-center mt-3" onClick={() => autofill(form.website_url.trim() ? "site" : "gaps")} disabled={busy === "gaps" || extracting}
+              title={form.website_url.trim() ? `Reads ${form.website_url.replace(/^https?:\/\//, "")} and fills the empty fields only` : "Fills the empty fields from what you've written; add your website in Contact for better answers"}>
+              {busy === "gaps" || extracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} {form.website_url.trim() ? "Fill the gaps from my site" : "Fill the gaps with AI"}
             </button>
           )}
           <p className="text-[11px] mt-3 leading-snug" style={{ color: "var(--s-mute)" }}>The more BlinkSpot knows, the less you rewrite. Every image, video, caption and page uses this.</p>
@@ -317,17 +319,6 @@ export function BrandEditor() {
       </aside>
 
       <div className="grid gap-5 min-w-0">
-        {/* Auto-fill */}
-        <div className="s-card p-4 md:p-5 flex flex-wrap items-center gap-3" style={{ background: "radial-gradient(120% 140% at 0% 0%, color-mix(in oklab, var(--s-ai) 16%, transparent), transparent 55%), var(--s-panel)" }}>
-          <Wand2 className="h-5 w-5" style={{ color: "var(--s-ai)" }} />
-          <div className="flex-1 min-w-[220px]">
-            <b className="text-[14px]">Fill this in from your website</b>
-            <p className="text-[12.5px]" style={{ color: "var(--s-soft)" }}>We read your site and fill in the empty fields only. Your own answers stay. Check, then save.</p>
-          </div>
-          <input className="s-input" style={{ maxWidth: 280 }} value={form.website_url} onChange={(e) => set("website_url", e.target.value)} placeholder="yourbrand.com" aria-label="Website" />
-          <button className="s-btn ai" onClick={() => autofill("site")} disabled={extracting}>{extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />} Read my site</button>
-        </div>
-
         <Section id="basics" title="Basics" hint="Who you are, in your words.">
           <div className="grid gap-5 md:grid-cols-[150px_minmax(0,1fr)]">
             <Field label="Logo">
@@ -529,6 +520,9 @@ export function BrandEditor() {
             <Field label="Phone"><input className="s-input" inputMode="tel" value={form.dna.phone ?? ""} onChange={(e) => setDna("phone", e.target.value)} placeholder="Optional" aria-label="Phone" /></Field>
             <Field label="Email"><input className="s-input" inputMode="email" value={form.dna.email ?? ""} onChange={(e) => setDna("email", e.target.value)} placeholder="Optional" aria-label="Email" /></Field>
           </div>
+          <Field label="Website" hint="Used by Fill the gaps, your landing page and on-image contact lines.">
+            <input className="s-input" inputMode="url" value={form.website_url} onChange={(e) => set("website_url", e.target.value)} placeholder="yourbrand.com" aria-label="Website" />
+          </Field>
           <Field label="Social links" hint="One per line.">
             <textarea className="s-input" rows={2} value={form.social_urls} onChange={(e) => set("social_urls", e.target.value)} placeholder={"instagram.com/yourbrand\ntiktok.com/@yourbrand"} aria-label="Social links" />
           </Field>
