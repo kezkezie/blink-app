@@ -137,8 +137,8 @@ export default function UploadPage() {
           <input type="checkbox" className="mt-0.5" checked={captions} onChange={(e) => setCaptions(e.target.checked)} style={{ accentColor: "var(--s-accent)" }} />
           <span className="grid gap-0.5"><span className="text-[13px] flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} /> Write captions with AI</span><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Long and short caption plus hashtags, in your brand&apos;s voice · 1 credit each</span></span>
         </label>
-        <button className="s-btn primary justify-between" disabled={!pending || running} onClick={run}>
-          <span className="flex items-center gap-2">{running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} {pending ? `Add ${pending} to Library` : "Add to Library"}</span>
+        <button className="s-btn primary justify-between" disabled={!pending || running || !clientId} onClick={run}>
+          <span className="flex items-center gap-2">{running || (pending > 0 && !clientId) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} {pending && !clientId ? "Loading your account" : pending ? `Add ${pending} to Library` : "Add to Library"}</span>
           <span className="cost">{captions && pending ? `${pending} cr` : "free"}</span>
         </button>
         {done.length > 0 && !running && <Link href="/studio/library" className="s-btn">See them in the Library</Link>}

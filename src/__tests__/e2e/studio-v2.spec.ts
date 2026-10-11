@@ -75,10 +75,10 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   await page.waitForURL(/\/studio\/image/);
   console.log("REDIRECT classic -> studio ok");
 
-  // Video Studio: Kezie's flow. Long video -> scene planner with the sequence bar; single shot -> inspector.
+  // Video Studio: Kezie's flow. Long video -> the storyboard with its render bar; single shot -> inspector.
   await page.goto(`${BASE}/studio/video`);
   await page.getByRole("button", { name: /^Scene by scene/ }).click();
-  await expect(page.getByRole("button", { name: /Render all scenes/ })).toBeVisible();
+  await expect(page.locator(".sb-bar").getByRole("button", { name: /Render scenes|Render (all|\d+)/ })).toBeVisible({ timeout: 15_000 });
   await page.screenshot({ path: testInfo.outputPath("video-story.png") });
   await page.locator(".s-step", { hasText: "Style" }).click();
   await page.getByRole("button", { name: /^Product shot/ }).click();

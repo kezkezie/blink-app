@@ -384,7 +384,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   }
 
   const handleRender = async () => {
-    if (!clientId) return;
+    if (!clientId) { toast("Still loading your account. Try Export again in a second."); return; }
     const orderedVideos = [...videoClips].sort((a, b) => a.timelineStart - b.timelineStart);
     if (orderedVideos.length === 0) return alert("Please add at least one visual layer (image or video) to the timeline!");
 
