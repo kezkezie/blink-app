@@ -8,7 +8,6 @@ import { deleteProduct, loadBrandDna, saveBrandDna, saveProduct } from "@/app/ac
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
-import { triggerWorkflow } from "@/lib/workflows";
 import { GOOGLE_FONTS_REGISTRY, injectGoogleFont } from "@/lib/fonts";
 import { brandStrength, CTAS, INDUSTRIES, LANGUAGES, PERSONALITY, PHOTO_VIBES, type BrandDna, type BrandProduct } from "@/lib/brand-dna";
 import { canvasSafe, loadImage, paletteOf } from "../editor/util";
@@ -213,15 +212,55 @@ export function BrandEditor() {
       set("uploaded_assets", [...form.uploaded_assets, ...urls].slice(0, 24));
     } catch (e) { toast.error(e instanceof Error ? e.message : "Upload failed"); } finally { setBusy(null); }
   }
-  async function extract() {
-    if (!form?.website_url.trim() || !brandId) { toast.info("Add your website first."); return; }
-    if (dirty) await save();
-    setExtracting(true);
+  /**
+   * Auto-fill (2026-10-11): read the website ("site") or suggest from what is already here
+   * ("gaps"). Only EMPTY fields are filled, never the owner's own answers, and nothing is saved
+   * until they press Save. Replaces the n8n extractor, which overwrote fields in the background.
+   */
+  async function autofill(mode: "site" | "gaps") {
+    if (!form || !brandId) return;
+    if (mode === "site" && !form.website_url.trim()) { toast.info("Add your website first."); return; }
+    if (mode === "site") setExtracting(true); else setBusy("gaps");
     try {
-      await triggerWorkflow("blink-brand-extract-001", { client_id: clientId, brand_id: brandId, website_url: form.website_url.trim() });
-      toast.success("Reading your website. This takes about 20 seconds.");
-      setTimeout(() => { void load().finally(() => setExtracting(false)); }, 20000);
-    } catch { setExtracting(false); toast.error("Couldn't read the website. Check the address."); }
+      const res = await fetch("/api/brand/fill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mode === "site" ? { mode, website: form.website_url, name: form.brand_name } : { mode, brandId }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.fields) throw new Error(data.error || "Couldn't fill it in.");
+      const f = data.fields as Record<string, unknown>;
+      if (!Object.keys(f).length) { toast.info(data.note || "Nothing new to add."); return; }
+      const str = (k: string) => (typeof f[k] === "string" ? (f[k] as string) : undefined);
+      const list = (k: string) => (Array.isArray(f[k]) ? (f[k] as string[]) : undefined);
+      const emptyS = (v: string | undefined | null) => !v || !v.trim();
+      const emptyA = (v: string[] | undefined) => !v || v.length === 0;
+      let n = 0;
+      const s1 = (cur: string | undefined, next: string | undefined) => (next !== undefined && emptyS(cur) ? (n++, next) : cur);
+      const a1 = (cur: string[] | undefined, next: string[] | undefined) => (next !== undefined && emptyA(cur) ? (n++, next) : cur);
+      const d = form.dna;
+      const nextForm: Form = {
+        ...form,
+        description: s1(form.description, str("description")) ?? "",
+        industry: s1(form.industry, str("industry")) ?? "",
+        logo_url: form.logo_url || (str("logoUrl") ? (n++, str("logoUrl")!) : null),
+        social_urls: s1(form.social_urls, list("socials")?.join("\n")) ?? "",
+        tone_keywords: a1(form.tone_keywords, list("tone")) ?? [],
+        dna: {
+          ...d,
+          tagline: s1(d.tagline, str("tagline")), audience: s1(d.audience, str("audience")), location: s1(d.location, str("location")),
+          usps: a1(d.usps, list("usps")), offer: s1(d.offer, str("offer")), languages: a1(d.languages, list("languages")),
+          photoVibes: a1(d.photoVibes, list("photoVibes")), cta: s1(d.cta, str("cta")),
+          whatsapp: s1(d.whatsapp, str("whatsapp")), phone: s1(d.phone, str("phone")), email: s1(d.email, str("email")),
+        },
+      };
+      setForm(nextForm);
+      // Products found on the site are added only when the brand has none yet.
+      if (mode === "site" && products.length === 0 && Array.isArray(f.products)) {
+        for (const p of f.products as Array<{ name: string; description?: string; price?: number | null; currency?: string }>) {
+          const r = await saveProduct(brandId, { name: p.name, description: p.description, price: p.price ?? null, currency: p.currency });
+          if (r.product) { n++; setProducts((prev) => [...prev, r.product as unknown as BrandProduct]); }
+        }
+      }
+      toast.success(n ? `Filled ${n} empty field${n === 1 ? "" : "s"}. Check them, then Save.` : "Your answers were already filled in; nothing changed.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't fill it in."); }
+    finally { setExtracting(false); setBusy(null); }
   }
   async function commitProduct() {
     if (!draftProduct || !brandId) return;
@@ -265,6 +304,11 @@ export function BrandEditor() {
               ))}
             </ul>
           )}
+          {strength.missing.length > 0 && (
+            <button className="s-btn ai sm w-full justify-center mt-3" onClick={() => autofill("gaps")} disabled={busy === "gaps"}>
+              {busy === "gaps" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Fill the gaps with AI
+            </button>
+          )}
           <p className="text-[11px] mt-3 leading-snug" style={{ color: "var(--s-mute)" }}>The more BlinkSpot knows, the less you rewrite. Every image, video, caption and page uses this.</p>
         </div>
         <nav className="hidden lg:grid gap-0.5" aria-label="Brand sections">
@@ -278,10 +322,10 @@ export function BrandEditor() {
           <Wand2 className="h-5 w-5" style={{ color: "var(--s-ai)" }} />
           <div className="flex-1 min-w-[220px]">
             <b className="text-[14px]">Fill this in from your website</b>
-            <p className="text-[12.5px]" style={{ color: "var(--s-soft)" }}>We read your site and fill in what we find. You check it, then save.</p>
+            <p className="text-[12.5px]" style={{ color: "var(--s-soft)" }}>We read your site and fill in the empty fields only. Your own answers stay. Check, then save.</p>
           </div>
           <input className="s-input" style={{ maxWidth: 280 }} value={form.website_url} onChange={(e) => set("website_url", e.target.value)} placeholder="yourbrand.com" aria-label="Website" />
-          <button className="s-btn ai" onClick={extract} disabled={extracting}>{extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />} Read my site</button>
+          <button className="s-btn ai" onClick={() => autofill("site")} disabled={extracting}>{extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />} Read my site</button>
         </div>
 
         <Section id="basics" title="Basics" hint="Who you are, in your words.">

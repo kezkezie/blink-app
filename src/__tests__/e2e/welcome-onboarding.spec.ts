@@ -64,3 +64,52 @@ test("sign up, answer the brand questions, land in the studio", async ({ page })
     }
   }
 });
+
+test("sign up and fill the brand in from a website (AI auto-fill)", async ({ page }) => {
+  test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY, "needs the service key to clean up");
+  test.setTimeout(180_000);
+  const email = `welcome-site-${Date.now()}@blinkspot.local`;
+  const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1280, height: 860 });
+  try {
+    await page.goto(`${BASE}/get-started`);
+    await page.getByPlaceholder("John Doe").fill("Njeri Test");
+    await page.getByPlaceholder("you@company.com").fill(email);
+    await page.getByPlaceholder("••••••••").fill("BlinkTest123!");
+    await page.getByRole("button", { name: /Create account/ }).click();
+    await page.waitForURL(/\/welcome/, { timeout: 30_000 });
+    await page.getByRole("button", { name: /^My business/ }).click();
+    await page.getByLabel("Website").fill("scintillating-pegasus-f263f8.netlify.app");
+    await page.getByRole("button", { name: /Fill it in for me/ }).click();
+    await expect(page.getByText(/Filled in from/)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByLabel("Brand name")).toHaveValue(/Mama Njeri/i);
+    await expect(page.getByLabel("Where you're based")).toHaveValue(/Nairobi/i);
+    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.getByRole("button", { name: /^Continue/ }).click();
+    await page.getByRole("button", { name: /^I'll use the tools/ }).click();
+    await page.waitForURL(/\/studio(\?|$)/, { timeout: 60_000 });
+    const sb = admin();
+    const { data: client } = await sb.from("clients").select("id, plan_tier").eq("contact_email", email).maybeSingle();
+    expect(client?.plan_tier).toBe("free");
+    const { data: brand } = await sb.from("brand_profiles").select("id, brand_name, dna").eq("client_id", client!.id).single();
+    if (!brand) throw new Error("brand not created");
+    expect(brand.dna.location).toMatch(/Nairobi/);
+    const { count } = await sb.from("products").select("id", { count: "exact", head: true }).eq("brand_id", brand.id);
+    expect(count ?? 0).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+  } finally {
+    const sb = admin();
+    const { data: client } = await sb.from("clients").select("id, user_id").eq("contact_email", email).maybeSingle();
+    if (client) {
+      // Auto-fill copied the site's logo into the account's folder.
+      const { data: files } = await sb.storage.from("assets").list(`images/${client.id}`);
+      if (files?.length) await sb.storage.from("assets").remove(files.map((f) => `images/${client.id}/${f.name}`));
+      await sb.from("products").delete().eq("client_id", client.id);
+      await sb.from("brand_profiles").delete().eq("client_id", client.id);
+      await sb.from("credit_balances").delete().eq("client_id", client.id);
+      await sb.from("clients").delete().eq("id", client.id);
+      await sb.auth.admin.deleteUser(client.user_id);
+    }
+  }
+});

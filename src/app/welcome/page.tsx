@@ -4,12 +4,11 @@ import "@/app/studio/studio.css";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Briefcase, Check, Globe, Loader2, Rocket, Sparkles, Store, Upload, User, Wand2, Wrench } from "lucide-react";
+import { ArrowLeft, ArrowRight, Briefcase, Check, Loader2, Rocket, Sparkles, Store, Upload, User, Wand2, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { triggerWorkflow } from "@/lib/workflows";
-import { createBrandWorkspace, saveBrandDna } from "@/app/actions/brand";
+import { createBrandWorkspace, saveBrandDna, saveProduct } from "@/app/actions/brand";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { CTAS, LANGUAGES, PERSONALITY, PHOTO_VIBES, type BrandDna } from "@/lib/brand-dna";
 import { canvasSafe, loadImage, paletteOf } from "@/components/studio/editor/util";
@@ -41,8 +40,14 @@ function Chips({ options, value, onChange, max, label }: { options: string[]; va
     </div>
   );
 }
-function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
-  return <span className="block mb-1.5"><span className="text-[13px] font-medium">{children}</span>{hint && <span className="text-[12px] ml-2" style={{ color: "var(--s-mute)" }}>{hint}</span>}</span>;
+function Label({ children, hint, guess }: { children: React.ReactNode; hint?: string; guess?: boolean }) {
+  return (
+    <span className="block mb-1.5">
+      <span className="text-[13px] font-medium">{children}</span>
+      {hint && <span className="text-[12px] ml-2" style={{ color: "var(--s-mute)" }}>{hint}</span>}
+      {guess && <span className="s-badge ai ml-2" title="BlinkSpot suggested this. Check it.">AI guess · check</span>}
+    </span>
+  );
 }
 
 export default function WelcomePage() {
@@ -65,6 +70,12 @@ export default function WelcomePage() {
   const [whatsapp, setWhatsapp] = useState("");
   const [cta, setCta] = useState("Order on WhatsApp");
   const [uploading, setUploading] = useState(false);
+  const [instagram, setInstagram] = useState("");
+  const [filling, setFilling] = useState<null | "site" | "describe">(null);
+  const [filledFrom, setFilledFrom] = useState<string | null>(null);
+  const [guessed, setGuessed] = useState<string[]>([]);
+  // Answers auto-fill found that the six steps don't show; saved with the brand.
+  const [extra, setExtra] = useState<{ tagline?: string; usps?: string[]; offer?: string; phone?: string; email?: string; industry?: string; socials?: string[]; products?: Array<{ name: string; description?: string; price?: number | null; currency?: string }> }>({});
   const logoRef = useRef<HTMLInputElement>(null);
 
   // Signed out → sign in. Already set up (has a brand) → straight into the studio.
@@ -85,6 +96,41 @@ export default function WelcomePage() {
   const go = (s: Step) => { setStep(s); window.scrollTo({ top: 0 }); };
   const next = () => go(ORDER[Math.min(ORDER.length - 1, index + 1)]);
   const back = () => go(ORDER[Math.max(0, index - 1)]);
+
+  /** Fill the steps from a website/Instagram ("site") or from a name + one sentence ("describe"). */
+  async function autofill(mode: "site" | "describe") {
+    setFilling(mode);
+    try {
+      const res = await fetch("/api/brand/fill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mode === "site" ? { mode, website, instagram, name } : { mode, name, description: what, location }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.fields) throw new Error(data.error || "Couldn't fill it in.");
+      const f = data.fields as Record<string, unknown>;
+      const s = (k: string) => (typeof f[k] === "string" ? (f[k] as string) : undefined);
+      const a = (k: string) => (Array.isArray(f[k]) ? (f[k] as string[]) : undefined);
+      if (s("name") && !name.trim()) setName(s("name")!);
+      if (s("description") && (mode === "site" || !what.trim())) setWhat(s("description")!);
+      if (s("audience") && !audience.trim()) setAudience(s("audience")!);
+      if (s("location") && !location.trim()) setLocation(s("location")!);
+      if (a("tone")?.length) setTone(a("tone")!);
+      if (a("languages")?.length) setLanguages(a("languages")!);
+      if (a("photoVibes")?.length) setVibes(a("photoVibes")!);
+      if (s("whatsapp") && !whatsapp.trim()) setWhatsapp(s("whatsapp")!);
+      if (s("cta")) setCta(s("cta")!);
+      if (s("themeColor")) setColors((c) => [s("themeColor")!, c[1], c[2]]);
+      if (s("logoUrl") && !logo) {
+        setLogo(s("logoUrl")!);
+        try {
+          const pal = paletteOf(await loadImage(canvasSafe(s("logoUrl")!)), 6).filter((c) => !/^#(F{6}|FEFEFE|000000)$/i.test(c));
+          if (pal.length) setColors((c) => [pal[0] ?? c[0], pal[1] ?? c[1], pal[2] ?? c[2]]);
+        } catch { /* keep colours */ }
+      }
+      setExtra((e) => ({ ...e, tagline: s("tagline") ?? e.tagline, usps: a("usps") ?? e.usps, offer: s("offer") ?? e.offer, phone: s("phone") ?? e.phone, email: s("email") ?? e.email, industry: s("industry") ?? e.industry, socials: a("socials") ?? e.socials, products: (f.products as typeof e.products) ?? e.products }));
+      setGuessed(Array.isArray(data.guessed) ? data.guessed : []);
+      if (mode === "site") { setFilledFrom(data.sources?.website ?? (data.sources?.instagram ? `@${data.sources.instagram}` : "your page")); go("basics"); }
+      else toast.success("Filled in. Check the next steps and change anything that's off.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't fill it in."); }
+    finally { setFilling(null); }
+  }
 
   async function onLogo(file?: File) {
     if (!file || !clientId) return;
@@ -108,16 +154,17 @@ export default function WelcomePage() {
     try { localStorage.setItem("blink-work-style", style); } catch { /* private mode */ }
     go("saving");
     const created = await createBrandWorkspace({
-      userId: "", contactName: firstName, brandName: name.trim(), companyName: name.trim(), industry: "", description: what.trim(),
-      websiteUrl: website.trim(), socialUrls: "", visualStyleGuide: "", primaryColor: colors[0], secondaryColor: colors[1], accentColor: colors[2],
+      userId: "", contactName: firstName, brandName: name.trim(), companyName: name.trim(), industry: extra.industry ?? "", description: what.trim(),
+      websiteUrl: website.trim(), socialUrls: (extra.socials ?? []).join("\n"), visualStyleGuide: "", primaryColor: colors[0], secondaryColor: colors[1], accentColor: colors[2],
       additionalColor: "", primaryFont: null, brandVoice: "", toneKeywords: tone, logoUrl: null, uploadedAssets: [],
     });
     if (created.error || !created.brandId) { toast.error(created.error || "Couldn't create your brand."); go("style"); return; }
     await saveBrandDna(created.brandId, {
       brand_name: name.trim(), description: what.trim(), website_url: website.trim(), logo_url: logo, primary_color: colors[0], secondary_color: colors[1], accent_color: colors[2],
-      tone_keywords: tone, dna: { role, audience, location, languages, photoVibes: vibes, whatsapp, cta },
+      tone_keywords: tone, industry: extra.industry, social_urls: (extra.socials ?? []).join("\n"),
+      dna: { role, audience, location, languages, photoVibes: vibes, whatsapp, cta, tagline: extra.tagline, usps: extra.usps, offer: extra.offer, phone: extra.phone, email: extra.email },
     });
-    if (website.trim()) void triggerWorkflow("blink-brand-extract-001", { client_id: created.clientId, brand_id: created.brandId, website_url: website.trim() }).catch(() => {});
+    for (const p of extra.products ?? []) await saveProduct(created.brandId, { name: p.name, description: p.description, price: p.price ?? null, currency: p.currency }).catch(() => null);
     await supabase.auth.updateUser({ data: { onboarding_completed: true } }).catch(() => {});
     const brand = { id: created.brandId, brand_name: name.trim(), logo_url: logo };
     setAvailableBrands([brand]);
@@ -158,15 +205,19 @@ export default function WelcomePage() {
               <p className="text-[15px] mt-2" style={{ color: "var(--s-soft)" }}>A name, a logo, colours. If not, we&apos;ll make one with you.</p></div>
             <div className="s-card p-4 grid gap-3">
               <div className="flex gap-3 items-start">
-                <span className="h-10 w-10 rounded-xl grid place-items-center shrink-0" style={{ background: "var(--s-raised)" }}><Globe className="h-5 w-5" style={{ color: "var(--s-accent)" }} /></span>
-                <div className="min-w-0 flex-1"><b className="text-[15px] block">Yes, and it has a website</b><span className="text-[13px]" style={{ color: "var(--s-soft)" }}>We&apos;ll read it and fill in what we can.</span></div>
+                <span className="h-10 w-10 rounded-xl grid place-items-center shrink-0" style={{ background: "var(--s-raised)" }}><Wand2 className="h-5 w-5" style={{ color: "var(--s-accent)" }} /></span>
+                <div className="min-w-0 flex-1"><b className="text-[15px] block">Yes. Fill it in from my website or Instagram</b><span className="text-[13px]" style={{ color: "var(--s-soft)" }}>We read your page and fill in every step. You check it before anything is saved.</span></div>
               </div>
-              <div className="flex gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <input className="s-input" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="yourbrand.com" aria-label="Website" inputMode="url" />
-                <button className="s-btn primary" disabled={website.trim().length < 4} onClick={() => { if (!name) setName(website.replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[./]/)[0].replace(/^./, (c) => c.toUpperCase())); next(); }}>Continue <ArrowRight className="h-4 w-4" /></button>
+                <input className="s-input" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@yourbrand (Instagram)" aria-label="Instagram" />
               </div>
+              <button className="s-btn primary w-fit" disabled={(website.trim().length < 4 && instagram.trim().length < 2) || !!filling} onClick={() => autofill("site")}>
+                {filling === "site" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} {filling === "site" ? "Reading your page…" : "Fill it in for me"}
+              </button>
+              {filling === "site" && <p className="text-[12px]" style={{ color: "var(--s-mute)" }}>About 15 seconds. We copy only what&apos;s on your page; anything we guess is marked.</p>}
             </div>
-            <Choice icon={Check} title="Yes, but no website" line="Tell us about it in the next steps." onClick={() => { setWebsite(""); next(); }} />
+            <Choice icon={Check} title="Yes, but no website" line="Tell us about it in the next steps. We can fill in most of it for you." onClick={() => next()} />
             <Choice icon={Sparkles} title="Not yet, build one with me" line="Describe the business; get a name, colours, fonts, a voice and logos. Free." onClick={async () => { await supabase.auth.updateUser({ data: { onboarding_completed: true } }).catch(() => {}); router.push("/studio/brand-builder"); }} />
             <button className="s-btn ghost w-fit" onClick={back}><ArrowLeft className="h-4 w-4" /> Back</button>
           </section>
@@ -176,12 +227,23 @@ export default function WelcomePage() {
           <section className="grid gap-6">
             <div><h1 className="text-[32px] font-semibold tracking-tight leading-tight">The basics</h1>
               <p className="text-[15px] mt-2" style={{ color: "var(--s-soft)" }}>Like you&apos;d explain it to a new customer. Tap the mic to talk instead of typing.</p></div>
+            {filledFrom && (
+              <div className="s-card p-3 flex items-center gap-2 text-[13px]" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 45%, var(--s-line))" }}>
+                <Wand2 className="h-4 w-4 shrink-0" style={{ color: "var(--s-ai)" }} />
+                <span>Filled in from <b>{filledFrom}</b>. Check each step; anything marked <span className="s-badge ai">AI guess</span> we inferred.</span>
+              </div>
+            )}
             <div className="grid gap-4">
               <label><Label>Brand name</Label><input className="s-input" style={{ height: 44 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mama Njeri Kitchen" aria-label="Brand name" autoFocus /></label>
               <label><Label hint="One or two sentences">What do you sell or do?</Label><textarea className="s-input" rows={3} value={what} onChange={(e) => setWhat(e.target.value)} placeholder="e.g. Home-cooked East African food, delivered to offices in Westlands every weekday." aria-label="What you do" /></label>
-              <label><Label hint="Optional">Who is it for?</Label><input className="s-input" style={{ height: 44 }} value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. Busy office workers who want a real lunch" aria-label="Who it's for" /></label>
+              <label><Label hint="Optional" guess={guessed.includes("audience")}>Who is it for?</Label><input className="s-input" style={{ height: 44 }} value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. Busy office workers who want a real lunch" aria-label="Who it's for" /></label>
               <label><Label hint="Optional">Where are you based?</Label><input className="s-input" style={{ height: 44 }} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Nairobi" aria-label="Where you're based" /></label>
             </div>
+            {!filledFrom && (
+              <button className="s-btn ai w-fit" disabled={what.trim().length < 9 || !!filling} onClick={() => autofill("describe")} title="Uses your name and description to suggest your audience, voice, languages and look">
+                {filling === "describe" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {filling === "describe" ? "Filling in…" : "Fill the rest for me"}
+              </button>
+            )}
             <div className="flex gap-2"><button className="s-btn ghost" onClick={back}><ArrowLeft className="h-4 w-4" /> Back</button><div className="flex-1" /><button className="s-btn primary" disabled={!canBasics} onClick={next}>Continue <ArrowRight className="h-4 w-4" /></button></div>
           </section>
         )}
@@ -208,7 +270,7 @@ export default function WelcomePage() {
                 <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{logo ? "Taken from your logo. Tap one to change it." : "No logo yet? Pick three, or make a logo later in the Brand builder."}</span>
               </div>
             </div>
-            <div><Label hint="Pick up to three">What should your photos feel like?</Label><Chips options={PHOTO_VIBES} value={vibes} onChange={setVibes} max={3} label="Photo feel" /></div>
+            <div><Label hint="Pick up to three" guess={guessed.includes("photoVibes")}>What should your photos feel like?</Label><Chips options={PHOTO_VIBES} value={vibes} onChange={setVibes} max={3} label="Photo feel" /></div>
             <div className="flex gap-2"><button className="s-btn ghost" onClick={back}><ArrowLeft className="h-4 w-4" /> Back</button><div className="flex-1" /><button className="s-btn ghost" onClick={next}>Skip</button><button className="s-btn primary" onClick={next}>Continue <ArrowRight className="h-4 w-4" /></button></div>
           </section>
         )}
@@ -217,11 +279,11 @@ export default function WelcomePage() {
           <section className="grid gap-6">
             <div><h1 className="text-[32px] font-semibold tracking-tight leading-tight">How you sound</h1>
               <p className="text-[15px] mt-2" style={{ color: "var(--s-soft)" }}>So captions and scripts sound like you, not like a robot.</p></div>
-            <div><Label hint="Up to three">Personality</Label><Chips options={PERSONALITY} value={tone} onChange={setTone} max={3} label="Personality" /></div>
-            <div><Label hint="We write in these">Languages</Label><Chips options={LANGUAGES} value={languages} onChange={setLanguages} max={3} label="Languages" /></div>
+            <div><Label hint="Up to three" guess={guessed.includes("tone")}>Personality</Label><Chips options={PERSONALITY} value={tone} onChange={setTone} max={3} label="Personality" /></div>
+            <div><Label hint="We write in these" guess={guessed.includes("languages")}>Languages</Label><Chips options={LANGUAGES} value={languages} onChange={setLanguages} max={3} label="Languages" /></div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label><Label hint="Optional">WhatsApp for customers</Label><input className="s-input" style={{ height: 44 }} inputMode="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+254 7…" aria-label="WhatsApp" /></label>
-              <label><Label>What should people do?</Label>
+              <label><Label guess={guessed.includes("cta")}>What should people do?</Label>
                 <select className="s-input" style={{ height: 44 }} value={cta} onChange={(e) => setCta(e.target.value)} aria-label="Call to action">{CTAS.map((c) => <option key={c}>{c}</option>)}</select>
               </label>
             </div>
