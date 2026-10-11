@@ -23,6 +23,8 @@ import type { CanvasLayer, CanvasOp, CanvasSummary } from "@/lib/canvas-ops";
 import { ImagePicker, type PickedImage } from "../ImagePicker";
 import { useBrandKit, generateBrandImages, generationErrorMessage, nearestImageAspect } from "../generate-image";
 import { useAskStore } from "../ask-store";
+import { useCredits } from "../hooks";
+import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
 import { useCanvasBridge } from "./canvas-bridge";
 import { canvasSafe, loadImage, originalUrl, paletteOf, penPath, shrinkToBlob, starPoints, type PenAnchor } from "./util";
 
@@ -97,6 +99,9 @@ function typeLabel(o: FObj) {
 
 export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const { clientId } = useClient();
+  // Free plans keep every manual tool; the AI buttons ask them to upgrade (the routes refuse too).
+  const { plan } = useCredits();
+  const aiLocked = plan !== null && !isPaidPlan(plan);
   const { activeBrand } = useBrandStore();
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name);
   const { ask } = useAskStore();
@@ -684,6 +689,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   }
   async function aiEdit(instruction: string, extraRef?: string) {
     if (!activeImage || !clientId || !activeBrand || !kit) return;
+    if (aiLocked) { toast.info(EDITOR_AI_UPGRADE); return; }
     setAiBusy("Editing with AI…");
     try {
       const url = await imageForAi(activeImage);
@@ -1021,10 +1027,12 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               <div className="s-card p-3 grid gap-2" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 35%, var(--s-line))" }}>
                 <b className="text-[13px] flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} /> Make a vector with AI</b>
                 <textarea className="s-input" rows={2} value={vectorPrompt} onChange={(e) => setVectorPrompt(e.target.value)} placeholder="e.g. a minimal leaf logo mark, a sale badge, a coffee cup icon" aria-label="Describe a vector" />
-                <div className="flex gap-1.5">
-                  <button className="s-btn ai sm flex-1" onClick={() => makeVector()} disabled={!!aiBusy}>Draw it · free</button>
-                  <button className="s-btn ghost sm" onClick={() => makeVector(vectorPrompt, "outline")} disabled={!!aiBusy} title="Line-art version">Outline</button>
-                </div>
+                {aiLocked ? <UpgradeNote /> : (
+                  <div className="flex gap-1.5">
+                    <button className="s-btn ai sm flex-1" onClick={() => makeVector()} disabled={!!aiBusy}>Draw it · free</button>
+                    <button className="s-btn ghost sm" onClick={() => makeVector(vectorPrompt, "outline")} disabled={!!aiBusy} title="Line-art version">Outline</button>
+                  </div>
+                )}
                 <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Comes in as editable layers you can recolour, resize and ungroup.</p>
               </div>
               {kit?.logoUrl && <button className="s-btn justify-start" onClick={() => void addImage(kit.logoUrl!, "Logo")}><ImagePlus className="h-4 w-4" /> Add your logo</button>}
@@ -1102,12 +1110,16 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               {activeImage && (
                 <div className="grid gap-2">
                   <span className="s-label">AI on this photo</span>
-                  <button className="s-btn ai justify-between" onClick={removeBackground} disabled={!!aiBusy}><span className="flex items-center gap-2"><Scissors className="h-4 w-4" /> Remove background</span><span className="cost">1 cr</span></button>
-                  <button className="s-btn ai justify-between" onClick={() => setPicking("face")} disabled={!!aiBusy}><span className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Swap the face</span><span className="cost">3 cr</span></button>
-                  <div className="flex gap-1.5">
-                    <input className="s-input" style={{ height: 34 }} value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Change it: e.g. make the sky sunset orange" aria-label="Describe an edit" onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim()) void aiEdit(editPrompt.trim()); }} />
-                    <button className="s-btn ai" onClick={() => editPrompt.trim() && aiEdit(editPrompt.trim())} disabled={!!aiBusy || !editPrompt.trim()} title="18 credits"><Wand2 className="h-4 w-4" /></button>
-                  </div>
+                  {aiLocked ? <UpgradeNote /> : (
+                    <>
+                      <button className="s-btn ai justify-between" onClick={removeBackground} disabled={!!aiBusy}><span className="flex items-center gap-2"><Scissors className="h-4 w-4" /> Remove background</span><span className="cost">1 cr</span></button>
+                      <button className="s-btn ai justify-between" onClick={() => setPicking("face")} disabled={!!aiBusy}><span className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Swap the face</span><span className="cost">3 cr</span></button>
+                      <div className="flex gap-1.5">
+                        <input className="s-input" style={{ height: 34 }} value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Change it: e.g. make the sky sunset orange" aria-label="Describe an edit" onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim()) void aiEdit(editPrompt.trim()); }} />
+                        <button className="s-btn ai" onClick={() => editPrompt.trim() && aiEdit(editPrompt.trim())} disabled={!!aiBusy || !editPrompt.trim()} title="18 credits"><Wand2 className="h-4 w-4" /></button>
+                      </div>
+                    </>
+                  )}
                   <button className="s-btn justify-between" onClick={vectorizeActive} disabled={!!aiBusy}><span className="flex items-center gap-2"><Shapes className="h-4 w-4" /> Turn into vectors</span><span className="cost">free</span></button>
                   <Link className="s-btn justify-start" href={`/studio/video?mode=showcase&start=${encodeURIComponent(activeImage.srcUrl ?? "")}`}><Film className="h-4 w-4" /> Animate this photo</Link>
                   <span className="s-label mt-2">Adjust</span>
@@ -1184,3 +1196,12 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   );
 }
 
+/** Shown in place of the Editor's AI buttons on the Free plan. */
+function UpgradeNote() {
+  return (
+    <div className="rounded-lg p-3 grid gap-2 text-[12px] leading-relaxed" style={{ background: "color-mix(in oklab, var(--s-ai) 10%, transparent)", border: "1px solid color-mix(in oklab, var(--s-ai) 30%, var(--s-line))", color: "var(--s-soft)" }}>
+      <span>{EDITOR_AI_UPGRADE}</span>
+      <Link href="/studio/account/billing" className="s-btn ai sm justify-center">See plans</Link>
+    </div>
+  );
+}

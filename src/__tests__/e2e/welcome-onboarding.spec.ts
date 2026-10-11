@@ -48,6 +48,11 @@ test("sign up, answer the brand questions, land in the studio", async ({ page })
     expect(brand.brand_name).toBe("Test Juice Bar");
     expect(brand.dna).toMatchObject({ role: "business", audience: "Gym goers and office workers", location: "Nairobi", whatsapp: "+254 712 345 678", photoVibes: ["Bright & clean"] });
     expect(brand.dna.languages).toEqual(["English", "Swahili"]);
+    // One-time welcome credits (grant_signup_credits trigger), exactly once.
+    const { data: bal } = await sb.from("credit_balances").select("balance, lifetime_earned").eq("client_id", client!.id).single();
+    expect(bal).toMatchObject({ balance: 100, lifetime_earned: 100 });
+    const { count } = await sb.from("credit_transactions").select("id", { count: "exact", head: true }).eq("client_id", client!.id).eq("operation", "signup_bonus");
+    expect(count).toBe(1);
     expect(errors).toEqual([]);
   } finally {
     const sb = admin();
@@ -56,6 +61,7 @@ test("sign up, answer the brand questions, land in the studio", async ({ page })
       await sb.from("brand_profiles").delete().eq("client_id", client.id);
       await sb.from("credit_balances").delete().eq("client_id", client.id);
       await sb.from("clients").delete().eq("id", client.id);
+      await sb.from("signup_grants").delete().eq("user_id", client.user_id);
       await sb.auth.admin.deleteUser(client.user_id);
     } else {
       const { data: users } = await sb.auth.admin.listUsers({ perPage: 200 });
@@ -109,6 +115,7 @@ test("sign up and fill the brand in from a website (AI auto-fill)", async ({ pag
       await sb.from("brand_profiles").delete().eq("client_id", client.id);
       await sb.from("credit_balances").delete().eq("client_id", client.id);
       await sb.from("clients").delete().eq("id", client.id);
+      await sb.from("signup_grants").delete().eq("user_id", client.user_id);
       await sb.auth.admin.deleteUser(client.user_id);
     }
   }

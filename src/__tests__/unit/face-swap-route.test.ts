@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const h = vi.hoisted(() => ({
-  auth: vi.fn(), owned: vi.fn(), rpc: vi.fn(), upload: vi.fn(), bytes: vi.fn(),
+  auth: vi.fn(), owned: vi.fn(), rpc: vi.fn(), upload: vi.fn(), bytes: vi.fn(), plan: { tier: "starter" },
 }));
 vi.mock("@/lib/execution-security", () => ({ authenticateExecutionRequest: h.auth }));
 vi.mock("@/lib/assisted-creation-server", () => ({ verifyOwnedInspirationImage: h.owned }));
 vi.mock("@/lib/safe-fetch", () => ({ safeFetchBytes: h.bytes }));
 vi.mock("@/lib/supabase-server", () => ({
   supabaseAdmin: {
-    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "client-1" } }) }) }) }),
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "client-1", plan_tier: h.plan.tier } }) }) }) }),
     rpc: h.rpc,
     storage: { from: () => ({ upload: h.upload, getPublicUrl: (p: string) => ({ data: { publicUrl: `https://store.test/${p}` } }) }) },
   },
@@ -24,6 +24,7 @@ const fetchMock = vi.fn();
 
 beforeEach(() => {
   process.env.REPLICATE_API_TOKEN = "r8_test";
+  h.plan.tier = "starter";
   h.auth.mockResolvedValue({ ok: true, value: "user-1" });
   h.owned.mockResolvedValue(true);
   h.rpc.mockResolvedValue({ data: { success: true }, error: null });
@@ -34,6 +35,15 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 
 describe("POST /api/editor/face-swap", () => {
+  it("is a paid-plan tool: Free is refused before anything is charged or called", async () => {
+    h.plan.tier = "free";
+    const res = await POST(req({ url: PHOTO, face: FACE }));
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("upgrade_required");
+    expect(h.rpc).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("refuses photos that aren't the user's own, before charging anything", async () => {
     h.owned.mockImplementation(async (_c: string, u: string) => u === PHOTO);
     const res = await POST(req({ url: PHOTO, face: "https://evil.test/x.jpg" }));

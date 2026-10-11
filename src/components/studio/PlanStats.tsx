@@ -15,9 +15,12 @@ export function PlanStats() {
   useEffect(() => {
     if (!activeBrand) return;
     let cancelled = false;
-    const count = (status: string) => supabase.from("content").select("id", { count: "exact", head: true }).eq("brand_id", activeBrand.id)
-      .not("content_type", "in", `(${PART_TYPES.join(",")})`).or(NOT_STORYBOARD_FRAME).eq("status", status);
-    Promise.all(["draft", "pending_approval", "scheduled", "posted"].map(count)).then(([d, p, s, po]) => {
+    const base = () => supabase.from("content").select("id", { count: "exact", head: true }).eq("brand_id", activeBrand.id)
+      .not("content_type", "in", `(${PART_TYPES.join(",")})`).or(NOT_STORYBOARD_FRAME);
+    const count = (status: string) => base().eq("status", status);
+    // "Scheduled" is anything with a date still to come (nothing sets status 'scheduled').
+    const upcoming = base().gte("scheduled_at", new Date().toISOString()).neq("status", "posted");
+    Promise.all([count("draft"), count("pending_approval"), upcoming, count("posted")]).then(([d, p, s, po]) => {
       if (!cancelled) setCounts({ Drafts: d.count ?? 0, "Needs approval": p.count ?? 0, Scheduled: s.count ?? 0, Posted: po.count ?? 0 });
     });
     return () => { cancelled = true; };

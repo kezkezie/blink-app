@@ -7,6 +7,7 @@ import { ExamplesGallery } from "@/components/studio/examples/ExamplesGallery";
 import { HeroDemo } from "@/components/home/HeroDemo";
 import { BeforeAfter, HomeNav, LazyVideo, VoiceRow } from "@/components/home/HomeBits";
 import { HomeFooter } from "@/components/home/HomeFooter";
+import { PLANS as PLAN_CARDS, TOP_UP } from "@/lib/plans";
 
 /**
  * blinkspot.io (2026-10-11). Every picture and clip on this page was made in BlinkSpot for a
@@ -105,17 +106,15 @@ function StepVisual({ kind }: { kind: (typeof STEPS)[number]["visual"] }) {
   );
 }
 
-const PLANS = [
-  { name: "Free", price: "$0", brands: "1 brand", credits: "100 credits a month", note: "Try everything" },
-  { name: "Starter", price: "$25", brands: "2 brands", credits: "1,500 credits", note: "One business, posting weekly" },
-  { name: "Pro", price: "$49", brands: "6 brands", credits: "3,000 credits", note: "Growing teams, approvals", pop: true },
-  { name: "Agency", price: "$99", brands: "10 brands", credits: "6,000 credits", note: "Client work, analytics" },
-];
+// From lib/plans.ts, the same list the billing page shows.
+const PLANS = PLAN_CARDS.map((p) => ({
+  name: p.name, price: `$${p.price.monthly}`, brands: `${p.brands} brand${p.brands === 1 ? "" : "s"}`, credits: p.credits.monthly, note: p.note, pop: p.popular,
+}));
 
 const FAQ = [
   { q: "What can I make?", a: "Posters, product photos and lifestyle shots, short videos (product shots, reveals, creators talking, try-ons, lip-sync, scene-by-scene stories), voiceovers, logos and captions. All in your brand's look." },
   { q: "Do I need design skills?", a: "No. Say what you want and Ask BlinkSpot does the rest. If you are a designer, the Editor gives you layers, pen, shapes, text and AI tools, and every setting is open." },
-  { q: "How do credits work?", a: "Each thing you make costs credits, and the price is on the button before you press it: an image from 6 credits, a 5-second video from 20. Failed renders are refunded. Logos and brand building are free." },
+  { q: "How do credits work?", a: "Each thing you make costs credits, and the price is on the button before you press it: an image from 6 credits, a 5-second video from 20. Failed renders are refunded. Logos and brand building are free, and every new account gets 100 credits to start." },
   { q: "Will it use my real products and contacts?", a: "Yes. You add your products, prices and contact details once. BlinkSpot never invents phone numbers, prices or offers; it only uses what you gave it." },
   { q: "Can I write in Swahili or Sheng?", a: "Yes. Pick your languages on the Brand page and captions, scripts and on-image text follow them." },
   { q: "I run an agency. Can I manage clients?", a: "Yes. Each client is its own brand with its own look and voice. Send posts for approval, archive a client when they pause and bring them back any time." },
@@ -307,7 +306,7 @@ export default function Home() {
             <h2 className="h-h2 mt-4">Pay for what you make.</h2>
             <p className="h-lead mt-5">Every plan comes with credits. The price is on every button before you press it, and a failed render is refunded.</p>
             <div className="grid gap-2 mt-8 text-[14px]">
-              {[["An image", "from 6 credits"], ["A 5-second video", "from 20 credits"], ["A voiceover", "1 credit"], ["Logos and brand building", "free"], ["Top up any time", "800 credits for $5"]].map(([a, b]) => (
+              {[["An image", "from 6 credits"], ["A 5-second video", "from 20 credits"], ["A voiceover", "1 credit"], ["Logos and brand building", "free"], ["Top up any time", `${TOP_UP.credits} credits for $${TOP_UP.usd}`]].map(([a, b]) => (
                 <div key={a} className="flex justify-between py-2.5" style={{ borderBottom: "1px solid var(--s-line)" }}><span style={{ color: "var(--s-soft)" }}>{a}</span><span className="font-mono">{b}</span></div>
               ))}
             </div>

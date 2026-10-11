@@ -19,6 +19,8 @@ describe("AI rate limits (routes that spend the owner's Claude key)", () => {
     expect(aiLimitFor("assistant_day", "free").limit).toBeLessThan(aiLimitFor("assistant_day", "pro").limit);
     expect(aiLimitFor("assistant_day", "agency").limit).toBeGreaterThan(aiLimitFor("assistant_day", "pro").limit);
     expect(aiLimitFor("assistant_day", "made-up")).toEqual(aiLimitFor("assistant_day", "free"));
+    // Hand-made enterprise/custom accounts are paid: they get the biggest allowance, not the free one.
+    expect(aiLimitFor("assistant_day", "custom")).toEqual(aiLimitFor("assistant_day", "agency"));
     expect(aiLimitFor("assistant_day", "free").windowSeconds).toBe(86_400);
   });
 
@@ -35,7 +37,7 @@ describe("AI rate limits (routes that spend the owner's Claude key)", () => {
     rpc.mockResolvedValueOnce(row(true)).mockResolvedValueOnce(row(false, 5 * 3600));
     const r = await consumeAiLimits("u1", ["assistant_hour", "assistant_day"], "free");
     expect(r).toMatchObject({ allowed: false, status: 429 });
-    expect(r.allowed === false && r.message).toMatch(/today's 25 Ask BlinkSpot messages.*5 hours/);
+    expect(r.allowed === false && r.message).toMatch(/today's 10 Ask BlinkSpot messages.*5 hours/);
   });
 
   it("fails closed (503) if the limiter can't answer, so a broken limiter can't mean an unlimited bill", async () => {

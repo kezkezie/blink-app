@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
 import { verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { safeFetchBytes } from "@/lib/safe-fetch";
@@ -36,8 +37,9 @@ export async function POST(request: NextRequest) {
   let body: { url?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const url = typeof body.url === "string" ? body.url : "";
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+  const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+  if (!isPaidPlan(client.plan_tier)) return NextResponse.json({ error: EDITOR_AI_UPGRADE, code: "upgrade_required" }, { status: 403 });
   if (!url || !(await verifyOwnedInspirationImage(client.id, url))) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: COST, p_operation: "debit", p_description: "Editor: remove background" });

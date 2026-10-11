@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
 import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 
 /**
@@ -24,8 +25,13 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const limit = await consumeAiLimits(auth.value, ["vector_draw"]);
   if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status });
-  let body: { prompt?: unknown; brandId?: unknown; style?: unknown; colors?: unknown; brandName?: unknown; font?: unknown };
+  let body: { prompt?: unknown; brandId?: unknown; style?: unknown; colors?: unknown; brandName?: unknown; font?: unknown; purpose?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
+  // Free plans: logos in the brand builder only (brand set-up stays free); the Editor's vectors are paid.
+  if (body.purpose !== "brand_logo") {
+    const { data: owner } = await supabaseAdmin.from("clients").select("plan_tier").eq("user_id", auth.value).maybeSingle();
+    if (!isPaidPlan(owner?.plan_tier)) return NextResponse.json({ error: EDITOR_AI_UPGRADE, code: "upgrade_required" }, { status: 403 });
+  }
   const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 800) : "";
   if (prompt.length < 3) return NextResponse.json({ error: "Describe what to draw." }, { status: 400 });
 

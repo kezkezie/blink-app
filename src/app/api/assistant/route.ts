@@ -5,6 +5,7 @@ import { AssistantUnavailableError, estimateUsd, runAssistant } from "@/lib/assi
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { loadAccountBrief } from "@/lib/assistant/tools";
 import { parseAssistantRequest } from "@/lib/assistant/request";
+import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
 
 // A reply can take several model turns; Kie alone has measured 70-80 s per turn.
 export const maxDuration = 300;
@@ -22,6 +23,13 @@ export async function POST(request: NextRequest) {
 
   const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+  // Editing a timeline or canvas runs on Opus; on the Free plan the editors' AI is a paid feature.
+  if ((parsed.editor || parsed.canvas) && !isPaidPlan(client.plan_tier)) {
+    return NextResponse.json({
+      reply: `${EDITOR_AI_UPGRADE} I can still help you plan and write: close the editor and ask me anything.`,
+      actions: [{ kind: "open_page", label: "See plans", href: "/studio/account/billing" }],
+    });
+  }
   const limit = await consumeAiLimits(auth.value, ["assistant_hour", "assistant_day"], client.plan_tier);
   if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status, headers: limit.retryAfterSeconds ? { "Retry-After": String(limit.retryAfterSeconds) } : undefined });
 
@@ -34,7 +42,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const ctx = { clientId: client.id, brandId };
+    const ctx = { clientId: client.id, brandId, tz: parsed.tz, tzOffset: parsed.tzOffset };
     const brief = await loadAccountBrief(ctx).catch(() => undefined);
     const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas });
     // One line per answer so the Claude bill can be traced to accounts in the Vercel logs.

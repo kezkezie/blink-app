@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { parseRpcRow } from "@/lib/execution-rate-limit";
+import { planOf, type PlanTier } from "@/lib/plans";
 
 /**
  * Per-user caps on the routes that spend Kezie's own Claude API key (Ask BlinkSpot, the brand
@@ -12,10 +13,10 @@ import { parseRpcRow } from "@/lib/execution-rate-limit";
  */
 
 export type AiOperation = "assistant_hour" | "assistant_day" | "brand_build" | "vector_draw" | "site_build";
-type Plan = "free" | "starter" | "pro" | "agency";
+type Plan = PlanTier;
 
 /** Messages per day by plan, plus a burst cap per hour for everyone. */
-const ASSISTANT_DAY: Record<Plan, number> = { free: 25, starter: 80, pro: 250, agency: 600 };
+const ASSISTANT_DAY: Record<Plan, number> = { free: 10, starter: 80, pro: 250, agency: 600 };
 const FIXED: Record<Exclude<AiOperation, "assistant_day">, { limit: number; windowSeconds: number }> = {
   assistant_hour: { limit: 40, windowSeconds: 60 * 60 },
   brand_build: { limit: 12, windowSeconds: 60 * 60 },
@@ -29,8 +30,7 @@ export function aiRateLimitsEnabled() {
 
 export function aiLimitFor(op: AiOperation, plan?: string | null) {
   if (op === "assistant_day") {
-    const tier = (["free", "starter", "pro", "agency"] as const).find((t) => t === plan) ?? "free";
-    return { limit: ASSISTANT_DAY[tier], windowSeconds: 24 * 60 * 60 };
+    return { limit: ASSISTANT_DAY[planOf(plan)], windowSeconds: 24 * 60 * 60 };
   }
   return FIXED[op];
 }

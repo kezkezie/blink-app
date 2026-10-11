@@ -21,14 +21,14 @@ const TIERS = [
             monthly: [
                 "1 Brand Workspace",
                 "5 Posts per month",
-                "100 AI Credits",
+                "100 AI Credits to start (one time)",
                 "7-day Asset Storage",
                 "Image Studio (basic)",
             ],
             weekly: [
                 "1 Brand Workspace",
                 "5 Posts per week",
-                "25 AI Credits",
+                "100 AI Credits to start (one time)",
                 "7-day Asset Storage",
                 "Image Studio (basic)",
             ],
@@ -188,7 +188,7 @@ export default function BillingPage() {
         setLoadingPack(true);
         // TODO: Replace with real Paystack checkout URL for credit pack
         setTimeout(() => {
-            alert("Paystack Checkout for 800 Credits ($5) — integration coming soon. Contact info@blinkspot.io to top up now.");
+            alert("Paystack Checkout for 800 Credits ($8) — integration coming soon. Contact info@blinkspot.io to top up now.");
             setLoadingPack(false);
         }, 800);
     };
@@ -404,7 +404,7 @@ export default function BillingPage() {
                     <div>
                         <h4 className="text-[#DEDCDC] font-bold font-display text-sm">Need more credits?</h4>
                         <p className="text-xs text-[#989DAA] mt-0.5">
-                            <strong className="text-[#DEDCDC]">800 credits</strong> for <strong className="text-[#B3FF00]">$5.00</strong> — top up any time.
+                            <strong className="text-[#DEDCDC]">800 credits</strong> for <strong className="text-[#B3FF00]">$8.00</strong> — top up any time.
                         </p>
                     </div>
                     <Button

@@ -129,7 +129,7 @@ export function BrandBuilder() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt: `A logo for "${prop.name}"${prop.tagline ? ` (${prop.tagline})` : ""}. ${direction} Include the wordmark "${prop.name}". Square composition, works small, transparent background.`,
-        colors: [prop.palette.primary, prop.palette.secondary, prop.palette.accent], brandName: prop.name, font: prop.fonts.heading, style: "flat",
+        colors: [prop.palette.primary, prop.palette.secondary, prop.palette.accent], brandName: prop.name, font: prop.fonts.heading, style: "flat", purpose: "brand_logo",
       }),
     });
     const data = await res.json().catch(() => ({}));
