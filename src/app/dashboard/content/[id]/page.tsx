@@ -489,16 +489,15 @@ export default function ContentDetailPage({
     if (!content) return;
     setActionLoading(true);
     try {
-      const { error } = await supabase
-        .from("content")
-        .update({ scheduled_at: null } as Record<string, unknown>)
-        .eq("id", content.id);
-      if (error) throw error;
+      // Cancels the queued PostForMe post too (clearing only our date let it publish anyway).
+      const res = await fetch("/api/social-posts/unschedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contentId: content.id }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Couldn't cancel the schedule.");
       setContent((prev) =>
         prev ? { ...prev, scheduled_at: null as any } : null
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(err.message);
     } finally {
       setActionLoading(false);
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
+import { accountsForPost, cancelPendingPost, pfmApiKey } from "@/lib/social-schedule";
 
 // FORMAT_TO_POST_TYPE maps user-selected format → PostForMe post type.
 // All formats currently resolve to "media" — Quickstart Projects block placement routing.
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { contentId, clientId, scheduledAt, publishSettings: clientPublishSettings, captionChoice } = body;
 
-    const apiKey = process.env.POSTFORME_API_KEY || process.env.NEXT_PUBLIC_POSTFORME_API_KEY;
+    const apiKey = pfmApiKey();
 
     if (!contentId || !clientId) {
       return NextResponse.json(
@@ -54,11 +55,12 @@ export async function POST(req: NextRequest) {
       .from("clients").select("id").eq("user_id", user.id).eq("id", clientId).single();
     if (!clientOwner) return NextResponse.json({ error: "Forbidden: Client scope mismatch" }, { status: 403 });
 
-    // 1. Fetch the content row
+    // 1. Fetch the content row (it must belong to this account)
     const { data: content, error: contentError } = await supabaseAdmin
       .from("content")
       .select("*")
       .eq("id", contentId)
+      .eq("client_id", clientId)
       .single();
 
     if (contentError || !content) {
@@ -122,7 +124,7 @@ export async function POST(req: NextRequest) {
     // 4. Fetch connected social account IDs
     const { data: allAccounts } = await supabaseAdmin
       .from("social_accounts")
-      .select("postforme_account_id, platform")
+      .select("postforme_account_id, platform, brand_id")
       .eq("client_id", clientId)
       .eq("is_active", true);
 
@@ -132,24 +134,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const matchedAccounts = allAccounts.filter((acc) =>
-      activePlatforms.includes(acc.platform.toLowerCase())
-    );
-
-    if (matchedAccounts.length === 0) {
-      throw new Error(
-        `No connected accounts found for: ${activePlatforms.join(", ")}. Connect them in Settings.`
-      );
-    }
-
-    // Guard: strip nulls and deduplicate — same account may appear for multiple brands
-    const accountIds = [...new Set(
-      matchedAccounts.map((a) => a.postforme_account_id).filter(Boolean)
-    )];
+    // Only the accounts connected to this post's brand (deduplicated: one account can serve two brands).
+    const accountIds = accountsForPost(allAccounts, activePlatforms, content.brand_id);
 
     if (accountIds.length === 0) {
       throw new Error(
-        "Connected accounts are missing PostForMe IDs. Open Settings and press Sync Accounts, then try again."
+        `No connected ${activePlatforms.join(", ")} account for this brand. Connect it in Settings (or press Sync Accounts), then try again.`
       );
     }
 
@@ -210,6 +200,16 @@ export async function POST(req: NextRequest) {
     console.log("[PostForMe] Account IDs being sent:", accountIds);
     console.log("[PostForMe] Publishing payload:", JSON.stringify(postPayload, null, 2));
 
+    // 7. An earlier PostForMe post for this row that is still waiting is cancelled first, so a
+    // moved post (or "publish now instead") can't go out twice.
+    const earlier = await cancelPendingPost(apiKey, content.postforme_tracking_id);
+    if (earlier.outcome === "published" && earlier.status === "processing") {
+      return NextResponse.json({ error: "This post is being published right now, so it can't be moved." }, { status: 409 });
+    }
+    if (earlier.outcome === "error") {
+      return NextResponse.json({ error: "Couldn't reach PostForMe to move the earlier schedule. Nothing was changed; try again." }, { status: 502 });
+    }
+
     // 8. Fire the single PostForMe request
     const pfmRes = await fetch("https://api.postforme.dev/v1/social-posts", {
       method: "POST",
@@ -233,6 +233,8 @@ export async function POST(req: NextRequest) {
       const base = pfmData?.message || pfmData?.error || `PostForMe error (${pfmRes.status})`;
       const extra = pfmData?.details || pfmData?.errors || pfmData?.validation_errors;
       const msg = extra ? `${base} — ${JSON.stringify(extra)}` : base;
+      // The earlier post was cancelled above; don't leave the row pointing at it.
+      if (earlier.outcome === "cancelled") await supabaseAdmin.from("content").update({ postforme_tracking_id: null }).eq("id", contentId).eq("client_id", clientId);
       return NextResponse.json({ error: msg, pfmRaw: pfmData }, { status: pfmRes.status });
     }
 
@@ -242,8 +244,10 @@ export async function POST(req: NextRequest) {
       .update({
         status: scheduledAt ? "approved" : "posted",
         postforme_tracking_id: pfmData?.id || null,
+        scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
       } as any)
-      .eq("id", contentId);
+      .eq("id", contentId)
+      .eq("client_id", clientId);
 
     return NextResponse.json({
       success: true,

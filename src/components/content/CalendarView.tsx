@@ -252,10 +252,9 @@ export function CalendarView({
     onUpdateContent(updatedItem);
 
     try {
-      await supabase
-        .from("content")
-        .update({ scheduled_at: null } as Record<string, unknown>)
-        .eq("id", id);
+      // Cancels the queued PostForMe post too (clearing only our date let it publish anyway).
+      const res = await fetch("/api/social-posts/unschedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contentId: id }) });
+      if (!res.ok) alert((await res.json().catch(() => ({}))).error || "Couldn't take the post off the calendar.");
     } catch (err) {
       console.error("Failed to unschedule post:", err);
     }
