@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Footer } from "@/components/layout/Footer";
+import { LegalShell } from "@/components/legal/LegalShell";
 
 export const metadata = {
     title: "Terms of Service | Blinkspot",
@@ -8,18 +8,8 @@ export const metadata = {
 
 export default function TermsPage() {
     return (
-        <div className="min-h-screen bg-[#191D23] text-[#DEDCDC]">
-            <div className="max-w-4xl mx-auto px-6 py-16 sm:py-24">
-
-                {/* Back link */}
-                <Link href="/" className="text-sm text-[#989DAA] hover:text-[#C5BAC4] transition-colors mb-8 inline-block">
-                    &larr; Back to Home
-                </Link>
-
-                <h1 className="text-3xl sm:text-4xl font-bold text-[#C5BAC4] font-display mb-3">Terms of Service</h1>
-                <p className="text-sm text-[#57707A] font-medium mb-12">Last updated April 13, 2026</p>
-
-                <div className="prose-legal text-sm leading-relaxed text-[#989DAA] space-y-6">
+        <LegalShell title="Terms of Service" updated="Last updated April 13, 2026" current="/terms">
+            <div className="legal-body">
 
                     <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">AGREEMENT TO OUR LEGAL TERMS</h2>
                     <p>
@@ -306,9 +296,7 @@ export default function TermsPage() {
                     <p className="text-sm mt-4">
                         Email: <a href="mailto:info@blinkspot.io" className="text-[#C5BAC4] hover:underline">info@blinkspot.io</a>
                     </p>
-                </div>
             </div>
-            <Footer />
-        </div>
+        </LegalShell>
     );
 }

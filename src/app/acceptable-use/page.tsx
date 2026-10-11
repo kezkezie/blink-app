@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Footer } from "@/components/layout/Footer";
+import { LegalShell } from "@/components/legal/LegalShell";
 
 export const metadata = {
     title: "Acceptable Use Policy | Blinkspot",
@@ -8,18 +8,8 @@ export const metadata = {
 
 export default function AcceptableUsePage() {
     return (
-        <div className="min-h-screen bg-[#191D23] text-[#DEDCDC]">
-            <div className="max-w-4xl mx-auto px-6 py-16 sm:py-24">
-
-                {/* Back link */}
-                <Link href="/" className="text-sm text-[#989DAA] hover:text-[#C5BAC4] transition-colors mb-8 inline-block">
-                    &larr; Back to Home
-                </Link>
-
-                <h1 className="text-3xl sm:text-4xl font-bold text-[#C5BAC4] font-display mb-3">Acceptable Use Policy</h1>
-                <p className="text-sm text-[#57707A] font-medium mb-12">Last updated April 14, 2026</p>
-
-                <div className="prose-legal text-sm leading-relaxed text-[#989DAA] space-y-6">
+        <LegalShell title="Acceptable Use Policy" updated="Last updated April 14, 2026" current="/acceptable-use">
+            <div className="legal-body">
 
                     <p>
                         This <strong>Acceptable Use Policy</strong> ('Policy') is part of our <strong>Terms of Service</strong> ('Legal Terms') and should therefore be read alongside our main Legal Terms: <Link href="/terms" className="text-[#C5BAC4] hover:underline">https://www.blinkspot.io/terms</Link>. When you use the AI-powered services provided by <strong>Mubia Investment Limited</strong> ('AI Products'), you warrant that you will comply with this document, our Legal Terms and all applicable laws and regulations governing AI. Your usage of our AI Products signifies your agreement to engage with our platform in a lawful, ethical, and responsible manner that respects the rights and dignity of all individuals. If you do not agree with these Legal Terms, please refrain from using our Services. Your continued use of our Services implies acceptance of these Legal Terms.
@@ -205,10 +195,7 @@ export default function AcceptableUsePage() {
                     <p className="text-sm mt-1">
                         Mail: P.O. Box 621 - G.P.O, Nairobi 00100, Kenya
                     </p>
-                </div>
-
             </div>
-            <Footer />
-        </div>
+        </LegalShell>
     );
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Footer } from "@/components/layout/Footer";
+import { LegalShell } from "@/components/legal/LegalShell";
 
 export const metadata = {
     title: "Privacy Policy | Blinkspot",
@@ -8,18 +8,8 @@ export const metadata = {
 
 export default function PrivacyPage() {
     return (
-        <div className="min-h-screen bg-[#191D23] text-[#DEDCDC]">
-            <div className="max-w-4xl mx-auto px-6 py-16 sm:py-24">
-
-                {/* Back link */}
-                <Link href="/" className="text-sm text-[#989DAA] hover:text-[#C5BAC4] transition-colors mb-8 inline-block">
-                    &larr; Back to Home
-                </Link>
-
-                <h1 className="text-3xl sm:text-4xl font-bold text-[#C5BAC4] font-display mb-3">Privacy Policy</h1>
-                <p className="text-sm text-[#57707A] font-medium mb-12">Last updated April 13, 2026</p>
-
-                <div className="prose-legal text-sm leading-relaxed text-[#989DAA] space-y-6">
+        <LegalShell title="Privacy Policy" updated="Last updated April 13, 2026" current="/privacy">
+            <div className="legal-body">
 
                     <p>
                         This Privacy Notice for <strong>Mubia Investment Limited</strong> (&apos;we&apos;, &apos;us&apos;, or &apos;our&apos;), describes how and why we might access, collect, store, use, and/or share (&apos;process&apos;) your personal information when you use our services (&apos;Services&apos;), including when you:
@@ -261,9 +251,7 @@ export default function PrivacyPage() {
                     <p className="text-sm mt-4">
                         Email: <a href="mailto:info@blinkspot.io" className="text-[#C5BAC4] hover:underline">info@blinkspot.io</a>
                     </p>
-                </div>
             </div>
-            <Footer />
-        </div>
+        </LegalShell>
     );
 }

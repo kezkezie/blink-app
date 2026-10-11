@@ -6,6 +6,7 @@ import { EXAMPLES } from "@/lib/examples";
 import { ExamplesGallery } from "@/components/studio/examples/ExamplesGallery";
 import { HeroDemo } from "@/components/home/HeroDemo";
 import { BeforeAfter, HomeNav, LazyVideo, VoiceRow } from "@/components/home/HomeBits";
+import { HomeFooter } from "@/components/home/HomeFooter";
 
 /**
  * blinkspot.io (2026-10-11). Every picture and clip on this page was made in BlinkSpot for a
@@ -353,20 +354,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="relative z-[2] py-12 h-divider">
-        <div className="h-wrap grid gap-8 md:grid-cols-[1fr_auto] items-start">
-          <div className="flex items-center gap-2.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/mark-lime.png" alt="" className="h-7 w-7 object-contain" />
-            <span className="text-[15px] font-semibold">BlinkSpot</span>
-          </div>
-          <nav className="flex flex-wrap gap-x-7 gap-y-2 text-[13.5px] h-muted" aria-label="Footer">
-            <a href="#features">Features</a><a href="#pricing">Pricing</a><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link><Link href="/acceptable-use">Acceptable use</Link>
-          </nav>
-          <p className="text-[12.5px] h-muted">© 2026 Mubia Investment Limited (operating as BlinkSpot). All rights reserved.</p>
-          <p className="text-[12.5px] h-muted">Questions? <a href="mailto:info@blinkspot.io" className="underline">info@blinkspot.io</a></p>
-        </div>
-      </footer>
+      <HomeFooter />
     </div>
   );
 }

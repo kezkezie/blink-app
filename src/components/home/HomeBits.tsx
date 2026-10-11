@@ -5,10 +5,10 @@ import Link from "next/link";
 import { ArrowLeftRight, ArrowRight, Menu, Pause, Play, X } from "lucide-react";
 
 const LINKS = [
-  { href: "#how", label: "How it works" },
-  { href: "#features", label: "Features" },
-  { href: "#examples", label: "Examples" },
-  { href: "#pricing", label: "Pricing" },
+  { href: "/#how", label: "How it works" },
+  { href: "/#features", label: "Features" },
+  { href: "/#examples", label: "Examples" },
+  { href: "/#pricing", label: "Pricing" },
 ];
 
 export function HomeNav() {
