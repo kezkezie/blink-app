@@ -58,7 +58,9 @@ test("examples gallery: browse, open a recipe, start from it", async ({ page }, 
   await expect(img.getByText("Nano Banana 2 (4K)")).toBeVisible();
   await img.getByRole("link", { name: /Use this prompt/ }).click();
   await page.waitForURL(/\/studio\/image/);
-  await expect(page.locator("textarea").first()).toHaveValue(/MAVUNO/, { timeout: 20_000 });
+  // The recipe opens for the active brand: the example's name and brand rules are taken out (QA-018).
+  await expect(page.locator("textarea").first()).toHaveValue(/render "/, { timeout: 20_000 });
+  await expect(page.locator("textarea").first()).not.toHaveValue(/MAVUNO|CRITICAL BRAND CONSTRAINT/);
 
   // Voices play in place.
   await page.goto(`${BASE}/studio/examples`);

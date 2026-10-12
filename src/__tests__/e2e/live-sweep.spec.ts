@@ -215,6 +215,16 @@ test.describe.serial("live sweep", () => {
     log(`8 Brand fill OK: ${Object.keys(r.body.fields ?? {}).length} fields suggested`);
   });
 
+  test("9. Voiceover (1 cr) lands in the Library as audio", async ({ page }) => {
+    await login(page);
+    const t0 = new Date().toISOString();
+    const r = await post(page.request, "/api/voiceover", { text: "Fresh from our kitchen to your office, every weekday.", voice: "nova", brandId });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.url).toMatch(/\.mp3$/);
+    if (r.body.id) made.rows.push(r.body.id);
+    log(`9 Voiceover OK, ${await spentSince(t0)} cr`);
+  });
+
   test.afterAll(async () => {
     // Only what the sweep made (by id) and the photos it copied.
     for (const id of made.rows) await sb.from("content").delete().eq("id", id);

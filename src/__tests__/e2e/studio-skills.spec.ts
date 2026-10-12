@@ -28,7 +28,8 @@ test("skills: built-ins listed, add one, Ask follows it, delete it", async ({ pa
   await page.goto(`${BASE}/studio/account/skills`);
   await expect(page.getByRole("heading", { name: "Ask skills" })).toBeVisible({ timeout: 30_000 });
   for (const name of ["Poster and ad design", "Motion graphics and animated text", "Landing pages that convert"]) await expect(page.getByText(name, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Read the instructions" }).first().click();
+  // The built-in list sits below the account's own skills.
+  await page.locator(".s-card", { hasText: "Poster and ad design" }).getByRole("button", { name: "Read the instructions" }).click();
   await expect(page.getByText(/Three zones/)).toBeVisible();
 
   // Clean up a leftover from an earlier run.

@@ -49,12 +49,20 @@ export function contactRule(website?: string, socials?: string) {
   ].join(" ");
 }
 
-export function remixPrompt(brandName: string, purpose: string) {
+/**
+ * Inspo Remix prompt. 2026-10-12 (Kezie): GPT Image 2 drifted from the inspo's layout, and posters
+ * carried invented logos because the brand's logo was never sent. The layout to keep is now spelled
+ * out, and when the brand has a logo it rides along as image 2 with "use exactly this logo".
+ */
+export function remixPrompt(brandName: string, purpose: string, hasLogo = false) {
   const forWhat = purpose.trim() ? ` It is for: ${purpose.trim()}.` : "";
   return [
-    `Image 1 is a design the brand loves. Create a NEW, original design for ${brandName} that keeps image 1's look:`,
-    "the same layout and composition, the same colour mood and lighting, the same typography style and placement, the same energy.",
-    `Replace every product, logo, name and line of text with ${brandName}'s own; never copy the original brand, its logo or its words.${forWhat}`,
-    "Make it ready to post on social media.",
+    `Image 1 is a design the brand loves. Recreate image 1's design for ${brandName}, as if the same designer made it for them.`,
+    "Keep image 1's layout exactly: the same grid, the same positions and sizes of every text block, the same photo crop, camera angle and framing, the same colour blocking, background texture, typography style and weight, and the same small details (date lines, barcodes, edition marks) in the same places.",
+    `Change only the content: the subject becomes ${brandName}'s own product or scene, and every word becomes ${brandName}'s (short, in the same places and sizes as the original). Never copy the original brand's name, logo or words.`,
+    hasLogo
+      ? `Image 2 is ${brandName}'s logo. Put exactly this logo where image 1 has its logo or brand mark (or a top or bottom corner), unchanged: same shapes, colours and letters. Draw no other logo, icon or brand mark anywhere.`
+      : `Write the brand name "${brandName}" as plain text where image 1 has its logo. Draw no logo, icon or brand mark.`,
+    `${forWhat} Make it ready to post on social media.`,
   ].join(" ");
 }

@@ -27,8 +27,8 @@ describe("Inspo Remix links", () => {
 
   it("keeps the look but never the other brand", () => {
     const p = remixPrompt("Mama Njeri Kitchen", "Weekend offer: 20% off pilau");
-    expect(p).toMatch(/same layout and composition/);
-    expect(p).toMatch(/never copy the original brand, its logo or its words/);
+    expect(p).toMatch(/Keep image 1.s layout exactly/);
+    expect(p).toMatch(/Never copy the original brand.s name, logo or words/);
     expect(p).toMatch(/Mama Njeri Kitchen/);
     expect(p).toMatch(/It is for: Weekend offer/);
     expect(remixPrompt("X", "  ")).not.toMatch(/It is for/);
@@ -57,5 +57,10 @@ describe("safeFetchBytes", () => {
     if (ok.ok) expect(Array.from(ok.bytes)).toEqual(Array.from(png));
     const big = await safeFetchBytes("https://cdn.example/a.png", { resolve: publicDns, maxBytes: 4, fetchImpl: (async () => new Response(png)) as typeof fetch });
     expect(big).toEqual({ ok: false, reason: "too large" });
+  });
+  it("sends the brand's logo as image 2 when there is one, and forbids invented logos when not", () => {
+    expect(remixPrompt("Lup Space", "", true)).toMatch(/Image 2 is Lup Space's logo.*exactly this logo.*Draw no other logo/);
+    expect(remixPrompt("Lup Space", "", false)).toMatch(/plain text.*Draw no logo/);
+    expect(remixPrompt("Lup Space", "")).toMatch(/same positions and sizes of every text block/);
   });
 });

@@ -21,7 +21,7 @@ import { generateBrandImages, generationErrorMessage, useBrandKit, type Generate
 
 const ENGINES = [
   { id: "nb2", label: "Best", hint: "Nano Banana 2 · 4K" },
-  { id: "gpt-image-2-image-to-image", label: "Fast", hint: "GPT Image 2" },
+  { id: "gpt-image-2-image-to-image", label: "Fast", hint: "GPT Image 2 · looser copy of the layout" },
 ] as const;
 const FORMATS = ["4:5", "1:1", "9:16", "16:9"] as const;
 
@@ -90,8 +90,9 @@ export function InspoRemix() {
       const saved = await generateBrandImages({
         clientId, brandId: activeBrand.id, kit,
         prompt: purpose.trim() || `Remix for ${kit.name}`,
-        assembledPrompt: remixPrompt(kit.name || activeBrand.brand_name, purpose),
-        references: [refUrl], engine, aspect: format, style: "poster",
+        assembledPrompt: remixPrompt(kit.name || activeBrand.brand_name, purpose, !!kit.logoUrl),
+        // The real logo goes along as image 2, so the poster carries it instead of an invented one.
+        references: [refUrl, ...(kit.logoUrl ? [kit.logoUrl] : [])], engine, aspect: format, style: "poster",
         caption: purpose.trim() || "Inspo Remix",
       });
       setResults((prev) => [...saved, ...prev]);

@@ -7,7 +7,7 @@ import type { Charge, CheckoutInput, PaymentProvider, ProviderEvent } from "./ty
  *
  * Settings:
  *   PAYSTACK_SECRET_KEY   sk_test_... or sk_live_... (also signs the webhooks)
- *   PAYSTACK_CURRENCY     what the account charges in (default USD; e.g. KES)
+ *   PAYSTACK_CURRENCY     what the account charges in (default USD; e.g. KES); NEXT_PUBLIC_PAYSTACK_CURRENCY works too
  *   PAYSTACK_FX_PER_USD   for a non-USD currency: how many units make $1 (e.g. 129 for KES)
  */
 const API = "https://api.paystack.co";
@@ -77,7 +77,7 @@ export function validPaystackSignature(rawBody: string, signature: string | null
 export const paystack: PaymentProvider = {
   name: "paystack",
   configured: () => secret().startsWith("sk_"),
-  currency: () => (process.env.PAYSTACK_CURRENCY?.trim().toUpperCase() || "USD"),
+  currency: () => ((process.env.PAYSTACK_CURRENCY || process.env.NEXT_PUBLIC_PAYSTACK_CURRENCY)?.trim().toUpperCase() || "USD"),
   toMinor(usd) {
     const fx = paystack.currency() === "USD" ? 1 : Number(process.env.PAYSTACK_FX_PER_USD) || 0;
     if (!fx) throw new Error("PAYSTACK_FX_PER_USD is needed for a non-USD Paystack currency");

@@ -115,6 +115,10 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
     negative = built.negativePrompt;
   }
   const referenceUrls = req.style === "brand" && req.kit.logoUrl ? [req.kit.logoUrl, ...refs] : refs;
+  // Without the real logo in the references the models invent one (Kezie, 2026-10-12): forbid it.
+  if (!(req.kit.logoUrl && referenceUrls.includes(req.kit.logoUrl)) && req.mode !== "edit") {
+    assembled = assembled ? `${assembled}\nDraw no logo, icon or brand mark of any kind; where a brand mark would go, write "${req.kit.name}" as plain text.` : assembled;
+  }
   const payload = {
     client_id: req.clientId,
     brand_id: req.brandId,
