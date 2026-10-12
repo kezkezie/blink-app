@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2 } from "lucide-react";
+import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -180,6 +180,7 @@ function AccountMenu({ profile }: { profile: { name: string; email: string } | n
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/account/billing"><CreditCard className="h-4 w-4" /> Billing &amp; credits</Link></DropdownMenuItem>
         <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/account/settings"><Settings className="h-4 w-4" /> Settings &amp; accounts</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/account/skills"><BookOpen className="h-4 w-4" /> Ask skills</Link></DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="gap-3 cursor-pointer"

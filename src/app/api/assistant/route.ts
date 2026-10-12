@@ -70,8 +70,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const ctx = { clientId: client.id, brandId, tz: parsed.tz, tzOffset: parsed.tzOffset };
-    const brief = await loadAccountBrief(ctx).catch(() => undefined);
-    const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas, effort });
+    // The account's own skills, listed for Ask in one line each (a failure here never blocks a reply).
+    const loadSkills = async () => {
+      try {
+        const { data } = await supabaseAdmin.from("assistant_skills").select("slug, name, description").eq("client_id", client.id).eq("enabled", true).limit(25);
+        return (data ?? []).map((k) => ({ id: k.slug as string, name: k.name as string, description: k.description as string }));
+      } catch { return []; }
+    };
+    const [brief, skills] = await Promise.all([loadAccountBrief(ctx).catch(() => undefined), loadSkills()]);
+    const result = await runAssistant(parsed.messages, { ...ctx, brief, skills, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas, effort });
     // One line per answer so the Claude bill can be traced to accounts in the Vercel logs.
     const usd = estimateUsd(result.model, result.usage);
     let credits = 0;

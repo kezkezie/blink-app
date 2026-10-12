@@ -7,6 +7,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
         tabs={[
           { href: "/studio/account/billing", label: "Billing & credits" },
           { href: "/studio/account/settings", label: "Settings & social accounts" },
+          { href: "/studio/account/skills", label: "Ask skills" },
         ]}
       />
       {children}
