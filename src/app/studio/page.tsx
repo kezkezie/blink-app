@@ -37,6 +37,13 @@ export default function CreatePage() {
   const router = useRouter();
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
+  // No brand yet (skipped set-up, or a fresh account): the first thing to do is add one.
+  const [noBrand, setNoBrand] = useState(false);
+  useEffect(() => {
+    if (!clientId) return;
+    supabase.from("brand_profiles").select("id", { count: "exact", head: true }).eq("client_id", clientId).eq("is_active", true)
+      .then(({ count }) => setNoBrand((count ?? 0) === 0));
+  }, [clientId, activeBrand?.id]);
   const { profile } = useStudioBrands();
   const hello = useGreeting();
   const [kind, setKind] = useState<Kind>("video");
@@ -89,6 +96,13 @@ export default function CreatePage() {
       <h2 className="text-[28px] md:text-[34px] font-semibold leading-tight tracking-tight mb-6">
         What are we making{activeBrand ? <> for <span style={{ color: "var(--s-accent)" }}>{activeBrand.brand_name}</span></> : null} today?
       </h2>
+      {noBrand && (
+        <Link href="/studio/new-brand" className="s-card flex items-center gap-3 px-4 py-3.5 mb-4" style={{ borderColor: "var(--s-accent)", background: "color-mix(in oklab, var(--s-accent) 8%, var(--s-panel))" }}>
+          <Sparkles className="h-5 w-5 shrink-0" style={{ color: "var(--s-accent)" }} />
+          <span className="flex-1 text-[14px]"><b>Set up your brand first.</b> <span style={{ color: "var(--s-soft)" }}>A website, an Instagram or one sentence is enough; everything you make uses it.</span></span>
+          <span className="s-btn primary sm shrink-0">Create a brand</span>
+        </Link>
+      )}
 
       <div className="s-card p-3.5" style={{ boxShadow: "0 20px 60px rgba(0,0,0,.35)", borderColor: "var(--s-line-2)" }}>
         <textarea

@@ -32,7 +32,8 @@ export default function GetStartedPage() {
     // Known-breached passwords are refused (Supabase's own check needs their Pro plan).
     const leaks = await pwnedCount(password);
     if (leaks !== null && leaks > 0) { setMessage({ tone: "error", text: LEAKED_PASSWORD_MESSAGE }); setSubmitting(false); return; }
-    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
+    // If Supabase asks for an email confirmation, the link comes back to the two-screen brand set-up.
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: `${window.location.origin}/auth/callback?next=/welcome` } });
     if (error) { setMessage({ tone: "error", text: error.message }); setSubmitting(false); return; }
     if (data.user) {
       // The clients row must never have an empty name or email.

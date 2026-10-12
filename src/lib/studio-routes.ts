@@ -55,7 +55,7 @@ export function studioSectionFor(pathname: string): StudioSection {
   if (pathname.startsWith("/studio/library")) return "library";
   if (pathname.startsWith("/studio/plan")) return "plan";
   if (pathname.startsWith("/studio/sites")) return "site";
-  if (pathname.startsWith("/studio/brand")) return "brand";
+  if (pathname.startsWith("/studio/brand") || pathname.startsWith("/studio/new-brand")) return "brand";
   if (pathname.startsWith("/studio/account")) return "account";
   return "create"; // /studio, /studio/video, /studio/image
 }
@@ -76,6 +76,8 @@ export function studioTitleFor(pathname: string): string {
     ["/studio/brand", "Brand"],
     ["/studio/account/billing", "Billing"],
     ["/studio/account/settings", "Settings"],
+    ["/studio/account/skills", "Ask skills"],
+    ["/studio/new-brand", "New brand"],
   ];
   return titles.find(([p]) => pathname === p || pathname.startsWith(p + "/"))?.[1] ?? "Create";
 }

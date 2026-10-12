@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       password,
       options: {
         // In testing mode, don't require email confirmation
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/onboarding`,
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/welcome`,
         data: {
           onboarding_completed: false,
           client_id: undefined, // Will be generated in onboarding

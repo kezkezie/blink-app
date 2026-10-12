@@ -13,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BrandCreationModal } from "@/components/brand/info";
 import { getBrandAllowance, listArchivedBrands } from "@/app/actions/brand";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
@@ -87,8 +86,8 @@ function ActivityChip() {
 }
 
 function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
+  const router = useRouter();
   const { activeBrand, availableBrands, setActiveBrand } = useBrandStore();
-  const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState(false);
   // Shown every time the menu opens, so the plan's brand limit is never a surprise.
   const [slots, setSlots] = useState<{ used: number; limit: number; archived: number } | null>(null);
@@ -126,7 +125,7 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
               {activeBrand?.id === b.id && <Check className="h-4 w-4 ml-auto" style={{ color: "var(--s-accent)" }} />}
             </DropdownMenuItem>
           ))}
-          {availableBrands.length === 0 && <div className="px-2 py-3 text-xs" style={{ color: "var(--s-mute)" }}>No brands yet.</div>}
+          {availableBrands.length === 0 && <div className="px-2 py-3 text-xs" style={{ color: "var(--s-mute)" }}>No brand yet. Add one below: a website or one sentence is enough.</div>}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="gap-3 py-2 cursor-pointer"
@@ -138,10 +137,11 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
                 toast.error(`You're using ${allowance.used} of ${allowance.limit} brand${allowance.limit === 1 ? "" : "s"} on your plan. Upgrade, or archive a brand to free a slot.`);
                 return;
               }
-              setCreating(true);
+              // The same two-screen set-up as sign-up (2026-10-12; the classic modal stays in Vintage).
+              router.push("/studio/new-brand");
             }}
           >
-            <Plus className="h-4 w-4" /> New brand (I have one)
+            <Plus className="h-4 w-4" /> Add a brand
           </DropdownMenuItem>
           <DropdownMenuItem asChild className="gap-3 py-2 cursor-pointer">
             <Link href="/studio/brand-builder"><Sparkles className="h-4 w-4" style={{ color: "var(--s-accent)" }} /> Build a brand from scratch</Link>
@@ -155,7 +155,6 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <BrandCreationModal isOpen={creating} onClose={() => setCreating(false)} onSuccess={onCreated} />
       <ManageBrands open={managing} onClose={() => setManaging(false)} onChanged={onCreated} />
     </>
   );
