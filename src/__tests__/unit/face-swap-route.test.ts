@@ -35,12 +35,12 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 
 describe("POST /api/editor/face-swap", () => {
-  it("is a paid-plan tool: Free is refused before anything is charged or called", async () => {
+  it("works on the Free plan too when there are credits (credits unlock AI), and charges first", async () => {
     h.plan.tier = "free";
+    h.rpc.mockResolvedValue({ data: { success: false, error: "insufficient" }, error: null });
     const res = await POST(req({ url: PHOTO, face: FACE }));
-    expect(res.status).toBe(403);
-    expect((await res.json()).code).toBe("upgrade_required");
-    expect(h.rpc).not.toHaveBeenCalled();
+    expect(res.status).toBe(402);
+    expect(h.rpc).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

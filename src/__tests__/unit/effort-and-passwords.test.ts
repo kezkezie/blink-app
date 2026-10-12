@@ -1,21 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
-import { allowedEfforts, effortFor, EFFORT_INFO, EFFORTS } from "@/lib/assistant/effort";
+import { allowedEfforts, creditCapFor, effortFor, EFFORT_INFO, EFFORTS } from "@/lib/assistant/effort";
+import { meteredCredits } from "@/lib/credits-price";
 import { parseAssistantRequest } from "@/lib/assistant/request";
 import { pwnedCount, sha1Hex } from "@/lib/pwned-password";
 
 describe("Ask BlinkSpot's thinking dial", () => {
-  it("opens one more level per plan; Agency gets Max", () => {
+  it("includes one more level per plan; Agency includes Max", () => {
     expect(allowedEfforts("free")).toEqual(["low", "medium"]);
     expect(allowedEfforts("starter")).toEqual(["low", "medium", "high"]);
     expect(allowedEfforts("pro")).toEqual(["low", "medium", "high", "xhigh"]);
     expect(allowedEfforts("agency")).toEqual([...EFFORTS]);
   });
-  it("clamps a request to the plan and defaults to Balanced", () => {
-    expect(effortFor("max", "free")).toBe("medium");
-    expect(effortFor("max", "starter")).toBe("high");
-    expect(effortFor("max", "agency")).toBe("max");
-    expect(effortFor(undefined, "agency")).toBe("medium");
-    expect(effortFor("ultra", "pro")).toBe("medium");
+  it("lets anyone pick any level (above the plan it uses credits), default Balanced", () => {
+    expect(effortFor("max")).toBe("max");
+    expect(effortFor("high")).toBe("high");
+    expect(effortFor(undefined)).toBe("medium");
+    expect(effortFor("ultra")).toBe("medium");
+  });
+  it("caps what one message can cost; editing has a floor because it runs on Opus with pictures", () => {
+    expect(EFFORTS.map((e) => creditCapFor(e, false))).toEqual([4, 8, 25, 50, 100]);
+    expect(creditCapFor("low", true)).toBe(25);
+    expect(creditCapFor("max", true)).toBe(100);
+  });
+  it("meters at 200 credits per provider dollar, between a minimum and the cap", () => {
+    expect(meteredCredits(0.012, 8)).toBe(3); // 2.4 -> 3
+    expect(meteredCredits(0.001, 8)).toBe(1);
+    expect(meteredCredits(2, 25)).toBe(25);
+    expect(meteredCredits(null, 8)).toBe(1);
+    expect(meteredCredits(0.05, 25, 2)).toBe(10);
   });
   it("runs low/medium on Sonnet and deeper on Opus, weighted against the daily cap", () => {
     expect(EFFORTS.map((e) => EFFORT_INFO[e].model)).toEqual(["sonnet", "sonnet", "opus", "opus", "opus"]);

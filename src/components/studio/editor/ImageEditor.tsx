@@ -24,7 +24,7 @@ import { ImagePicker, type PickedImage } from "../ImagePicker";
 import { useBrandKit, generateBrandImages, generationErrorMessage, nearestImageAspect } from "../generate-image";
 import { useAskStore } from "../ask-store";
 import { useCredits } from "../hooks";
-import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
+import { AI_NEEDS_CREDITS } from "@/lib/plans";
 import { useCanvasBridge } from "./canvas-bridge";
 import { canvasSafe, loadImage, originalUrl, paletteOf, penPath, shrinkToBlob, starPoints, type PenAnchor } from "./util";
 
@@ -99,9 +99,10 @@ function typeLabel(o: FObj) {
 
 export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const { clientId } = useClient();
-  // Free plans keep every manual tool; the AI buttons ask them to upgrade (the routes refuse too).
-  const { plan } = useCredits();
-  const aiLocked = plan !== null && !isPaidPlan(plan);
+  // Every plan keeps every manual tool; the AI buttons use credits (the routes check the balance).
+  // AI needs credits, not a plan (2026-10-12): the buttons wait only when the balance is 0.
+  const { balance } = useCredits();
+  const aiLocked = balance !== null && balance <= 0;
   const { activeBrand } = useBrandStore();
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name);
   const { ask } = useAskStore();
@@ -689,7 +690,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   }
   async function aiEdit(instruction: string, extraRef?: string) {
     if (!activeImage || !clientId || !activeBrand || !kit) return;
-    if (aiLocked) { toast.info(EDITOR_AI_UPGRADE); return; }
+    if (aiLocked) { toast.info(AI_NEEDS_CREDITS); return; }
     setAiBusy("Editing with AI…");
     try {
       const url = await imageForAi(activeImage);
@@ -1027,7 +1028,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               <div className="s-card p-3 grid gap-2" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 35%, var(--s-line))" }}>
                 <b className="text-[13px] flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} /> Make a vector with AI</b>
                 <textarea className="s-input" rows={2} value={vectorPrompt} onChange={(e) => setVectorPrompt(e.target.value)} placeholder="e.g. a minimal leaf logo mark, a sale badge, a coffee cup icon" aria-label="Describe a vector" />
-                {aiLocked ? <UpgradeNote /> : (
+                {aiLocked ? <CreditsNote /> : (
                   <div className="flex gap-1.5">
                     <button className="s-btn ai sm flex-1" onClick={() => makeVector()} disabled={!!aiBusy}>Draw it · free</button>
                     <button className="s-btn ghost sm" onClick={() => makeVector(vectorPrompt, "outline")} disabled={!!aiBusy} title="Line-art version">Outline</button>
@@ -1110,7 +1111,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               {activeImage && (
                 <div className="grid gap-2">
                   <span className="s-label">AI on this photo</span>
-                  {aiLocked ? <UpgradeNote /> : (
+                  {aiLocked ? <CreditsNote /> : (
                     <>
                       <button className="s-btn ai justify-between" onClick={removeBackground} disabled={!!aiBusy}><span className="flex items-center gap-2"><Scissors className="h-4 w-4" /> Remove background</span><span className="cost">1 cr</span></button>
                       <button className="s-btn ai justify-between" onClick={() => setPicking("face")} disabled={!!aiBusy}><span className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Swap the face</span><span className="cost">3 cr</span></button>
@@ -1196,12 +1197,12 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   );
 }
 
-/** Shown in place of the Editor's AI buttons on the Free plan. */
-function UpgradeNote() {
+/** Shown in place of the Editor's AI buttons when the balance is 0. */
+function CreditsNote() {
   return (
     <div className="rounded-lg p-3 grid gap-2 text-[12px] leading-relaxed" style={{ background: "color-mix(in oklab, var(--s-ai) 10%, transparent)", border: "1px solid color-mix(in oklab, var(--s-ai) 30%, var(--s-line))", color: "var(--s-soft)" }}>
-      <span>{EDITOR_AI_UPGRADE}</span>
-      <Link href="/studio/account/billing" className="s-btn ai sm justify-center">See plans</Link>
+      <span>{AI_NEEDS_CREDITS}</span>
+      <Link href="/studio/account/billing" className="s-btn ai sm justify-center">Top up credits</Link>
     </div>
   );
 }

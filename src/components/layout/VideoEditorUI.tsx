@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCredits } from "@/components/studio/hooks";
-import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
+import { AI_NEEDS_CREDITS } from "@/lib/plans";
 import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
 import { canvasSize, drawtextFilter, frameAt, normalizeFilter, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
@@ -122,8 +122,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   const [shortTarget, setShortTarget] = useState<15 | 30 | 60>(30);
   const [shorts, setShorts] = useState<{ source: { url: string; name: string; duration: number }; highlights: Highlight[]; segments: Segment[]; credits: number } | null>(null);
   const [canvasW, setCanvasW] = useState(960);
-  const { plan } = useCredits();
-  const aiLocked = plan !== null && !isPaidPlan(plan);
+  // AI needs credits, not a plan (2026-10-12); Cut to the beat runs in the browser and is always free.
+  const { balance } = useCredits();
+  const aiLocked = balance !== null && balance <= 0;
 
   // Ask BlinkSpot can read and edit this timeline through the editor bridge (smart editing).
   // Nothing visual changes here; an AI edit is applied only when the user presses Apply.
@@ -1131,7 +1132,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
               <>
                 <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}</div>
                 <div className="grid gap-2.5 px-3 pb-3">
-                  {aiLocked && <div className="ve-card ai text-[12px]" style={{ color: "var(--s-soft)" }}><span>{EDITOR_AI_UPGRADE}</span><a href="/studio/account/billing" className="s-btn ai sm justify-center">See plans</a></div>}
+                  {aiLocked && <div className="ve-card ai text-[12px]" style={{ color: "var(--s-soft)" }}><span>{AI_NEEDS_CREDITS}</span><a href="/studio/account/billing" className="s-btn ai sm justify-center">Top up credits</a></div>}
                   <div className="ve-card ai">
                     <b className="text-[13px] flex items-center gap-1.5"><AudioLines className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Cut to the beat</b>
                     <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Re-cuts your video track so every cut lands on the music&apos;s beat. Uses the song on the audio track.</span>
@@ -1141,7 +1142,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                     <div className="s-seg" role="group" aria-label="Length">
                       {[15, 30, 60].map((n) => <button key={n} type="button" aria-pressed={beatLength === n} onClick={() => setBeatLength(n)}>{n} s</button>)}
                     </div>
-                    <button type="button" className="s-btn ai sm" disabled={!!aiBusy || aiLocked} onClick={cutToBeat}><Wand2 className="h-3.5 w-3.5" /> Cut it <span className="cost">free</span></button>
+                    <button type="button" className="s-btn ai sm" disabled={!!aiBusy} onClick={cutToBeat}><Wand2 className="h-3.5 w-3.5" /> Cut it <span className="cost">free</span></button>
                   </div>
                   <div className="ve-card ai">
                     <b className="text-[13px] flex items-center gap-1.5"><Subtitles className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Captions</b>
@@ -1297,7 +1298,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
               <>
                 <div className="ve-sec"><div className="h"><Music className="h-3.5 w-3.5" /> {selAudio.name}</div>
                   {range("Volume", selAudio.volume ?? 100, 0, 100, (v) => updateAudioClip(selAudio.id, { volume: v }))}
-                  <button type="button" className="s-btn ai sm justify-self-start" disabled={!!aiBusy || aiLocked} onClick={() => { setRail("ai"); void cutToBeat(); }}><AudioLines className="h-3.5 w-3.5" /> Cut the video to this song</button>
+                  <button type="button" className="s-btn ai sm justify-self-start" disabled={!!aiBusy} onClick={() => { setRail("ai"); void cutToBeat(); }}><AudioLines className="h-3.5 w-3.5" /> Cut the video to this song</button>
                 </div>
                 <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selAudio.timelineStart)} · {(selAudio.trimEnd - selAudio.trimStart).toFixed(1)} s</span></div>
               </>

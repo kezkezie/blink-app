@@ -95,7 +95,7 @@ describe("brand actions: ownership (was an open write to every brand)", () => {
 describe("brand limits are enforced on the SERVER, per plan", () => {
   it.each([
     ["free", 1],
-    ["starter", 2],
+    ["starter", 3], // 2 until 2026-10-12 (Kezie: "the $25 one ... give it three brands")
     ["pro", 6],
     ["agency", 10],
   ])("%s plan allows exactly %i active brands", async (tier, limit) => {
@@ -153,9 +153,9 @@ describe("archiveBrand: soft delete keeps history", () => {
 describe("getBrandAllowance (read-only, for the UI)", () => {
   it("reports used/limit and whether another brand fits", async () => {
     seed({ myTier: "starter", myBrands: 1, archived: 2 });
-    expect(await getBrandAllowance()).toEqual({ used: 1, limit: 2, canCreate: true, plan: "starter" });
-    seed({ myTier: "starter", myBrands: 2 });
-    expect(await getBrandAllowance()).toEqual({ used: 2, limit: 2, canCreate: false, plan: "starter" });
+    expect(await getBrandAllowance()).toEqual({ used: 1, limit: 3, canCreate: true, plan: "starter" });
+    seed({ myTier: "starter", myBrands: 3 });
+    expect(await getBrandAllowance()).toEqual({ used: 3, limit: 3, canCreate: false, plan: "starter" });
   });
 
   it("a brand-new user can create their first brand", async () => {
@@ -249,12 +249,12 @@ describe("brand actions: restore, delete forever, set logo (2026-10-10)", () => 
 
 describe("brand actions: swap when the plan is full (2026-10-11)", () => {
   it("archives one and restores the other, keeping the active count the same", async () => {
-    seed({ myTier: "starter", myBrands: 2, archived: 1 });
-    expect((await restoreBrand("archived-0")).error).toBeTruthy(); // full: 2 of 2
+    seed({ myTier: "starter", myBrands: 3, archived: 1 });
+    expect((await restoreBrand("archived-0")).error).toBeTruthy(); // full: 3 of 3
     expect((await swapBrands("mine-1", "archived-0")).success).toBe(true);
     expect(brand("mine-1").is_active).toBe(false);
     expect(brand("archived-0").is_active).toBe(true);
-    expect(activeMine()).toBe(2);
+    expect(activeMine()).toBe(3);
   });
 
   it("rolls the archive back if the restore fails, so no brand is lost", async () => {

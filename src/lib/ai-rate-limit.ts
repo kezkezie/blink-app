@@ -52,7 +52,7 @@ export async function consumeAiLimits(userId: string, ops: AiOperation[], plan?:
     if (!row.allowed) {
       const wait = row.retryAfterSeconds > 3600 ? `${Math.ceil(row.retryAfterSeconds / 3600)} hours` : `${Math.max(1, Math.ceil(row.retryAfterSeconds / 60))} minutes`;
       const message = op === "assistant_day"
-        ? `You've used today's ${limit} Ask BlinkSpot messages on your plan. More in about ${wait}, or upgrade for more.`
+        ? `You've used today's ${limit} included Ask BlinkSpot messages. More are included in about ${wait}; until then messages use credits.`
         : `That's the limit for now (${limit} an hour). Try again in about ${wait}.`;
       return { allowed: false, status: 429, message, retryAfterSeconds: row.retryAfterSeconds };
     }

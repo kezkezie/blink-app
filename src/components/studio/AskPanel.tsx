@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUp, CalendarCheck, Check, ChevronUp, Loader2, Lock, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
-import { EFFORTS, EFFORT_INFO, allowedEfforts, planFor, type Effort } from "@/lib/assistant/effort";
+import { ArrowUp, CalendarCheck, Check, ChevronUp, Coins, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
+import { EFFORTS, EFFORT_INFO, allowedEfforts, creditCapFor, type Effort } from "@/lib/assistant/effort";
 import { useCredits } from "./hooks";
 import { supabase } from "@/lib/supabase";
 import { enabledPlatforms, placeOnCalendar } from "./plan/schedule";
@@ -36,14 +36,15 @@ const STARTERS = [
   "How many credits would a 1080p 15 s video cost?",
 ];
 
-/** Ask BlinkSpot: a chat panel that reads the account and proposes actions as buttons. It never spends. */
+/** Ask BlinkSpot: a chat panel that reads the account and proposes actions as buttons. It never starts a paid generation itself; its own messages are included in the plan or use a few credits (shown under the reply). */
 export function AskPanel() {
   const { open, setOpen, draft, setDraft, messages, push, reset, effort, setEffort } = useAskStore();
   const { plan } = useCredits();
   const [dialOpen, setDialOpen] = useState(false);
   // What the plan allows; the server clamps too.
-  const allowed = allowedEfforts(plan);
-  const level: Effort = allowed.includes(effort) ? effort : allowed[allowed.length - 1];
+  // Every level is open; the plan's levels are included, the rest use credits (2026-10-12).
+  const included = allowedEfforts(plan);
+  const level: Effort = effort;
   const { activeBrand } = useBrandStore();
   const pathname = usePathname();
   const [busy, setBusy] = useState(false);
@@ -110,7 +111,7 @@ export function AskPanel() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "The assistant could not answer just now.");
-      push({ role: "assistant", text: data.reply, actions: data.actions });
+      push({ role: "assistant", text: data.reply, actions: data.actions, credits: typeof data.credits === "number" ? data.credits : undefined });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -182,6 +183,7 @@ export function AskPanel() {
         {messages.map((m, i) => (
           <div key={i} className="flex flex-col gap-2">
             <div className={`msg ${m.role === "user" ? "me" : "ai"}`}>{m.text}</div>
+            {m.role === "assistant" && !!m.credits && <span className="text-[10.5px] mono flex items-center gap-1 -mt-1 px-1" style={{ color: "var(--s-mute)" }}><Coins className="h-3 w-3" /> {m.credits} credit{m.credits === 1 ? "" : "s"}</span>}
             {m.actions?.map((a, j) => {
               const key = `${i}:${j}`;
               if (a.kind === "apply_canvas") {
@@ -293,21 +295,21 @@ export function AskPanel() {
               <div role="menu" className="absolute bottom-7 left-0 z-10 w-[260px] rounded-xl p-1.5 grid gap-0.5" style={{ background: "var(--s-raised)", border: "1px solid var(--s-line-2)", boxShadow: "0 18px 40px rgba(0,0,0,.5)" }}>
                 <span className="px-2 pt-1 pb-1.5 text-[10.5px] uppercase tracking-wider" style={{ color: "var(--s-mute)" }}>How hard Ask thinks</span>
                 {EFFORTS.map((e) => {
-                  const ok = allowed.includes(e);
+                  const ok = included.includes(e) && !(editorOpen || canvasOpen ? plan === "free" || plan === null : false);
                   const info = EFFORT_INFO[e];
                   return (
-                    <button key={e} role="menuitemradio" aria-checked={level === e} disabled={!ok} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left disabled:cursor-not-allowed" style={{ background: level === e ? "var(--s-hover)" : "transparent", opacity: ok ? 1 : 0.55 }}
+                    <button key={e} role="menuitemradio" aria-checked={level === e} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left" style={{ background: level === e ? "var(--s-hover)" : "transparent" }}
                       onClick={() => { setEffort(e); setDialOpen(false); }}>
                       <EffortBars level={e} />
                       <span className="flex-1 min-w-0">
                         <span className="text-[12.5px] font-medium flex items-center gap-1.5">{info.label}{level === e && <Check className="h-3 w-3" style={{ color: "var(--s-accent)" }} />}</span>
                         <span className="text-[11px] block truncate" style={{ color: "var(--s-mute)" }}>{info.line}</span>
                       </span>
-                      <span className="text-[10.5px] mono text-right shrink-0" style={{ color: "var(--s-mute)" }}>{ok ? (info.weight === 1 ? "1 msg" : `${info.weight} msgs`) : <span className="flex items-center gap-1"><Lock className="h-3 w-3" />{planFor(e)}</span>}</span>
+                      <span className="text-[10.5px] mono text-right shrink-0" style={{ color: "var(--s-mute)" }}>{ok ? (info.weight === 1 ? "1 msg" : `${info.weight} msgs`) : <span className="flex items-center gap-1" title="Not included in your plan: paid with credits for what it uses"><Coins className="h-3 w-3" />≤{creditCapFor(e, editorOpen || canvasOpen)} cr</span>}</span>
                     </button>
                   );
                 })}
-                <span className="px-2 pt-1.5 pb-1 text-[10.5px] leading-snug" style={{ color: "var(--s-mute)" }}>Deeper thinking is slower and counts as more of your daily messages. Credits are never used.</span>
+                <span className="px-2 pt-1.5 pb-1 text-[10.5px] leading-snug" style={{ color: "var(--s-mute)" }}>Your plan includes the levels marked in messages; deeper ones count as more. The others, and messages after today&apos;s included ones, use credits for what they actually use.</span>
               </div>
             )}
           </div>

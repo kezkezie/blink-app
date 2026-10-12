@@ -37,7 +37,7 @@ describe("AI rate limits (routes that spend the owner's Claude key)", () => {
     rpc.mockResolvedValueOnce(row(true)).mockResolvedValueOnce(row(false, 5 * 3600));
     const r = await consumeAiLimits("u1", ["assistant_hour", "assistant_day"], "free");
     expect(r).toMatchObject({ allowed: false, status: 429 });
-    expect(r.allowed === false && r.message).toMatch(/today's 10 Ask BlinkSpot messages.*5 hours/);
+    expect(r.allowed === false && r.message).toMatch(/today's 10 included Ask BlinkSpot messages.*5 hours.*credits/);
   });
 
   it("fails closed (503) if the limiter can't answer, so a broken limiter can't mean an unlimited bill", async () => {

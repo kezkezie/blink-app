@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
+import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
 import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 
 /**
  * Editor → "Make a vector": Claude draws clean, editable SVG (shapes, icons, badges, simple logos)
- * that the editor turns into layers. No credits; the browser sanitises the SVG before using it.
+ * that the editor turns into layers; the browser sanitises the SVG before using it. Logos in the brand
+ * builder are free (brand set-up is free); vectors in the Editor cost what the drawing cost, 2 to 25
+ * credits, on any plan (2026-10-12).
  */
 export const maxDuration = 120;
 
@@ -27,10 +29,14 @@ export async function POST(request: NextRequest) {
   if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status });
   let body: { prompt?: unknown; brandId?: unknown; style?: unknown; colors?: unknown; brandName?: unknown; font?: unknown; purpose?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
-  // Free plans: logos in the brand builder only (brand set-up stays free); the Editor's vectors are paid.
+  // Logos in the brand builder are free (brand set-up); the Editor's vectors use credits on any plan.
+  const VECTOR_CAP = 25;
+  let payer: string | null = null;
   if (body.purpose !== "brand_logo") {
-    const { data: owner } = await supabaseAdmin.from("clients").select("plan_tier").eq("user_id", auth.value).maybeSingle();
-    if (!isPaidPlan(owner?.plan_tier)) return NextResponse.json({ error: EDITOR_AI_UPGRADE, code: "upgrade_required" }, { status: 403 });
+    const { data: owner } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+    if (!owner?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+    if ((await creditBalance(owner.id)) < VECTOR_CAP) return NextResponse.json({ error: NOT_ENOUGH_CREDITS(VECTOR_CAP), code: "not_enough_credits" }, { status: 402 });
+    payer = owner.id;
   }
   const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 800) : "";
   if (prompt.length < 3) return NextResponse.json({ error: "Describe what to draw." }, { status: 400 });
@@ -70,5 +76,11 @@ export async function POST(request: NextRequest) {
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
   const svg = text.match(/<svg[\s\S]*<\/svg>/i)?.[0];
   if (!res.ok || !svg) return NextResponse.json({ error: "Couldn't draw that. Try describing it differently." }, { status: 502 });
-  return NextResponse.json({ svg });
+  // Charged only for a drawing that came back.
+  let credits = 0;
+  if (payer) {
+    credits = meteredCredits(usd, VECTOR_CAP, 2);
+    if (!(await chargeCredits(payer, credits, "Editor: draw a vector"))) console.error("vector: charge failed after drawing", payer, credits);
+  }
+  return NextResponse.json({ svg, credits });
 }

@@ -5,7 +5,6 @@ import { verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
-import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
 import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { transcribeCredits, transcriptForModel, validateHighlights, type Segment } from "@/lib/editor/highlights";
 
@@ -42,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-  if (!isPaidPlan(client.plan_tier)) return NextResponse.json({ error: EDITOR_AI_UPGRADE, code: "upgrade_required" }, { status: 403 });
+  // Any plan with credits (Kezie, 2026-10-12: credits unlock every AI feature).
   if (!audioUrl || !(await verifyOwnedInspirationImage(client.id, audioUrl))) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const limit = await consumeAiLimits(auth.value, ["clip_ai"]);
   if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status });

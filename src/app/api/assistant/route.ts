@@ -5,8 +5,10 @@ import { AssistantUnavailableError, estimateUsd, runAssistant } from "@/lib/assi
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { loadAccountBrief } from "@/lib/assistant/tools";
 import { parseAssistantRequest } from "@/lib/assistant/request";
-import { EDITOR_AI_UPGRADE, isPaidPlan } from "@/lib/plans";
-import { EFFORT_INFO, effortFor } from "@/lib/assistant/effort";
+import { isPaidPlan } from "@/lib/plans";
+import { EFFORT_INFO, allowedEfforts, creditCapFor, effortFor, planFor } from "@/lib/assistant/effort";
+import { chargeCredits, creditBalance, meteredCredits } from "@/lib/credits-meter";
+import { aiLimitFor } from "@/lib/ai-rate-limit";
 
 // A reply can take several model turns; Kie alone has measured 70-80 s per turn.
 export const maxDuration = 300;
@@ -24,17 +26,39 @@ export async function POST(request: NextRequest) {
 
   const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-  // Editing a timeline or canvas runs on Opus; on the Free plan the editors' AI is a paid feature.
-  if ((parsed.editor || parsed.canvas) && !isPaidPlan(client.plan_tier)) {
-    return NextResponse.json({
-      reply: `${EDITOR_AI_UPGRADE} I can still help you plan and write: close the editor and ask me anything.`,
-      actions: [{ kind: "open_page", label: "See plans", href: "/studio/account/billing" }],
-    });
+  // Credits unlock everything (Kezie, 2026-10-12). Included: the plan's levels, within the day's
+  // Ask messages (deeper levels count as more), and editing on paid plans. Everything else is paid
+  // in credits for what the reply actually cost, never more than the level's cap.
+  const effort = effortFor(parsed.effort);
+  const editing = !!(parsed.editor || parsed.canvas);
+  const paidPlan = isPaidPlan(client.plan_tier);
+  const burst = await consumeAiLimits(auth.value, ["assistant_hour"], client.plan_tier);
+  if (!burst.allowed) return NextResponse.json({ error: burst.message }, { status: burst.status, headers: burst.retryAfterSeconds ? { "Retry-After": String(burst.retryAfterSeconds) } : undefined });
+  let included = false;
+  let why: "day" | "level" | "editing" = "level";
+  if (editing && !paidPlan) why = "editing";
+  else if (allowedEfforts(client.plan_tier).includes(effort)) {
+    const day = await consumeAiLimits(auth.value, Array<"assistant_day">(EFFORT_INFO[effort].weight).fill("assistant_day"), client.plan_tier);
+    if (day.allowed) included = true;
+    else if (day.status === 503) return NextResponse.json({ error: day.message }, { status: 503 });
+    else why = "day";
   }
-  // Deeper thinking costs more, so it counts as more of the day's messages (Thorough 2, Extra high 3, Max 4).
-  const effort = effortFor(parsed.effort, client.plan_tier);
-  const limit = await consumeAiLimits(auth.value, ["assistant_hour", ...Array<"assistant_day">(EFFORT_INFO[effort].weight).fill("assistant_day")], client.plan_tier);
-  if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status, headers: limit.retryAfterSeconds ? { "Retry-After": String(limit.retryAfterSeconds) } : undefined });
+  const cap = creditCapFor(effort, editing);
+  if (!included) {
+    const balance = await creditBalance(client.id);
+    if (balance < cap) {
+      const reason = why === "day"
+        ? `You've used today's ${aiLimitFor("assistant_day", client.plan_tier).limit} included Ask messages.`
+        : why === "editing"
+          ? "Editing with Ask on the Free plan uses credits."
+          : `${EFFORT_INFO[effort].label} isn't included in your plan (it is from ${planFor(effort)}), so it uses credits.`;
+      return NextResponse.json({
+        reply: `${reason} A message like this costs up to ${cap} credits and you have ${balance}. Top up any time: credit packs work on every plan, Free included.${why !== "editing" && effort !== "low" && effort !== "medium" ? " Or switch the dial to Balanced." : ""}`,
+        actions: [{ kind: "open_page", label: "Top up credits", href: "/studio/account/billing" }],
+        credits: 0,
+      });
+    }
+  }
 
   // The brand must belong to this account and be active; otherwise the assistant works brand-less.
   let brandId: string | null = null;
@@ -50,8 +74,14 @@ export async function POST(request: NextRequest) {
     const result = await runAssistant(parsed.messages, { ...ctx, brief, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas, effort });
     // One line per answer so the Claude bill can be traced to accounts in the Vercel logs.
     const usd = estimateUsd(result.model, result.usage);
-    console.info("assistant usage", JSON.stringify({ client: client.id, model: result.model, effort, ...result.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
-    return NextResponse.json(result);
+    let credits = 0;
+    if (!included) {
+      credits = meteredCredits(usd, cap);
+      const charged = await chargeCredits(client.id, credits, `Ask BlinkSpot (${EFFORT_INFO[effort].label}${editing ? ", editing" : ""})`);
+      if (!charged) console.error("assistant: charge failed after reply", client.id, credits);
+    }
+    console.info("assistant usage", JSON.stringify({ client: client.id, model: result.model, effort, included, credits, ...result.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+    return NextResponse.json({ ...result, credits });
   } catch (err) {
     if (err instanceof AssistantUnavailableError) return NextResponse.json({ error: err.message }, { status: 503 });
     console.error("assistant error", err);

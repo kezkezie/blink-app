@@ -15,8 +15,8 @@ export const TIER_CAPS: Record<PlanTier, { monthly: TierLimits; weekly: TierLimi
         weekly: { maxBrands: 1, maxPosts: 5, maxStorageDays: 7, hasRefineBrain: false },
     },
     starter: {
-        monthly: { maxBrands: 2, maxPosts: 30, maxStorageDays: 30, hasRefineBrain: true },
-        weekly: { maxBrands: 2, maxPosts: 7, maxStorageDays: 7, hasRefineBrain: true },
+        monthly: { maxBrands: 3, maxPosts: 30, maxStorageDays: 30, hasRefineBrain: true },
+        weekly: { maxBrands: 3, maxPosts: 7, maxStorageDays: 7, hasRefineBrain: true },
     },
     pro: {
         monthly: { maxBrands: 6, maxPosts: 60, maxStorageDays: 60, hasRefineBrain: true },
