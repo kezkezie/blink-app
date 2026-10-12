@@ -86,7 +86,10 @@ test("calendar: schedule and take off a post; the post page saves captions; bill
     // Billing: the shared plan list and the new top-up price.
     await page.goto(`${BASE}/studio/account/billing`);
     await expect(page.getByText("Your plan").first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("link", { name: /Top up 800 credits/ })).toContainText("$8");
+    // Four credit packs on every plan (2026-10-12); without the Paystack key they fall back to email.
+    for (const [n, usd] of [["300", "$3"], ["800", "$8"], ["2,000", "$18"], ["5,000", "$40"]]) await expect(page.getByRole("button", { name: `Buy ${n.replace(",", "")} credits for ${usd}` })).toBeVisible();
+    await expect(page.getByText("Starter").first()).toBeVisible();
+    await expect(page.getByText("3 brands").first()).toBeVisible();
     for (const name of ["Free", "Starter", "Pro", "Agency"]) await expect(page.locator("b", { hasText: new RegExp(`^${name}$`) }).first()).toBeVisible();
     await expect(page.getByText("100 credits to start").first()).toBeVisible();
     await page.screenshot({ path: "test-results/studio-billing.png", fullPage: true });
