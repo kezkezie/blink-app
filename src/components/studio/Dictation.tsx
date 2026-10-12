@@ -11,6 +11,11 @@ import { useBrandStore } from "@/app/store/useBrandStore";
  * touching them: a mic button sits inside whichever box has focus. Tap to record, tap to stop; the
  * words are inserted at the cursor as if typed (React state updates normally). Opt a field out with
  * data-no-mic.
+ *
+ * Live words (Kezie, 2026-10-12: "I like it when it shows the words as you're speaking"): where the
+ * browser has speech recognition (Chrome, Edge, Safari), the words appear in the box while you
+ * talk. When you stop, Whisper's transcript (more accurate, knows the brand name) replaces them;
+ * if Whisper fails, the live words stay. Elsewhere it records and inserts at the end, as before.
  */
 
 type Field = HTMLInputElement | HTMLTextAreaElement;
@@ -23,21 +28,49 @@ function isDictatable(el: Element | null): el is Field {
   return false;
 }
 
-/** Insert text at the caret the way typing would, so React's onChange fires. */
-export function insertAtCaret(el: Field, text: string) {
-  const start = el.selectionStart ?? el.value.length;
-  const end = el.selectionEnd ?? el.value.length;
-  const before = el.value.slice(0, start);
-  const after = el.value.slice(end);
-  const spacer = before && !/\s$/.test(before) ? " " : "";
-  const insert = spacer + text;
+/** Set a box's value the way typing would, so React's onChange fires, and place the caret. */
+function setFieldValue(el: Field, value: string, caret: number) {
   const max = el.maxLength > 0 ? el.maxLength : Infinity;
-  const next = (before + insert + after).slice(0, max);
+  const next = value.slice(0, max);
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, next);
   el.dispatchEvent(new Event("input", { bubbles: true }));
-  const caret = Math.min(next.length, before.length + insert.length);
-  el.setSelectionRange?.(caret, caret);
+  const at = Math.min(next.length, caret);
+  el.setSelectionRange?.(at, at);
+}
+
+/** Where dictated words go: between `before` and `after`, with a space if needed. */
+type Slot = { before: string; after: string; spacer: string };
+function slotAtCaret(el: Field): Slot {
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  const before = el.value.slice(0, start);
+  return { before, after: el.value.slice(end), spacer: before && !/\s$/.test(before) ? " " : "" };
+}
+function fillSlot(el: Field, slot: Slot, text: string) {
+  const insert = text ? slot.spacer + text : "";
+  setFieldValue(el, slot.before + insert + slot.after, slot.before.length + insert.length);
+}
+
+/** Insert text at the caret the way typing would, so React's onChange fires. */
+export function insertAtCaret(el: Field, text: string) {
+  fillSlot(el, slotAtCaret(el), text);
+}
+
+/** The browser's live speech recognition (Chrome/Edge/Safari), typed minimally. */
+type LiveResult = { isFinal: boolean; 0: { transcript: string } };
+type LiveRecognizer = {
+  lang: string; continuous: boolean; interimResults: boolean;
+  onresult: ((e: { resultIndex: number; results: ArrayLike<LiveResult> }) => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void; stop: () => void; abort: () => void;
+};
+function liveRecognizer(): LiveRecognizer | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as { SpeechRecognition?: new () => LiveRecognizer; webkitSpeechRecognition?: new () => LiveRecognizer };
+  const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  try { return Ctor ? new Ctor() : null; } catch { return null; }
 }
 
 function pickMime() {
@@ -56,6 +89,11 @@ export function Dictation() {
   const chunks = useRef<Blob[]>([]);
   const target = useRef<Field | null>(null);
   const stream = useRef<MediaStream | null>(null);
+  // Live words: where they go, what has been said so far, and the recognizer.
+  const slot = useRef<Slot | null>(null);
+  const live = useRef("");
+  const recognizer = useRef<LiveRecognizer | null>(null);
+  const [hearing, setHearing] = useState(false);
 
   // Follow focus: the button belongs to the focused text box.
   useEffect(() => {
@@ -103,11 +141,15 @@ export function Dictation() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't transcribe that.");
       const el = target.current;
-      if (data.text && el?.isConnected) { el.focus(); insertAtCaret(el, data.text); }
-      else if (!data.text) toast.info("I didn't catch anything. Try again a little closer to the mic.");
+      const text = String(data.text || "").trim() || live.current.trim();
+      if (text && el?.isConnected) { el.focus(); if (slot.current) fillSlot(el, slot.current, text); else insertAtCaret(el, text); }
+      else if (!text) toast.info("I didn't catch anything. Try again a little closer to the mic.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't transcribe that.");
+      // The live words are already in the box; only say something if there are none.
+      if (!live.current.trim()) toast.error(e instanceof Error ? e.message : "Couldn't transcribe that.");
     } finally {
+      slot.current = null;
+      live.current = "";
       setState("idle");
     }
   }, [activeBrand?.brand_name]);
@@ -123,19 +165,67 @@ export function Dictation() {
     }
     target.current = field;
     chunks.current = [];
+    slot.current = slotAtCaret(field);
+    live.current = "";
+    startLiveWords(field);
     const mime = pickMime();
     const rec = new MediaRecorder(stream.current, mime ? { mimeType: mime } : undefined);
     rec.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); };
     rec.onstop = () => {
       stream.current?.getTracks().forEach((t) => t.stop());
+      stopLiveWords();
       const blob = new Blob(chunks.current, { type: (rec.mimeType || mime || "audio/webm").split(";")[0] });
-      if (blob.size < 2000) { setState("idle"); toast.info("That was too short. Hold on a moment longer."); return; }
+      if (blob.size < 2000) {
+        // Too short for Whisper; keep any live words, otherwise put the box back.
+        if (!live.current.trim() && target.current && slot.current) fillSlot(target.current, slot.current, "");
+        slot.current = null; live.current = ""; setState("idle");
+        toast.info("That was too short. Hold on a moment longer.");
+        return;
+      }
       void transcribe(blob);
     };
     recorder.current = rec;
     rec.start(250);
     setState("recording");
   }
+
+  /** Show the words in the box as they're said (where the browser can). */
+  function startLiveWords(el: Field) {
+    const r = liveRecognizer();
+    if (!r) return;
+    r.lang = navigator.language || "en-US";
+    r.continuous = true;
+    r.interimResults = true;
+    let finals = "";
+    r.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finals = `${finals} ${t}`.replace(/\s+/g, " ").trim();
+        else interim += t;
+      }
+      live.current = `${finals} ${interim}`.replace(/\s+/g, " ").trim();
+      if (el.isConnected && slot.current) fillSlot(el, slot.current, live.current);
+      setHearing(true);
+    };
+    // "no-speech" or a blocked service just means no live words; the recording carries on.
+    r.onerror = () => {};
+    r.onend = () => {
+      // Chrome ends a session after a pause; keep listening while we're still recording.
+      if (recorder.current?.state === "recording" && recognizer.current === r) { try { r.start(); } catch { /* already started */ } }
+    };
+    recognizer.current = r;
+    try { r.start(); } catch { recognizer.current = null; }
+  }
+  function stopLiveWords() {
+    const r = recognizer.current;
+    recognizer.current = null;
+    setHearing(false);
+    try { r?.stop(); } catch { /* not started */ }
+  }
+
+  // Leaving the page mid-recording: stop the mic and the recognizer.
+  useEffect(() => () => { try { recognizer.current?.abort(); } catch { /* none */ } stream.current?.getTracks().forEach((t) => t.stop()); }, []);
 
   if (!field || !rect || rect.width < 120) return null;
   const tall = rect.height > 48;
@@ -147,7 +237,18 @@ export function Dictation() {
     top: tall ? rect.bottom - size - 6 : rect.top + (rect.height - size) / 2,
     width: size, height: size,
   };
+  const mm = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   return createPortal(
+    <>
+    {state !== "idle" && (
+      <span
+        aria-live="polite"
+        className="rounded-full flex items-center gap-1.5 text-[11px] mono"
+        style={{ position: "fixed", zIndex: 70, top: (style.top as number) + 3, left: (style.left as number) - 8, transform: "translateX(-100%)", height: size - 6, padding: "0 9px", background: "var(--s-raised)", border: "1px solid var(--s-line-2)", color: "var(--s-soft)", pointerEvents: "none", whiteSpace: "nowrap" }}
+      >
+        {state === "recording" ? <><span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "var(--s-danger)" }} />{hearing ? "Listening" : "Recording"} {mm}</> : "Tidying the words"}
+      </span>
+    )}
     <button
       type="button"
       // Keep focus (and the caret) in the text box.
@@ -165,7 +266,8 @@ export function Dictation() {
       }}
     >
       {state === "working" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : state === "recording" ? <Square className="h-3 w-3" fill="currentColor" /> : <Mic className="h-3.5 w-3.5" />}
-    </button>,
+    </button>
+    </>,
     document.body,
   );
 }
