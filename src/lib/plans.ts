@@ -22,6 +22,13 @@ export const CREDIT_PACKS = [
 export type CreditPackId = (typeof CREDIT_PACKS)[number]["id"];
 export const TOP_UP = { credits: 800, usd: 8 } as const;
 
+/** Credits a plan adds on each successful charge (first and every renewal). */
+export const PLAN_CREDITS: Record<Exclude<PlanTier, "free">, { monthly: number; weekly: number }> = {
+  starter: { monthly: 1500, weekly: 350 },
+  pro: { monthly: 3000, weekly: 750 },
+  agency: { monthly: 6000, weekly: 1500 },
+};
+
 export function planOf(v: unknown): PlanTier {
   if (v === "starter" || v === "pro" || v === "agency") return v;
   // Legacy custom/enterprise rows are paid accounts set up by hand.

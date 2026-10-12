@@ -1,44 +1,106 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, Coins, Loader2, Mail } from "lucide-react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Check, Coins, CreditCard, Loader2, Mail } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { PLANS, TOP_UP, planOf, type PlanTier } from "@/lib/plans";
+import { CREDIT_PACKS, PLANS, planOf, type PlanTier } from "@/lib/plans";
 import { formatCredits } from "@/components/studio/hooks";
 
 /**
  * Billing & credits in the studio look (2026-10-11; the classic page stays at /dashboard/billing).
- * Prices and promises come from lib/plans.ts, the same list the homepage shows. Online checkout
- * (Paystack) isn't live yet, so upgrading and topping up are an email to the team.
+ * Prices and promises come from lib/plans.ts, the same list the homepage shows.
+ * 2026-10-12: credit packs on every plan and plans by subscription, paid on Paystack's own page
+ * (lib/payments). Until PAYSTACK_SECRET_KEY is set, the buttons fall back to an email.
  */
 type Txn = { id: string; amount: number; description: string | null; operation: string; created_at: string };
 const ORDER: PlanTier[] = ["free", "starter", "pro", "agency"];
 const mail = (subject: string) => `mailto:info@blinkspot.io?subject=${encodeURIComponent(subject)}`;
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
 
-export default function BillingPage() {
+type Sub = { status: string | null; cycle: string | null; periodEnd: string | null; online: boolean };
+type PayStatus = { online: boolean; test?: boolean; currency?: string | null };
+
+function BillingPage() {
   const { clientId, loading } = useClient();
+  const router = useRouter();
+  const search = useSearchParams();
   const [plan, setPlan] = useState<PlanTier | null>(null);
+  const [sub, setSub] = useState<Sub | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [txns, setTxns] = useState<Txn[] | null>(null);
   const [cycle, setCycle] = useState<"monthly" | "weekly">("monthly");
   const [allTxns, setAllTxns] = useState(false);
+  const [pay, setPay] = useState<PayStatus>({ online: false });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/billing/status", { cache: "no-store" }).then((r) => r.json()).then((d: PayStatus) => setPay(d)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!clientId) return;
     let cancelled = false;
     Promise.all([
-      supabase.from("clients").select("plan_tier").eq("id", clientId).maybeSingle(),
+      supabase.from("clients").select("plan_tier, billing_status, billing_cycle, current_period_end, billing_subscription_code").eq("id", clientId).maybeSingle(),
       supabase.from("credit_balances").select("balance").eq("client_id", clientId).maybeSingle(),
       supabase.from("credit_transactions").select("id, amount, description, operation, created_at").eq("client_id", clientId).order("created_at", { ascending: false }).limit(25),
     ]).then(([c, b, t]) => {
       if (cancelled) return;
       setPlan(planOf(c.data?.plan_tier));
+      setSub({ status: c.data?.billing_status ?? null, cycle: c.data?.billing_cycle ?? null, periodEnd: c.data?.current_period_end ?? null, online: !!c.data?.billing_subscription_code });
       setBalance(b.data?.balance ?? 0);
       setTxns((t.data ?? []) as Txn[]);
     });
     return () => { cancelled = true; };
-  }, [clientId]);
+  }, [clientId, tick]);
+
+  // Back from the checkout page: confirm the payment (it can take a few seconds to settle).
+  const returned = search.get("checkout");
+  useEffect(() => {
+    if (!returned || !clientId) return;
+    let stop = false;
+    const t0 = Date.now();
+    const id = toast.loading("Confirming your payment…");
+    const check = async () => {
+      const r = await fetch(`/api/billing/verify?reference=${encodeURIComponent(returned)}`, { cache: "no-store" }).then((x) => x.json()).catch(() => ({ status: "pending" }));
+      if (stop) return;
+      if (r.status === "paid") {
+        toast.success(r.kind === "plan" ? `You're on ${String(r.plan).replace(/^./, (c: string) => c.toUpperCase())}. ${r.credits.toLocaleString("en-US")} credits added.` : `${r.credits.toLocaleString("en-US")} credits added. Thank you!`, { id });
+        setTick((n) => n + 1);
+      } else if (r.status === "failed") {
+        toast.error(r.error || "The payment didn't go through. Nothing was charged.", { id });
+      } else if (Date.now() - t0 < 30_000) { setTimeout(check, 2500); return; }
+      else toast.info("Still confirming. If you were charged, the credits appear here within a few minutes.", { id });
+      router.replace("/studio/account/billing", { scroll: false });
+    };
+    void check();
+    return () => { stop = true; };
+  }, [returned, clientId, router]);
+
+  const checkout = useCallback(async (item: string, fallbackSubject: string) => {
+    if (!pay.online) { window.location.href = mail(fallbackSubject); return; }
+    setBusy(item);
+    try {
+      const res = await fetch("/api/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error || "Couldn't open the payment page.");
+      window.location.href = data.url;
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't open the payment page."); setBusy(null); }
+  }, [pay.online]);
+
+  const manage = useCallback(async () => {
+    setBusy("manage");
+    try {
+      const res = await fetch("/api/billing/manage", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error || "Couldn't open the subscription page.");
+      window.location.href = data.url;
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't open the subscription page."); setBusy(null); }
+  }, []);
 
   if (loading || plan === null) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
   const current = PLANS.find((p) => p.id === plan)!;
@@ -56,13 +118,27 @@ export default function BillingPage() {
           <ul className="grid gap-1.5 mt-2">
             {current.features.map((f) => <li key={f} className="text-[13px] flex gap-2" style={{ color: "var(--s-soft)" }}><Check className="h-4 w-4 shrink-0 mt-px" style={{ color: "var(--s-ok)" }} />{f}</li>)}
           </ul>
+          {plan !== "free" && sub?.periodEnd && (
+            <p className="text-[12.5px] mt-1" style={{ color: sub.status === "cancelled" || sub.status === "paused" ? "var(--s-warn, #f5a524)" : "var(--s-mute)" }}>
+              {sub.status === "cancelled" ? `Cancelled: stays ${current.name} until ${fmtDate(sub.periodEnd)}, then Free.` : sub.status === "paused" ? `The last renewal didn't go through. Update your card before ${fmtDate(sub.periodEnd)} to keep ${current.name}.` : `Renews by ${fmtDate(sub.periodEnd)}.`}
+            </p>
+          )}
+          {sub?.online && <button className="s-btn sm self-start mt-1" disabled={busy === "manage"} onClick={manage}>{busy === "manage" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Manage subscription</button>}
         </div>
         <div className="s-card p-5 flex flex-col gap-3">
           <span className="s-label">Credits</span>
           <div className="flex items-baseline gap-2"><Coins className="h-5 w-5 self-center" style={{ color: "var(--s-accent)" }} /><b className="text-[30px] font-semibold tracking-tight mono">{formatCredits(balance)}</b><span className="text-[13px]" style={{ color: "var(--s-mute)" }}>left</span></div>
-          <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>The price is on every button before you press it. Failed renders are refunded automatically.</p>
+          <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>Credits pay for every AI feature, on every plan. The price is on each button before you press it; failed renders are refunded automatically. Credits never expire.</p>
           <div className="flex-1" />
-          <a href={mail(`Top up: ${TOP_UP.credits} credits for $${TOP_UP.usd}`)} className="s-btn primary justify-between"><span>Top up {TOP_UP.credits.toLocaleString("en-US")} credits</span><span className="cost">${TOP_UP.usd}</span></a>
+          <div className="grid grid-cols-2 gap-2">
+            {CREDIT_PACKS.map((p) => (
+              <button key={p.id} className={`s-btn justify-between${p.id === "pack_800" ? " primary" : ""}`} disabled={!!busy} onClick={() => checkout(p.id, `Top up: ${p.credits} credits for $${p.usd}`)} aria-label={`Buy ${p.credits} credits for $${p.usd}`}>
+                <span className="flex items-center gap-1.5">{busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}{p.credits.toLocaleString("en-US")}{"note" in p && <span className="text-[10.5px]" style={{ opacity: 0.75 }}>{p.note}</span>}</span>
+                <span className="cost">${p.usd}</span>
+              </button>
+            ))}
+          </div>
+          {pay.test && <span className="s-badge self-start">Test mode: use a Paystack test card</span>}
         </div>
       </div>
 
@@ -90,12 +166,14 @@ export default function BillingPage() {
                 </ul>
                 {isCurrent ? <span className="s-btn" aria-disabled="true" style={{ opacity: 0.6 }}>Your plan</span>
                   : p.id === "free" ? <span className="text-[12px] text-center" style={{ color: "var(--s-mute)" }}>Included with every account</span>
-                  : <a href={mail(`${up ? "Upgrade" : "Change"} to ${p.name} (${cycle})`)} className={`s-btn${up ? " primary" : ""}`}>{up ? `Upgrade to ${p.name}` : `Switch to ${p.name}`}</a>}
+                  : <button className={`s-btn${up ? " primary" : ""}`} disabled={!!busy} onClick={() => checkout(`plan:${p.id}:${cycle}`, `${up ? "Upgrade" : "Change"} to ${p.name} (${cycle})`)}>{busy === `plan:${p.id}:${cycle}` && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{up ? `Upgrade to ${p.name}` : `Switch to ${p.name}`}</button>}
               </div>
             );
           })}
         </div>
-        <p className="text-[12.5px] mt-3 flex items-center gap-1.5" style={{ color: "var(--s-mute)" }}><Mail className="h-3.5 w-3.5" /> Online checkout is on its way. Until then, email us from your account address and we switch you over the same day.</p>
+        {pay.online
+          ? <p className="text-[12.5px] mt-3 flex items-center gap-1.5" style={{ color: "var(--s-mute)" }}><CreditCard className="h-3.5 w-3.5" /> Paid securely on Paystack&apos;s page. Plans renew automatically and add their credits each time; cancel any time from Manage subscription.</p>
+          : <p className="text-[12.5px] mt-3 flex items-center gap-1.5" style={{ color: "var(--s-mute)" }}><Mail className="h-3.5 w-3.5" /> Online checkout is on its way. Until then, email us from your account address and we switch you over the same day.</p>}
       </section>
 
       <section>
@@ -115,4 +193,8 @@ export default function BillingPage() {
       </section>
     </div>
   );
+}
+
+export default function Page() {
+  return <Suspense><BillingPage /></Suspense>;
 }
