@@ -733,6 +733,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       if (!res.ok || !data.svg) throw new Error(data.error || "Couldn't draw that.");
       await addSvg(data.svg, { name: prompt.slice(0, 28) });
       setVectorPrompt("");
+      if (data.credits) toast.success(`Drawn · ${data.credits} credit${data.credits === 1 ? "" : "s"}`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't draw that."); }
     finally { setAiBusy(null); }
   }
@@ -1030,11 +1031,11 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                 <textarea className="s-input" rows={2} value={vectorPrompt} onChange={(e) => setVectorPrompt(e.target.value)} placeholder="e.g. a minimal leaf logo mark, a sale badge, a coffee cup icon" aria-label="Describe a vector" />
                 {aiLocked ? <CreditsNote /> : (
                   <div className="flex gap-1.5">
-                    <button className="s-btn ai sm flex-1" onClick={() => makeVector()} disabled={!!aiBusy}>Draw it · free</button>
+                    <button className="s-btn ai sm flex-1 justify-between" onClick={() => makeVector()} disabled={!!aiBusy} title="Priced on what the drawing takes: usually about 5 credits, never more than 25"><span>Draw it</span><span className="cost">~5 cr</span></button>
                     <button className="s-btn ghost sm" onClick={() => makeVector(vectorPrompt, "outline")} disabled={!!aiBusy} title="Line-art version">Outline</button>
                   </div>
                 )}
-                <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Comes in as editable layers you can recolour, resize and ungroup.</p>
+                <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Comes in as editable layers you can recolour, resize and ungroup. Priced on what it takes, usually about 5 credits. Logos in the Brand builder are free.</p>
               </div>
               {kit?.logoUrl && <button className="s-btn justify-start" onClick={() => void addImage(kit.logoUrl!, "Logo")}><ImagePlus className="h-4 w-4" /> Add your logo</button>}
               <p className="text-xs leading-relaxed" style={{ color: "var(--s-mute)" }}>Pick a tool on the left. Hover any tool to learn what it does. Click a layer to change it; AI tools appear when a photo is selected.</p>
@@ -1156,7 +1157,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                   style={{ background: sel ? "var(--s-raised)" : "transparent", boxShadow: sel ? "inset 2px 0 0 var(--s-accent)" : "none", color: sel ? "var(--s-text)" : "var(--s-soft)", opacity: o.visible === false ? 0.5 : 1 }}
                   onClick={() => { if (locked) return; setToolSafe("select"); canvas().setActiveObject(o); canvas().requestRenderAll(); bump(); }}>
                   <span className="text-[10px] mono w-14 shrink-0" style={{ color: "var(--s-mute)" }}>{typeLabel(o)}</span>
-                  <input data-no-mic className="bg-transparent outline-none flex-1 min-w-0 truncate" value={o.name ?? ""} onChange={(e) => { o.set({ name: e.target.value } as Partial<FObj>); bump(); }} onBlur={() => record()} aria-label="Layer name" />
+                  <input data-no-mic className="bg-transparent outline-none flex-1 min-w-0 truncate" value={o.name ?? ""} onChange={(e) => { o.set({ name: e.target.value } as Partial<FObj>); bump(); record(); }} onBlur={() => record()} aria-label="Layer name" />
                   <button onClick={(e) => { e.stopPropagation(); setProp(o, { visible: o.visible === false }); }} aria-label={o.visible === false ? "Show layer" : "Hide layer"} className="p-0.5">{o.visible === false ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
                   <button onClick={(e) => { e.stopPropagation(); setProp(o, { selectable: locked, evented: locked }); if (!locked) canvas().discardActiveObject(); }} aria-label={locked ? "Unlock layer" : "Lock layer"} className="p-0.5">{locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5 opacity-40" />}</button>
                   <button onClick={(e) => { e.stopPropagation(); arrange(o, "forward"); }} aria-label="Move up" className="p-0.5"><ChevronUp className="h-3.5 w-3.5" /></button>

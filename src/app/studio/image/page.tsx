@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { adaptRecipePrompt } from "@/lib/examples/adapt";
+import { toast } from "sonner";
 import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, Shuffle } from "lucide-react";
 import { InspoRemix } from "@/components/studio/InspoRemix";
 import { StudioGenerate } from "@/components/studio/StudioGenerate";
@@ -52,7 +54,12 @@ function ImageStudioInner() {
   // No mode in the link: a typed idea opens Generate, otherwise Inspo Remix (the fastest way in).
   const initialMode = (["remix", "generate", "edit", "design", "pro"] as const).find((m) => m === params.get("mode")) ?? (params.get("prompt") ? "generate" : "remix");
   // An idea from Create or Ask, read once (the query is cleared after arrival).
-  const [initialIdea] = useState(() => params.get("prompt")?.slice(0, 1000) ?? "");
+  // A recipe from an example is adapted to this brand (its brand rules and name taken out; QA-018).
+  const [recipe] = useState(() => adaptRecipePrompt(params.get("prompt") ?? "", activeBrand?.brand_name));
+  const initialIdea = recipe.text;
+  useEffect(() => {
+    if (recipe.from) toast.info(`This recipe was made for ${recipe.from}. We've put your brand in; change the product and the words to yours.`, { duration: 9000 });
+  }, [recipe.from]);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [loadingPick, setLoadingPick] = useState(!!params.get("content"));

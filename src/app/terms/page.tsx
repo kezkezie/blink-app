@@ -61,10 +61,6 @@ export default function TermsPage() {
                             <p>20. DISCLAIMER</p>
                             <p>21. LIMITATIONS OF LIABILITY</p>
                             <p>22. INDEMNIFICATION</p>
-                            <p>23. USER DATA</p>
-                            <p>24. ELECTRONIC COMMUNICATIONS</p>
-                            <p>25. CALIFORNIA USERS AND RESIDENTS</p>
-                            <p>26. MISCELLANEOUS</p>
                             <p>27. AI-GENERATED CONTENT DISCLAIMER</p>
                             <p>28. USER CONTENT RESPONSIBILITY</p>
                             <p>29. THIRD-PARTY PLATFORM DISCLAIMER</p>

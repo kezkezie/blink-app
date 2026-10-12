@@ -13,6 +13,7 @@ import { useCredits } from "@/components/studio/hooks";
 import { AI_NEEDS_CREDITS } from "@/lib/plans";
 import { readVideo } from "@/lib/video-inspo/analyze";
 import { inspoPatternKey, type EditRecipe, type InspoPattern } from "@/lib/video-inspo/plan";
+import { VOICES, voiceoverCredits } from "@/lib/voiceover";
 import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
 import { canvasSize, drawtextFilter, frameAt, normalizeFilter, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
@@ -256,7 +257,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
 
           // ✨ SYNCED: Recognize all sequence types as video assets
           const isSequenceType = sequenceTypes.includes(item.content_type);
-          const isVid = url.includes(".mp4") || url.includes(".mov") || url.includes("/video/upload/") || url.includes("story-sequences") || isSequenceType || item.content_type === "reel";
+          // A still is a still, whatever folder it's in: Storyboard start frames live in story-sequences/ too (QA-020).
+          const isStill = /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(url) || url.includes("/image/upload/");
+          const isVid = !isStill && (url.includes(".mp4") || url.includes(".mov") || url.includes("/video/upload/") || url.includes("story-sequences") || isSequenceType || item.content_type === "reel");
 
           if (filterType === "audio" && !isAudio) return;
           if (filterType === "library" && (isAudio || isSequenceType)) return;
@@ -998,6 +1001,35 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     finally { setAiBusy(null); }
   }
 
+  // Deep link: ?tab=editor&rail=audio opens on that panel (Ask's "Make a voiceover" button).
+  useEffect(() => {
+    const r = new URLSearchParams(window.location.search).get("rail");
+    if (r === "audio") { setRail("audio"); handleFilterSwitch("audio"); }
+    else if (r === "ai" || r === "text" || r === "scenes" || r === "media") setRail(r);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Make a voiceover right here (QA-021): text to speech onto the audio track, saved to the Library.
+  const [voText, setVoText] = useState("");
+  const [voVoice, setVoVoice] = useState<string>("nova");
+  async function makeVoiceover() {
+    const text = voText.trim();
+    if (text.length < 2) { toast.info("Write what the voice should say."); return; }
+    setAiBusy("Recording the voiceover…");
+    try {
+      const res = await fetch("/api/voiceover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: voVoice, brandId: activeBrand?.id }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error || "Couldn't make the voiceover.");
+      const len = await new Promise<number>((resolve) => { const a = new Audio(); a.preload = "metadata"; a.onloadedmetadata = () => resolve(Number.isFinite(a.duration) ? a.duration : 10); a.onerror = () => resolve(10); a.src = data.url; });
+      const asset = { id: `vo-${data.id ?? Date.now()}`, type: "audio" as const, url: data.url, thumb: data.url, name: data.name ?? "Voiceover", duration: len };
+      setAssets((p) => [asset, ...p]);
+      addAssetAtPlayhead(asset);
+      setVoText("");
+      toast.success(`Voiceover on the audio track · ${data.credits} credit${data.credits === 1 ? "" : "s"}`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't make the voiceover."); }
+    finally { setAiBusy(null); }
+  }
+
   // A Video Inspo plan leaves its rhythm behind for this brand: which scene plays when, and the words.
   const [inspoCut, setInspoCut] = useState<InspoPattern | null>(null);
   useEffect(() => {
@@ -1283,6 +1315,16 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   <button type="button" className="s-btn ghost sm" onClick={() => fileInputRef.current?.click()} title="Upload from this device"><UploadCloud className="h-3.5 w-3.5" /></button>
                   <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" onChange={handleManualUpload} />
                 </div>
+                {rail === "audio" && (
+                  <div className="ve-card mx-3 mb-3" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 35%, var(--s-line))" }}>
+                    <b className="text-[13px] flex items-center gap-1.5"><Mic className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Make a voiceover</b>
+                    <textarea className="s-input" rows={3} value={voText} maxLength={3000} onChange={(e) => setVoText(e.target.value)} placeholder="What should the voice say? e.g. Fresh from our kitchen to your office, every weekday." aria-label="Voiceover script" />
+                    <div className="s-seg" role="group" aria-label="Voice">
+                      {VOICES.map((vo) => <button key={vo.id} type="button" aria-pressed={voVoice === vo.id} onClick={() => setVoVoice(vo.id)}>{vo.label}</button>)}
+                    </div>
+                    <button type="button" className="s-btn ai sm" disabled={!!aiBusy || aiLocked || voText.trim().length < 2} onClick={makeVoiceover}><Mic className="h-3.5 w-3.5" /> Make it <span className="cost">{voiceoverCredits(voText.trim().length || 1)} cr</span></button>
+                  </div>
+                )}
                 <div className="ve-assets">
                   {assets.map((asset) => (
                     <div key={asset.id} draggable onDragStart={(e) => handleDragStart(e, asset)} className={`ve-asset${asset.type === "audio" ? " audio" : ""}`} title={asset.name}>
@@ -1299,7 +1341,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                     </div>
                   ))}
                 </div>
-                {assets.length === 0 && !isLoadingDB && <p className="text-[12px] px-3" style={{ color: "var(--s-mute)" }}>{rail === "scenes" ? "No scenes yet. Render some in the storyboard." : rail === "audio" ? "No voiceovers or music yet. Upload a song, or make a voiceover in Video Studio." : "Nothing here yet. Upload, or make something in Create."}</p>}
+                {assets.length === 0 && !isLoadingDB && <p className="text-[12px] px-3" style={{ color: "var(--s-mute)" }}>{rail === "scenes" ? "No scenes yet. Render some in the storyboard." : rail === "audio" ? "No audio yet. Make a voiceover above, or upload a song or recording." : "Nothing here yet. Upload, or make something in Create."}</p>}
                 {hasMoreAssets && assets.length > 0 && <button type="button" className="s-btn ghost sm mx-3 mb-3" onClick={() => setAssetPageLimit((n) => n + 8)}><ChevronDown className="h-3.5 w-3.5" /> More</button>}
                 <p className="text-[11px] px-3 pb-3 mt-auto" style={{ color: "var(--s-mute)" }}>Drag onto the timeline, or press + to add at the end.</p>
               </>

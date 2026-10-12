@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
@@ -47,11 +48,34 @@ export function useStudioBrands() {
   return { refresh, profile, clientId };
 }
 
-/** The live credit balance. Refreshes on focus and whenever a generation starts or finishes. */
+/**
+ * Anything that can spend credits is a POST to one of our /api routes, so the balance listens for
+ * those (QA-015, 2026-10-12: the header kept showing an old balance after uploads and X-ray edits).
+ * Installed once; it only fires an event, it never changes a request.
+ */
+let spendWatch = false;
+function watchSpends() {
+  if (spendWatch || typeof window === "undefined") return;
+  spendWatch = true;
+  const original = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await original(input, init);
+    try {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+      const local = url.startsWith("/api/") || url.startsWith(`${window.location.origin}/api/`);
+      if (local && method !== "GET" && !url.includes("/api/credits/")) window.dispatchEvent(new Event("blink:credits"));
+    } catch { /* never get in the way of a request */ }
+    return res;
+  };
+}
+
+/** The live credit balance. Refreshes on focus, on every page, and after anything that may spend. */
 export function useCredits() {
   const [balance, setBalance] = useState<number | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
   const taskCount = useWorkflowStore((s) => s.activeTasks.length);
+  const pathname = usePathname();
 
   const refresh = useCallback(() => {
     // State is only set when the response arrives (never synchronously inside an effect).
@@ -77,6 +101,21 @@ export function useCredits() {
     const t = setTimeout(() => void refresh(), 4000);
     return () => clearTimeout(t);
   }, [taskCount, refresh]);
+
+  // A new page shows the current balance, not the one from when the tab opened.
+  useEffect(() => { void refresh(); }, [pathname, refresh]);
+
+  // After a spend: once soon, once more for charges n8n makes a few seconds later.
+  useEffect(() => {
+    watchSpends();
+    let timers: number[] = [];
+    const onSpend = () => {
+      timers.forEach(clearTimeout);
+      timers = [window.setTimeout(() => void refresh(), 1500), window.setTimeout(() => void refresh(), 6000)];
+    };
+    window.addEventListener("blink:credits", onSpend);
+    return () => { window.removeEventListener("blink:credits", onSpend); timers.forEach(clearTimeout); };
+  }, [refresh]);
 
   return { balance, plan, refresh };
 }

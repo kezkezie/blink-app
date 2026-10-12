@@ -185,7 +185,7 @@ export function Calendar() {
           <button className="s-btn ghost sm" style={{ width: 28, padding: 0 }} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
           <button className="s-btn sm" onClick={() => { const d = new Date(); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); setSelected(keyOf(d)); }}>Today</button>
           <div className="flex-1" />
-          <span className="text-[12px] mono" style={{ color: "var(--s-mute)" }}>{inMonth} scheduled{tz ? ` · times in ${tz}` : ""}</span>
+          <span className="text-[12px] mono" style={{ color: "var(--s-mute)" }}>{inMonth} on the calendar this month{tz ? ` · times in ${tz}` : ""}</span>
         </div>
         <div className="cal-grid" role="grid" aria-label={`Calendar for ${monthName}`}>
           {DOW.map((d) => <div key={d} className="cal-dow">{d}</div>)}

@@ -33,7 +33,7 @@ export function HomeNav() {
         </nav>
         <div className="flex-1" />
         <Link href="/login" className="hidden sm:inline text-[14px] h-muted hover:text-[var(--s-text)] transition-colors">Sign in</Link>
-        <Link href="/get-started" className="h-btn" style={{ height: 40, fontSize: 14, padding: "0 6px 0 16px" }}>Start free <span className="h-ico" style={{ width: 28, height: 28 }}><ArrowRight className="h-3.5 w-3.5" /></span></Link>
+        <Link href="/get-started" className="h-btn whitespace-nowrap shrink-0" style={{ height: 40, fontSize: 14, padding: "0 6px 0 16px" }}>Start free <span className="h-ico" style={{ width: 28, height: 28 }}><ArrowRight className="h-3.5 w-3.5" /></span></Link>
         <button className="md:hidden h-9 w-9 grid place-items-center" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>{open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}</button>
       </div>
       {open && (

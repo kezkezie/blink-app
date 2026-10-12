@@ -33,6 +33,14 @@ export const INDUSTRIES = [
   "Real estate", "Hospitality & travel", "Events & entertainment", "Retail & e-commerce", "Tech & apps",
   "Professional services", "Education", "Automotive", "Agriculture", "Creator / personal brand", "Non-profit",
 ];
+
+/** An industry as one of the options when it is one in other words ("Retail & E-Commerce" -> "Retail & e-commerce"; QA-010). */
+export function canonicalIndustry(value: string | null | undefined): string {
+  const v = (value ?? "").trim();
+  if (!v) return "";
+  const key = (x: string) => x.toLowerCase().replace(/\band\b/g, "&").replace(/[^a-z0-9&]+/g, "");
+  return INDUSTRIES.find((o) => key(o) === key(v)) ?? v;
+}
 export const LANGUAGES = ["English", "Swahili", "Sheng", "French", "Arabic", "Amharic", "Somali", "Luganda"];
 export const PERSONALITY = ["Warm", "Bold", "Playful", "Premium", "Calm", "Honest", "Witty", "Expert", "Energetic", "Elegant", "Down-to-earth", "Inspiring"];
 export const PHOTO_VIBES = ["Bright & clean", "Warm & natural", "Dark & moody", "Bold & colourful", "Minimal studio", "Real people", "Street & urban", "Luxury"];

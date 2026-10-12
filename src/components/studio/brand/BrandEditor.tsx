@@ -9,7 +9,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
 import { GOOGLE_FONTS_REGISTRY, injectGoogleFont } from "@/lib/fonts";
-import { brandStrength, CTAS, INDUSTRIES, LANGUAGES, PERSONALITY, PHOTO_VIBES, type BrandDna, type BrandProduct } from "@/lib/brand-dna";
+import { brandStrength, canonicalIndustry, CTAS, INDUSTRIES, LANGUAGES, PERSONALITY, PHOTO_VIBES, type BrandDna, type BrandProduct } from "@/lib/brand-dna";
 import { canvasSafe, loadImage, paletteOf } from "../editor/util";
 import { thumbUrl } from "../media";
 
@@ -44,7 +44,7 @@ function toForm(b: Record<string, unknown>): Form {
   const s = (k: string) => (typeof b[k] === "string" ? (b[k] as string) : "");
   const extra = arr(b.additional_colors);
   return {
-    brand_name: s("brand_name"), description: s("description"), industry: s("industry"), website_url: s("website_url"), social_urls: s("social_urls"),
+    brand_name: s("brand_name"), description: s("description"), industry: canonicalIndustry(s("industry")), website_url: s("website_url"), social_urls: s("social_urls"),
     logo_url: (b.logo_url as string) || null,
     primary_color: s("primary_color") || EMPTY.primary_color, secondary_color: s("secondary_color") || EMPTY.secondary_color,
     accent_color: s("accent_color") || EMPTY.accent_color, neutral: extra[0] || EMPTY.neutral,
@@ -238,7 +238,7 @@ export function BrandEditor() {
       const nextForm: Form = {
         ...form,
         description: s1(form.description, str("description")) ?? "",
-        industry: s1(form.industry, str("industry")) ?? "",
+        industry: canonicalIndustry(s1(form.industry, str("industry")) ?? ""),
         logo_url: form.logo_url || (str("logoUrl") ? (n++, str("logoUrl")!) : null),
         social_urls: s1(form.social_urls, list("socials")?.join("\n")) ?? "",
         tone_keywords: a1(form.tone_keywords, list("tone")) ?? [],
@@ -482,7 +482,7 @@ export function BrandEditor() {
         </Section>
 
         <Section id="voice" title="Voice" hint="How you sound in captions, scripts and on your page.">
-          <Field label="Personality" hint="Pick up to four.">
+          <Field label="Personality" hint={form.tone_keywords.length > 4 ? `Pick up to four. You have ${form.tone_keywords.length} from before: tap one to remove it.` : "Pick up to four."}>
             <Chips options={PERSONALITY} value={form.tone_keywords} onChange={(v) => set("tone_keywords", v)} max={4} custom label="Personality" />
           </Field>
           <Field label="How you talk">

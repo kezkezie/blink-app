@@ -18,10 +18,11 @@ export function PlanStats() {
     const base = () => supabase.from("content").select("id", { count: "exact", head: true }).eq("brand_id", activeBrand.id)
       .not("content_type", "in", `(${PART_TYPES.join(",")})`).or(NOT_STORYBOARD_FRAME);
     const count = (status: string) => base().eq("status", status);
-    // "Scheduled" is anything with a date still to come (nothing sets status 'scheduled').
+    // "Coming up" is anything with a date still to come (nothing sets status 'scheduled'). The calendar's
+    // month line counts everything dated that month, past ones too (QA-012: both used to say "scheduled").
     const upcoming = base().gte("scheduled_at", new Date().toISOString()).neq("status", "posted");
     Promise.all([count("draft"), count("pending_approval"), upcoming, count("posted")]).then(([d, p, s, po]) => {
-      if (!cancelled) setCounts({ Drafts: d.count ?? 0, "Needs approval": p.count ?? 0, Scheduled: s.count ?? 0, Posted: po.count ?? 0 });
+      if (!cancelled) setCounts({ Drafts: d.count ?? 0, "Needs approval": p.count ?? 0, "Coming up": s.count ?? 0, Posted: po.count ?? 0 });
     });
     return () => { cancelled = true; };
   }, [activeBrand]);

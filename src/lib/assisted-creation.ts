@@ -43,8 +43,15 @@ export interface AssistedCreationDraft {
   handoff: { prompt: string; style: CreativeStyle; mode: "standard" } | null;
 }
 
-const clean = (value: unknown, max: number) =>
-  typeof value === "string" ? value.trim().slice(0, max) : "";
+/** Trimmed text, cut at a word with an ellipsis when too long (QA-007: briefs ended "the deep green o"). */
+const clean = (value: unknown, max: number) => {
+  if (typeof value !== "string") return "";
+  const t = value.trim().replace(/\s+/g, " ");
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > max * 0.6 ? cut.slice(0, at) : cut).replace(/[\s,;:.-]+$/, "")}…`;
+};
 
 const isFormat = (value: unknown): value is CreativeFormat =>
   typeof value === "string" && CREATIVE_FORMATS.includes(value as CreativeFormat);
@@ -99,7 +106,7 @@ export function parseConcepts(value: unknown): CreativeConcept[] | null {
     if (!concept || typeof concept !== "object") return null;
     const item = concept as Record<string, unknown>;
     const title = clean(item.title, 80);
-    const idea = clean(item.idea, 220);
+    const idea = clean(item.idea, 420);
     const angle = clean(item.angle, 160);
     if (!title || !idea || !angle || !isFormat(item.format)) return null;
     return { id: `concept-${index + 1}`, title, idea, angle, format: item.format };
@@ -114,7 +121,7 @@ export function parseCreativeDirection(value: unknown): AssistedCreativeDirectio
   const visualDirection = clean(item.visualDirection, 300);
   const tone = clean(item.tone, 160);
   const composition = clean(item.composition, 300);
-  const summary = clean(item.summary, 600);
+  const summary = clean(item.summary, 900);
   if (!visualDirection || !tone || !composition || !summary || !isFormat(item.outputType) || !isStyle(item.style)) return null;
   return { visualDirection, tone, composition, summary, outputType: item.outputType, style: item.style };
 }
@@ -184,7 +191,7 @@ export function fallbackCreativeDirection(
     composition: "Lead with one strong focal point, use clean depth and negative space, and make every secondary element support the central idea.",
     outputType,
     style: STYLE_FOR_FORMAT[outputType],
-    summary: `${concept.title}: ${concept.idea} The result should feel intentional, emotionally clear, and recognizably on-brand.`,
+    summary: `${concept.title}: ${concept.idea}`,
   };
 }
 
