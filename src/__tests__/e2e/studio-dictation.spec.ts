@@ -47,7 +47,8 @@ test("dictation: live words appear in the box, then the accurate transcript repl
       stop() { this.timers.forEach(clearTimeout); this.onend?.(); }
       abort() { this.stop(); }
     }
-    (window as unknown as { webkitSpeechRecognition: unknown }).webkitSpeechRecognition = FakeRecognizer;
+    // Newer Chromium has the unprefixed name too; replace both.
+    Object.assign(window as unknown as Record<string, unknown>, { SpeechRecognition: FakeRecognizer, webkitSpeechRecognition: FakeRecognizer });
   });
   let sentAudio = 0;
   await page.route("**/api/transcribe", async (route) => {
