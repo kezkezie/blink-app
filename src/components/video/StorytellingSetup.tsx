@@ -39,6 +39,7 @@ import {
 } from "@/lib/video-model-registry";
 import { queueForEditor } from "@/components/studio/queue-clips";
 import "./storyboard.css";
+import { INSPO_HANDOFF_KEY, type InspoPlan } from "@/lib/video-inspo/plan";
 import { AspectRatioSelect, DurationField } from "./VideoOutputControls";
 import {
   clearActiveSceneJob,
@@ -927,6 +928,19 @@ export function StorytellingSetup({
 
   // Load this brand's storyboard (or scaffold defaults); re-runs on brand switch.
   useEffect(() => {
+    // A Video Inspo plan handed over from /studio/video/inspo replaces the saved storyboard, once.
+    try {
+      const raw = sessionStorage.getItem(INSPO_HANDOFF_KEY);
+      if (raw) {
+        sessionStorage.removeItem(INSPO_HANDOFF_KEY);
+        const h = JSON.parse(raw) as { plan?: InspoPlan; aspect?: string };
+        if (h.plan?.scenes?.length) {
+          const aspect = h.aspect && ["9:16", "16:9", "1:1"].includes(h.aspect) ? h.aspect : undefined;
+          setBRollScenes(h.plan.scenes.map((sc, i) => ({ ...makeDefaultScenes()[0], id: crypto.randomUUID(), scene_number: i + 1, mode: sc.mode, prompt: sc.prompt, duration: "5", ...(aspect ? { aspectRatio: reconcileAspectRatioFor("auto", aspect) } : {}) })));
+          return;
+        }
+      }
+    } catch { /* nothing handed over */ }
     let savedScenes = localStorage.getItem(SCENES_KEY);
     if (!savedScenes) {
       const legacy = localStorage.getItem('blink_storyboard_scenes');

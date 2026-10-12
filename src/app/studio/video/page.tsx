@@ -29,6 +29,7 @@ import { queueForEditor } from "@/components/studio/queue-clips";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import type { Content } from "@/types/database";
+import { INSPO_HANDOFF_KEY, type InspoPlan } from "@/lib/video-inspo/plan";
 import { useAskStore } from "@/components/studio/ask-store";
 
 /**
@@ -102,7 +103,12 @@ function StylePicker({ v, onPick }: { v: VideoStudio; onPick: (mode: string) => 
   return (
     <div className="max-w-[1120px] mx-auto">
       <h2 className="text-2xl font-semibold tracking-tight mb-1">Make a video</h2>
-      <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Pick what you want to make. You can change every setting on the next step.</p>
+      <p className="text-sm mb-4" style={{ color: "var(--s-soft)" }}>Pick what you want to make. You can change every setting on the next step.</p>
+      <Link href="/studio/video/inspo" className="s-card flex items-center gap-3 px-4 py-3 mb-4 hover:border-[var(--s-line-2)]" style={{ background: "linear-gradient(100deg, color-mix(in oklab, var(--s-accent) 10%, var(--s-panel)), var(--s-panel) 55%)" }}>
+        <Sparkles className="h-5 w-5 shrink-0" style={{ color: "var(--s-accent)" }} />
+        <span className="text-[13.5px] flex-1"><b>Seen a video you love?</b> <span style={{ color: "var(--s-soft)" }}>Video Inspo reads it shot by shot and remakes it for your brand.</span></span>
+        <span className="text-[13px] shrink-0" style={{ color: "var(--s-accent)" }}>Video Inspo <ChevronRight className="inline h-3.5 w-3.5 -mt-px" /></span>
+      </Link>
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {WAYS.map((w) => {
           const ex = wayExample(w.mode);
@@ -400,6 +406,22 @@ function VideoStudioInner() {
     if (mode === "lipsync") { chooseMode("lipsync"); router.replace("/studio/video", { scroll: false }); return; }
     if (!mode || !VIDEO_MODES.some((m) => m.id === mode)) return;
     chooseMode(mode);
+    // Video Inspo hands over a finished plan: its scenes go straight into the Storyboard.
+    if (mode === "storytelling" && params.get("from") === "inspo") {
+      // The concept and the shape are set here; the Storyboard takes the scenes when it opens
+      // (it would otherwise restore this brand's last storyboard over them).
+      try {
+        const raw = sessionStorage.getItem(INSPO_HANDOFF_KEY);
+        const h = raw ? (JSON.parse(raw) as { plan: InspoPlan; aspect?: string }) : null;
+        if (h?.plan?.scenes?.length) {
+          v.setBRollConcept([h.plan.title, h.plan.hook, h.plan.style.look && `Look: ${h.plan.style.look}`, h.plan.style.pace && `Pace: ${h.plan.style.pace}`].filter(Boolean).join(". ").slice(0, 1200));
+          if (h.aspect && ["9:16", "16:9", "1:1"].includes(h.aspect)) v.setAspectRatio(reconcileAspectRatioFor(v.selectedAiModel, h.aspect));
+          toast.success(`${h.plan.scenes.length} scenes from your Video Inspo. Make the start frames, then render.`);
+        }
+      } catch { /* nothing to hand over */ }
+      router.replace("/studio/video", { scroll: false });
+      return;
+    }
     const brief = params.get("brief")?.slice(0, 1200);
     if (brief) {
       if (mode === "storytelling") { v.setBRollConcept(brief); autoScenes.current = true; }

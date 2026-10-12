@@ -11,6 +11,8 @@ import {
 import { toast } from "sonner";
 import { useCredits } from "@/components/studio/hooks";
 import { AI_NEEDS_CREDITS } from "@/lib/plans";
+import { readVideo } from "@/lib/video-inspo/analyze";
+import { inspoPatternKey, type EditRecipe, type InspoPattern } from "@/lib/video-inspo/plan";
 import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
 import { canvasSize, drawtextFilter, frameAt, normalizeFilter, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
@@ -996,6 +998,78 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     finally { setAiBusy(null); }
   }
 
+  // A Video Inspo plan leaves its rhythm behind for this brand: which scene plays when, and the words.
+  const [inspoCut, setInspoCut] = useState<InspoPattern | null>(null);
+  useEffect(() => {
+    if (!activeBrand?.id) return;
+    try { const raw = localStorage.getItem(inspoPatternKey(activeBrand.id)); setInspoCut(raw ? (JSON.parse(raw) as InspoPattern) : null); } catch { setInspoCut(null); }
+  }, [activeBrand?.id]);
+
+  /** Cut like your inspo: the rendered scenes (in timeline order) cut into the inspo's rhythm, free. */
+  function cutLikeInspo() {
+    if (!inspoCut) return;
+    const vids = videoClips.filter((c) => (c.trackRow ?? 0) === 0).sort((a, b) => a.timelineStart - b.timelineStart);
+    if (vids.length < Math.min(inspoCut.scenes, 2)) { toast.info(`Put your ${inspoCut.scenes} rendered scenes on the timeline first (Storyboard > Put them together), in scene order.`); return; }
+    const used = new Map<string, number>(vids.map((v) => [v.id, v.trimStart]));
+    const pieces: TrackClip[] = [];
+    let t = 0;
+    for (const c of inspoCut.cuts) {
+      const clip = vids[c.scene] ?? vids[c.scene % vids.length];
+      const max = clip.type === "image" ? 3600 : clip.maxDuration;
+      let start = used.get(clip.id) ?? clip.trimStart;
+      if (start + c.seconds > max) start = clip.trimStart;
+      const take = Math.min(c.seconds, max - start);
+      if (take <= 0.1) continue;
+      pieces.push({ ...clip, id: crypto.randomUUID(), timelineStart: Math.round(t * 1000) / 1000, trimStart: start, trimEnd: start + take, trackRow: 0 });
+      used.set(clip.id, start + take);
+      t += take;
+    }
+    if (!pieces.length) return;
+    snapshot();
+    setVideoClips((prev) => [...prev.filter((c) => (c.trackRow ?? 0) !== 0), ...pieces]);
+    if (inspoCut.texts.length) setTextLayers((prev) => [...prev, ...inspoCut.texts.filter((x) => x.at < t).map((x) => ({ id: crypto.randomUUID(), text: x.text, x: 50, y: 50, fontSize: 52, color: "#FFFFFF", style: "caption" as const, timelineStart: x.at, trimStart: 0, trimEnd: Math.min(x.duration, t - x.at), maxDuration: 3600, opacity: 100, trackRow: 1 }))]);
+    if (inspoCut.aspect) { setCanvasAspect(inspoCut.aspect); setFitMode("fill"); }
+    toast.success(`Cut like "${inspoCut.title}": ${pieces.length} shots from ${Math.min(vids.length, inspoCut.scenes)} scenes. Undo is one click.`);
+  }
+
+  /**
+   * Edit like a video (Kezie, 2026-10-12: "edit a video for me that looks like this"): read the
+   * inspo's editing (each cut's length, its words on screen), then recut the user's own clips to
+   * the same rhythm and add those words, rewritten for the brand. Undo puts it back.
+   */
+  async function editLikeVideo(file: File) {
+    const vids = videoClips.filter((c) => (c.trackRow ?? 0) === 0).sort((a, b) => a.timelineStart - b.timelineStart);
+    if (!vids.length) { toast.info("Add your own clips or photos to the video track first, then pick the video to copy."); return; }
+    const url = URL.createObjectURL(file);
+    setAiBusy("Reading the inspo's editing…");
+    try {
+      const r = await readVideo(url, (p) => setAiBusy(`Reading the inspo · ${Math.round(p * 100)}%`));
+      if (r.shots.length < 2) { toast.info("That video is one long shot, so there's no editing to copy. Try one with cuts."); return; }
+      setAiBusy("Working out the edit…");
+      const res = await fetch("/api/inspo/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "edit", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand?.id }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.recipe) throw new Error(data.error || "Couldn't read that video's editing.");
+      const recipe = data.recipe as EditRecipe;
+      const cutTimes: number[] = [];
+      let t = 0;
+      for (const c of recipe.cuts.slice(0, -1)) { t += c; cutTimes.push(Math.round(t * 1000) / 1000); }
+      const total = recipe.cuts.reduce((n, c) => n + c, 0);
+      const pieces = beatCut(vids.map((v) => ({ id: v.id, maxDuration: v.type === "image" ? 3600 : v.maxDuration, trimStart: v.trimStart })), cutTimes, { from: 0, to: total, every: 1 });
+      if (!pieces.length) { toast.info("Couldn't fit your clips to that edit. Add a few more clips and try again."); return; }
+      snapshot();
+      const byId = new Map(vids.map((v) => [v.id, v]));
+      setVideoClips((prev) => [...prev.filter((c) => (c.trackRow ?? 0) !== 0), ...pieces.map((p) => ({ ...byId.get(p.sourceId)!, id: crypto.randomUUID(), timelineStart: p.timelineStart, trimStart: p.trimStart, trimEnd: p.trimEnd, trackRow: 0 }))]);
+      const size = { big: 60, medium: 44, small: 30 } as const;
+      if (recipe.texts.length) {
+        setTextLayers((prev) => [...prev, ...recipe.texts.filter((x) => x.at < total).map((x) => ({ id: crypto.randomUUID(), text: x.text, x: 50, y: x.y, fontSize: size[x.size], color: "#FFFFFF", style: x.style, timelineStart: x.at, trimStart: 0, trimEnd: Math.min(x.duration, total - x.at), maxDuration: 3600, opacity: 100, trackRow: 1 }))]);
+      }
+      setCanvasAspect(recipe.aspect); setFitMode("fill");
+      setBeatMarks(cutTimes);
+      toast.success(`Edited like the inspo: ${pieces.length} cuts${recipe.texts.length ? `, ${recipe.texts.length} lines of text` : ""} (${recipe.pace || "same pace"}) · ${data.credits} credits. Undo is one click.`, { duration: 8000 });
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't read that video's editing."); }
+    finally { URL.revokeObjectURL(url); setAiBusy(null); }
+  }
+
   async function addCaptions() {
     const targets = (selectedElement?.type === "video" ? videoClips.filter((c) => c.id === selectedElement.id) : videoClips).filter((c) => c.type === "video");
     if (!targets.length) { toast.info("Add a video with talking in it first."); return; }
@@ -1148,6 +1222,20 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                     <b className="text-[13px] flex items-center gap-1.5"><Subtitles className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Captions</b>
                     <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Writes what&apos;s said as outlined captions, timed to the words. {selVideo ? "For the selected clip." : "For every video on the timeline."}</span>
                     <button type="button" className="s-btn ai sm" disabled={!!aiBusy || aiLocked || captionSeconds <= 0} onClick={addCaptions}><Subtitles className="h-3.5 w-3.5" /> Add captions <span className="cost">{captionSeconds > 0 ? transcribeCredits(captionSeconds) : 0} cr</span></button>
+                  </div>
+                  {inspoCut && (
+                    <div className="ve-card ai">
+                      <b className="text-[13px] flex items-center gap-1.5"><Sparkles className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Cut like your inspo</b>
+                      <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>&ldquo;{inspoCut.title}&rdquo;: your {inspoCut.scenes} rendered scenes, cut into its {inspoCut.cuts.length} shots{inspoCut.texts.length ? ` with ${inspoCut.texts.length} lines of text` : ""}. Put the scenes on the timeline in order first.</span>
+                      <button type="button" className="s-btn ai sm" disabled={!!aiBusy} onClick={cutLikeInspo}><Scissors className="h-3.5 w-3.5" /> Cut it <span className="cost">free</span></button>
+                    </div>
+                  )}
+                  <div className="ve-card ai">
+                    <b className="text-[13px] flex items-center gap-1.5"><Copy className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Edit like a video you love</b>
+                    <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Pick a Reel or ad whose editing you like. Your clips are recut to its rhythm and its words on screen are rewritten for your brand.</span>
+                    <label className={`s-btn ai sm cursor-pointer${aiBusy || aiLocked ? " opacity-50 pointer-events-none" : ""}`}><Sparkles className="h-3.5 w-3.5" /> Pick the video to copy <span className="cost">≤20 cr</span>
+                      <input type="file" accept="video/*" className="hidden" aria-label="Video to copy the editing of" disabled={!!aiBusy || aiLocked} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void editLikeVideo(f); }} />
+                    </label>
                   </div>
                   <div className="ve-card ai">
                     <b className="text-[13px] flex items-center gap-1.5"><Scissors className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Shorts from a long video</b>
