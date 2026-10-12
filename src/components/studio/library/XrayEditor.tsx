@@ -13,7 +13,7 @@ import type { SemanticObject, SemanticSchema } from "@/components/image/Semantic
 /**
  * Edit with AI in the studio look (2026-10-11; classic at /dashboard/content/[id]/edit).
  * Step 1 scans the picture into a list of objects (1 credit). Step 2: change a colour, a material,
- * the words on a sign, or swap an object for one of your photos, then apply (3 credits). Same
+ * the words on a sign, or swap an object for one of your photos, then apply (18 credits, like other Nano Banana 2 edits; was 3 until 2026-10-12). Same
  * routes as the classic X-ray; the result lands on the post page, which waits for the new image.
  */
 type Engine = "nano-banana-2" | "gpt-image-2-image-to-image";
@@ -174,7 +174,7 @@ export function XrayEditor({ id }: { id: string }) {
                 <div className="s-seg" role="group" aria-label="How to render">{ENGINES.map((e) => <button key={e.id} aria-pressed={engine === e.id} onClick={() => setEngine(e.id)} title={e.line}>{e.label}</button>)}</div>
                 <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{ENGINES.find((e) => e.id === engine)!.line}.</span>
                 <button className="s-btn primary justify-between" disabled={!changes || !!applying} onClick={apply}>
-                  <span className="flex items-center gap-2">{applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} {changes ? `Apply ${changes} change${changes === 1 ? "" : "s"}` : "Change something first"}</span><span className="cost">3 cr</span>
+                  <span className="flex items-center gap-2">{applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} {changes ? `Apply ${changes} change${changes === 1 ? "" : "s"}` : "Change something first"}</span><span className="cost">18 cr</span>
                 </button>
               </div>
             </>

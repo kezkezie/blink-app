@@ -145,7 +145,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Generation service request failed" }, { status: 502 });
+      // n8n refuses a webhook call without our secret before anything runs (nothing is charged).
+      // On 2026-10-12 production had no N8N_WEBHOOK_SECRET, and every image showed as a "timeout".
+      if (response.status === 401 || response.status === 403) {
+        console.error(`workflows: n8n refused ${path} (${response.status}); check N8N_WEBHOOK_SECRET`);
+        return NextResponse.json({ error: "The generation service isn't connected right now. Nothing was charged.", code: "upstream_auth" }, { status: 503 });
+      }
+      console.error(`workflows: n8n ${path} answered ${response.status}`);
+      return NextResponse.json({ error: "Generation service request failed", code: "upstream_failed" }, { status: 502 });
     }
     const data = await response.json().catch(() => ({ success: true }));
     return NextResponse.json(data);

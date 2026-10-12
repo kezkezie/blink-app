@@ -162,6 +162,18 @@ describe("workflow execution boundary", () => {
     expect(JSON.stringify(forwarded)).not.toContain("99999999-9999-4999-8999-999999999999");
   });
 
+  it("says the service isn't connected when n8n refuses our webhook secret (nothing ran)", async () => {
+    mocks.providerFetch.mockResolvedValue(new Response("Authorization data is wrong!", { status: 403 }));
+    const response = await workflowsPost(request(
+      "http://localhost/api/workflows?path=blink-generate-images",
+      { brand_id: BRAND_ID, prompt: "valid prompt" }
+    ));
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.code).toBe("upstream_auth");
+    expect(JSON.stringify(body)).not.toContain("Authorization data");
+  });
+
   it("sanitizes downstream workflow failures", async () => {
     mocks.providerFetch.mockResolvedValue(new Response("private provider detail", { status: 500 }));
     const response = await workflowsPost(request(
@@ -169,7 +181,7 @@ describe("workflow execution boundary", () => {
       { brand_id: BRAND_ID, prompt: "valid prompt" }
     ));
     expect(response.status).toBe(502);
-    expect(await response.json()).toEqual({ error: "Generation service request failed" });
+    expect(await response.json()).toEqual({ error: "Generation service request failed", code: "upstream_failed" });
   });
 });
 

@@ -26,7 +26,8 @@ export async function triggerWorkflow(path: string, payload: any) {
     clearTimeout(timeoutId); // Clear the timeout if it succeeds early
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const detail = await response.json().catch(() => null) as { code?: string } | null;
+      throw new Error(`HTTP error! status: ${response.status}${detail?.code ? ` (${detail.code})` : ""}`);
     }
 
     return await response.json();

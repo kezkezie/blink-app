@@ -174,10 +174,11 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
 /** A friendly message for a failed generation. */
 export function generationErrorMessage(e: unknown) {
   const msg = e instanceof Error ? e.message : "";
-  if (/status: 50[24]|timed out/i.test(msg)) return "The render took longer than the connection allowed. It may still finish; check your Library in a minute before trying again.";
+  if (/upstream_auth/.test(msg)) return "The image service isn't connected right now, so nothing was made and nothing was charged. We've been told; try again a little later.";
+  if (/status: 504|timed out/i.test(msg)) return "The render took longer than the connection allowed. It may still finish; check your Library in a minute before trying again.";
   if (/status: 402|insufficient/i.test(msg)) return "Not enough credits for this. Top up in Billing.";
-  // n8n's failure reply is currently malformed (see projects/blinkspot/known-issues.md), so a failed
-  // render reaches us as a bare 502. The usual cause is an oversized PNG that can't be saved.
-  if (/status: 502/i.test(msg)) return "The image was made but couldn't be saved (usually a file that's too large). Your credits are refunded automatically. Try again, or use Best quality.";
+  if (/status: 429/i.test(msg)) return "That's a lot of images in a short time. Wait a minute and try again.";
+  // 502: n8n answered with an error (a crash, or it is down). Failed renders refund themselves.
+  if (/status: 502/i.test(msg)) return "The image service had a problem with this one. If credits were taken they come back automatically. Try again in a minute.";
   return msg || "The image could not be made.";
 }
