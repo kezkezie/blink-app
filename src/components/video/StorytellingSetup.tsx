@@ -24,7 +24,7 @@ import { mintIdempotencyKey, submitVideoJob } from "@/lib/generation-job-client"
 import type { ImageGenerationStatus } from "@/lib/image-generation-state";
 import { summarizeSequence } from "@/lib/video-sequence-state";
 import { observeSceneSet, type SceneSetObserver, type SceneSnapshot } from "@/lib/video-job-observer";
-import { N8N_IMAGE_DEFAULT_COST, resolveImageEngine } from "@/lib/image-engine-pricing";
+import { STORYBOARD_FRAME_CREDITS } from "@/lib/image-engine-pricing";
 import {
   estimateVideoCredits,
   generalReferenceSlotsFor,
@@ -39,8 +39,9 @@ import {
 } from "@/lib/video-model-registry";
 import { queueForEditor } from "@/components/studio/queue-clips";
 import "./storyboard.css";
+import { conformFrame } from "@/lib/video/conform-frame";
 import { INSPO_HANDOFF_KEY, type InspoPlan } from "@/lib/video-inspo/plan";
-import { AspectRatioSelect, DurationField } from "./VideoOutputControls";
+import { AspectRatioSelect, DurationField, promptImpliesAudio } from "./VideoOutputControls";
 import {
   clearActiveSceneJob,
   persistActiveSceneJob,
@@ -1683,6 +1684,8 @@ export function StorytellingSetup({
         characterRefC: characterSheetUrlC,
         environmentRefImage: effectiveEnvLock,
         frame_role: type === 'secondary' ? 'end' : 'start',
+        // The frame in the scene's shape (n8n used to make every frame 16:9; QA-017 follow-up).
+        aspect_ratio: scene.aspectRatio || aspectRatio,
         client_id: clientId,
         post_id: placeholder.id,
         // Explicit genre + cast names so the n8n prompt builder can enforce the
@@ -2082,6 +2085,10 @@ export function StorytellingSetup({
         await supabase.storage.from("assets").upload(path, blob);
         finalSecondaryUrl = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
       }
+
+      // The clip comes out in the frame's shape, so frames are fitted to the scene's shape first (QA-014).
+      finalPrimaryUrl = await conformFrame(finalPrimaryUrl, scene.aspectRatio || aspectRatio, clientId);
+      finalSecondaryUrl = await conformFrame(finalSecondaryUrl, scene.aspectRatio || aspectRatio, clientId);
 
       // V2: build the validated SceneSpec so scene intent survives the row (§13).
       const sceneSpec = sceneSpecFromStoryboardScene(
@@ -2706,9 +2713,10 @@ export function StorytellingSetup({
     const isPruna = scene.aiModel === 'replicate:prunaai/p-video';
     const requested = resolveEffectiveVideoModel(scene.aiModel, scene.mode);
     const effective = routeVideoModelForFrames(requested);
-    const video = estimateVideoCredits(scene.aiModel, scene.duration || "5", { videoMode: scene.mode, hasAudio: Boolean(scene.dialogue || scene.audioUrl), hasStartFrame: true });
+    const video = estimateVideoCredits(scene.aiModel, scene.duration || "5", { videoMode: scene.mode, hasAudio: Boolean(scene.dialogue || scene.audioUrl || promptImpliesAudio(scene.prompt)), hasStartFrame: true });
     const endFrameAllowed = isEndFrameAllowedFor(scene.aiModel, scene.mode);
-    const imageCredits = resolveImageEngine(scene.imageEngine || "nb2")?.creditCost ?? N8N_IMAGE_DEFAULT_COST;
+    // What the frame workflow actually charges (a flat 5), not the Image Studio's 4K price.
+    const imageCredits = STORYBOARD_FRAME_CREDITS;
     const endCost = scene.useEndFrame && endFrameAllowed && !scene.secondaryPreview ? imageCredits : 0;
     const seedancePreviews: (string | null)[] = ensureArray(scene.seedancePreviews || [scene.primaryPreview || null]);
     const gemPreviews: (string | null)[] = ensureArray(scene.gptRefPreviews || Array(5).fill(null));
@@ -2999,7 +3007,7 @@ export function StorytellingSetup({
                       <AspectRatioSelect model={scene.aiModel} videoMode={scene.mode} value={scene.aspectRatio || "16:9"} onChange={(next) => updateScene(scene.id, "aspectRatio", next)} className="s-input" />
                     </label>
                     <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Length</span>
-                      <DurationField model={scene.aiModel} videoMode={scene.mode} value={scene.duration || "5"} onChange={(next) => updateScene(scene.id, "duration", next)} hasAudio={Boolean(scene.dialogue || scene.audioUrl)} className="s-input" />
+                      <DurationField model={scene.aiModel} videoMode={scene.mode} value={scene.duration || "5"} onChange={(next) => updateScene(scene.id, "duration", next)} hasAudio={Boolean(scene.dialogue || scene.audioUrl || promptImpliesAudio(scene.prompt))} className="s-input" />
                     </label>
                     {(info.isGemini || info.isGptImage2) && (
                       <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Resolution</span>
@@ -3224,14 +3232,13 @@ export function StorytellingSetup({
             const effectiveModel = resolveEffectiveVideoModel(scene.aiModel, scene.mode);
             const estimatedCredits = estimateVideoCredits(scene.aiModel, scene.duration || "5", {
               videoMode: scene.mode,
-              hasAudio: Boolean(scene.dialogue || scene.audioUrl),
+              hasAudio: Boolean(scene.dialogue || scene.audioUrl || promptImpliesAudio(scene.prompt)),
               hasStartFrame: true, // storyboard scenes render from their start frame
             });
             const endFrameAllowed = isEndFrameAllowedFor(scene.aiModel, scene.mode);
             // Cost of the ADDITIONAL end-frame image, from the scene's image engine.
             // Zero when the user already supplied one — nothing is generated then.
-            const endFrameImageCredits = resolveImageEngine(scene.imageEngine || "nb2")?.creditCost
-              ?? N8N_IMAGE_DEFAULT_COST;
+            const endFrameImageCredits = STORYBOARD_FRAME_CREDITS;
             const endFrameCost = scene.useEndFrame && endFrameAllowed && !scene.secondaryPreview
               ? endFrameImageCredits
               : 0;
@@ -3355,7 +3362,7 @@ export function StorytellingSetup({
                       videoMode={scene.mode}
                       value={scene.duration || "5"}
                       onChange={(next) => updateScene(scene.id, "duration", next)}
-                      hasAudio={Boolean(scene.dialogue || scene.audioUrl)}
+                      hasAudio={Boolean(scene.dialogue || scene.audioUrl || promptImpliesAudio(scene.prompt))}
                       className="text-[10px] font-bold rounded-xl border border-[#57707A]/35 shadow-inner py-2 px-2.5 bg-[#2A2F38] text-[#DEDCDC] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#C5BAC4]/40 hover:bg-[#57707A]/20 transition-colors appearance-none uppercase tracking-wider"
                     />
 

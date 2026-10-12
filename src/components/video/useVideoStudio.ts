@@ -1,5 +1,6 @@
 "use client";
 
+import { conformFrame } from "@/lib/video/conform-frame";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -16,6 +17,19 @@ import { VIDEO_MODES } from "@/components/video/video-modes";
  * Moved out of the classic /dashboard/video page unchanged, so the classic page and the new
  * /studio/video page run the same engine and only the layout differs.
  */
+/**
+ * The finished clip on a content row. n8n saves videos to `video_urls` (array or JSON string); the
+ * watcher used to read only `image_urls`, so a done render sat on "Ready" with a spinner (QA-013).
+ */
+export function finishedVideoUrl(row: { video_urls?: unknown; video_url?: unknown; image_urls?: unknown }): string | null {
+  const first = (v: unknown): string | null => {
+    let list = v;
+    if (typeof list === "string") { try { list = JSON.parse(list); } catch { list = [list]; } }
+    return Array.isArray(list) && typeof list[0] === "string" && list[0] ? list[0] : null;
+  };
+  return first(row.video_urls) ?? (typeof row.video_url === "string" && row.video_url ? row.video_url : null) ?? first(row.image_urls);
+}
+
 export function useVideoStudio() {
   const router = useRouter();
   const { clientId: hookClientId } = useClient();
@@ -105,10 +119,8 @@ export function useVideoStudio() {
           if (payload.new.status === "failed") {
             setGenerationError(payload.new.error_message || "The AI engine failed to process this request.");
           }
-          const newUrls = payload.new.image_urls;
-          if (newUrls && Array.isArray(newUrls) && newUrls.length > 0) {
-            setGeneratedVideoUrl(newUrls[0]);
-          }
+          const done = finishedVideoUrl(payload.new);
+          if (done) setGeneratedVideoUrl(done);
         }
       )
       .subscribe();
@@ -128,13 +140,8 @@ export function useVideoStudio() {
       if (data?.status === "failed") {
         setGenerationError(data.error_message || "The AI engine failed to process this request.");
         clearInterval(pollInterval);
-      } else if (
-        !error &&
-        data?.image_urls &&
-        Array.isArray(data.image_urls) &&
-        data.image_urls.length > 0
-      ) {
-        setGeneratedVideoUrl(data.image_urls[0]);
+      } else if (!error && data && finishedVideoUrl(data)) {
+        setGeneratedVideoUrl(finishedVideoUrl(data));
         clearInterval(pollInterval);
       }
     }, 5000);
@@ -481,14 +488,18 @@ export function useVideoStudio() {
       if (dbError) throw new Error(`Database Insert Failed: ${dbError.message}`);
       setGeneratingPostId(contentRecord.id);
 
+      // The video comes out in the start photo's shape, so the photo is fitted to the chosen one first (QA-014).
+      const fittedPrimary = await conformFrame(primaryUrl, aspectRatio, safeClientId);
+      const fittedSecondary = await conformFrame(secondaryUrl, aspectRatio, safeClientId);
+
       // ✨ FIXED: Passing brand_id to workflow
       await triggerWorkflow("blink-generate-video-v1", {
         client_id: safeClientId,
         brand_id: activeBrand.id,
         post_id: contentRecord.id,
         video_mode: selectedMode,
-        primary_image_url: primaryUrl,
-        secondary_image_url: secondaryUrl,
+        primary_image_url: fittedPrimary,
+        secondary_image_url: fittedSecondary,
         user_prompt: prompt,
         is_sequence: false,
         ai_model_override: targetModel,

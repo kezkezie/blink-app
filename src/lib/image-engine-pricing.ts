@@ -100,6 +100,8 @@ export const N8N_IMAGE_COST_MAP: Readonly<Record<string, number>> = Object.freez
   "z-image": 1,
 });
 export const N8N_IMAGE_DEFAULT_COST = 8;
+/** Storyboard start/end frames: the n8n Storyboard Sequence Generator deducts a flat 5 per frame (1K, any engine). QA-017, 2026-10-12. */
+export const STORYBOARD_FRAME_CREDITS = 5;
 
 /** How n8n's Parse node resolves a model to a per-image cost. */
 export function n8nResolvedCost(model: string): number {

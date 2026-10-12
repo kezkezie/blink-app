@@ -50,8 +50,9 @@ const QUALITY = [
 ];
 
 
-function sceneCost(model: string, duration: string | undefined, mode: string, hasStartFrame: boolean) {
-  return estimateVideoCredits(model, duration || "5", { videoMode: mode, hasStartFrame }) ?? 0;
+/** The price n8n will charge: a quoted line in the prompt means speech, which adds the audio rate (QA-023, 2026-10-12). */
+function sceneCost(model: string, duration: string | undefined, mode: string, hasStartFrame: boolean, prompt?: string) {
+  return estimateVideoCredits(model, duration || "5", { videoMode: mode, hasStartFrame, hasAudio: promptImpliesAudio(prompt) }) ?? 0;
 }
 
 function StepRail({ v, current }: { v: VideoStudio; current: number }) {
@@ -186,7 +187,7 @@ function EnginePicker({ v, pro }: { v: VideoStudio; pro: boolean }) {
           style={{ border: `1px solid ${v.selectedAiModel === q.id ? "var(--s-accent)" : "var(--s-line-2)"}`, background: v.selectedAiModel === q.id ? "color-mix(in oklab, var(--s-accent) 6%, var(--s-bg))" : "var(--s-bg)" }}
         >
           <b className="text-[13px] font-semibold">{q.label}</b>
-          <span className="text-xs mono text-right">{sceneCost(q.id, v.duration, v.selectedMode, true)} cr</span>
+          <span className="text-xs mono text-right">{sceneCost(q.id, v.duration, v.selectedMode, true, v.prompt)} cr</span>
           <span className="text-[11.5px] col-span-2" style={{ color: "var(--s-mute)" }}>{q.hint} · {v.duration || 5} s</span>
         </button>
       ))}
@@ -195,7 +196,11 @@ function EnginePicker({ v, pro }: { v: VideoStudio; pro: boolean }) {
           <span className="s-label mt-3">Exact model</span>
           <select className="s-input" value={v.selectedAiModel} onChange={(e) => pick(e.target.value)} aria-label="Exact model">
             <option value={AUTO_VIDEO_MODEL}>Auto</option>
-            {Object.values(VIDEO_MODEL_REGISTRY).map((m) => <option key={m.id} value={m.id}>{m.label} · {m.creditsPerSecond} cr/s</option>)}
+            {Object.values(VIDEO_MODEL_REGISTRY).map((m) => {
+              // Kling is paused and renders on Seedance 2 (2026-10-11); say so, with the real price (QA-019).
+              const runs = resolveVideoModel(routeVideoModelForFrames(m.id));
+              return <option key={m.id} value={m.id}>{runs && runs.id !== m.id ? `${m.label} (paused: renders on ${runs.label}) · ${runs.creditsPerSecond} cr/s` : `${m.label} · ${m.creditsPerSecond} cr/s`}</option>;
+            })}
           </select>
         </>
       )}
@@ -207,6 +212,7 @@ function Inspector({ v, total, effectiveModel, onRender, frame, setFrame }: { v:
   const [pro, setPro] = useState(false);
   const [open, setOpen] = useState<string | null>("quality");
   const { balance } = useCredits();
+  const creatorMode = v.selectedMode === "ugc";
   const missingImage = !!v.activeModeConfig.primaryLabel && !v.primaryFile && !v.primaryPreview;
   const short = balance !== null && balance < total;
   // A render helper, not a component: a component declared here would remount its children every render.
@@ -221,7 +227,9 @@ function Inspector({ v, total, effectiveModel, onRender, frame, setFrame }: { v:
       {open === id && <div className="b" style={{ paddingLeft: 14 }}>{children}</div>}
     </div>
   );
-  const quality = QUALITY.find((q) => q.id === v.selectedAiModel)?.label ?? resolveVideoModel(v.selectedAiModel)?.label ?? "Auto";
+  const routedTo = resolveVideoModel(routeVideoModelForFrames(v.selectedAiModel));
+  const quality = QUALITY.find((q) => q.id === v.selectedAiModel)?.label
+    ?? (resolveVideoModel(v.selectedAiModel) ? `${resolveVideoModel(v.selectedAiModel)!.label}${routedTo && routedTo.id !== v.selectedAiModel ? ` (renders on ${routedTo.label})` : ""}` : "Auto");
   return (
     <aside className="flex flex-col min-h-0" style={{ background: "var(--s-panel)", borderLeft: "1px solid var(--s-line)" }}>
       <div className="flex items-center justify-between px-3.5 py-3" style={{ borderBottom: "1px solid var(--s-line)" }}>
@@ -267,7 +275,8 @@ function Inspector({ v, total, effectiveModel, onRender, frame, setFrame }: { v:
         {!frame.approved && (
           <FirstFrame
             references={[v.primaryPreview, v.secondaryPreview].filter((u): u is string => !!u && /^(https:|data:)/.test(u))}
-            describe={v.prompt}
+            // A creator video needs a person in the first frame; the product photo alone just gets animated (QA-024).
+            describe={creatorMode ? `A natural, phone-camera shot of a real person (the creator${v.secondaryPreview ? ", with the face from the second photo" : ""}) holding the product from the first photo at chest height, looking into the camera, about to speak, in a real everyday setting. ${v.prompt}` : v.prompt}
             aspect={v.aspectRatio}
             state={frame}
             setState={setFrame}
@@ -282,10 +291,11 @@ function Inspector({ v, total, effectiveModel, onRender, frame, setFrame }: { v:
             <button className="s-btn ghost sm" onClick={() => setFrame({ url: null, approved: false })}>Change</button>
           </div>
         )}
-        <button className={`s-btn lg w-full ${frame.approved ? "primary" : ""}`} onClick={onRender} disabled={v.isGenerating || missingImage}>
-          {v.isGenerating ? <><Loader2 className="h-4 w-4 animate-spin" /> Queuing…</> : <>{frame.approved ? "Step 2 · Render video" : "Render without preview"} <span className="cost">{formatCredits(total)} cr</span></>}
+        <button className={`s-btn lg w-full ${frame.approved ? "primary" : ""}`} onClick={onRender} disabled={v.isGenerating || missingImage || (creatorMode && !frame.approved)}>
+          {v.isGenerating ? <><Loader2 className="h-4 w-4 animate-spin" /> Queuing…</> : <>{frame.approved ? "Step 2 · Render video" : creatorMode ? "Render (make the first frame first)" : "Render without preview"} <span className="cost">{formatCredits(total)} cr</span></>}
         </button>
         {missingImage && <p className="text-xs text-center" style={{ color: "var(--s-mute)" }}>Add the {v.activeModeConfig.primaryLabel?.toLowerCase()} first.</p>}
+        {creatorMode && !frame.approved && !missingImage && <p className="text-xs text-center" style={{ color: "var(--s-mute)" }}>Creator videos start from a frame with your creator holding the product. Make it above, approve the person, then render.</p>}
         <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>Charged when the render starts. Failed renders are refunded.</p>
       </div>
     </aside>
@@ -458,10 +468,10 @@ function VideoStudioInner() {
     if (story) {
       return v.bRollScenes.reduce((sum, sc) => {
         const model = sc.aiModel && sc.aiModel !== "auto" ? sc.aiModel : v.selectedAiModel;
-        return sum + sceneCost(model, sc.duration || v.duration, sc.mode, !!(sc.primaryPreview || sc.primaryFile));
+        return sum + sceneCost(model, sc.duration || v.duration, sc.mode, !!(sc.primaryPreview || sc.primaryFile), sc.prompt);
       }, 0);
     }
-    return sceneCost(v.selectedAiModel, v.duration, v.selectedMode, hasStart);
+    return sceneCost(v.selectedAiModel, v.duration, v.selectedMode, hasStart, v.prompt);
   }, [story, v.bRollScenes, v.selectedAiModel, v.duration, v.selectedMode, hasStart]);
 
   if (!v.activeBrand) {

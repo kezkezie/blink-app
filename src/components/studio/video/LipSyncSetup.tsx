@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
-import { allowedDurationsFor, estimateVideoCredits } from "@/lib/video-model-registry";
+import { allowedDurationsFor, estimateVideoCredits, routeVideoModelForFrames } from "@/lib/video-model-registry";
 import type { VideoStudio } from "@/components/video/useVideoStudio";
 import { ImagePicker } from "../ImagePicker";
 import { formatCredits } from "../hooks";
@@ -20,12 +20,15 @@ import { Overlay } from "../Modal";
  * the voice. Progress then shows in Video Studio's Render step.
  */
 
-const ENGINES = [
+// Kling 3.0 ("Best") is paused and would render on Seedance 2, the same as "Good", so it's hidden
+// until Kling is back (QA-019, 2026-10-12). routeVideoModelForFrames decides.
+const ALL_ENGINES = [
   { id: "kling-3.0/video", label: "Best", hint: "Kling 3.0 · most natural mouth movement", needsFace: true },
   { id: "bytedance/seedance-2", label: "Good", hint: "Seedance 2 · cinematic", needsFace: true },
   { id: "replicate:prunaai/p-video", label: "Fast", hint: "Pruna · quick drafts", needsFace: false },
 ] as const;
-type EngineId = (typeof ENGINES)[number]["id"];
+const ENGINES = ALL_ENGINES.filter((e) => routeVideoModelForFrames(e.id) === e.id);
+type EngineId = (typeof ALL_ENGINES)[number]["id"];
 
 /** Encode decoded audio as a 16-bit mono WAV (universally accepted by the lip-sync engines). */
 function toWav(buffer: AudioBuffer) {
@@ -48,7 +51,7 @@ export function LipSyncSetup({ v }: { v: VideoStudio }) {
   const [face, setFace] = useState<{ file?: File; url: string } | null>(null);
   const [voice, setVoice] = useState<{ blob: Blob; url: string; seconds: number; name: string } | null>(null);
   const [scene, setScene] = useState("");
-  const [engine, setEngine] = useState<EngineId>("kling-3.0/video");
+  const [engine, setEngine] = useState<EngineId>(ENGINES[0]?.id ?? "bytedance/seedance-2");
   const [recording, setRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
