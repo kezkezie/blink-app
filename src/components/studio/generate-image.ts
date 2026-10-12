@@ -143,28 +143,48 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
   const { addTask, removeTask } = useWorkflowStore.getState();
   const taskId = `img-${Date.now()}`;
   addTask(taskId, "Generating Image");
+  const n = Math.min(4, Math.max(1, req.count ?? 1));
+  // The Library post exists BEFORE the render and n8n writes the image onto it (post_id), so a phone
+  // that locks or a tab that closes mid-render still gets the picture it paid for (2026-10-12: a
+  // dropped connection used to lose a charged image, because only the browser saved it).
+  let rowIds: Array<string | null> = Array(n).fill(null);
+  if (req.save !== false) {
+    const { data } = await supabase
+      .from("content")
+      .insert(Array.from({ length: n }, () => ({ client_id: req.clientId, brand_id: req.brandId, content_type: "post_image", caption: req.caption.slice(0, 300), status: "draft", ai_model: payload.kie_model, generation_status_text: "Making your image" })))
+      .select("id");
+    rowIds = rowIds.map((_, i) => (data?.[i]?.id as string | undefined) ?? null);
+  }
+  /** Certain failures (refused, invalid, not connected): the placeholder goes. A timeout keeps it, the image may still land. */
+  const dropRow = (id: string | null) => { if (id) void supabase.from("content").delete().eq("id", id).then(() => {}, () => {}); };
   try {
-    const settled = await Promise.allSettled(Array.from({ length: Math.min(4, Math.max(1, req.count ?? 1)) }).map(() => triggerWorkflow("blink-generate-images", payload)));
+    const settled = await Promise.allSettled(rowIds.map((id) => triggerWorkflow("blink-generate-images", { ...payload, ...(id ? { post_id: id } : {}) })));
     const urls: string[] = [];
+    const saved: GeneratedImage[] = [];
     let refusal: string | null = null;
     let firstError: string | null = null;
-    for (const r of settled) {
-      if (r.status === "rejected") { firstError ??= r.reason instanceof Error ? r.reason.message : String(r.reason); continue; }
+    for (let i = 0; i < settled.length; i++) {
+      const r = settled[i];
+      const id = rowIds[i];
+      if (r.status === "rejected") {
+        const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+        firstError ??= msg;
+        if (/status: 504|timed out|Failed to fetch|NetworkError|network/i.test(msg)) {
+          if (id) void supabase.from("content").update({ generation_status_text: "Still making: check back in a minute" }).eq("id", id).then(() => {}, () => {});
+        } else dropRow(id);
+        continue;
+      }
       const v = (r.value ?? {}) as { success?: boolean; message?: string; imageUrls?: string[] | string };
-      if (v.success === false) { refusal = v.message || refusal; continue; }
-      urls.push(...(Array.isArray(v.imageUrls) ? v.imageUrls : v.imageUrls ? [v.imageUrls] : []));
+      if (v.success === false) { refusal = v.message || refusal; dropRow(id); continue; }
+      const got = Array.isArray(v.imageUrls) ? v.imageUrls : v.imageUrls ? [v.imageUrls] : [];
+      if (!got.length) { dropRow(id); continue; }
+      urls.push(...got);
+      if (id) {
+        await supabase.from("content").update({ image_urls: got, generation_status_text: null }).eq("id", id);
+        saved.push({ id, url: got[0] });
+      } else saved.push(...got.map((url) => ({ id: null, url })));
     }
     if (!urls.length) throw new Error(refusal || firstError || "No image came back. If credits were taken they are refunded.");
-    if (req.save === false) return urls.map((url) => ({ id: null, url }));
-    const saved: GeneratedImage[] = [];
-    for (const url of urls) {
-      const { data } = await supabase
-        .from("content")
-        .insert({ client_id: req.clientId, brand_id: req.brandId, content_type: "post_image", caption: req.caption.slice(0, 300), status: "draft", image_urls: [url], ai_model: payload.kie_model })
-        .select("id")
-        .single();
-      saved.push({ id: data?.id ?? null, url });
-    }
     return saved;
   } finally {
     removeTask(taskId);
@@ -176,6 +196,7 @@ export function generationErrorMessage(e: unknown) {
   const msg = e instanceof Error ? e.message : "";
   if (/upstream_auth/.test(msg)) return "The image service isn't connected right now, so nothing was made and nothing was charged. We've been told; try again a little later.";
   if (/status: 504|timed out/i.test(msg)) return "The render took longer than the connection allowed. It may still finish; check your Library in a minute before trying again.";
+  if (/Failed to fetch|NetworkError|network/i.test(msg)) return "The connection dropped while your image was being made. If it finished, it lands in your Library on its own in a minute; failed renders refund themselves.";
   if (/status: 402|insufficient/i.test(msg)) return "Not enough credits for this. Top up in Billing.";
   if (/status: 429/i.test(msg)) return "That's a lot of images in a short time. Wait a minute and try again.";
   // 502: n8n answered with an error (a crash, or it is down). Failed renders refund themselves.

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Play } from "lucide-react";
+import { Loader2, Play } from "lucide-react";
 import { cloudinaryVideoPoster } from "@/lib/utils";
 import type { Content } from "@/types/database";
 
@@ -93,6 +93,18 @@ export function MediaThumb({ url, isVideo, poster, alt = "" }: { url: string | n
   return <img src={thumbUrl(url)} alt={alt} loading="lazy" decoding="async" />;
 }
 
+/** A post whose picture or video is still being made (or never arrived). */
+function PendingNote({ content }: { content: Content }) {
+  const fresh = Date.now() - new Date(content.updated_at ?? content.created_at).getTime() < 10 * 60_000;
+  return (
+    <div className="absolute inset-0 grid place-items-center p-3 text-center text-[12px]" style={{ background: "rgba(10,11,13,.6)", color: "var(--s-soft)" }}>
+      {fresh
+        ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {content.generation_status_text}</span>
+        : <span>This one didn&apos;t finish. If credits were taken they were refunded; you can delete it.</span>}
+    </div>
+  );
+}
+
 export function MediaCard({ content, href, actions, selected, aspect = "4 / 3" }: {
   content: Content;
   href: string;
@@ -108,6 +120,7 @@ export function MediaCard({ content, href, actions, selected, aspect = "4 / 3" }
       <Link href={href} className="block" aria-label={title}>
         <div className="m" style={{ aspectRatio: aspect }}>
           <MediaThumb {...media} alt={title} />
+          {!media.url && content.generation_status_text && <PendingNote content={content} />}
           <div className="tl">
             {media.isVideo && <span className="s-badge"><Play className="inline h-2.5 w-2.5 -mt-px" /> VIDEO</span>}
             <span className={`s-badge ${status.tone ?? ""}`}>{status.label}</span>
