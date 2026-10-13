@@ -7,7 +7,7 @@ import { ArrowLeft, CalendarPlus, Check, Clock, Film, LayoutTemplate, Loader2, M
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { useBrandStore } from "@/app/store/useBrandStore";
+import { isSharedBrand, useBrandStore } from "@/app/store/useBrandStore";
 import { cloudinaryStreamUrl, cloudinaryVideoPoster } from "@/lib/utils";
 import { MARKETING_STYLES } from "@/lib/marketing-styles";
 import { Modal } from "@/components/studio/Modal";
@@ -17,6 +17,7 @@ import { useBrandKit, generateBrandImages, generationErrorMessage, nearestImageA
 import { InstagramTroubleshootModal } from "@/components/publishing/InstagramTroubleshootModal";
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, publishNow, settingsFor, takeOffCalendar, toLocalInput, whenLabel, type CalRow } from "@/components/studio/plan/schedule";
+import { UpscaleButton } from "./Upscale";
 
 /**
  * A post in the studio look (2026-10-11; the classic page stays at /dashboard/content/[id]).
@@ -233,6 +234,7 @@ export function PostDetail({ id }: { id: string }) {
   const image = !isVideo ? media?.url ?? null : null;
   const title = cleanCaption(short || caption).split("\n")[0].slice(0, 80) || (isVideo ? "Video" : "Image");
   const canEdit = post.status !== "posted";
+  const viewOnly = isSharedBrand(activeBrand) && activeBrand.role === "viewer";
 
   return (
     <div className="grid gap-5 s-reading">
@@ -248,6 +250,7 @@ export function PostDetail({ id }: { id: string }) {
             <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>
           </>
         )}
+        {media?.url && !viewOnly && <UpscaleButton contentId={post.id} mediaUrl={media.url} isVideo={isVideo} />}
         <button className="s-btn ghost sm" onClick={() => setDeleteOpen(true)} aria-label="Delete"><Trash2 className="h-3.5 w-3.5" style={{ color: "var(--s-danger)" }} /></button>
       </div>
 

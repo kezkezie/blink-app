@@ -1395,11 +1395,11 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         </div>
 
         {/* layers */}
-        <div className="shrink-0 max-h-[38%] overflow-y-auto" style={{ borderTop: "1px solid var(--s-line)" }}>
+        <div className="shrink-0 max-h-[38%] overflow-y-auto overflow-x-hidden" style={{ borderTop: "1px solid var(--s-line)" }}>
           <div className="flex items-center gap-2 px-3.5 py-2 sticky top-0" style={{ background: "var(--s-panel)" }}>
             <LayersIcon className="h-3.5 w-3.5" style={{ color: "var(--s-mute)" }} /><b className="text-[12px]">Layers</b>
           </div>
-          <div className="px-2 pb-2 grid gap-0.5">
+          <div className="px-2 pb-2 grid gap-0.5 grid-cols-[minmax(0,1fr)]">
             {layers.length === 0 && <p className="text-xs px-2 py-2" style={{ color: "var(--s-mute)" }}>Nothing yet. Add text, a shape or a photo.</p>}
             {layers.map((o) => {
               const sel = cv.current?.getActiveObjects().includes(o);
@@ -1409,7 +1409,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                   style={{ background: sel ? "var(--s-raised)" : "transparent", boxShadow: sel ? "inset 2px 0 0 var(--s-accent)" : "none", color: sel ? "var(--s-text)" : "var(--s-soft)", opacity: o.visible === false ? 0.5 : 1 }}
                   onClick={() => { if (locked) return; setToolSafe("select"); canvas().setActiveObject(o); canvas().requestRenderAll(); bump(); }}>
                   <span className="text-[10px] mono w-14 shrink-0" style={{ color: "var(--s-mute)" }}>{typeLabel(o)}</span>
-                  <input data-no-mic className="bg-transparent outline-none flex-1 min-w-0 truncate" value={o.name ?? ""} onChange={(e) => { o.set({ name: e.target.value } as Partial<FObj>); bump(); record(); }} onBlur={() => record()} aria-label="Layer name" />
+                  <input data-no-mic className="bg-transparent outline-none flex-1 min-w-0 w-0 truncate" value={o.name ?? ""} onChange={(e) => { o.set({ name: e.target.value } as Partial<FObj>); bump(); record(); }} onBlur={() => record()} aria-label="Layer name" />
                   <button onClick={(e) => { e.stopPropagation(); setProp(o, { visible: o.visible === false }); }} aria-label={o.visible === false ? "Show layer" : "Hide layer"} className="p-0.5">{o.visible === false ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
                   <button onClick={(e) => { e.stopPropagation(); setProp(o, { selectable: locked, evented: locked }); if (!locked) canvas().discardActiveObject(); }} aria-label={locked ? "Unlock layer" : "Lock layer"} className="p-0.5">{locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5 opacity-40" />}</button>
                   <button onClick={(e) => { e.stopPropagation(); arrange(o, "forward"); }} aria-label="Move up" className="p-0.5"><ChevronUp className="h-3.5 w-3.5" /></button>
