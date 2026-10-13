@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
   const credits = transcribeCredits(seconds);
   const label = mode === "highlights" ? "Editor: shorts from a long video" : "Editor: captions";
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: credits, p_operation: "debit", p_description: `${label} (${Math.ceil(seconds / 60)} min)` });
-  if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `Not enough credits (this needs ${credits}). Top up in Billing.` }, { status: 402 });
+  if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `Not enough credits (this needs ${credits}). Get more in Billing.` }, { status: 402 });
   const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: `Refund: ${label.toLowerCase()} failed` }).then(() => {}, () => {});
 
   try {

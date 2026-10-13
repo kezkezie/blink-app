@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
   if (!url || !(await verifyOwnedInspirationImage(client.id, url))) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: COST, p_operation: "debit", p_description: "Editor: remove background" });
-  if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: "Not enough credits. Top up in Billing." }, { status: 402 });
+  if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: "Not enough credits. Get more in Billing." }, { status: 402 });
   const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: COST, p_operation: "credit", p_description: "Refund: editor remove background failed" }).then(() => {}, () => {});
 
   try {

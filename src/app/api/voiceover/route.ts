@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   const credits = voiceoverCredits(text.length);
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: credits, p_operation: "debit", p_description: `Voiceover (${text.length} characters)` });
-  if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `Not enough credits (this needs ${credits}). Top up in Billing.` }, { status: 402 });
+  if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `Not enough credits (this needs ${credits}). Get more in Billing.` }, { status: 402 });
   const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: "Refund: voiceover failed" }).then(() => {}, () => {});
 
   try {

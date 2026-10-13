@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: COST, p_operation: "debit", p_description: "Editor: swap a face" });
-  if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: "Not enough credits. Top up in Billing." }, { status: 402 });
+  if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: "Not enough credits. Get more in Billing." }, { status: 402 });
   const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: COST, p_operation: "credit", p_description: "Refund: editor face swap failed" }).then(() => {}, () => {});
   const fail = async (message: string, status = 502) => { await refund(); return NextResponse.json({ error: `${message} Your credits were refunded.` }, { status }); };
 
