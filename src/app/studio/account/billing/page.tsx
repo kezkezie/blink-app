@@ -21,7 +21,7 @@ const mail = (subject: string) => `mailto:info@blinkspot.io?subject=${encodeURIC
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
 
 type Sub = { status: string | null; cycle: string | null; periodEnd: string | null; online: boolean };
-type PayStatus = { online: boolean; test?: boolean; currency?: string | null; loaded?: boolean };
+type PayStatus = { online: boolean; test?: boolean; currency?: string | null; fxPerUsd?: number | null; loaded?: boolean };
 
 function BillingPage() {
   const { clientId, loading } = useClient();
@@ -140,6 +140,7 @@ function BillingPage() {
               </button>
             ))}
           </div>
+          {pay.online && pay.currency && pay.currency !== "USD" && <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Prices are in dollars; Paystack charges the same amount in {pay.currency}{pay.fxPerUsd ? ` (${pay.fxPerUsd.toLocaleString("en-US")} per $1, so $8 is ${pay.currency} ${(8 * pay.fxPerUsd).toLocaleString("en-US")})` : ""}.</p>}
           {pay.test && <span className="s-badge self-start">Test mode: use a Paystack test card</span>}
         </div>
       </div>
