@@ -11,6 +11,7 @@
  */
 
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { workspaceFor } from "@/lib/brand-access";
 import { resolveImageEngine } from "@/lib/image-engine-pricing";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -111,7 +112,7 @@ export async function loadOwnedImageJob(
   userId: string,
   contentId: string,
 ): Promise<ImageJobResult<Record<string, unknown>>> {
-  const client = await loadClientId(userId);
+  const client = await loadClientId(userId, { contentId });
   if (!client.ok) return client;
   const { data, error } = await supabaseAdmin
     .from("content")
@@ -124,14 +125,14 @@ export async function loadOwnedImageJob(
   return { ok: true, value: data as Record<string, unknown> };
 }
 
-async function loadClientId(userId: string): Promise<ImageJobResult<string>> {
-  const { data, error } = await supabaseAdmin
-    .from("clients")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) return INTERNAL_ERROR;
-  return data?.id ? { ok: true, value: data.id as string } : NOT_FOUND;
+/** The caller's workspace, or the owner's for a brand (or post) shared with them as an editor. */
+async function loadClientId(userId: string, scope: { brandId?: string; contentId?: string } = {}): Promise<ImageJobResult<string>> {
+  try {
+    const ws = await workspaceFor(userId, scope);
+    return ws ? { ok: true, value: ws.clientId } : NOT_FOUND;
+  } catch {
+    return INTERNAL_ERROR;
+  }
 }
 
 async function verifyBrandOwned(clientId: string, brandId: string): Promise<ImageJobResult<true>> {
@@ -189,7 +190,7 @@ export async function createImageJobPlaceholder(
   userId: string,
   input: ImageJobRequest,
 ): Promise<ImageJobResult<ImageJobPlaceholder>> {
-  const client = await loadClientId(userId);
+  const client = await loadClientId(userId, { brandId: input.brandId });
   if (!client.ok) return client;
   const clientId = client.value;
 

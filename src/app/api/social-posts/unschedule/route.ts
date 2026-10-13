@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { cancelPendingPost, pfmApiKey } from "@/lib/social-schedule";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Take a post off the calendar (2026-10-11). Cancels its PostForMe post if it hasn't started
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
   const contentId = typeof body.contentId === "string" ? body.contentId : "";
   if (!/^[0-9a-f-]{36}$/i.test(contentId)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", user.id).maybeSingle();
+  const client = await requestWorkspace(req, user.id, null, { contentId });
   if (!client) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   const { data: content } = await supabaseAdmin
     .from("content").select("id, postforme_tracking_id").eq("id", contentId).eq("client_id", client.id).maybeSingle();

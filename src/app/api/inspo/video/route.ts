@@ -6,6 +6,7 @@ import { AssistantUnavailableError, assistantModelFor, assistantProvider, estima
 import { runAssistantTool } from "@/lib/assistant/tools";
 import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
 import { validatePlan, validateRecipe } from "@/lib/video-inspo/plan";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Video Inspo (Kezie, 2026-10-12: "steal" a video's style for your own brand). Claude can't watch
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
     && typeof (s as { data: unknown }).data === "string" && /^[A-Za-z0-9+/=]{100,220000}$/.test((s as { data: string }).data));
   if (!shots.length || !valid || !Number.isFinite(duration) || duration <= 0 || duration > 95) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value, body.brandId);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   let brandId: string | null = null;
   if (typeof body.brandId === "string" && /^[0-9a-f-]{36}$/i.test(body.brandId)) {

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { getLimitForTier } from "@/lib/limits";
+import { workspaceFor, type BrandRole } from "@/lib/brand-access";
 
 // ────────────────────────────────────────────────
 // Security model (2026-09-29)
@@ -29,6 +30,19 @@ async function sessionUserId(): Promise<string | null> {
 async function ownedClient(userId: string): Promise<{ id: string; plan_tier: string | null } | null> {
   const { data } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", userId).maybeSingle();
   return (data as { id: string; plan_tier: string | null } | null) ?? null;
+}
+
+/**
+ * The workspace a brand lives in, for a caller who may work on it: their own brand, or one shared
+ * with them (editors write, viewers only read). Archiving, deleting and brand slots stay with the
+ * owner and keep using ownedClient.
+ */
+async function brandClient(userId: string, brandId: unknown, write = true): Promise<{ id: string; plan_tier: string | null; role: BrandRole } | null> {
+  if (typeof brandId !== "string") return null;
+  const ws = await workspaceFor(userId, { brandId, write });
+  if (!ws) return null;
+  const { data } = await supabaseAdmin.from("clients").select("plan_tier").eq("id", ws.clientId).maybeSingle();
+  return { id: ws.clientId, plan_tier: (data?.plan_tier as string | null | undefined) ?? null, role: ws.role };
 }
 
 async function activeBrandCount(clientId: string): Promise<number | null> {
@@ -489,7 +503,7 @@ export async function deleteBrandPermanently(brandId: string, typedName: string)
 export async function setBrandLogo(brandId: string, logoUrl: string): Promise<{ success?: boolean; error?: string }> {
   const userId = await sessionUserId();
   if (!userId) return { error: "Please sign in again." };
-  const client = await ownedClient(userId);
+  const client = await brandClient(userId, brandId);
   if (!client || typeof brandId !== "string" || typeof logoUrl !== "string") return { error: "Brand not found." };
   // Only a file in the user's own storage folder can become their logo.
   const root = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/images/${client.id}/`;
@@ -514,24 +528,24 @@ export type BrandDnaPayload = {
 };
 
 /** Everything the Brand page shows, in one call. Scoped to the caller's own brand. */
-export async function loadBrandDna(brandId: string): Promise<{ brand: Record<string, unknown>; products: Array<Record<string, unknown>>; plan: string } | { error: string }> {
+export async function loadBrandDna(brandId: string): Promise<{ brand: Record<string, unknown>; products: Array<Record<string, unknown>>; plan: string; role: BrandRole } | { error: string }> {
   const userId = await sessionUserId();
   if (!userId) return { error: "Please sign in again." };
-  const client = await ownedClient(userId);
+  const client = await brandClient(userId, brandId, false);
   if (!client || typeof brandId !== "string") return { error: "Brand not found." };
   const [{ data: brand }, { data: products }] = await Promise.all([
     supabaseAdmin.from("brand_profiles").select("*").eq("id", brandId).eq("client_id", client.id).maybeSingle(),
     supabaseAdmin.from("products").select("id, name, description, price, currency, image_url, created_at").eq("brand_id", brandId).eq("client_id", client.id).order("created_at", { ascending: true }),
   ]);
   if (!brand) return { error: "Brand not found." };
-  return { brand, products: products ?? [], plan: client.plan_tier || "free" };
+  return { brand, products: products ?? [], plan: client.plan_tier || "free", role: client.role };
 }
 
 /** Save the Brand page. Only the caller's own brand; every field typed and sized here. */
 export async function saveBrandDna(brandId: string, p: BrandDnaPayload): Promise<{ success?: boolean; error?: string }> {
   const userId = await sessionUserId();
   if (!userId) return { error: "Please sign in again." };
-  const client = await ownedClient(userId);
+  const client = await brandClient(userId, brandId);
   if (!client || typeof brandId !== "string" || !p || typeof p !== "object") return { error: "Brand not found." };
   const name = cleanName(p.brand_name);
   if (!name) return { error: "Your brand needs a name." };
@@ -580,7 +594,7 @@ export async function saveBrandDna(brandId: string, p: BrandDnaPayload): Promise
 export async function saveProduct(brandId: string, p: { id?: string; name: string; description?: string; price?: number | null; currency?: string; image_url?: string | null }): Promise<{ product?: Record<string, unknown>; error?: string }> {
   const userId = await sessionUserId();
   if (!userId) return { error: "Please sign in again." };
-  const client = await ownedClient(userId);
+  const client = await brandClient(userId, brandId);
   if (!client || typeof brandId !== "string" || !p) return { error: "Brand not found." };
   const { data: brand } = await supabaseAdmin.from("brand_profiles").select("id").eq("id", brandId).eq("client_id", client.id).maybeSingle();
   if (!brand) return { error: "Brand not found." };
@@ -606,7 +620,7 @@ export async function saveProduct(brandId: string, p: { id?: string; name: strin
 export async function deleteProduct(brandId: string, productId: string): Promise<{ success?: boolean; error?: string }> {
   const userId = await sessionUserId();
   if (!userId) return { error: "Please sign in again." };
-  const client = await ownedClient(userId);
+  const client = await brandClient(userId, brandId);
   if (!client) return { error: "Brand not found." };
   const { data, error } = await supabaseAdmin.from("products").delete().eq("id", productId).eq("brand_id", brandId).eq("client_id", client.id).select("id");
   if (error || !Array.isArray(data) || data.length !== 1) return { error: "Product not found." };

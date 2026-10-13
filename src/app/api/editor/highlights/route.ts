@@ -7,6 +7,7 @@ import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { transcribeCredits, transcriptForModel, validateHighlights, type Segment } from "@/lib/editor/highlights";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Editor AI (2026-10-11): captions for a video, or the best short moments of a long one.
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
   if (!Number.isFinite(seconds) || seconds <= 0) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   if (seconds > MAX_SECONDS) return NextResponse.json({ error: "That's longer than 90 minutes. Trim it first, or split it in two." }, { status: 413 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value, body.brandId);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   // Any plan with credits (Kezie, 2026-10-12: credits unlock every AI feature).
   if (!audioUrl || !(await verifyOwnedInspirationImage(client.id, audioUrl))) return NextResponse.json({ error: "Invalid request" }, { status: 400 });

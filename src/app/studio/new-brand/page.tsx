@@ -13,7 +13,7 @@ import { BrandQuickStart } from "@/components/studio/brand/BrandQuickStart";
 /** A new brand, the same two screens as sign-up (2026-10-12; the classic modal stays in Vintage). */
 export default function NewBrandPage() {
   const router = useRouter();
-  const { clientId } = useClient();
+  const { ownClientId: clientId } = useClient();
   const { availableBrands, setAvailableBrands, setActiveBrand } = useBrandStore();
   const [allowed, setAllowed] = useState<null | { ok: true } | { ok: false; text: string }>(null);
 

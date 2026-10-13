@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { accountsForPost, cancelPendingPost, pfmApiKey } from "@/lib/social-schedule";
+import { clientIdMatches, workspaceFor } from "@/lib/brand-access";
 
 // FORMAT_TO_POST_TYPE maps user-selected format → PostForMe post type.
 // All formats currently resolve to "media" — Quickstart Projects block placement routing.
@@ -51,16 +52,17 @@ export async function POST(req: NextRequest) {
       { auth: { persistSession: false } }
     );
 
-    const { data: clientOwner } = await supabaseAdmin
-      .from("clients").select("id").eq("user_id", user.id).eq("id", clientId).single();
-    if (!clientOwner) return NextResponse.json({ error: "Forbidden: Client scope mismatch" }, { status: 403 });
+    // The post's workspace: the caller's own, or the owner's when an editor schedules a shared brand's post.
+    const ws = typeof contentId === "string" ? await workspaceFor(user.id, { contentId }) : null;
+    if (!ws || !clientIdMatches(clientId, ws)) return NextResponse.json({ error: "Forbidden: Client scope mismatch" }, { status: 403 });
+    const workspaceId = ws.clientId;
 
     // 1. Fetch the content row (it must belong to this account)
     const { data: content, error: contentError } = await supabaseAdmin
       .from("content")
       .select("*")
       .eq("id", contentId)
-      .eq("client_id", clientId)
+      .eq("client_id", workspaceId)
       .single();
 
     if (contentError || !content) {
@@ -125,7 +127,7 @@ export async function POST(req: NextRequest) {
     const { data: allAccounts } = await supabaseAdmin
       .from("social_accounts")
       .select("postforme_account_id, platform, brand_id")
-      .eq("client_id", clientId)
+      .eq("client_id", workspaceId)
       .eq("is_active", true);
 
     if (!allAccounts || allAccounts.length === 0) {
@@ -234,7 +236,7 @@ export async function POST(req: NextRequest) {
       const extra = pfmData?.details || pfmData?.errors || pfmData?.validation_errors;
       const msg = extra ? `${base} — ${JSON.stringify(extra)}` : base;
       // The earlier post was cancelled above; don't leave the row pointing at it.
-      if (earlier.outcome === "cancelled") await supabaseAdmin.from("content").update({ postforme_tracking_id: null }).eq("id", contentId).eq("client_id", clientId);
+      if (earlier.outcome === "cancelled") await supabaseAdmin.from("content").update({ postforme_tracking_id: null }).eq("id", contentId).eq("client_id", workspaceId);
       return NextResponse.json({ error: msg, pfmRaw: pfmData }, { status: pfmRes.status });
     }
 
@@ -247,7 +249,7 @@ export async function POST(req: NextRequest) {
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
       } as any)
       .eq("id", contentId)
-      .eq("client_id", clientId);
+      .eq("client_id", workspaceId);
 
     return NextResponse.json({
       success: true,

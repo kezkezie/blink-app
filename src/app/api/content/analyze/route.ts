@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { cloudinaryVideoPoster } from "@/lib/utils";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { complete } from "@/lib/llm";
+import { requestWorkspace } from "@/lib/brand-access";
 
 
 const LENGTHS = new Set(["short", "long"]);
@@ -76,17 +77,19 @@ export async function POST(req: NextRequest) {
     const donts = body.donts || "No cringey sales language";
 
     // We need the clientId to charge them!
-    const clientId = body.clientId;
-
-    if (!clientId) {
+    if (!body.clientId) {
       return NextResponse.json({ error: "Missing clientId for billing." }, { status: 400 });
     }
 
-    clientIdForRefund = clientId;
-
+    const clientId = body.clientId;
     const { data: clientOwner } = await supabaseAdmin.from("clients")
       .select("id").eq("user_id", user.id).eq("id", clientId).single();
-    if (!clientOwner) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!clientOwner) {
+      // An editor captioning in a shared brand charges the owner's workspace (checked, not trusted).
+      const ws = await requestWorkspace(req, user.id, body.brandId).catch(() => null);
+      if (!ws || ws.role === "owner" || ws.clientId !== clientId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    clientIdForRefund = clientId;
 
     const captionCost = 1;
 

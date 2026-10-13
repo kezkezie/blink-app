@@ -6,22 +6,24 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { loadBrandBrain } from "@/lib/sites/brain";
 import { slugify, validateSpec, type SiteSpec } from "@/lib/sites/spec";
 import { playbookFor } from "@/lib/sites/playbooks";
+import { workspaceFor } from "@/lib/brand-access";
 
 /** Landing pages: read, save edits, refresh brand data, publish at /s/<slug>. Scoped to the caller. */
 
-async function owner(): Promise<{ clientId: string } | null> {
+/** The brand's workspace: the caller's own, or the owner's for a shared brand (editors write, viewers read). */
+async function owner(brandId: string, write = true): Promise<{ clientId: string } | null> {
   const store = await cookies();
   const sb = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies: { getAll: () => store.getAll(), setAll: () => {} } });
   const { data } = await sb.auth.getUser();
-  if (!data.user) return null;
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", data.user.id).maybeSingle();
-  return client?.id ? { clientId: client.id as string } : null;
+  if (!data.user || typeof brandId !== "string") return null;
+  const ws = await workspaceFor(data.user.id, { brandId, write });
+  return ws ? { clientId: ws.clientId } : null;
 }
 
 type SiteRow = { spec: SiteSpec | null; slug: string | null; published: boolean; suggestedSlug: string; playbook: { label: string; line: string }; unpublishedChanges: boolean };
 
 export async function getSite(brandId: string): Promise<SiteRow | { error: string }> {
-  const o = await owner();
+  const o = await owner(brandId, false);
   if (!o) return { error: "Please sign in again." };
   const { data: brand } = await supabaseAdmin.from("brand_profiles").select("brand_name, industry, description").eq("id", brandId).eq("client_id", o.clientId).maybeSingle();
   if (!brand) return { error: "Brand not found." };
@@ -34,7 +36,7 @@ export async function getSite(brandId: string): Promise<SiteRow | { error: strin
 
 /** Save edits from the builder. Images, products and contact always come from the stored copy, never the browser. */
 export async function saveSite(brandId: string, edited: unknown): Promise<{ spec?: SiteSpec; error?: string }> {
-  const o = await owner();
+  const o = await owner(brandId);
   if (!o) return { error: "Please sign in again." };
   const { data } = await supabaseAdmin.from("sites").select("id, spec").eq("brand_id", brandId).eq("client_id", o.clientId).maybeSingle();
   if (!data?.spec) return { error: "Build the page first." };
@@ -47,7 +49,7 @@ export async function saveSite(brandId: string, edited: unknown): Promise<{ spec
 
 /** Pull the latest brand facts, products, contacts and Library images into the page (copy is kept). */
 export async function refreshSiteData(brandId: string): Promise<{ spec?: SiteSpec; error?: string }> {
-  const o = await owner();
+  const o = await owner(brandId);
   if (!o) return { error: "Please sign in again." };
   const [{ data }, brain] = await Promise.all([
     supabaseAdmin.from("sites").select("id, spec").eq("brand_id", brandId).eq("client_id", o.clientId).maybeSingle(),
@@ -64,7 +66,7 @@ const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])$/;
 const RESERVED = new Set(["admin", "api", "app", "studio", "dashboard", "login", "blinkspot", "www", "help", "support", "s"]);
 
 export async function publishSite(brandId: string, slugInput: string): Promise<{ slug?: string; error?: string }> {
-  const o = await owner();
+  const o = await owner(brandId);
   if (!o) return { error: "Please sign in again." };
   const slug = slugify(slugInput);
   if (!SLUG.test(slug) || RESERVED.has(slug)) return { error: "Pick another address: 3 to 48 letters, numbers or dashes." };
@@ -77,7 +79,7 @@ export async function publishSite(brandId: string, slugInput: string): Promise<{
 }
 
 export async function unpublishSite(brandId: string): Promise<{ success?: boolean; error?: string }> {
-  const o = await owner();
+  const o = await owner(brandId);
   if (!o) return { error: "Please sign in again." };
   const { error } = await supabaseAdmin.from("sites").update({ published: false }).eq("brand_id", brandId).eq("client_id", o.clientId);
   return error ? { error: "Couldn't unpublish." } : { success: true };

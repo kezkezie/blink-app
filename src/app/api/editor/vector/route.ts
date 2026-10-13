@@ -4,6 +4,7 @@ import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
 import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Editor → "Make a vector": Claude draws clean, editable SVG (shapes, icons, badges, simple logos)
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
   const VECTOR_CAP = 25;
   let payer: string | null = null;
   if (body.purpose !== "brand_logo") {
-    const { data: owner } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+    const owner = await requestWorkspace(request, auth.value, body.brandId);
     if (!owner?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
     if ((await creditBalance(owner.id)) < VECTOR_CAP) return NextResponse.json({ error: NOT_ENOUGH_CREDITS(VECTOR_CAP), code: "not_enough_credits" }, { status: 402 });
     payer = owner.id;
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
 
   let brandLine = "";
   if (typeof body.brandId === "string" && /^[0-9a-f-]{36}$/i.test(body.brandId)) {
-    const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+    const client = await requestWorkspace(request, auth.value, body.brandId);
     if (client?.id) {
       const { data: b } = await supabaseAdmin.from("brand_profiles").select("brand_name, primary_color, secondary_color, industry").eq("id", body.brandId).eq("client_id", client.id).maybeSingle();
       if (b) brandLine = `Brand: ${b.brand_name}${b.industry ? ` (${b.industry})` : ""}. Brand colours: ${[b.primary_color, b.secondary_color].filter(Boolean).join(", ") || "not set"}.`;

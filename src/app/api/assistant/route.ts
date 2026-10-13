@@ -9,6 +9,7 @@ import { isPaidPlan } from "@/lib/plans";
 import { EFFORT_INFO, allowedEfforts, creditCapFor, effortFor, planFor } from "@/lib/assistant/effort";
 import { chargeCredits, creditBalance, meteredCredits } from "@/lib/credits-meter";
 import { aiLimitFor } from "@/lib/ai-rate-limit";
+import { requestWorkspace } from "@/lib/brand-access";
 
 // A reply can take several model turns; Kie alone has measured 70-80 s per turn.
 export const maxDuration = 300;
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
   const parsed = parseAssistantRequest(body);
   if (!parsed) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value, parsed.brandId);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   // Credits unlock everything (Kezie, 2026-10-12). Included: the plan's levels, within the day's
   // Ask messages (deeper levels count as more), and editing on paid plans. Everything else is paid
@@ -69,11 +70,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const ctx = { clientId: client.id, brandId, tz: parsed.tz, tzOffset: parsed.tzOffset };
+    // Skills are the user's own, even while working in a brand someone shared with them.
+    const skillsClientId = client.ownClientId ?? client.id;
+    const ctx = { clientId: client.id, brandId, skillsClientId, tz: parsed.tz, tzOffset: parsed.tzOffset };
     // The account's own skills, listed for Ask in one line each (a failure here never blocks a reply).
     const loadSkills = async () => {
       try {
-        const { data } = await supabaseAdmin.from("assistant_skills").select("slug, name, description").eq("client_id", client.id).eq("enabled", true).limit(25);
+        const { data } = await supabaseAdmin.from("assistant_skills").select("slug, name, description").eq("client_id", skillsClientId).eq("enabled", true).limit(25);
         return (data ?? []).map((k) => ({ id: k.slug as string, name: k.name as string, description: k.description as string }));
       } catch { return []; }
     };

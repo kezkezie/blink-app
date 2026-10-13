@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import type { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { clientIdMatches, workspaceFor } from "@/lib/brand-access";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9._:/-]{1,128}$/;
@@ -141,16 +142,18 @@ export async function authenticateExecutionRequest(request: NextRequest): Promis
     : { ok: false, status: 401, error: "Unauthorized" };
 }
 
-async function loadClientId(userId: string): Promise<SecurityResult<string>> {
-  const { data, error } = await supabaseAdmin
-    .from("clients")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) return { ok: false, status: 500, error: "Internal server error" };
-  return data?.id
-    ? { ok: true, value: data.id }
-    : { ok: false, status: 404, error: "Resource not found" };
+/** The workspace the request works in: the caller's own, or the owner's for a brand shared with them. */
+async function loadClientId(
+  userId: string,
+  scope: { brandId?: string | null; contentId?: string | null; requestedClientId?: string | null } = {}
+): Promise<SecurityResult<string>> {
+  try {
+    const ws = await workspaceFor(userId, { brandId: scope.brandId, contentId: scope.contentId });
+    if (!ws || !clientIdMatches(scope.requestedClientId, ws)) return { ok: false, status: 404, error: "Resource not found" };
+    return { ok: true, value: ws.clientId };
+  } catch {
+    return { ok: false, status: 500, error: "Internal server error" };
+  }
 }
 
 async function loadBrand(clientId: string, brandId: string): Promise<SecurityResult<OwnedBrand>> {
@@ -284,12 +287,13 @@ export async function authorizeImageWorkflow(
   userId: string,
   input: ImageWorkflowInput
 ): Promise<SecurityResult<Record<string, unknown>>> {
-  const client = await loadClientId(userId);
+  const client = await loadClientId(userId, {
+    brandId: input.requestedBrandId,
+    contentId: input.postId || input.sourceContentId,
+    requestedClientId: input.requestedClientId,
+  });
   if (!client.ok) return client;
   const clientId = client.value;
-  if (input.requestedClientId && input.requestedClientId !== clientId) {
-    return { ok: false, status: 404, error: "Resource not found" };
-  }
 
   const post = input.postId ? await loadContent(clientId, input.postId) : null;
   if (post && !post.ok) return post;
@@ -432,7 +436,7 @@ export async function authorizeSemanticImage(
   userId: string,
   input: SemanticImageInput
 ): Promise<SecurityResult<Record<string, unknown>>> {
-  const client = await loadClientId(userId);
+  const client = await loadClientId(userId, { contentId: input.contentId });
   if (!client.ok) return client;
   const content = await loadContent(client.value, input.contentId);
   if (!content.ok) return content;
@@ -484,11 +488,8 @@ export async function authorizeGenericExecutionPayload(
     return { ok: false, status: 400, error: "Invalid request" };
   }
 
-  const client = await loadClientId(userId);
+  const client = await loadClientId(userId, { brandId: requestedBrand, contentId: requestedContent, requestedClientId: requestedClient });
   if (!client.ok) return client;
-  if (requestedClient && requestedClient !== client.value) {
-    return { ok: false, status: 404, error: "Resource not found" };
-  }
   if (requestedBrand) {
     const brand = await loadBrand(client.value, requestedBrand);
     if (!brand.ok) return brand;

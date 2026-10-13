@@ -6,6 +6,7 @@ import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { openAiSpeech } from "@/lib/openai-proxy";
 import { TTS_VOICES } from "@/lib/video-execution";
 import { voiceoverCredits } from "@/lib/voiceover";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Make a voiceover (QA-021, 2026-10-12: the homepage sells voiceovers for 1 credit, but nothing in
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
   if (text.length < 2) return NextResponse.json({ error: "Write what the voice should say." }, { status: 400 });
   if (text.length > MAX_CHARS) return NextResponse.json({ error: `That's long for one voiceover (${MAX_CHARS.toLocaleString("en-US")} characters at most). Split it in two.` }, { status: 400 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value, body.brandId);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   let brandId: string | null = null;
   if (typeof body.brandId === "string" && /^[0-9a-f-]{36}$/i.test(body.brandId)) {

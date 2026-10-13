@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { from } = vi.hoisted(() => ({ from: vi.fn() }));
 vi.mock("@/lib/supabase-server", () => ({ supabaseAdmin: { from } }));
+// The caller's own workspace, as before shared brands (those are tested in brand-access.test.ts).
+vi.mock("@/lib/brand-access", async () => (await import("./helpers/own-workspace")).ownWorkspaceOnly);
 
 import { createVideoJobPlaceholder, loadOwnedVideoJob, parseVideoJobRequest } from "@/lib/video-job";
 import { SCENE_SPEC_VERSION } from "@/lib/scene-spec";

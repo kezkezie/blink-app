@@ -28,6 +28,7 @@
  */
 
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { sharedWorkspace } from "@/lib/brand-access";
 
 export const BRAND_CONTEXT_VERSION = 1 as const;
 
@@ -124,7 +125,7 @@ export async function loadOwnedBrandCreativeContext(
   userId: string,
   brandId: string,
 ): Promise<BrandCreativeContextResult> {
-  const { data: client, error: clientError } = await supabaseAdmin
+  let { data: client, error: clientError } = await supabaseAdmin
     .from("clients")
     .select("id, company_name, industry, website_url")
     .eq("user_id", userId)
@@ -132,15 +133,24 @@ export async function loadOwnedBrandCreativeContext(
   if (clientError) return { ok: false, status: 500, error: "Unable to resolve brand context" };
   if (!client) return { ok: false, status: 404, error: "Brand not found" };
 
-  const { data: brand, error: brandError } = await supabaseAdmin
+  const loadBrand = (clientId: string) => supabaseAdmin
     .from("brand_profiles")
     .select(BRAND_CONTEXT_COLUMNS)
     .eq("id", brandId)
-    .eq("client_id", client.id)
+    .eq("client_id", clientId)
     .eq("is_active", true) // an archived brand cannot generate or publish
     .maybeSingle();
+  let { data: brand, error: brandError } = await loadBrand(client.id);
   if (brandError) return { ok: false, status: 500, error: "Unable to resolve brand context" };
-  if (!brand) return { ok: false, status: 404, error: "Brand not found" };
+  if (!brand) {
+    // Not in the caller's workspace: a brand shared with them (as an editor) lives in its owner's.
+    const sharedClientId = await sharedWorkspace(userId, brandId);
+    if (!sharedClientId) return { ok: false, status: 404, error: "Brand not found" };
+    ({ data: client, error: clientError } = await supabaseAdmin.from("clients").select("id, company_name, industry, website_url").eq("id", sharedClientId).maybeSingle());
+    if (clientError || !client) return { ok: false, status: 404, error: "Brand not found" };
+    ({ data: brand, error: brandError } = await loadBrand(client.id));
+    if (brandError || !brand) return { ok: false, status: 404, error: "Brand not found" };
+  }
 
   return { ok: true, context: buildBrandCreativeContext(client, brand as unknown as CanonicalBrand, brandId) };
 }

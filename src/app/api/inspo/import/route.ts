@@ -3,6 +3,7 @@ import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { safeFetchBytes, safeFetchText, validatePublicUrl } from "@/lib/safe-fetch";
 import { INSPO_TYPES, bestPinImage, isPinterestShortLink, pinterestPinId } from "@/lib/inspo";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Inspo Remix: a pasted link (a Pinterest pin, a pin.it short link, or a direct image URL) becomes
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
   const raw = typeof body.url === "string" ? body.url.trim() : "";
   if (!raw || raw.length > 2000) return NextResponse.json({ error: "Paste a link to an image or a Pinterest pin." }, { status: 400 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
   const pinId = pinterestPinId(raw) ?? (isPinterestShortLink(raw) ? await followToPin(raw) : null);

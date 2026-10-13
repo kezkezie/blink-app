@@ -6,6 +6,7 @@ import { AssistantUnavailableError, assistantModelFor, assistantProvider, estima
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { extractSite, instagramHandle, normaliseWebsite, verifiedContact, type SiteFacts } from "@/lib/brand-autofill";
 import { brandBrief, cleanDna, CTAS, INDUSTRIES, LANGUAGES, PERSONALITY, PHOTO_VIBES } from "@/lib/brand-dna";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Fill a brand in for the user (2026-10-11).
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const mode = body.mode === "gaps" ? "gaps" : body.mode === "describe" ? "describe" : "site";
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value, body.brandId);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   const limit = await consumeAiLimits(auth.value, ["brand_build"]);
   if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status });

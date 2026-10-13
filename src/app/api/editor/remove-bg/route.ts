@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { safeFetchBytes } from "@/lib/safe-fetch";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Editor → Remove background. Recraft Remove Background on Kie (1 Kie credit, $0.005) is billed at
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
   let body: { url?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const url = typeof body.url === "string" ? body.url : "";
-  const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   // Any plan with credits (Kezie, 2026-10-12: credits unlock every AI feature).
   if (!url || !(await verifyOwnedInspirationImage(client.id, url))) return NextResponse.json({ error: "Invalid request" }, { status: 400 });

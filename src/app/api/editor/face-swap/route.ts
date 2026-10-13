@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { safeFetchBytes } from "@/lib/safe-fetch";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Editor → Swap the face. A dedicated face-swap model on Replicate (cdingram/face-swap, about
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const url = typeof body.url === "string" ? body.url : "";
   const face = typeof body.face === "string" ? body.face : "";
-  const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   // Any plan with credits (Kezie, 2026-10-12: credits unlock every AI feature).
   // Both pictures must be the user's own (their storage folder or Library), never an arbitrary URL.

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen } from "lucide-react";
+import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -14,7 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getBrandAllowance, listArchivedBrands } from "@/app/actions/brand";
-import { useBrandStore } from "@/app/store/useBrandStore";
+import { isSharedBrand, useBrandStore, type BrandProfile } from "@/app/store/useBrandStore";
+import { SharePanel } from "./sharing/SharePanel";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { supabase } from "@/lib/supabase";
 import { UI_COOKIE, dashboardPathFor, studioSectionFor, studioTitleFor, type StudioSection } from "@/lib/studio-routes";
@@ -89,6 +90,22 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
   const router = useRouter();
   const { activeBrand, availableBrands, setActiveBrand } = useBrandStore();
   const [managing, setManaging] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const own = availableBrands.filter((b) => !isSharedBrand(b));
+  const theirs = availableBrands.filter((b) => isSharedBrand(b));
+  const item = (b: BrandProfile) => (
+    <DropdownMenuItem key={b.id} onClick={() => setActiveBrand(b)} className="gap-3 py-2 cursor-pointer">
+      <span className="h-6 w-6 rounded-md overflow-hidden grid place-items-center shrink-0" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line-2)" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {b.logo_url ? <img src={b.logo_url} alt="" className="h-full w-full object-contain bg-white p-0.5" /> : <Briefcase className="h-3 w-3" />}
+      </span>
+      <span className="min-w-0 grid">
+        <span className="truncate">{b.brand_name || "Unnamed brand"}</span>
+        {isSharedBrand(b) && <span className="truncate text-[11px]" style={{ color: "var(--s-mute)" }}>{b.owner_name || "Shared"} · {b.role === "viewer" ? "view only" : "editor"}</span>}
+      </span>
+      {activeBrand?.id === b.id && <Check className="h-4 w-4 ml-auto shrink-0" style={{ color: "var(--s-accent)" }} />}
+    </DropdownMenuItem>
+  );
   // Shown every time the menu opens, so the plan's brand limit is never a surprise.
   const [slots, setSlots] = useState<{ used: number; limit: number; archived: number } | null>(null);
   const loadSlots = async () => {
@@ -115,18 +132,21 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
             Working on
             {slots && <span className="ml-auto normal-case tracking-normal font-normal" style={{ color: slots.used > slots.limit ? "var(--s-warn)" : "var(--s-mute)" }}>{slots.used} of {slots.limit} brands</span>}
           </DropdownMenuLabel>
-          {availableBrands.map((b) => (
-            <DropdownMenuItem key={b.id} onClick={() => setActiveBrand(b)} className="gap-3 py-2 cursor-pointer">
-              <span className="h-6 w-6 rounded-md overflow-hidden grid place-items-center shrink-0" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line-2)" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {b.logo_url ? <img src={b.logo_url} alt="" className="h-full w-full object-contain bg-white p-0.5" /> : <Briefcase className="h-3 w-3" />}
-              </span>
-              <span className="truncate">{b.brand_name || "Unnamed brand"}</span>
-              {activeBrand?.id === b.id && <Check className="h-4 w-4 ml-auto" style={{ color: "var(--s-accent)" }} />}
-            </DropdownMenuItem>
-          ))}
-          {availableBrands.length === 0 && <div className="px-2 py-3 text-xs" style={{ color: "var(--s-mute)" }}>No brand yet. Add one below: a website or one sentence is enough.</div>}
+          {own.map(item)}
+          {own.length === 0 && <div className="px-2 py-3 text-xs" style={{ color: "var(--s-mute)" }}>{theirs.length ? "No brand of your own yet." : "No brand yet. Add one below: a website or one sentence is enough."}</div>}
+          {theirs.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[11px] uppercase tracking-wider" style={{ color: "var(--s-mute)" }}>Shared with you</DropdownMenuLabel>
+              {theirs.map(item)}
+            </>
+          )}
           <DropdownMenuSeparator />
+          {activeBrand && !isSharedBrand(activeBrand) && (
+            <DropdownMenuItem className="gap-3 py-2 cursor-pointer" onClick={() => setSharing(true)}>
+              <Users className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Share {activeBrand.brand_name || "this brand"}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             className="gap-3 py-2 cursor-pointer"
             onClick={async () => {
@@ -156,6 +176,7 @@ function BrandSwitcher({ onCreated }: { onCreated: () => void }) {
         </DropdownMenuContent>
       </DropdownMenu>
       <ManageBrands open={managing} onClose={() => setManaging(false)} onChanged={onCreated} />
+      {activeBrand && !isSharedBrand(activeBrand) && <SharePanel open={sharing} onClose={() => setSharing(false)} brandId={activeBrand.id} brandName={activeBrand.brand_name || "this brand"} />}
     </>
   );
 }

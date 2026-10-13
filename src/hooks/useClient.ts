@@ -4,9 +4,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import { isSharedBrand, useBrandStore } from '@/app/store/useBrandStore'
 
 interface UseClientResult {
+    /** The workspace the active brand lives in: the user's own, or the owner's for a shared brand. */
     clientId: string | null
+    /** The user's own workspace (billing, settings, their skills, creating brands). */
+    ownClientId: string | null
     user: User | null
     loading: boolean
 }
@@ -21,6 +25,7 @@ interface UseClientResult {
  */
 export function useClient(): UseClientResult {
     const [clientId, setClientId] = useState<string | null>(null)
+    const activeBrand = useBrandStore((s) => s.activeBrand)
     const [user, setUser] = useState<User | null>(null)
     const [loading, setLoading] = useState(true)
     const router = useRouter()
@@ -117,5 +122,7 @@ export function useClient(): UseClientResult {
         }
     }, [router])
 
-    return { clientId, user, loading }
+    // Work in a shared brand happens in (and is charged to) the owner's workspace.
+    const acting = clientId && isSharedBrand(activeBrand) ? activeBrand.client_id : clientId
+    return { clientId: acting, ownClientId: clientId, user, loading }
 }

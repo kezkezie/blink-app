@@ -6,7 +6,7 @@ import { Check, Copy, ExternalLink, Loader2, RefreshCw, Unplug, X } from "lucide
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { useBrandStore } from "@/app/store/useBrandStore";
+import { isSharedBrand, useBrandStore } from "@/app/store/useBrandStore";
 import { Modal } from "@/components/studio/Modal";
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 
@@ -35,7 +35,7 @@ const norm = (p: string) => (p === "x" ? "twitter" : p.toLowerCase());
 function SettingsPage() {
   const router = useRouter();
   const search = useSearchParams();
-  const { clientId, loading } = useClient();
+  const { ownClientId: clientId, loading } = useClient();
   const { activeBrand } = useBrandStore();
   const [socials, setSocials] = useState<Social[] | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -51,7 +51,11 @@ function SettingsPage() {
     if (!clientId) return;
     const { data } = await supabase.from("clients").select("contact_name, contact_email, contact_phone").eq("id", clientId).maybeSingle();
     if (data) { const p = { contact_name: data.contact_name ?? "", contact_email: data.contact_email ?? "", contact_phone: data.contact_phone ?? "" }; setProfile(p); setSavedProfile(JSON.stringify(p)); }
-    if (activeBrand) {
+    if (isSharedBrand(activeBrand)) {
+      // A shared brand's accounts belong to its owner; members see which are connected, no tokens.
+      const { data: s } = await supabase.rpc("brand_platforms", { p_brand: activeBrand.id });
+      setSocials(((s ?? []) as Array<{ platform: string; account_name: string | null }>).map((a, i) => ({ id: `shared-${i}`, platform: a.platform, account_name: a.account_name, is_active: true, connected_at: null, postforme_account_id: null }) as unknown as Social));
+    } else if (activeBrand) {
       const { data: s } = await supabase.from("social_accounts").select("id, platform, account_name, is_active, connected_at, postforme_account_id").eq("brand_id", activeBrand.id).order("connected_at");
       setSocials((s ?? []) as Social[]);
     } else setSocials([]);
@@ -115,6 +119,7 @@ function SettingsPage() {
   }
 
   if (loading || socials === null) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  const shared = isSharedBrand(activeBrand);
   const byPlatform = (p: string) => socials.filter((s) => norm(s.platform) === p);
   const connectedCount = socials.filter((s) => s.is_active).length;
   const profileDirty = JSON.stringify(profile) !== savedProfile;
@@ -125,11 +130,11 @@ function SettingsPage() {
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <div>
             <h2 className="text-[18px] font-semibold">Social accounts</h2>
-            <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>{activeBrand ? <>For <b style={{ color: "var(--s-text)" }}>{activeBrand.brand_name}</b>. Each brand has its own accounts, and posts only go to their own brand&apos;s.</> : "Pick a brand in the top bar first."}</p>
+            <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>{shared ? <>For <b style={{ color: "var(--s-text)" }}>{activeBrand.brand_name}</b>, shared with you by {activeBrand.owner_name || "its owner"}. Only they can connect or remove its accounts; you can post to the ones below.</> : activeBrand ? <>For <b style={{ color: "var(--s-text)" }}>{activeBrand.brand_name}</b>. Each brand has its own accounts, and posts only go to their own brand&apos;s.</> : "Pick a brand in the top bar first."}</p>
           </div>
           <div className="flex-1" />
           <span className="s-pill"><b>{connectedCount}</b> connected</span>
-          <button className="s-btn sm" disabled={syncing || !activeBrand} onClick={() => void sync()}>{syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Sync</button>
+          {!shared && <button className="s-btn sm" disabled={syncing || !activeBrand} onClick={() => void sync()}>{syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Sync</button>}
         </div>
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
           {PLATFORMS.map((p) => {
@@ -149,12 +154,12 @@ function SettingsPage() {
                   <div key={a.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px]" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line)" }}>
                     <span className="flex-1 min-w-0 truncate">{a.account_name || "Account"}</span>
                     {!a.is_active && <span className="s-badge warn">inactive</span>}
-                    <button className="s-btn ghost sm" style={{ height: 24 }} disabled={busy === a.id} onClick={() => setRemoving(a)} aria-label={`Disconnect ${a.account_name || p.label}`}>{busy === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unplug className="h-3 w-3" />}</button>
+                    {!shared && <button className="s-btn ghost sm" style={{ height: 24 }} disabled={busy === a.id} onClick={() => setRemoving(a)} aria-label={`Disconnect ${a.account_name || p.label}`}>{busy === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unplug className="h-3 w-3" />}</button>}
                   </div>
                 ))}
-                <button className={`s-btn sm${on ? " ghost" : ""}`} disabled={!activeBrand || connecting === p.id} onClick={() => connect(p.id)}>
+                {!shared && <button className={`s-btn sm${on ? " ghost" : ""}`} disabled={!activeBrand || connecting === p.id} onClick={() => connect(p.id)}>
                   {connecting === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}{on ? "Add another" : `Connect ${p.label}`}
-                </button>
+                </button>}
               </div>
             );
           })}

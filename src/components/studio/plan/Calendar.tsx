@@ -77,14 +77,15 @@ export function Calendar() {
         .gte("scheduled_at", from.toISOString()).lt("scheduled_at", to.toISOString()).order("scheduled_at"),
       supabase.from("content").select(COLS).eq("brand_id", activeBrand.id).is("scheduled_at", null).not("content_type", "in", `(${PART_TYPES.join(",")})`)
         .or(NOT_STORYBOARD_FRAME).in("status", ["draft", "approved", "pending_approval"]).order("created_at", { ascending: false }).limit(readyLimit),
-      supabase.from("social_accounts").select("platform").eq("brand_id", activeBrand.id).eq("is_active", true),
+      // Connected platforms without tokens (works in a brand shared with you too).
+      supabase.rpc("brand_platforms", { p_brand: activeBrand.id }),
     ]);
     if (s.error || r.error) toast.error("Couldn't load the calendar. Try again.");
     setScheduled((s.data ?? []) as unknown as CalRow[]);
     const rows = (r.data ?? []) as unknown as CalRow[];
     setMoreReady(rows.length === readyLimit);
     setReady(rows.filter((c) => resolveMedia(c).url));
-    setConnected([...new Set((a.data ?? []).map((x) => String(x.platform).toLowerCase()))]);
+    setConnected([...new Set(((a.data ?? []) as Array<{ platform: string }>).map((x) => String(x.platform).toLowerCase()))]);
   }, [activeBrand, days, readyLimit]);
   useEffect(() => { void load(); }, [load]);
   // Ask BlinkSpot's "Put these on the calendar" fires this when it's done.

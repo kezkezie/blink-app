@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
-import { supabaseAdmin } from "@/lib/supabase-server";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
 import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
 import { validateLayers } from "@/lib/editor/layers";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Split a flat design into layers (2026-10-13): Claude reads where every piece of text is, how
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const image = typeof body.image === "string" ? body.image : "";
   if (!/^[A-Za-z0-9+/=]{1000,2800000}$/.test(image)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   if ((await creditBalance(client.id)) < CAP) return NextResponse.json({ error: NOT_ENOUGH_CREDITS(CAP), code: "not_enough_credits" }, { status: 402 });
   const limit = await consumeAiLimits(auth.value, ["vector_draw"]);

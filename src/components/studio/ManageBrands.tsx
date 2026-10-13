@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Archive, ArrowLeftRight, Loader2, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { archiveBrand, deleteBrandPermanently, getBrandAllowance, listArchivedBrands, restoreBrand, swapBrands } from "@/app/actions/brand";
-import { useBrandStore } from "@/app/store/useBrandStore";
+import { isSharedBrand, useBrandStore } from "@/app/store/useBrandStore";
 import { Modal } from "./Modal";
 
 type Row = { id: string; brand_name: string; logo_url: string | null; archived?: boolean; updated_at?: string | null };
@@ -56,7 +56,8 @@ export function ManageBrands({ open, onClose, onChanged }: { open: boolean; onCl
 
   const full = !!allowance && allowance.used >= allowance.limit;
   const over = !!allowance && allowance.used > allowance.limit;
-  const active: Row[] = availableBrands.map((b) => ({ ...b, archived: false }));
+  // Brands shared with you aren't yours to archive or delete (leave them from the bar instead).
+  const active: Row[] = availableBrands.filter((b) => !isSharedBrand(b)).map((b) => ({ ...b, archived: false }));
   const pct = allowance ? Math.min(100, (allowance.used / Math.max(1, allowance.limit)) * 100) : 0;
 
   return (

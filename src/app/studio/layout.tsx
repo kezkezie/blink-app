@@ -9,6 +9,7 @@ import { StudioNav, StudioTopBar } from "@/components/studio/StudioShell";
 import { AskPanel } from "@/components/studio/AskPanel";
 import { Dictation } from "@/components/studio/Dictation";
 import { useAskStore } from "@/components/studio/ask-store";
+import { SharedBrandBar, ViewerGate } from "@/components/studio/sharing/SharedBrand";
 import { UI_COOKIE } from "@/lib/studio-routes";
 
 /**
@@ -56,7 +57,10 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
         <div className="s-main">
           <StudioTopBar />
           <main className={bleed ? "s-content bleed" : "s-content"}>
-            {bleed ? children : <div className="s-reading">{children}</div>}
+            {/* Shared brands (2026-10-13): whose brand this is and your role; viewers can't open makers. */}
+            {bleed
+              ? <><div className="px-4 pt-3 empty:hidden"><SharedBrandBar /></div><ViewerGate>{children}</ViewerGate></>
+              : <div className="s-reading"><SharedBrandBar /><ViewerGate>{children}</ViewerGate></div>}
           </main>
         </div>
         <AskPanel />

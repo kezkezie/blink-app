@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { AuthField, AuthShell } from "@/components/auth/AuthShell";
 import { LEAKED_PASSWORD_MESSAGE, pwnedCount } from "@/lib/pwned-password";
 
-export default function GetStartedPage() {
+/** Only a path on this site (e.g. an invite at /join/…); anything else starts at brand set-up. */
+function safeRedirect(v: string | null) {
+  return v && /^\/(?!\/)[\w\-./?=&%]*$/.test(v) ? v : null;
+}
+
+function GetStarted() {
   const router = useRouter();
+  const redirect = safeRedirect(useSearchParams().get("redirect"));
   const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [fullName, setFullName] = useState("");
@@ -19,10 +25,10 @@ export default function GetStartedPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) router.replace("/studio");
+      if (session?.user) router.replace(redirect ?? "/studio");
       else setChecking(false);
     });
-  }, [router]);
+  }, [router, redirect]);
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
@@ -33,7 +39,7 @@ export default function GetStartedPage() {
     const leaks = await pwnedCount(password);
     if (leaks !== null && leaks > 0) { setMessage({ tone: "error", text: LEAKED_PASSWORD_MESSAGE }); setSubmitting(false); return; }
     // If Supabase asks for an email confirmation, the link comes back to the two-screen brand set-up.
-    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: `${window.location.origin}/auth/callback?next=/welcome` } });
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirect ?? "/welcome")}` } });
     if (error) { setMessage({ tone: "error", text: error.message }); setSubmitting(false); return; }
     if (data.user) {
       // The clients row must never have an empty name or email.
@@ -43,7 +49,8 @@ export default function GetStartedPage() {
         setSubmitting(false);
         return;
       }
-      router.push("/welcome");
+      // Someone joining a shared brand goes back to the invite instead of setting up their own brand.
+      router.push(redirect ?? "/welcome");
     }
   }
 
@@ -53,7 +60,7 @@ export default function GetStartedPage() {
     <AuthShell
       title="Make your first post in minutes"
       subtitle="Create your account. Then tell us about your brand, or let us build one with you."
-      footer={<>Already have an account? <Link href="/login" className="underline" style={{ color: "var(--s-text)" }}>Sign in</Link></>}
+      footer={<>Already have an account? <Link href={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : "/login"} className="underline" style={{ color: "var(--s-text)" }}>Sign in</Link></>}
     >
       <form onSubmit={handleSignUp} className="grid gap-4">
         <AuthField label="Your name" type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" autoComplete="name" />
@@ -68,5 +75,13 @@ export default function GetStartedPage() {
         <p className="text-[12px] text-center" style={{ color: "var(--s-mute)" }}>Free to start. No card needed.</p>
       </form>
     </AuthShell>
+  );
+}
+
+export default function GetStartedPage() {
+  return (
+    <Suspense fallback={<div className="min-h-dvh grid place-items-center" style={{ background: "#0C0D0F" }}><Loader2 className="h-6 w-6 animate-spin text-white/50" /></div>}>
+      <GetStarted />
+    </Suspense>
   );
 }

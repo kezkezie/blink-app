@@ -77,8 +77,9 @@ export function PostDetail({ id }: { id: string }) {
     setPlatforms(enabledPlatforms(row.target_platforms));
     setDirty(false);
     if (row.brand_id) {
-      const { data: acc } = await supabase.from("social_accounts").select("platform").eq("brand_id", row.brand_id).eq("is_active", true);
-      setConnected([...new Set((acc ?? []).map((a) => String(a.platform).toLowerCase()))]);
+      // Connected platforms without tokens (works in a brand shared with you too).
+      const { data: acc } = await supabase.rpc("brand_platforms", { p_brand: row.brand_id });
+      setConnected([...new Set(((acc ?? []) as Array<{ platform: string }>).map((a) => String(a.platform).toLowerCase()))]);
     }
   }, [clientId, id]);
   useEffect(() => { void load(); }, [load]);

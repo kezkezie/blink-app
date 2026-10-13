@@ -5,7 +5,15 @@ export interface BrandProfile {
     id: string;
     brand_name: string;
     logo_url: string | null;
+    /** Set for a brand someone shared with this user (2026-10-13): the owner's workspace and the user's role. */
+    client_id?: string;
+    role?: 'owner' | 'editor' | 'viewer';
+    owner_name?: string;
 }
+
+/** The active brand is someone else's, shared with this user. */
+export const isSharedBrand = (b: BrandProfile | null | undefined): b is BrandProfile & { client_id: string; role: 'editor' | 'viewer' } =>
+    !!b && !!b.client_id && (b.role === 'editor' || b.role === 'viewer');
 
 interface BrandState {
     activeBrand: BrandProfile | null;

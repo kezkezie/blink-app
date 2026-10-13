@@ -21,6 +21,7 @@
  */
 
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { workspaceFor } from "@/lib/brand-access";
 import { parseSceneSpec, type SceneSpec } from "@/lib/scene-spec";
 import { sceneSpecToCreationMetadata } from "@/lib/scene-spec-adapters";
 
@@ -107,14 +108,14 @@ export function isValidContentId(value: unknown): value is string {
 const JOB_STATUS_SELECT =
   "id, video_url, video_urls, status, error_message, generation_state, billing_state, retry_state, generation_status_text, generation_error_code, generation_attempt, creation_metadata";
 
-async function loadClientId(userId: string): Promise<VideoJobResult<string>> {
-  const { data, error } = await supabaseAdmin
-    .from("clients")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) return INTERNAL_ERROR;
-  return data?.id ? { ok: true, value: data.id as string } : NOT_FOUND;
+/** The caller's workspace, or the owner's for a brand (or post) shared with them as an editor. */
+async function loadClientId(userId: string, scope: { brandId?: string; contentId?: string } = {}): Promise<VideoJobResult<string>> {
+  try {
+    const ws = await workspaceFor(userId, scope);
+    return ws ? { ok: true, value: ws.clientId } : NOT_FOUND;
+  } catch {
+    return INTERNAL_ERROR;
+  }
 }
 
 async function verifyBrandOwned(clientId: string, brandId: string): Promise<VideoJobResult<true>> {
@@ -158,7 +159,7 @@ export async function loadOwnedVideoJob(
   userId: string,
   contentId: string,
 ): Promise<VideoJobResult<Record<string, unknown>>> {
-  const client = await loadClientId(userId);
+  const client = await loadClientId(userId, { contentId });
   if (!client.ok) return client;
   const { data, error } = await supabaseAdmin
     .from("content")
@@ -199,7 +200,7 @@ export async function createVideoJobPlaceholder(
   userId: string,
   input: VideoJobRequest,
 ): Promise<VideoJobResult<VideoJobPlaceholder>> {
-  const client = await loadClientId(userId);
+  const client = await loadClientId(userId, { brandId: input.brandId });
   if (!client.ok) return client;
   const clientId = client.value;
 

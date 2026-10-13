@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { supabaseAdmin } from "@/lib/supabase-server";
+import { requestWorkspace } from "@/lib/brand-access";
 
 export async function GET(request: NextRequest) {
     try {
@@ -32,14 +34,10 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // ✨ THE FIX: Fetch the client row matching the authenticated user_id
-        const { data: clientRow } = await supabase
-            .from("clients")
-            .select("id, plan_tier")
-            .eq("user_id", user.id) // Search by user_id, NOT id!
-            .single();
-
-        if (!clientRow) {
+        // The caller's workspace, or the owner's while an editor works in a shared brand (the
+        // studio sends that brand in a header), since that is the balance their work spends.
+        const ws = await requestWorkspace(request, user.id);
+        if (!ws) {
             return NextResponse.json({
                 client_id: null,
                 plan_tier: "free",
@@ -49,22 +47,21 @@ export async function GET(request: NextRequest) {
             });
         }
 
-        const planTier = clientRow.plan_tier ?? "free";
-        const actualClientId = clientRow.id; // This is the '1279475a...' ID
-
-        // --- Fetch credit balance using the actual client ID ---
-        const { data: balanceRow } = await supabase
+        const { data: balanceRow } = await supabaseAdmin
             .from("credit_balances")
             .select("balance, lifetime_earned, lifetime_spent")
-            .eq("client_id", actualClientId)
-            .single();
+            .eq("client_id", ws.clientId)
+            .maybeSingle();
 
+        const shared = ws.role !== "owner";
         return NextResponse.json({
-            client_id: actualClientId,
-            plan_tier: planTier,
+            client_id: ws.clientId,
+            plan_tier: ws.plan_tier ?? "free",
             balance: balanceRow?.balance ?? 0,
-            lifetime_earned: balanceRow?.lifetime_earned ?? 0,
-            lifetime_spent: balanceRow?.lifetime_spent ?? 0,
+            // The owner's lifetime totals stay theirs.
+            lifetime_earned: shared ? null : balanceRow?.lifetime_earned ?? 0,
+            lifetime_spent: shared ? null : balanceRow?.lifetime_spent ?? 0,
+            shared,
         });
     } catch (error) {
         console.error("Credits balance error:", error);

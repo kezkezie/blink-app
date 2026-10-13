@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ImagePlus, Loader2, Package, Plus, Sparkles, Upload, X } from "lucide-react";
+import { Check, ImagePlus, Loader2, Package, Plus, Sparkles, Upload, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { deleteProduct, loadBrandDna, saveBrandDna, saveProduct } from "@/app/actions/brand";
+import { SharePanel } from "../sharing/SharePanel";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
@@ -139,6 +140,8 @@ export function BrandEditor() {
   const [saved, setSaved] = useState<string>("");
   const [products, setProducts] = useState<BrandProduct[]>([]);
   const [saving, setSaving] = useState(false);
+  const [role, setRole] = useState<"owner" | "editor" | "viewer">("owner");
+  const [sharing, setSharing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [draftProduct, setDraftProduct] = useState<BrandProduct & { priceText?: string } | null>(null);
@@ -154,6 +157,7 @@ export function BrandEditor() {
       const f = toForm(r.brand);
       setForm(f); setSaved(JSON.stringify(f));
       setProducts(r.products as BrandProduct[]);
+      setRole(r.role);
     });
   }, [brandId]);
   useEffect(() => { void load(); }, [load]);
@@ -287,10 +291,20 @@ export function BrandEditor() {
 
   const fonts = GOOGLE_FONTS_REGISTRY.map((f) => f.family);
   const formality = form.dna.formality ?? 40;
+  const viewOnly = role === "viewer";
   return (
+    // A viewer of a shared brand sees everything, changes nothing (the server refuses saves too).
+    <fieldset disabled={viewOnly} className="contents">
     <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] pb-28">
       {/* Side: strength + sections */}
       <aside className="lg:sticky lg:top-20 self-start grid gap-4">
+        {role === "owner" && (
+          <div className="s-card p-4 grid gap-2">
+            <span className="s-label !mb-0">Work on it together</span>
+            <p className="text-[12px]" style={{ color: "var(--s-soft)" }}>Invite a teammate or client to this brand only.</p>
+            <button type="button" className="s-btn sm w-fit" onClick={() => setSharing(true)}><Users className="h-3.5 w-3.5" /> Share brand</button>
+          </div>
+        )}
         <div className="s-card p-4">
           <div className="flex items-baseline justify-between">
             <span className="s-label !mb-0">Brand strength</span>
@@ -533,7 +547,7 @@ export function BrandEditor() {
       </div>
 
       {/* Save bar */}
-      {dirty && (
+      {dirty && !viewOnly && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 s-card px-4 py-2.5 flex items-center gap-3 shadow-2xl" style={{ borderColor: "var(--s-line-2)" }} role="status">
           <span className="text-[13px]" style={{ color: "var(--s-soft)" }}>Unsaved changes</span>
           <button className="s-btn ghost sm" onClick={() => { setForm(JSON.parse(saved)); }}>Discard</button>
@@ -541,5 +555,7 @@ export function BrandEditor() {
         </div>
       )}
     </div>
+    {role === "owner" && <SharePanel open={sharing} onClose={() => setSharing(false)} brandId={activeBrand.id} brandName={form.brand_name || activeBrand.brand_name || "this brand"} />}
+    </fieldset>
   );
 }

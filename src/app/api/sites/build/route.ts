@@ -9,6 +9,7 @@ import { playbookFor } from "@/lib/sites/playbooks";
 import { extractInspiration, inspirationBrief } from "@/lib/sites/inspiration";
 import { normaliseWebsite } from "@/lib/brand-autofill";
 import { safeFetchBytes } from "@/lib/safe-fetch";
+import { requestWorkspace } from "@/lib/brand-access";
 
 /**
  * Landing-page builder: the AI plans the page from the Brand Brain (sections, copy, which of the
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
   const instruction = typeof body.instruction === "string" ? body.instruction.trim().slice(0, 500) : "";
   if (!brandId) return NextResponse.json({ error: "Pick a brand first." }, { status: 400 });
 
-  const { data: client } = await supabaseAdmin.from("clients").select("id").eq("user_id", auth.value).maybeSingle();
+  const client = await requestWorkspace(request, auth.value, brandId);
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   const limit = await consumeAiLimits(auth.value, ["site_build"]);
   if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status });

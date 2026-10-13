@@ -24,7 +24,7 @@ type Sub = { status: string | null; cycle: string | null; periodEnd: string | nu
 type PayStatus = { online: boolean; test?: boolean; currency?: string | null; fxPerUsd?: number | null; loaded?: boolean };
 
 function BillingPage() {
-  const { clientId, loading } = useClient();
+  const { ownClientId: clientId, loading } = useClient();
   const router = useRouter();
   const search = useSearchParams();
   const [plan, setPlan] = useState<PlanTier | null>(null);
