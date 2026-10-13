@@ -10,14 +10,15 @@ import { EraserBrush } from "@erase2d/fabric";
 import {
   MousePointer2, Hand, Type, Square, Circle, Minus, Star, Hexagon, PenTool, Brush, Eraser, ImagePlus, Sparkles,
   Undo2, Redo2, Download, Save, Trash2, Copy, Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown, Loader2,
-  Scissors, Wand2, Shapes, ZoomIn, ZoomOut, Maximize, Layers as LayersIcon, Ungroup, X, UserRound, Film,
+  Scissors, Wand2, Shapes, ZoomIn, Upload as UploadIcon, LayoutTemplate, ZoomOut, Maximize, Layers as LayersIcon, Ungroup, X, UserRound, Film,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
-import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
+import { GOOGLE_FONTS_REGISTRY, loadCustomFont } from "@/lib/fonts";
+import { CLEAN_PLATE_PROMPT, type DesignLayers } from "@/lib/editor/layers";
 import { sanitizeSvg } from "@/lib/svg-sanitize";
 import type { CanvasLayer, CanvasOp, CanvasSummary } from "@/lib/canvas-ops";
 import { ImagePicker, type PickedImage } from "../ImagePicker";
@@ -41,7 +42,7 @@ FabricObject.customProperties = ["id", "name", "erasable", "srcUrl", "anchors", 
 // coordinates) use the top-left corner, like Photoshop, Figma and SVG.
 FabricObject.ownDefaults.originX = "left";
 FabricObject.ownDefaults.originY = "top";
-type FObj = FabricObject & { id?: string; name?: string; srcUrl?: string; anchors?: PenAnchor[]; closed?: boolean };
+type FObj = FabricObject & { id?: string; name?: string; srcUrl?: string; anchors?: PenAnchor[]; closed?: boolean; /** The font a split design really used (2026-10-13). */ wantedFont?: string };
 type Handle = FabricCircle & { penIndex?: number; penKind?: "anchor" | "handle" };
 
 type Tool = "select" | "hand" | "text" | "rect" | "ellipse" | "line" | "star" | "polygon" | "pen" | "brush" | "eraser";
@@ -66,23 +67,38 @@ const SIZES = [
   { id: "wide", label: "Wide 16:9", w: 1920, h: 1080 },
   { id: "logo", label: "Logo 1:1", w: 1000, h: 1000 },
 ] as const;
-const FONTS = ["Inter", "Plus Jakarta Sans", "DM Sans", "Montserrat", "Syne", "Space Grotesk", "Playfair Display", "Bebas Neue", "Anton", "Archivo Black"];
+// Every font in the registry (56 Google Fonts), favourites first (2026-10-13: "we need more fonts").
+const FAVOURITE_FONTS = ["Inter", "Plus Jakarta Sans", "DM Sans", "Montserrat", "Syne", "Space Grotesk", "Playfair Display", "Bebas Neue", "Anton", "Archivo Black"];
+const FONTS = [...new Set([...FAVOURITE_FONTS, ...GOOGLE_FONTS_REGISTRY.map((f) => f.family).sort()])];
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-const loadedFonts = new Set<string>();
-function ensureFont(family: string) {
-  if (loadedFonts.has(family) || typeof document === "undefined") return;
-  loadedFonts.add(family);
-  const reg = GOOGLE_FONTS_REGISTRY.find((f) => f.family === family);
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@${reg?.weights?.join(";") || "400;700"}&display=swap`;
-  document.head.appendChild(link);
+const loadedFonts = new Map<string, Promise<void>>();
+/** Load a Google Font's stylesheet once; resolves when the stylesheet (not the font) has arrived. */
+function ensureFont(family: string): Promise<void> {
+  if (typeof document === "undefined") return Promise.resolve();
+  const known = loadedFonts.get(family);
+  if (known) return known;
+  const p = new Promise<void>((resolve) => {
+    const reg = GOOGLE_FONTS_REGISTRY.find((f) => f.family === family);
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@${reg?.weights?.join(";") || "400;700"}&display=swap`;
+    link.onload = () => resolve();
+    link.onerror = () => resolve(); // an uploaded or system font: nothing to fetch
+    document.head.appendChild(link);
+  });
+  loadedFonts.set(family, p);
+  return p;
 }
-/** Re-draw once a web font has arrived (fabric measures text with whatever font is loaded). */
-function whenFontReady(family: string, redraw: () => void) {
-  ensureFont(family);
-  void document.fonts?.load(`700 40px "${family}"`).then(redraw, () => {});
+/**
+ * Re-draw once a web font has arrived (fabric measures text with whatever font is loaded). The
+ * font is only fetched once the stylesheet is in and the face is asked for in its weight
+ * (2026-10-13: split designs drew in a serif fallback because this ran before the stylesheet).
+ */
+function whenFontReady(family: string, redraw: () => void, weight: number | string = 700) {
+  void ensureFont(family)
+    .then(() => Promise.all([document.fonts?.load(`${weight} 40px "${family}"`), document.fonts?.load(`400 40px "${family}"`)]))
+    .then(redraw, redraw);
 }
 
 function typeLabel(o: FObj) {
@@ -136,7 +152,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const brandColors = useMemo(() => [kit?.primaryColor, kit?.secondaryColor].filter((c): c is string => !!c && /^#?[0-9a-f]{3,8}$/i.test(c)).map((c) => (c.startsWith("#") ? c : `#${c}`).toUpperCase()), [kit]);
 
   // ---------- history
-  const snapshot = useCallback(() => JSON.stringify(cv.current!.toObject(["id", "name", "erasable", "srcUrl", "anchors", "closed"])), []);
+  const snapshot = useCallback(() => JSON.stringify(cv.current!.toObject(["id", "name", "erasable", "srcUrl", "anchors", "closed", "wantedFont"])), []);
   const record = useCallback(() => {
     const h = history.current;
     if (h.restoring || !cv.current) return;
@@ -250,9 +266,9 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     return img;
   }, [add, size]);
 
-  const addSvg = useCallback(async (svg: string, opts: { x?: number; y?: number; w?: number; name?: string } = {}) => {
+  const addSvg = useCallback(async (svg: string, opts: { x?: number; y?: number; w?: number; name?: string; quiet?: boolean } = {}) => {
     const clean = sanitizeSvg(svg);
-    if (!clean) { toast.error("That vector couldn't be used."); return null; }
+    if (!clean) { if (!opts.quiet) toast.error("That's too detailed to turn into vectors. For a whole poster, use Split into layers."); return null; }
     const { objects, options } = await loadSVGFromString(clean);
     const parts = objects.filter((o): o is FabricObject => !!o);
     if (!parts.length) return null;
@@ -705,6 +721,136 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     } catch (e) { toast.error(generationErrorMessage(e), { duration: 9000 }); }
     finally { setAiBusy(null); }
   }
+  // Any font that finishes loading re-measures and re-draws the text that uses it.
+  useEffect(() => {
+    const onFonts = () => {
+      const c = cv.current;
+      if (!c) return;
+      for (const o of c.getObjects()) if (o instanceof Textbox) { o.initDimensions(); o.set({ dirty: true }); }
+      c.requestRenderAll();
+    };
+    document.fonts?.addEventListener?.("loadingdone", onFonts);
+    return () => document.fonts?.removeEventListener?.("loadingdone", onFonts);
+  }, []);
+
+  // ---------- split a flat design into layers (2026-10-13)
+  const [customFonts, setCustomFonts] = useState<string[]>([]);
+  const [fontAsk, setFontAsk] = useState<Array<{ font: string; using: string }>>([]);
+  const fontInput = useRef<HTMLInputElement>(null);
+  const fontFor = useRef<string | null>(null);
+  // Fonts this account uploaded come back in every design.
+  useEffect(() => {
+    if (!clientId) return;
+    supabase.storage.from("assets").list(`uploads/${clientId}/fonts`, { limit: 100 }).then(async ({ data }) => {
+      for (const f of data ?? []) {
+        if (!/\.(ttf|otf|woff2?)$/i.test(f.name)) continue;
+        const name = f.name.replace(/^\d+_/, "").replace(/\.(ttf|otf|woff2?)$/i, "").replace(/[-_]+/g, " ").trim();
+        const url = supabase.storage.from("assets").getPublicUrl(`uploads/${clientId}/fonts/${f.name}`).data.publicUrl;
+        try { const face = new FontFace(name, `url(${url})`); await face.load(); document.fonts.add(face); setCustomFonts((p) => (p.includes(name) ? p : [...p, name])); } catch { /* a broken file is skipped */ }
+      }
+    }, () => {});
+  }, [clientId]);
+
+  /** Add a font file; if a split design asked for it, its text layers switch to it. */
+  async function uploadFont(file: File | undefined) {
+    if (!file || !clientId) return;
+    if (!/\.(ttf|otf|woff2?)$/i.test(file.name)) { toast.error("Use a font file: .ttf, .otf, .woff or .woff2."); return; }
+    try {
+      const name = await loadCustomFont(file);
+      const safe = file.name.replace(/[^A-Za-z0-9._-]/g, "_");
+      await supabase.storage.from("assets").upload(`uploads/${clientId}/fonts/${Date.now()}_${safe}`, file, { contentType: "font/" + (file.name.split(".").pop() || "ttf") }).catch(() => null);
+      setCustomFonts((p) => (p.includes(name) ? p : [...p, name]));
+      const wanted = fontFor.current;
+      let switched = 0;
+      for (const o of canvas().getObjects() as FObj[]) {
+        if (o instanceof Textbox && (wanted ? (o as FObj).wantedFont === wanted : o === active)) { o.set({ fontFamily: name, dirty: true }); switched++; }
+      }
+      canvas().requestRenderAll(); record(); bump();
+      if (wanted) setFontAsk((a) => a.filter((x) => x.font !== wanted));
+      toast.success(`${name} added${switched ? ` and used on ${switched} text layer${switched === 1 ? "" : "s"}` : ""}. It's saved for your next designs.`);
+    } catch { toast.error("Couldn't read that font file."); }
+    finally { fontFor.current = null; }
+  }
+
+  /** A flat poster into layers: real text in the matched font, a traced logo, the photo without its words. */
+  async function splitIntoLayers() {
+    if (!activeImage || !clientId || !activeBrand || !kit) return;
+    if (aiLocked) { toast.info(AI_NEEDS_CREDITS); return; }
+    const img = activeImage;
+    setAiBusy("Reading the design…");
+    try {
+      const el = await loadImage(canvasSafe(img.srcUrl || (img.getSrc() as string)));
+      const sc = Math.min(1, 1400 / Math.max(el.naturalWidth, el.naturalHeight));
+      const small = document.createElement("canvas");
+      small.width = Math.round(el.naturalWidth * sc); small.height = Math.round(el.naturalHeight * sc);
+      small.getContext("2d")!.drawImage(el, 0, 0, small.width, small.height);
+      const res = await fetch("/api/editor/layers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: small.toDataURL("image/jpeg", 0.85).split(",")[1], width: el.naturalWidth, height: el.naturalHeight }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.layers) throw new Error(data.error || "Couldn't read the design.");
+      const layers = data.layers as DesignLayers;
+      let spent = Number(data.credits) || 0;
+      const L = img.left ?? 0, T = img.top ?? 0, W = img.getScaledWidth(), H = img.getScaledHeight();
+
+      // The logo, traced from its own small area (or kept as a cut-out if it's too detailed).
+      setAiBusy("Tracing the logo…");
+      const { default: ImageTracer } = await import("imagetracerjs");
+      for (const lg of layers.logos) {
+        const [bx, by, bw, bh] = lg.box;
+        const cw = Math.max(8, Math.round(bw * el.naturalWidth)), ch = Math.max(8, Math.round(bh * el.naturalHeight));
+        const k = Math.min(1, 600 / Math.max(cw, ch));
+        const crop = document.createElement("canvas");
+        crop.width = Math.round(cw * k); crop.height = Math.round(ch * k);
+        const cx = crop.getContext("2d")!;
+        cx.drawImage(el, bx * el.naturalWidth, by * el.naturalHeight, cw, ch, 0, 0, crop.width, crop.height);
+        const svg: string = ImageTracer.imagedataToSVG(cx.getImageData(0, 0, crop.width, crop.height), { numberofcolors: 4, ltres: 1, qtres: 1, pathomit: 10, blurradius: 0, strokewidth: 0, viewbox: true, roundcoords: 1 });
+        const g = await addSvg(svg, { x: L + bx * W, y: T + by * H, w: bw * W, name: lg.label, quiet: true });
+        if (!g) {
+          const cut = (await FabricImage.fromURL(crop.toDataURL("image/png"))) as FabricImage & FObj;
+          cut.set({ left: L + bx * W, top: T + by * H, scaleX: (bw * W) / cut.width, scaleY: (bh * H) / cut.height } as Partial<FObj>);
+          add(cut, lg.label, false);
+        }
+      }
+
+      // The photo without its words and logo (the same edit as "Change it"). If it fails, the original stays.
+      setAiBusy("Taking the old words off the photo…");
+      try {
+        const url = await imageForAi(img);
+        const aspect = nearestImageAspect(`${img.width || 4}:${img.height || 5}`);
+        const [out] = await generateBrandImages({ clientId, brandId: activeBrand.id, kit, prompt: CLEAN_PLATE_PROMPT, references: [url], engine: "nb2", aspect, style: "studio", caption: "Clean plate", mode: "edit", save: false });
+        await replaceImageSrc(img, out.url);
+        img.set({ name: `${img.name ?? "Photo"} (no text)` } as Partial<FObj>);
+        spent += 18;
+      } catch { toast.info("Couldn't take the old words off the photo, so they may show under the new text. You can hide the photo layer."); }
+
+      // Real text, in the closest free font, sized to its box.
+      const asks = new Map<string, string>();
+      for (const t of layers.texts) {
+        const [bx, by, bw, bh] = t.box;
+        const lines = t.text.split("\n").length;
+        const family = customFonts.find((f) => f.toLowerCase() === t.font.toLowerCase()) ?? t.freeFont;
+        void ensureFont(family);
+        const fromBox = (bh * H) / (lines * 1.13 * 1.05);
+        const tb = new Textbox(t.text, {
+          left: L + bx * W, top: T + by * H, width: Math.max(40, bw * W * 1.08), fontSize: Math.max(8, Math.round(fromBox || (t.sizePct / 100) * H)),
+          fill: t.color, fontWeight: t.weight, fontStyle: t.italic ? "italic" : "normal", textAlign: t.align, charSpacing: Math.round(t.spacing * 1000), fontFamily: family, lineHeight: 1.05,
+        }) as Textbox & FObj;
+        tb.set({ wantedFont: t.font } as Partial<FObj>);
+        add(tb, `Text: ${t.text.split("\n")[0].slice(0, 24)}`, false);
+        whenFontReady(family, () => {
+          tb.initDimensions();
+          // Shrink until it fits on the same number of lines as the original.
+          for (let i = 0; i < 10 && (tb.textLines?.length ?? lines) > lines; i++) tb.set({ fontSize: Math.round((tb.fontSize ?? 20) * 0.92) });
+          tb.set({ dirty: true }); canvas().requestRenderAll();
+        }, t.weight);
+        if (family.toLowerCase() !== t.font.toLowerCase() && !customFonts.some((f) => f.toLowerCase() === t.font.toLowerCase())) asks.set(t.font, family);
+      }
+      canvas().requestRenderAll(); record(); bump();
+      setFontAsk([...asks].map(([font, using]) => ({ font, using })));
+      toast.success(`Split into ${layers.texts.length} text layer${layers.texts.length === 1 ? "" : "s"}${layers.logos.length ? `, ${layers.logos.length === 1 ? "the logo" : `${layers.logos.length} logos`}` : ""} and the photo · ${spent} credits`, { duration: 8000 });
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't split this design."); }
+    finally { setAiBusy(null); }
+  }
+
   async function vectorizeActive() {
     if (!activeImage) return;
     setAiBusy("Turning the photo into vectors…");
@@ -719,7 +865,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       const data = ctx.getImageData(0, 0, c.width, c.height);
       const svg: string = ImageTracer.imagedataToSVG(data, { numberofcolors: 12, ltres: 1, qtres: 1, pathomit: 16, blurradius: 0, strokewidth: 0, viewbox: true, roundcoords: 1 });
       const w = activeImage.getScaledWidth();
-      const g = await addSvg(svg, { x: activeImage.left, y: activeImage.top, w, name: `${activeImage.name ?? "Photo"} (vector)` });
+      const g = await addSvg(svg, { x: activeImage.left, y: activeImage.top, w, name: `${activeImage.name ?? "Photo"} (vector)`, quiet: true });
+      if (!g) { toast.info("This photo is too detailed to trace (that works for logos and icons). Split into layers instead: real text, a vector logo and the photo.", { duration: 9000 }); return; }
       if (g) { activeImage.set({ visible: false }); canvas().requestRenderAll(); toast.success("Vector layer added above. The photo is hidden, not deleted."); }
     } catch (e) { console.error(e); toast.error("Couldn't vectorise this image."); }
     finally { setAiBusy(null); }
@@ -1015,7 +1162,20 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
 
       {/* properties + layers */}
       <aside className="flex flex-col min-h-0 min-w-0" style={{ background: "var(--s-panel)", borderLeft: "1px solid var(--s-line)" }}>
+        <input ref={fontInput} type="file" accept=".ttf,.otf,.woff,.woff2" className="hidden" aria-label="Font file" onChange={(e) => { void uploadFont(e.target.files?.[0]); e.target.value = ""; }} />
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+          {fontAsk.length > 0 && (
+            <div className="m-3 rounded-lg p-3 grid gap-2 text-[12px] min-w-0 break-words" style={{ background: "color-mix(in oklab, var(--s-ai) 10%, transparent)", border: "1px solid color-mix(in oklab, var(--s-ai) 30%, var(--s-line))", color: "var(--s-soft)" }}>
+              <b className="text-[12.5px]" style={{ color: "var(--s-text)" }}>Fonts in this design</b>
+              {fontAsk.map((f) => (
+                <div key={f.font} className="grid gap-1">
+                  <span>Looks like <b>{f.font}</b>, which isn&apos;t free to load. Showing <b>{f.using}</b> for now.</span>
+                  <button type="button" className="s-btn ai sm justify-self-start max-w-full h-auto py-1.5 whitespace-normal text-left" onClick={() => { fontFor.current = f.font; fontInput.current?.click(); }}><UploadIcon className="h-3.5 w-3.5 shrink-0" /> Upload the font file</button>
+                </div>
+              ))}
+              <button type="button" className="text-[11px] justify-self-start underline" style={{ color: "var(--s-mute)" }} onClick={() => setFontAsk([])}>Keep the free fonts</button>
+            </div>
+          )}
           {!active ? (
             <div className="p-3.5 grid gap-4">
               <div>
@@ -1073,8 +1233,12 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                 <div className="grid gap-2">
                   <span className="s-label">Text</span>
                   <select className="s-input" data-no-mic value={String(active.fontFamily)} onChange={(e) => { const f = e.target.value; setProp(active, { fontFamily: f }); whenFontReady(f, () => { active.set({ dirty: true }); canvas().requestRenderAll(); }); }}>
-                    {[...new Set([kit?.primaryFont, ...FONTS].filter(Boolean) as string[])].map((f) => <option key={f} value={f}>{f}{f === kit?.primaryFont ? " (brand)" : ""}</option>)}
+                    {[...new Set([kit?.primaryFont, ...customFonts, String(active.fontFamily), ...FONTS].filter(Boolean) as string[])].map((f) => <option key={f} value={f}>{f}{f === kit?.primaryFont ? " (brand)" : customFonts.includes(f) ? " (yours)" : ""}</option>)}
                   </select>
+                  {(active as FObj).wantedFont && (active as FObj).wantedFont!.toLowerCase() !== String(active.fontFamily).toLowerCase() && (
+                    <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>The original looks like <b>{(active as FObj).wantedFont}</b>. Showing the closest free font.</p>
+                  )}
+                  <button type="button" className="s-btn ghost sm justify-start" onClick={() => { fontFor.current = (active as FObj).wantedFont ?? null; fontInput.current?.click(); }}><UploadIcon className="h-3.5 w-3.5" /> Upload a font file</button>
                   <div className="grid grid-cols-2 gap-2">
                     {num("Size", active.fontSize ?? 40, (n) => setProp(active, { fontSize: n }))}
                     <label className="text-[11px] grid gap-1" style={{ color: "var(--s-mute)" }}>Weight
@@ -1122,7 +1286,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                       </div>
                     </>
                   )}
-                  <button className="s-btn justify-between" onClick={vectorizeActive} disabled={!!aiBusy}><span className="flex items-center gap-2"><Shapes className="h-4 w-4" /> Turn into vectors</span><span className="cost">free</span></button>
+                  <button className="s-btn ai justify-between" onClick={splitIntoLayers} disabled={!!aiBusy} title="For posters and flyers: the words become real text in the closest font, the logo becomes a vector, the photo loses its old words"><span className="flex items-center gap-2"><LayoutTemplate className="h-4 w-4" /> Split into layers</span><span className="cost">~20 cr</span></button>
+                  <button className="s-btn justify-between" onClick={vectorizeActive} disabled={!!aiBusy} title="Best for logos, icons and flat graphics"><span className="flex items-center gap-2"><Shapes className="h-4 w-4" /> Trace as vectors (logos, icons)</span><span className="cost">free</span></button>
                   <Link className="s-btn justify-start" href={`/studio/video?mode=showcase&start=${encodeURIComponent(activeImage.srcUrl ?? "")}`}><Film className="h-4 w-4" /> Animate this photo</Link>
                   <span className="s-label mt-2">Adjust</span>
                   {(["brightness", "contrast", "saturation"] as const).map((k) => (

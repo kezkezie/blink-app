@@ -21,7 +21,7 @@ const mail = (subject: string) => `mailto:info@blinkspot.io?subject=${encodeURIC
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
 
 type Sub = { status: string | null; cycle: string | null; periodEnd: string | null; online: boolean };
-type PayStatus = { online: boolean; test?: boolean; currency?: string | null };
+type PayStatus = { online: boolean; test?: boolean; currency?: string | null; loaded?: boolean };
 
 function BillingPage() {
   const { clientId, loading } = useClient();
@@ -38,7 +38,7 @@ function BillingPage() {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    fetch("/api/billing/status", { cache: "no-store" }).then((r) => r.json()).then((d: PayStatus) => setPay(d)).catch(() => {});
+    fetch("/api/billing/status", { cache: "no-store" }).then((r) => r.json()).then((d: PayStatus) => setPay({ ...d, loaded: true })).catch(() => setPay({ online: false, loaded: true }));
   }, []);
 
   useEffect(() => {
@@ -82,6 +82,8 @@ function BillingPage() {
   }, [returned, clientId, router]);
 
   const checkout = useCallback(async (item: string, fallbackSubject: string) => {
+    // Never fall back to email just because the status hasn't arrived yet.
+    if (!pay.loaded) { toast.info("One moment, opening payments…"); return; }
     if (!pay.online) { window.location.href = mail(fallbackSubject); return; }
     setBusy(item);
     try {
@@ -90,7 +92,7 @@ function BillingPage() {
       if (!res.ok || !data.url) throw new Error(data.error || "Couldn't open the payment page.");
       window.location.href = data.url;
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't open the payment page."); setBusy(null); }
-  }, [pay.online]);
+  }, [pay.online, pay.loaded]);
 
   const manage = useCallback(async () => {
     setBusy("manage");
