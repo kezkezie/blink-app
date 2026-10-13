@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Canvas, Rect, Ellipse, Line, Polygon, Textbox, FabricImage, Path, PencilBrush, loadSVGFromString, util,
-  FabricObject, Group, filters, Circle as FabricCircle, Point, type TPointerEventInfo, type TPointerEvent,
+  FabricObject, Group, filters, Circle as FabricCircle, Point, cache as fabricCache, type TPointerEventInfo, type TPointerEvent,
 } from "fabric";
 import { EraserBrush } from "@erase2d/fabric";
 import {
@@ -18,7 +18,7 @@ import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { GOOGLE_FONTS_REGISTRY, loadCustomFont } from "@/lib/fonts";
-import { CLEAN_PLATE_PROMPT, type DesignLayers } from "@/lib/editor/layers";
+import { CLEAN_PLATE_PROMPT, CLEAN_PLATE_TOPIC, alphaBounds, measureInk, samePicture, spacingToMatch, type Box, type DesignLayers } from "@/lib/editor/layers";
 import { sanitizeSvg } from "@/lib/svg-sanitize";
 import type { CanvasLayer, CanvasOp, CanvasSummary } from "@/lib/canvas-ops";
 import { ImagePicker, type PickedImage } from "../ImagePicker";
@@ -96,9 +96,75 @@ function ensureFont(family: string): Promise<void> {
  * (2026-10-13: split designs drew in a serif fallback because this ran before the stylesheet).
  */
 function whenFontReady(family: string, redraw: () => void, weight: number | string = 700) {
+  // fabric keeps each letter's width per font; widths measured with the fallback font before the
+  // real one arrived gave uneven gaps ("M ushr oom", 2026-10-13), so they are dropped first.
+  const ready = () => { fabricCache.clearFontCache(family); redraw(); };
   void ensureFont(family)
     .then(() => Promise.all([document.fonts?.load(`${weight} 40px "${family}"`), document.fonts?.load(`400 40px "${family}"`)]))
-    .then(redraw, redraw);
+    .then(ready, ready);
+}
+
+/** A greyscale 32x40 thumbnail, to tell whether an edit is still the same picture. */
+function thumb(src: CanvasImageSource) {
+  const c = document.createElement("canvas");
+  c.width = 32; c.height = 40;
+  const x = c.getContext("2d", { willReadFrequently: true })!;
+  x.drawImage(src, 0, 0, 32, 40);
+  const d = x.getImageData(0, 0, 32, 40).data;
+  const g = new Array<number>(32 * 40);
+  for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  return g;
+}
+
+/** Where a text layer's letters are drawn, in canvas units (rendered alone, read from its pixels). */
+function renderedInk(tb: Textbox) {
+  const m = 2;
+  const el = tb.toCanvasElement({ multiplier: m });
+  const data = el.getContext("2d", { willReadFrequently: true })?.getImageData(0, 0, el.width, el.height).data;
+  const b = data && alphaBounds(data, el.width, el.height);
+  if (!b) return null;
+  const c = tb.getCenterPoint();
+  const ox = c.x - el.width / (2 * m), oy = c.y - el.height / (2 * m);
+  return { x: ox + b[0] / m, y: oy + b[1] / m, w: b[2] / m, h: b[3] / m };
+}
+
+/**
+ * Size, space and place a text layer so its letters cover the original's (2026-10-13: sizes from
+ * the AI's boxes came out too big or too small). Height sets the size, letter spacing makes up a
+ * substitute font's different width, then the ink is lined up by the text's alignment.
+ */
+function fitTextToInk(tb: Textbox, target: { x: number; y: number; w: number; h: number }) {
+  const start = { width: tb.width, fontSize: tb.fontSize, charSpacing: tb.charSpacing, left: tb.left, top: tb.top };
+  const giveUp = () => { tb.set(start); tb.initDimensions(); tb.setCoords(); return false; };
+  const unwrap = () => { tb.set({ width: 10_000 }); tb.initDimensions(); tb.set({ width: Math.ceil(tb.calcTextWidth()) + 2 }); tb.initDimensions(); };
+  unwrap();
+  for (let pass = 0; pass < 3; pass++) {
+    const ink = renderedInk(tb);
+    if (!ink || ink.h < 1) return giveUp();
+    const r = target.h / ink.h;
+    if (r < 0.2 || r > 5) return giveUp();
+    if (Math.abs(r - 1) < 0.015) break;
+    tb.set({ fontSize: Math.max(4, (tb.fontSize ?? 20) * r) });
+    unwrap();
+  }
+  // Same height but far off in width means the lines aren't the original's (a paragraph read as
+  // one line, say): letter spacing can't make that up, so keep the box-based size instead.
+  const sized = renderedInk(tb);
+  if (!sized || sized.w > target.w * 1.3 || sized.w < target.w * 0.6) return giveUp();
+  const longest = Math.max(1, ...String(tb.text ?? "").split("\n").map((l) => l.length));
+  for (let pass = 0; pass < 2; pass++) {
+    const ink = renderedInk(tb);
+    if (!ink) break;
+    if (Math.abs(target.w - ink.w) / target.w < 0.02) break;
+    tb.set({ charSpacing: spacingToMatch(tb.charSpacing ?? 0, ink.w, target.w, longest, tb.fontSize ?? 20) });
+    unwrap();
+  }
+  const ink = renderedInk(tb);
+  if (!ink) return false;
+  const dx = tb.textAlign === "center" ? target.x + target.w / 2 - (ink.x + ink.w / 2) : tb.textAlign === "right" ? target.x + target.w - (ink.x + ink.w) : target.x - ink.x;
+  tb.set({ left: (tb.left ?? 0) + dx, top: (tb.top ?? 0) + (target.y - ink.y) });
+  tb.setCoords();
+  return true;
 }
 
 function typeLabel(o: FObj) {
@@ -726,6 +792,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     const onFonts = () => {
       const c = cv.current;
       if (!c) return;
+      fabricCache.clearFontCache(); // letter widths measured before the font arrived are wrong
       for (const o of c.getObjects()) if (o instanceof Textbox) { o.initDimensions(); o.set({ dirty: true }); }
       c.requestRenderAll();
     };
@@ -790,6 +857,10 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       const layers = data.layers as DesignLayers;
       let spent = Number(data.credits) || 0;
       const L = img.left ?? 0, T = img.top ?? 0, W = img.getScaledWidth(), H = img.getScaledHeight();
+      // Where each text's letters really are, measured on the original before anything changes.
+      const px = small.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, small.width, small.height).data;
+      const inks: Array<Box | null> = layers.texts.map((t) => measureInk(px, small.width, small.height, t.box, t.color));
+      const before = thumb(small);
 
       // The logo, traced from its own small area (or kept as a cut-out if it's too detailed).
       setAiBusy("Tracing the logo…");
@@ -811,21 +882,35 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         }
       }
 
-      // The photo without its words and logo (the same edit as "Change it"). If it fails, the original stays.
+      // The photo without its words: a plain edit (no brand rules or logo, which fought the instruction).
+      // If it fails, or comes back as a different picture, the original stays and we say so.
       setAiBusy("Taking the old words off the photo…");
       try {
         const url = await imageForAi(img);
         const aspect = nearestImageAspect(`${img.width || 4}:${img.height || 5}`);
-        const [out] = await generateBrandImages({ clientId, brandId: activeBrand.id, kit, prompt: CLEAN_PLATE_PROMPT, references: [url], engine: "nb2", aspect, style: "studio", caption: "Clean plate", mode: "edit", save: false });
-        await replaceImageSrc(img, out.url);
-        img.set({ name: `${img.name ?? "Photo"} (no text)` } as Partial<FObj>);
+        const [out] = await generateBrandImages({ clientId, brandId: activeBrand.id, kit, prompt: CLEAN_PLATE_TOPIC, assembledPrompt: CLEAN_PLATE_PROMPT, plain: true, references: [url], engine: "nb2", aspect, style: "studio", caption: "Clean plate", mode: "edit", save: false });
         spent += 18;
-      } catch { toast.info("Couldn't take the old words off the photo, so they may show under the new text. You can hide the photo layer."); }
+        const plate = await loadImage(canvasSafe(out.url));
+        if (!samePicture(before, thumb(plate))) {
+          toast.error("The photo without words came back as a different picture, so your original stays under the new text. Hide the photo layer, or try Split again.", { duration: 12_000 });
+        } else {
+          await replaceImageSrc(img, out.url);
+          img.set({ name: `${img.name ?? "Photo"} (no text)`, dirty: true } as Partial<FObj>);
+          canvas().requestRenderAll();
+        }
+      } catch (e) {
+        console.error("clean plate", e);
+        toast.error("Couldn't take the old words off the photo, so they show under the new text. Hide the photo layer, or try Split again.", { duration: 12_000 });
+      }
 
       // Real text, in the closest free font, sized to its box.
       const asks = new Map<string, string>();
-      for (const t of layers.texts) {
+      // One undo step once every font has arrived and every text is fitted.
+      let toFit = layers.texts.length;
+      const fittedOne = () => { if (--toFit === 0) record(); };
+      for (const [ti, t] of layers.texts.entries()) {
         const [bx, by, bw, bh] = t.box;
+        const ink = inks[ti];
         const lines = t.text.split("\n").length;
         const family = customFonts.find((f) => f.toLowerCase() === t.font.toLowerCase()) ?? t.freeFont;
         void ensureFont(family);
@@ -838,9 +923,11 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         add(tb, `Text: ${t.text.split("\n")[0].slice(0, 24)}`, false);
         whenFontReady(family, () => {
           tb.initDimensions();
-          // Shrink until it fits on the same number of lines as the original.
-          for (let i = 0; i < 10 && (tb.textLines?.length ?? lines) > lines; i++) tb.set({ fontSize: Math.round((tb.fontSize ?? 20) * 0.92) });
-          tb.set({ dirty: true }); canvas().requestRenderAll();
+          // Matched to the original's measured letters; without a measurement, shrink until it fits
+          // on the same number of lines as the original.
+          const fitted = ink && fitTextToInk(tb, { x: L + ink[0] * W, y: T + ink[1] * H, w: ink[2] * W, h: ink[3] * H });
+          if (!fitted) for (let i = 0; i < 10 && (tb.textLines?.length ?? lines) > lines; i++) tb.set({ fontSize: Math.round((tb.fontSize ?? 20) * 0.92) });
+          tb.set({ dirty: true }); canvas().requestRenderAll(); fittedOne();
         }, t.weight);
         if (family.toLowerCase() !== t.font.toLowerCase() && !customFonts.some((f) => f.toLowerCase() === t.font.toLowerCase())) asks.set(t.font, family);
       }

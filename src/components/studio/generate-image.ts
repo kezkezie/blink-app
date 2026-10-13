@@ -88,6 +88,11 @@ export type GenerateRequest = {
   mode?: "standard" | "edit";
   /** false for in-between editor steps: return the image without adding it to the Library. */
   save?: boolean;
+  /**
+   * A technical edit (the Editor's clean plate): the prompt goes as written, with no brand rules,
+   * no "keep the text" and no logo, which would fight the instruction (2026-10-13).
+   */
+  plain?: boolean;
 };
 
 const IMAGE_ASPECTS = ["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3"];
@@ -105,7 +110,7 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
   const refs = req.references ?? [];
   const styleObj = MARKETING_STYLES.find((s) => s.id === req.style);
   const constraint = brandConstraintFor(req.kit);
-  let assembled = req.assembledPrompt ? `${req.assembledPrompt}\n\n${constraint}` : "";
+  let assembled = req.plain ? (req.assembledPrompt ?? req.prompt) : req.assembledPrompt ? `${req.assembledPrompt}\n\n${constraint}` : "";
   let negative: string | undefined;
   if (!assembled && req.mode === "edit") assembled = `${req.prompt}\nKeep everything else in image 1 exactly as it is (composition, lighting, people, text).`;
   if (!assembled) {
@@ -114,7 +119,7 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
     assembled = built.prompt;
     negative = built.negativePrompt;
   }
-  const referenceUrls = req.style === "brand" && req.kit.logoUrl ? [req.kit.logoUrl, ...refs] : refs;
+  const referenceUrls = !req.plain && req.style === "brand" && req.kit.logoUrl ? [req.kit.logoUrl, ...refs] : refs;
   // Without the real logo in the references the models invent one (Kezie, 2026-10-12): forbid it.
   if (!(req.kit.logoUrl && referenceUrls.includes(req.kit.logoUrl)) && req.mode !== "edit") {
     assembled = assembled ? `${assembled}\nDraw no logo, icon or brand mark of any kind; where a brand mark would go, write "${req.kit.name}" as plain text.` : assembled;
@@ -132,7 +137,7 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
     imageEngine: req.engine,
     aspect_ratio: req.aspect,
     style: req.style,
-    strict_brand_alignment: true,
+    strict_brand_alignment: !req.plain,
     numImages: 1,
     brand_name: req.kit.name,
     brand_website: req.kit.websiteUrl,
@@ -140,7 +145,7 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
     brand_industry: req.kit.industry,
     brand_primary_color: req.kit.primaryColor,
     brand_secondary_color: req.kit.secondaryColor,
-    logo_url: req.kit.logoUrl,
+    ...(req.plain ? {} : { logo_url: req.kit.logoUrl }),
     is_sync: true,
   };
 

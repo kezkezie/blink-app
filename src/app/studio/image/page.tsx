@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { adaptRecipePrompt } from "@/lib/examples/adapt";
 import { toast } from "sonner";
@@ -40,11 +40,11 @@ const MODES: Array<{ id: Mode; label: string; icon: typeof Sparkles; hint: strin
   { id: "design", label: "Editor", icon: LayoutTemplate, hint: "Layers, shapes, pen, text and AI edits" },
 ];
 
-async function loadPicked(contentId: string): Promise<PickedImage | null> {
-  const { data } = await supabase.from("content").select("id, caption, image_urls, video_urls, reference_image_url").eq("id", contentId).maybeSingle();
+async function loadPicked(contentId: string): Promise<(PickedImage & { brandId: string | null }) | null> {
+  const { data } = await supabase.from("content").select("id, brand_id, caption, image_urls, video_urls, reference_image_url").eq("id", contentId).maybeSingle();
   if (!data) return null;
   const m = resolveMedia(data as unknown as Content);
-  return m.url && !m.isVideo ? { url: m.url, contentId: data.id, title: cleanCaption(data.caption) || "Image" } : null;
+  return m.url && !m.isVideo ? { url: m.url, contentId: data.id, title: cleanCaption(data.caption) || "Image", brandId: (data.brand_id as string | null) ?? null } : null;
 }
 
 function ImageStudioInner() {
@@ -66,11 +66,26 @@ function ImageStudioInner() {
   const [designKey, setDesignKey] = useState(0);
 
   // ?content= opens Edit or Design on a Library image.
+  const [pickedBrand, setPickedBrand] = useState<string | null>(null);
   useEffect(() => {
     const id = params.get("content");
     if (!id) return;
-    loadPicked(id).then((p) => { setPicked(p); setLoadingPick(false); setDesignKey((k) => k + 1); });
+    loadPicked(id).then((p) => { setPickedBrand(p?.brandId ?? null); setPicked(p); setLoadingPick(false); setDesignKey((k) => k + 1); });
   }, [params]);
+  // A post opens in its own brand, so AI edits use that brand's name, rules and logo (2026-10-13: a
+  // NUF FARMS poster edited while "mama njeri kitchen" was active got Mama Njeri's name painted on).
+  // Once per post: switching brand by hand afterwards is left alone.
+  const availableBrands = useBrandStore((s) => s.availableBrands);
+  const switchedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pickedBrand || switchedFor.current === pickedBrand) return;
+    const own = availableBrands.find((b) => b.id === pickedBrand);
+    if (!own) return;
+    switchedFor.current = pickedBrand;
+    if (useBrandStore.getState().activeBrand?.id === own.id) return;
+    useBrandStore.getState().setActiveBrand(own);
+    toast.info(`Opened in ${own.brand_name}, the brand this post belongs to.`);
+  }, [pickedBrand, availableBrands]);
 
   useEffect(() => {
     if (params.get("prompt")) router.replace("/studio/image", { scroll: false });
