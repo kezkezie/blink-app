@@ -1264,7 +1264,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
             </div>
           )}
           {!active ? (
-            <div className="p-3.5 grid gap-4">
+            <div className="p-3.5 grid gap-4 grid-cols-[minmax(0,1fr)]">
               <div>
                 <b className="text-[13px]">Canvas</b>
                 <span className="s-label mt-3">Background</span>
@@ -1288,7 +1288,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               <p className="text-xs leading-relaxed" style={{ color: "var(--s-mute)" }}>Pick a tool on the left. Hover any tool to learn what it does. Click a layer to change it; AI tools appear when a photo is selected.</p>
             </div>
           ) : (
-            <div className="p-3.5 grid gap-3">
+            <div className="p-3.5 grid gap-3 grid-cols-[minmax(0,1fr)]">
               <div className="flex items-center gap-2">
                 <b className="text-[13px] truncate flex-1 min-w-0">{active.name ?? typeLabel(active)}</b>
                 <button className="s-btn ghost sm" onClick={() => { canvas().discardActiveObject(); canvas().requestRenderAll(); bump(); }} title="Deselect (Esc)">Done</button>
@@ -1311,15 +1311,15 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                 {num("W", active.getScaledWidth(), (n) => setProp(active, { scaleX: n / (active.width || 1) }))}
                 {num("H", active.getScaledHeight(), (n) => setProp(active, { scaleY: n / (active.height || 1) }))}
                 {num("Rotate °", active.angle ?? 0, (n) => setProp(active, { angle: n }))}
-                <label className="text-[11px] grid gap-1" style={{ color: "var(--s-mute)" }}>Opacity
+                <label className="text-[11px] grid gap-1 min-w-0" style={{ color: "var(--s-mute)" }}>Opacity
                   <input type="range" min={0} max={1} step={0.05} value={active.opacity ?? 1} onChange={(e) => setProp(active, { opacity: Number(e.target.value) })} style={{ accentColor: "var(--s-accent)" }} />
                 </label>
               </div>
 
               {active instanceof Textbox && (
-                <div className="grid gap-2">
+                <div className="grid gap-2 grid-cols-[minmax(0,1fr)]">
                   <span className="s-label">Text</span>
-                  <select className="s-input" data-no-mic value={String(active.fontFamily)} onChange={(e) => { const f = e.target.value; setProp(active, { fontFamily: f }); whenFontReady(f, () => { active.set({ dirty: true }); canvas().requestRenderAll(); }); }}>
+                  <select className="s-input min-w-0 w-full" data-no-mic aria-label="Font" value={String(active.fontFamily)} onChange={(e) => { const f = e.target.value; setProp(active, { fontFamily: f }); whenFontReady(f, () => { active.set({ dirty: true }); canvas().requestRenderAll(); }); }}>
                     {[...new Set([kit?.primaryFont, ...customFonts, String(active.fontFamily), ...FONTS].filter(Boolean) as string[])].map((f) => <option key={f} value={f}>{f}{f === kit?.primaryFont ? " (brand)" : customFonts.includes(f) ? " (yours)" : ""}</option>)}
                   </select>
                   {(active as FObj).wantedFont && (active as FObj).wantedFont!.toLowerCase() !== String(active.fontFamily).toLowerCase() && (
@@ -1328,8 +1328,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                   <button type="button" className="s-btn ghost sm justify-start" onClick={() => { fontFor.current = (active as FObj).wantedFont ?? null; fontInput.current?.click(); }}><UploadIcon className="h-3.5 w-3.5" /> Upload a font file</button>
                   <div className="grid grid-cols-2 gap-2">
                     {num("Size", active.fontSize ?? 40, (n) => setProp(active, { fontSize: n }))}
-                    <label className="text-[11px] grid gap-1" style={{ color: "var(--s-mute)" }}>Weight
-                      <select className="s-input" data-no-mic style={{ height: 30 }} value={String(active.fontWeight)} onChange={(e) => setProp(active, { fontWeight: Number(e.target.value) })}>
+                    <label className="text-[11px] grid gap-1 min-w-0" style={{ color: "var(--s-mute)" }}>Weight
+                      <select className="s-input min-w-0 w-full" data-no-mic aria-label="Weight" style={{ height: 30 }} value={String(active.fontWeight)} onChange={(e) => setProp(active, { fontWeight: Number(e.target.value) })}>
                         {[300, 400, 500, 600, 700, 800, 900].map((w) => <option key={w} value={w}>{w}</option>)}
                       </select>
                     </label>
@@ -1343,7 +1343,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               )}
 
               {!(active instanceof Textbox) && !(active instanceof FabricImage) && (
-                <div className="grid gap-2">
+                <div className="grid gap-2 grid-cols-[minmax(0,1fr)]">
                   {!(active instanceof Line) && <><span className="s-label">Fill</span>{swatches((c) => setProp(active, { fill: c }), active.fill)}</>}
                   <span className="s-label">Outline</span>
                   {swatches((c) => setProp(active, { stroke: c, strokeWidth: active.strokeWidth || 4 }), active.stroke)}
@@ -1361,7 +1361,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               )}
 
               {activeImage && (
-                <div className="grid gap-2">
+                <div className="grid gap-2 grid-cols-[minmax(0,1fr)]">
                   <span className="s-label">AI on this photo</span>
                   {aiLocked ? <CreditsNote /> : (
                     <>

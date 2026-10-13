@@ -102,11 +102,13 @@ export function isValidContentId(value: unknown): value is string {
 }
 
 /** Columns needed to restore a video job's durable status. `video_urls` is the
- *  column the existing scene poller reads (it may hold an array or a JSON
- *  string); `video_url` is the single-asset column. Both are returned so a
- *  restoring caller does not have to guess. */
+ *  column the scene poller reads (it may hold an array or a JSON string).
+ *  Only columns that exist: `video_url` and `error_message` were listed here but
+ *  aren't in the table, so every status read failed with a 500 and, with Realtime
+ *  publishing no tables, Storyboard scenes never showed as finished (2026-10-13:
+ *  Chelsea's Seedance scene was ready in 6 minutes; the app said it failed). */
 const JOB_STATUS_SELECT =
-  "id, video_url, video_urls, status, error_message, generation_state, billing_state, retry_state, generation_status_text, generation_error_code, generation_attempt, creation_metadata";
+  "id, video_urls, status, generation_state, billing_state, retry_state, generation_status_text, generation_error_code, generation_attempt, creation_metadata";
 
 /** The caller's workspace, or the owner's for a brand (or post) shared with them as an editor. */
 async function loadClientId(userId: string, scope: { brandId?: string; contentId?: string } = {}): Promise<VideoJobResult<string>> {
