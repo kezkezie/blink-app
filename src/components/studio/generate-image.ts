@@ -201,7 +201,7 @@ export function generationErrorMessage(e: unknown) {
   if (/upstream_auth/.test(msg)) return "The image service isn't connected right now, so nothing was made and nothing was charged. We've been told; try again a little later.";
   if (/status: 504|timed out/i.test(msg)) return "The render took longer than the connection allowed. It may still finish; check your Library in a minute before trying again.";
   if (/Failed to fetch|NetworkError|network/i.test(msg)) return "The connection dropped while your image was being made. If it finished, it lands in your Library on its own in a minute; failed renders refund themselves.";
-  if (/status: 402|insufficient/i.test(msg)) return "Not enough credits for this. Top up in Billing.";
+  if (/status: 402|insufficient/i.test(msg)) return "Not enough credits for this. Get more in Billing.";
   if (/status: 429/i.test(msg)) return "That's a lot of images in a short time. Wait a minute and try again.";
   // 502: n8n answered with an error (a crash, or it is down). Failed renders refund themselves.
   if (/status: 502/i.test(msg)) return "The image service had a problem with this one. If credits were taken they come back automatically. Try again in a minute.";

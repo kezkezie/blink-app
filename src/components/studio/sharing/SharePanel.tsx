@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Link2, Loader2, Mail, MessageCircle, Trash2, UserMinus, Users, X } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 import { Modal } from "../Modal";
 import { ROLE_INFO, whatsappShareUrl, type ShareRole } from "@/lib/brand-sharing";
 
+const PLAN_NAME: Record<string, string> = { free: "Free", starter: "Starter", pro: "Pro", agency: "Agency" };
+
 type Member = { userId: string; role: ShareRole; email: string | null; name: string | null; since: string };
 type Invite = { id: string; email: string | null; role: ShareRole; expiresAt: string; link: string };
-type Sharing = { members: Member[]; invites: Invite[]; limit: number };
+type Sharing = { members: Member[]; invites: Invite[]; limit: number; plan: string };
 
 async function call(body: Record<string, unknown>) {
   const res = await fetch("/api/brand-sharing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -55,7 +58,7 @@ export function SharePanel({ open, onClose, brandId, brandName }: { open: boolea
     const res = await fetch(`/api/brand-sharing?brandId=${brandId}`, { cache: "no-store" });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) { toast.error(body.error || "Couldn't load who has access."); return; }
-    setData({ members: body.members ?? [], invites: body.invites ?? [], limit: body.limit ?? 10 });
+    setData({ members: body.members ?? [], invites: body.invites ?? [], limit: body.limit ?? 3, plan: body.plan ?? "free" });
   }, [brandId]);
   useEffect(() => { if (open) { setFresh(null); void load(); } }, [open, load]);
 
@@ -119,7 +122,14 @@ export function SharePanel({ open, onClose, brandId, brandName }: { open: boolea
         <button type="button" className="s-btn w-fit" disabled={!!busy || full} onClick={() => void invite(false)}>
           {busy === "link" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} Create an invite link
         </button>
-        {full && <p className="text-[12.5px]" style={{ color: "var(--s-warn)" }}>This brand is shared with {data?.limit} people (open invites count). Remove someone or cancel an invite to add more.</p>}
+        {data && (
+          <p className="text-[12px]" style={{ color: full ? "var(--s-warn)" : "var(--s-mute)" }}>
+            {used} of {data.limit} people on your {PLAN_NAME[data.plan] ?? "current"} plan (open invites count).{" "}
+            {full && (data.plan === "agency"
+              ? "Remove someone or cancel an invite to add more."
+              : <>Remove someone, or <Link href="/studio/account/billing#plans" className="underline" onClick={onClose}>upgrade</Link> to share with more.</>)}
+          </p>
+        )}
 
         {fresh && (
           <div className="s-card p-4 grid gap-2.5" style={{ borderColor: "color-mix(in oklab, var(--s-ok) 35%, var(--s-line))" }}>

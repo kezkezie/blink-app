@@ -11,4 +11,4 @@ export function meteredCredits(usd: number | null | undefined, cap: number, min 
   return Math.min(cap, Math.max(min, Math.ceil(usd * CREDITS_PER_USD)));
 }
 
-export const NOT_ENOUGH_CREDITS = (need: number) => `This needs up to ${need} credits and your balance is lower. Top up in Billing: credit packs work on every plan, Free included.`;
+export const NOT_ENOUGH_CREDITS = (need: number) => `This needs up to ${need} credits and your balance is lower. Get more in Billing: top-ups on Starter and up, or upgrade from Free.`;

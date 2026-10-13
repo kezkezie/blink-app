@@ -2,8 +2,7 @@
 
 export type ShareRole = "editor" | "viewer";
 
-/** People a brand can be shared with, open invites included. */
-export const SHARE_LIMIT = 10;
+/** People a brand can be shared with (open invites count) come from the owner's plan: SHARE_SEATS in lib/plans. */
 
 export const ROLE_INFO: Record<ShareRole, { label: string; line: string }> = {
   editor: { label: "Editor", line: "Makes, edits and schedules posts for this brand, using your credits." },

@@ -6,13 +6,14 @@ import { Check, Coins, CreditCard, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
-import { CREDIT_PACKS, PLANS, planOf, type PlanTier } from "@/lib/plans";
+import { CREDIT_PACKS, PLANS, TOP_UP_NEEDS_PLAN, canTopUp, planOf, type PlanTier } from "@/lib/plans";
 import { formatCredits } from "@/components/studio/hooks";
 
 /**
  * Billing & credits in the studio look (2026-10-11; the classic page stays at /dashboard/billing).
  * Prices and promises come from lib/plans.ts, the same list the homepage shows.
- * 2026-10-12: credit packs on every plan and plans by subscription, paid on Paystack's own page
+ * 2026-10-12: credit packs and plans by subscription, paid on Paystack's own page. 2026-10-13:
+ * packs from Starter up (Free upgrades).
  * (lib/payments). Until PAYSTACK_SECRET_KEY is set, the buttons fall back to an email.
  */
 type Txn = { id: string; amount: number; description: string | null; operation: string; created_at: string };
@@ -132,9 +133,15 @@ function BillingPage() {
           <div className="flex items-baseline gap-2"><Coins className="h-5 w-5 self-center" style={{ color: "var(--s-accent)" }} /><b className="text-[30px] font-semibold tracking-tight mono">{formatCredits(balance)}</b><span className="text-[13px]" style={{ color: "var(--s-mute)" }}>left</span></div>
           <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>Credits pay for every AI feature, on every plan. The price is on each button before you press it; failed renders are refunded automatically. Credits never expire.</p>
           <div className="flex-1" />
-          <div className="grid grid-cols-2 gap-2">
+          {!canTopUp(plan) && (
+            <div className="rounded-lg p-3 grid gap-2" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line)" }} role="note">
+              <p className="text-[12.5px]" style={{ color: "var(--s-soft)" }}>{TOP_UP_NEEDS_PLAN}</p>
+              <a href="#plans" className="s-btn sm primary self-start">See plans</a>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2" style={!canTopUp(plan) ? { opacity: 0.5 } : undefined}>
             {CREDIT_PACKS.map((p) => (
-              <button key={p.id} className={`s-btn justify-between${p.id === "pack_800" ? " primary" : ""}`} disabled={!!busy} onClick={() => checkout(p.id, `Top up: ${p.credits} credits for $${p.usd}`)} aria-label={`Buy ${p.credits} credits for $${p.usd}`}>
+              <button key={p.id} className={`s-btn justify-between${p.id === "pack_800" && canTopUp(plan) ? " primary" : ""}`} disabled={!!busy || !canTopUp(plan)} onClick={() => checkout(p.id, `Top up: ${p.credits} credits for $${p.usd}`)} aria-label={`Buy ${p.credits} credits for $${p.usd}`}>
                 <span className="flex items-center gap-1.5">{busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}{p.credits.toLocaleString("en-US")}{"note" in p && <span className="text-[10.5px]" style={{ opacity: 0.75 }}>{p.note}</span>}</span>
                 <span className="cost">${p.usd}</span>
               </button>
@@ -145,7 +152,7 @@ function BillingPage() {
         </div>
       </div>
 
-      <section>
+      <section id="plans" className="scroll-mt-20">
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <h2 className="text-[18px] font-semibold">Plans</h2>
           <div className="flex-1" />

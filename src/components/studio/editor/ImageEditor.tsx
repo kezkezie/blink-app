@@ -1368,7 +1368,7 @@ function CreditsNote() {
   return (
     <div className="rounded-lg p-3 grid gap-2 text-[12px] leading-relaxed" style={{ background: "color-mix(in oklab, var(--s-ai) 10%, transparent)", border: "1px solid color-mix(in oklab, var(--s-ai) 30%, var(--s-line))", color: "var(--s-soft)" }}>
       <span>{AI_NEEDS_CREDITS}</span>
-      <Link href="/studio/account/billing" className="s-btn ai sm justify-center">Top up credits</Link>
+      <Link href="/studio/account/billing" className="s-btn ai sm justify-center">Get credits</Link>
     </div>
   );
 }

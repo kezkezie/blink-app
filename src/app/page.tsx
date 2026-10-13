@@ -306,7 +306,7 @@ export default function Home() {
             <h2 className="h-h2 mt-4">Pay for what you make.</h2>
             <p className="h-lead mt-5">Every plan comes with credits. The price is on every button before you press it, and a failed render is refunded.</p>
             <div className="grid gap-2 mt-8 text-[14px]">
-              {[["An image", "from 6 credits"], ["A 5-second video", "from 20 credits"], ["A voiceover", "1 credit"], ["Logos and brand building", "free"], ["Top up any time", `${TOP_UP.credits} credits for $${TOP_UP.usd}`]].map(([a, b]) => (
+              {[["An image", "from 6 credits"], ["A 5-second video", "from 20 credits"], ["A voiceover", "1 credit"], ["Logos and brand building", "free"], ["Top up on Starter and up", `${TOP_UP.credits} credits for $${TOP_UP.usd}`]].map(([a, b]) => (
                 <div key={a} className="flex justify-between py-2.5" style={{ borderBottom: "1px solid var(--s-line)" }}><span style={{ color: "var(--s-soft)" }}>{a}</span><span className="font-mono">{b}</span></div>
               ))}
             </div>

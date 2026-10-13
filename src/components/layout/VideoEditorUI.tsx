@@ -1238,7 +1238,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
               <>
                 <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}</div>
                 <div className="grid gap-2.5 px-3 pb-3">
-                  {aiLocked && <div className="ve-card ai text-[12px]" style={{ color: "var(--s-soft)" }}><span>{AI_NEEDS_CREDITS}</span><a href="/studio/account/billing" className="s-btn ai sm justify-center">Top up credits</a></div>}
+                  {aiLocked && <div className="ve-card ai text-[12px]" style={{ color: "var(--s-soft)" }}><span>{AI_NEEDS_CREDITS}</span><a href="/studio/account/billing" className="s-btn ai sm justify-center">Get credits</a></div>}
                   <div className="ve-card ai">
                     <b className="text-[13px] flex items-center gap-1.5"><AudioLines className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Cut to the beat</b>
                     <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Re-cuts your video track so every cut lands on the music&apos;s beat. Uses the song on the audio track.</span>

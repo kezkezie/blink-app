@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { CheckoutError, itemFor, startCheckout } from "@/lib/payments/server";
+import { canTopUp, TOP_UP_NEEDS_PLAN } from "@/lib/plans";
 
 /** Start a payment for a credit pack or a plan; answers with the provider's checkout page. */
 export async function POST(request: NextRequest) {
@@ -14,6 +15,10 @@ export async function POST(request: NextRequest) {
 
   const { data: client } = await supabaseAdmin.from("clients").select("id, plan_tier, billing_cycle, billing_status").eq("user_id", auth.value).maybeSingle();
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+  // Top-ups are for Starter and up (Kezie, 2026-10-13); Free upgrades instead.
+  if (item.kind === "credit_pack" && !canTopUp(client.plan_tier)) {
+    return NextResponse.json({ error: TOP_UP_NEEDS_PLAN, code: "needs_plan" }, { status: 403 });
+  }
   if (item.kind === "plan" && client.plan_tier === item.tier && client.billing_cycle === item.cycle && client.billing_status === "active") {
     return NextResponse.json({ error: "You're already on this plan." }, { status: 409 });
   }

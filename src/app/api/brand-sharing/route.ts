@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { brandAccess, ownClientId } from "@/lib/brand-access";
-import { SHARE_LIMIT, isShareRole, maskEmail, normaliseEmail, type ShareRole } from "@/lib/brand-sharing";
+import { isShareRole, maskEmail, normaliseEmail, type ShareRole } from "@/lib/brand-sharing";
+import { planOf, shareSeatsFor } from "@/lib/plans";
 
 /**
  * Shared brands (Kezie, 2026-10-13: "two people working on one brand at the same time").
@@ -30,6 +31,12 @@ function inviteStatus(i: Pick<InviteRow, "accepted_at" | "revoked_at" | "expires
 function appOrigin(request: NextRequest) {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
   return configured && /^https?:\/\//.test(configured) ? configured : new URL(request.url).origin;
+}
+
+/** Seats come with the owner's plan (Kezie, 2026-10-13: Free shares with 3 people). */
+async function ownerPlan(clientId: string) {
+  const { data } = await supabaseAdmin.from("clients").select("plan_tier").eq("id", clientId).maybeSingle();
+  return planOf(data?.plan_tier);
 }
 
 async function ownerName(clientId: string) {
@@ -103,9 +110,11 @@ export async function GET(request: NextRequest) {
     return { userId: m.user_id, role: m.role, since: m.created_at, email: who.email || null, name: who.name };
   }));
   const origin = appOrigin(request);
+  const plan = await ownerPlan(access.clientId);
   return NextResponse.json({
     role: "owner",
-    limit: SHARE_LIMIT,
+    plan,
+    limit: shareSeatsFor(plan),
     members: people,
     invites: ((invites ?? []) as InviteRow[]).map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expires_at, link: `${origin}/join/${i.token}` })),
   });
@@ -196,8 +205,13 @@ export async function POST(request: NextRequest) {
       supabaseAdmin.from("brand_members").select("user_id", { count: "exact", head: true }).eq("brand_id", brandId),
       supabaseAdmin.from("brand_invites").select("id", { count: "exact", head: true }).eq("brand_id", brandId).is("accepted_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()),
     ]);
-    if ((memberCount ?? 0) + (inviteCount ?? 0) >= SHARE_LIMIT) {
-      return bad(`A brand can be shared with up to ${SHARE_LIMIT} people (open invites count). Remove someone or cancel an invite first.`, 409);
+    const plan = await ownerPlan(access.clientId);
+    const seats = shareSeatsFor(plan);
+    if ((memberCount ?? 0) + (inviteCount ?? 0) >= seats) {
+      return NextResponse.json({
+        error: `Your ${plan === "free" ? "Free" : plan[0].toUpperCase() + plan.slice(1)} plan shares a brand with up to ${seats} people (open invites count). ${plan === "agency" ? "Remove someone or cancel an invite first." : "Upgrade for more, or remove someone first."}`,
+        code: "seats_full",
+      }, { status: 409 });
     }
     if (email) {
       const me = await userEmail(auth.value);

@@ -206,9 +206,17 @@ test("brand sharing: link and email invites, editor spends the owner's credits, 
     expect(lateJoin.status, JSON.stringify(lateJoin.body)).toBe(200);
     expect(lateJoin.body.brand.role).toBe("viewer");
 
+    // ── Free shares a brand with 3 people (Kezie, 2026-10-13): a fourth is refused with the way up.
+    const fourth = await post(op.request, "/api/brand-sharing", { action: "invite", brandId: shared.id, role: "viewer" });
+    expect(fourth.status).toBe(409);
+    expect(fourth.body.code).toBe("seats_full");
+    expect(fourth.body.error).toMatch(/Free plan shares a brand with up to 3 people/);
+
     // ── Owner sees the people, removes the editor; the editor loses the brand at once.
     await op.getByRole("button", { name: "Switch brand" }).click();
     await op.getByRole("menuitem", { name: `Share ${shared.name}` }).click();
+    await expect(panel.getByText("3 of 3 people on your Free plan")).toBeVisible({ timeout: 20_000 });
+    await expect(panel.getByRole("button", { name: "Create an invite link" })).toBeDisabled();
     await expect(panel.getByText(editor.email)).toBeVisible({ timeout: 20_000 });
     await expect(panel.getByText(viewer.email)).toBeVisible();
     await panel.getByRole("button", { name: `Remove ${editor.email}` }).click();

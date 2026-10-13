@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
           ? "Editing with Ask on the Free plan uses credits."
           : `${EFFORT_INFO[effort].label} isn't included in your plan (it is from ${planFor(effort)}), so it uses credits.`;
       return NextResponse.json({
-        reply: `${reason} A message like this costs up to ${cap} credits and you have ${balance}. Top up any time: credit packs work on every plan, Free included.${why !== "editing" && effort !== "low" && effort !== "medium" ? " Or switch the dial to Balanced." : ""}`,
-        actions: [{ kind: "open_page", label: "Top up credits", href: "/studio/account/billing" }],
+        reply: `${reason} A message like this costs up to ${cap} credits and you have ${balance}. ${paidPlan ? "Top up any time in Billing." : "Starter ($25 a month) adds 1,500 credits every month and top-ups any time."}${why !== "editing" && effort !== "low" && effort !== "medium" ? " Or switch the dial to Balanced." : ""}`,
+        actions: [{ kind: "open_page", label: paidPlan ? "Top up credits" : "See plans", href: "/studio/account/billing" }],
         credits: 0,
       });
     }
