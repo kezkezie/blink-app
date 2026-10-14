@@ -91,7 +91,7 @@ describe("edit prompt", () => {
     const p = buildEditPrompt(SCAN, changes, ["o2"]);
     expect(p).toMatch(/^Edit image 1\. Make only these changes:/);
     expect(p).toContain(`Change the words of the Headline (upper middle) from "Weekly Availability" to exactly "This Week's Mushrooms"`);
-    expect(p).toContain("Replace the Mushroom photo (lower left) with the object shown in image 2");
+    expect(p).toContain("Replace the Mushroom photo (lower left) with the main product or object from image 2 only (not its background, props or surface)");
     expect(p).toContain("Remove the Brand logo (lower right) completely");
     expect(p).toContain("Change the Background (centre) to Soft gradient (it is light grey paper now), keeping everything in front of it exactly as it is.");
     expect(p).toContain("Change the lighting to: golden hour.");
@@ -114,7 +114,7 @@ describe("edit prompt", () => {
       { id: "b", name: "Background", kind: "background", box: [0, 0, 1000, 1000] },
     ] })!;
     const p = buildEditPrompt(shoe, normalizeChanges(shoe, {}, ["s"]), ["s"]);
-    expect(p).toContain("Replace the High-top sneaker (centre) with the object shown in image 2");
+    expect(p).toContain("Replace the High-top sneaker (centre) with the main product or object from image 2 only");
     expect(p).not.toContain("the Shoelaces");
     expect(p).toContain(`the words "Limited pairs", the Background`);
     const recolour = buildEditPrompt(shoe, normalizeChanges(shoe, { objects: [{ id: "s", color: "#FF0000" }] }), []);

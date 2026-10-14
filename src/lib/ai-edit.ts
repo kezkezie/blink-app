@@ -178,7 +178,9 @@ export function buildEditPrompt(scan: Scan, changes: EditChanges, swapOrder: str
     const it = `the ${o.name}${at ? ` (${at})` : ""}`;
     if (c.remove) { lines.push(`Remove ${it} completely and fill its space naturally with what is around it.`); continue; }
     const img = swapOrder.indexOf(c.id);
-    if (c.swap && img >= 0) lines.push(`Replace ${it} with the ${o.kind === "person" ? "person" : "object"} shown in image ${img + 2}: keep it exactly as in that photo (shape, colours, any writing on it), at the same place and size, matching this picture's light, shadows and perspective.`);
+    if (c.swap && img >= 0) lines.push(o.kind === "person"
+      ? `Replace ${it} with the person shown in image ${img + 2}, at the same place, size and pose, matching this picture's light and perspective.`
+      : `Replace ${it} with the main product or object from image ${img + 2} only (not its background, props or surface): keep it exactly as in that photo (shape, colours, any writing on it), at the same place and size, matching this picture's light, shadows and perspective.`);
     if (c.text !== undefined) {
       lines.push(c.text
         ? `Change the words of ${it} from "${o.text ?? ""}" to exactly "${c.text}", spelled exactly as given, in the same lettering, size, colour and position${c.font ? `, but in ${c.font} lettering` : ""}.`
