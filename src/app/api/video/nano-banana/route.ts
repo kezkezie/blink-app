@@ -11,6 +11,7 @@ import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
 import { validateNanoVideoPayload } from "@/lib/video-execution";
 import { loadOwnedBrandCreativeContext, toVideoWorkflowFields } from "@/lib/brand-creative-context";
 import { n8nWebhookUrl } from "@/lib/n8n-config";
+import { CLINICAL_DIRECTION, REFUSAL, SENSITIVE, softenForAi } from "@/lib/ai-safe-text";
 
 export const maxDuration = 300;
 
@@ -104,6 +105,11 @@ export async function POST(req: NextRequest) {
         delete payload.brand_name;
         delete payload.brand_info;
       }
+      // A sensitive concept (a breast-reconstruction brand's storyboard) made the director refuse:
+      // it plans clinical, product-first scenes instead (lib/ai-safe-text.ts).
+      if (payload.mode === "director" && typeof payload.prompt === "string" && SENSITIVE.test(payload.prompt)) {
+        payload = { ...payload, prompt: `${CLINICAL_DIRECTION}\n\n${softenForAi(payload.prompt)}` };
+      }
     }
 
     const n8nRes = await undiciFetch(resolveNanoBananaTarget(payload), {
@@ -121,6 +127,10 @@ export async function POST(req: NextRequest) {
       // n8n answers 200 with a body code when its deduction gate refuses the call.
       if (parsed?.code === "insufficient_credits") {
         return NextResponse.json({ error: "Not enough credits." }, { status: 402 });
+      }
+      // The director refused instead of planning: say so plainly, with what to try.
+      if (payload.mode === "director" && !(Array.isArray(parsed?.scenes) && parsed.scenes.length) && REFUSAL.test(rawText.slice(0, 4000))) {
+        return NextResponse.json({ error: "The AI director wouldn't plan this one. It happens with medical and intimate subjects. Try describing the product and the people around it (a consultation, a clinic, the product in its packaging) rather than the body." }, { status: 422 });
       }
       return NextResponse.json(parsed);
     } catch {

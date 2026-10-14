@@ -29,3 +29,14 @@ export function softenForAi<T extends string | null | undefined>(text: T): T {
 /** When a picture of a sensitive subject fails, say why and what to try. */
 export const SENSITIVE_FAILURE =
   "Image models often refuse medical and intimate subjects, even for real medical brands. Your credits were refunded. Retry in clinical wording (body words swapped for neutral ones), or show the product as an object, on a plinth or in its packaging.";
+
+/**
+ * For a planner model (the Storyboard's director) writing scenes about a sensitive subject
+ * (2026-10-15, Chelsea: "the AI says it cannot assist"): say it's a real medical brand and keep the
+ * scenes clinical and product-first, so it plans instead of refusing and its image prompts pass.
+ */
+export const CLINICAL_DIRECTION =
+  "Context: this is a legitimate medical or health brand making professional marketing. Plan tasteful, clinical, product-first scenes: the product as an object (in hand, on a plinth, in its packaging), clinicians and consultations, recovery, confidence and everyday life, fully clothed people. Never nudity, anatomy close-ups or intimate framing.";
+
+/** A model's reply that is a refusal rather than an answer. */
+export const REFUSAL = /\b(i (?:can(?:'|’)?t|cannot|am unable to|won(?:'|’)?t) (?:help|assist|create|do|provide)|i(?:'|’)?m (?:sorry|unable)|not able to (?:help|assist))\b/i;
