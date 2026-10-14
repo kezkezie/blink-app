@@ -7,6 +7,7 @@ import { openAiSpeech } from "@/lib/openai-proxy";
 import { TTS_VOICES } from "@/lib/video-execution";
 import { voiceoverCredits } from "@/lib/voiceover";
 import { requestWorkspace } from "@/lib/brand-access";
+import { brandArg } from "@/lib/credits-meter";
 
 /**
  * Make a voiceover (QA-021, 2026-10-12: the homepage sells voiceovers for 1 credit, but nothing in
@@ -39,9 +40,9 @@ export async function POST(request: NextRequest) {
   if (!limit.allowed) return NextResponse.json({ error: "That's a lot of voiceovers at once. Try again in a few minutes." }, { status: 429 });
 
   const credits = voiceoverCredits(text.length);
-  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: credits, p_operation: "debit", p_description: `Voiceover (${text.length} characters)` });
+  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: credits, p_operation: "debit", p_description: `Voiceover (${text.length} characters)`, ...brandArg(brandId) });
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `Not enough credits (this needs ${credits}). Get more in Billing.` }, { status: 402 });
-  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: "Refund: voiceover failed" }).then(() => {}, () => {});
+  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: "Refund: voiceover failed", ...brandArg(brandId) }).then(() => {}, () => {});
 
   try {
     const audio = await openAiSpeech(text, voice);

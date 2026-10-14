@@ -5,6 +5,7 @@ import { verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { requestWorkspace } from "@/lib/brand-access";
+import { brandArg } from "@/lib/credits-meter";
 
 /**
  * Editor → Remove background. Recraft Remove Background on Kie (1 Kie credit, $0.005) is billed at
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const key = process.env.KIE_API_TOKEN;
   if (!key) return NextResponse.json({ error: "Background removal is not configured." }, { status: 503 });
-  let body: { url?: unknown };
+  let body: { url?: unknown; brandId?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const url = typeof body.url === "string" ? body.url : "";
   const client = await requestWorkspace(request, auth.value);
@@ -42,9 +43,9 @@ export async function POST(request: NextRequest) {
   // Any plan with credits (Kezie, 2026-10-12: credits unlock every AI feature).
   if (!url || !(await verifyOwnedInspirationImage(client.id, url))) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: COST, p_operation: "debit", p_description: "Editor: remove background" });
+  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: COST, p_operation: "debit", p_description: "Editor: remove background", ...brandArg(body.brandId) });
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: "Not enough credits. Get more in Billing." }, { status: 402 });
-  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: COST, p_operation: "credit", p_description: "Refund: editor remove background failed" }).then(() => {}, () => {});
+  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: COST, p_operation: "credit", p_description: "Refund: editor remove background failed", ...brandArg(body.brandId) }).then(() => {}, () => {});
 
   try {
     const created = await fetch(`${KIE}/createTask`, {

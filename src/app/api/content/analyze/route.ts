@@ -5,6 +5,7 @@ import { cloudinaryVideoPoster } from "@/lib/utils";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { complete } from "@/lib/llm";
 import { requestWorkspace } from "@/lib/brand-access";
+import { brandArg } from "@/lib/credits-meter";
 
 
 const LENGTHS = new Set(["short", "long"]);
@@ -40,6 +41,7 @@ function isValidAnalyzeRequest(body: Record<string, any>): boolean {
 
 export async function POST(req: NextRequest) {
   let clientIdForRefund = null;
+  let brandIdForRefund: unknown = null;
 
   try {
     const supabase = createServerClient(
@@ -90,6 +92,7 @@ export async function POST(req: NextRequest) {
       if (!ws || ws.role === "owner" || ws.clientId !== clientId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     clientIdForRefund = clientId;
+    brandIdForRefund = body.brandId;
 
     const captionCost = 1;
 
@@ -100,7 +103,8 @@ export async function POST(req: NextRequest) {
         p_client_id: clientId,
         p_amount: captionCost,
         p_operation: "caption_generation",
-        p_description: `AI Caption Generation (${lengthPreference})`
+        p_description: `AI Caption Generation (${lengthPreference})`,
+        ...brandArg(body.brandId),
       }
     );
 
@@ -168,7 +172,8 @@ The JSON object must have EXACTLY these 4 keys:
           p_client_id: clientIdForRefund,
           p_amount: 1,
           p_operation: "refund",
-          p_description: "Refund: Caption generation failed"
+          p_description: "Refund: Caption generation failed",
+          ...brandArg(brandIdForRefund),
         });
         console.log(`Refunded 0.1 credits to ${clientIdForRefund}`);
       } catch (refundError) {

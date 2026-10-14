@@ -5,6 +5,7 @@ import { loadOwnedAssistedBrandContext } from "@/lib/assisted-creation-server";
 import { buildLogoPrompt } from "@/lib/logo-generation";
 import { LOGO_ENGINE } from "@/lib/image-engine-pricing";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
+import { brandArg } from "@/lib/credits-meter";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -68,11 +69,11 @@ export async function POST(req: NextRequest) {
     // Deduct upfront; refund on any downstream failure.
     const cost = LOGO_ENGINE.creditCost;
     const { data: deductData, error: deductError } = await supabaseAdmin.rpc("deduct_credits", {
-      p_client_id: owned.clientId, p_amount: cost, p_operation: "logo_generation", p_description: "Logo generation (Ideogram v3 Turbo)",
+      p_client_id: owned.clientId, p_amount: cost, p_operation: "logo_generation", p_description: "Logo generation (Ideogram v3 Turbo)", ...brandArg(brandId),
     });
     if (!isDeductionSuccessful(deductData, deductError)) return NextResponse.json({ error: "Insufficient credits. Please top up." }, { status: 402 });
     refund = async () => {
-      try { await supabaseAdmin.rpc("refund_credits", { p_client_id: owned.clientId, p_amount: cost, p_operation: "refund", p_description: "Refund: logo generation failed" }); } catch { /* best-effort */ }
+      try { await supabaseAdmin.rpc("refund_credits", { p_client_id: owned.clientId, p_amount: cost, p_operation: "refund", p_description: "Refund: logo generation failed", ...brandArg(brandId) }); } catch { /* best-effort */ }
     };
 
     // Generate via the n8n logo workflow (Ideogram). GATED: workflow not built yet.

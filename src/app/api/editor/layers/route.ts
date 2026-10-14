@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   if (!isExecutionBodySizeAllowed(request, 3_000_000)) return NextResponse.json({ error: "That image is too large to read." }, { status: 413 });
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  let body: { image?: unknown; width?: unknown; height?: unknown };
+  let body: { image?: unknown; width?: unknown; height?: unknown; brandId?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const image = typeof body.image === "string" ? body.image : "";
   if (!/^[A-Za-z0-9+/=]{1000,2800000}$/.test(image)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
@@ -70,6 +70,6 @@ export async function POST(request: NextRequest) {
   console.info("editor layers usage", JSON.stringify({ client: client.id, model, ok: !!layers, texts: layers?.texts.length ?? 0, usd: usd === null ? null : Number(usd.toFixed(4)) }));
   if (!res?.ok || !layers) return NextResponse.json({ error: "Couldn't find text or a logo in this image. Nothing was charged." }, { status: 422 });
   const credits = meteredCredits(usd, CAP, 2);
-  if (!(await chargeCredits(client.id, credits, "Editor: split a design into layers"))) console.error("layers: charge failed", client.id, credits);
+  if (!(await chargeCredits(client.id, credits, "Editor: split a design into layers", body.brandId as string | undefined))) console.error("layers: charge failed", client.id, credits);
   return NextResponse.json({ layers, credits });
 }

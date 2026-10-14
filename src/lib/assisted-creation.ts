@@ -20,7 +20,19 @@ export interface CreativeConcept {
   idea: string;
   angle: string;
   format: CreativeFormat;
+  /** The look it suits (2026-10-14: picking an idea picks its look). */
+  look?: ConceptLook;
+  /** The researched industry post format it follows, e.g. "Fee receipt close-up". */
+  basedOn?: string;
 }
+
+export const CONCEPT_LOOKS = ["poster", "studio", "lifestyle", "cinematic", "flatlay", "abstract"] as const;
+export type ConceptLook = (typeof CONCEPT_LOOKS)[number];
+const conceptExtras = (item: Record<string, unknown>) => {
+  const look = typeof item.look === "string" && (CONCEPT_LOOKS as readonly string[]).includes(item.look) ? (item.look as ConceptLook) : undefined;
+  const basedOn = clean(item.basedOn, 80);
+  return { ...(look ? { look } : {}), ...(basedOn ? { basedOn } : {}) };
+};
 
 export interface AssistedCreativeDirection {
   visualDirection: string;
@@ -109,7 +121,7 @@ export function parseConcepts(value: unknown): CreativeConcept[] | null {
     const idea = clean(item.idea, 420);
     const angle = clean(item.angle, 160);
     if (!title || !idea || !angle || !isFormat(item.format)) return null;
-    return { id: `concept-${index + 1}`, title, idea, angle, format: item.format };
+    return { id: `concept-${index + 1}`, title, idea, angle, format: item.format, ...conceptExtras(item) };
   });
 
   return parsed.every(Boolean) ? (parsed as CreativeConcept[]) : null;
@@ -223,14 +235,15 @@ export function normalizeConceptsForFormats(
     if (!entry || typeof entry !== "object") continue;
     const item = entry as Record<string, unknown>;
     const title = clean(item.title, 80);
-    const conceptIdea = clean(item.idea, 220);
+    // 420 like parseConcepts (2026-10-14: 220 cut ideas mid-sentence and the cut text became the brief).
+    const conceptIdea = clean(item.idea, 420);
     const angle = clean(item.angle, 160);
     if (!title || !conceptIdea || !angle || !isFormat(item.format)) continue;
     if (!allowedFormats.includes(item.format)) continue; // dropped, never relabelled
     const key = title.toLowerCase();
     if (seenTitles.has(key)) continue;
     seenTitles.add(key);
-    kept.push({ id: `concept-${kept.length + 1}`, title, idea: conceptIdea, angle, format: item.format });
+    kept.push({ id: `concept-${kept.length + 1}`, title, idea: conceptIdea, angle, format: item.format, ...conceptExtras(item) });
   }
 
   let repaired = entries.length !== 3 || kept.length < 3;

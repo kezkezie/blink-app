@@ -6,6 +6,7 @@ import {
   MAX_IMAGE_OUTPUT_MP, MAX_VIDEO_BYTES, MAX_VIDEO_SECONDS, imageSize, imageUpscaleCredits, mp4Duration, videoUpscaleCredits,
   type UpscaleImageFactor, type UpscaleVideoTarget,
 } from "@/lib/upscale";
+import { brandArg } from "@/lib/credits-meter";
 
 /**
  * Upscaler, server side (2026-10-13). Topaz on Replicate. The credits are taken first; the job row
@@ -99,13 +100,14 @@ export async function startUpscale(input: StartInput): Promise<Result<JobView>> 
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", {
     p_client_id: input.clientId, p_amount: credits, p_operation: "debit",
     p_description: kind === "image" ? `Upscale picture ${setting}` : `Upscale video to ${setting === "4k" ? "4K" : setting}`,
+    ...brandArg(post.brand_id),
   });
   if (!isDeductionSuccessful(deducted, deductError)) return fail(402, `This needs ${credits} credits and your balance is lower. Get more in Billing.`);
 
   const { data: job, error: jobError } = await supabaseAdmin.from("upscale_jobs").insert({
     client_id: input.clientId, brand_id: post.brand_id, user_id: input.userId, source_content_id: post.id, kind, setting, credits,
   }).select("*").single();
-  if (jobError || !job) { await refund(input.clientId, credits, "Refund: upscale could not start"); return fail(500, "Couldn't start the upscale. Your credits were refunded."); }
+  if (jobError || !job) { await refund(input.clientId, credits, "Refund: upscale could not start", post.brand_id); return fail(500, "Couldn't start the upscale. Your credits were refunded."); }
 
   try {
     const webhook = `${input.appUrl.replace(/\/$/, "")}/api/webhooks/upscale?job=${job.id}&sig=${webhookSignature(job.id)}`;
@@ -126,8 +128,8 @@ export async function startUpscale(input: StartInput): Promise<Result<JobView>> 
   }
 }
 
-async function refund(clientId: string, credits: number, description: string) {
-  await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: description }).then(() => {}, () => {});
+async function refund(clientId: string, credits: number, description: string, brandId?: string | null) {
+  await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: description, ...brandArg(brandId) }).then(() => {}, () => {});
 }
 
 /** Failed once: the state flips first, so only one caller refunds. */
@@ -135,7 +137,7 @@ async function markFailed(job: Job, reason: string): Promise<Job> {
   const message = `The upscale didn't work (${reason.slice(0, 120)}). Your ${job.credits} credits were refunded.`;
   const { data } = await supabaseAdmin.from("upscale_jobs").update({ state: "failed", error: message, updated_at: new Date().toISOString() })
     .eq("id", job.id).in("state", ["running", "finalizing"]).select("*");
-  if (data?.length) await refund(job.client_id, job.credits, `Refund: upscale ${job.kind} failed`);
+  if (data?.length) await refund(job.client_id, job.credits, `Refund: upscale ${job.kind} failed`, job.brand_id);
   const { data: now } = await supabaseAdmin.from("upscale_jobs").select("*").eq("id", job.id).single();
   return (now as Job) ?? { ...job, state: "failed", error: message };
 }

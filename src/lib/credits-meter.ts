@@ -14,9 +14,12 @@ export async function creditBalance(clientId: string): Promise<number> {
 }
 
 /** Take `amount` credits after the work is done. False if the balance couldn't cover it. */
-export async function chargeCredits(clientId: string, amount: number, description: string): Promise<boolean> {
+/** The brand a charge is for, when known (2026-10-14: Billing shows credits by brand). The database drops a brand of another workspace. */
+export const brandArg = (brandId: unknown) => (typeof brandId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brandId) ? { p_brand_id: brandId } : {});
+
+export async function chargeCredits(clientId: string, amount: number, description: string, brandId?: string | null): Promise<boolean> {
   if (amount <= 0) return true;
-  const { data, error } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: clientId, p_amount: amount, p_operation: "debit", p_description: description.slice(0, 200) });
+  const { data, error } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: clientId, p_amount: amount, p_operation: "debit", p_description: description.slice(0, 200), ...brandArg(brandId) });
   return isDeductionSuccessful(data, error);
 }
 

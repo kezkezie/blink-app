@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { CREDIT_PACKS, PLANS, TOP_UP_NEEDS_PLAN, canTopUp, planOf, type PlanTier } from "@/lib/plans";
 import { formatCredits } from "@/components/studio/hooks";
+import { creditsByBrand, type LedgerLine } from "@/lib/credits-by-brand";
 
 /**
  * Billing & credits in the studio look (2026-10-11; the classic page stays at /dashboard/billing).
@@ -16,7 +17,7 @@ import { formatCredits } from "@/components/studio/hooks";
  * packs from Starter up (Free upgrades).
  * (lib/payments). Until PAYSTACK_SECRET_KEY is set, the buttons fall back to an email.
  */
-type Txn = { id: string; amount: number; description: string | null; operation: string; created_at: string };
+type Txn = { id: string; amount: number; description: string | null; operation: string; created_at: string; brand_id: string | null };
 const ORDER: PlanTier[] = ["free", "starter", "pro", "agency"];
 const mail = (subject: string) => `mailto:info@blinkspot.io?subject=${encodeURIComponent(subject)}`;
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
@@ -32,6 +33,8 @@ function BillingPage() {
   const [sub, setSub] = useState<Sub | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [txns, setTxns] = useState<Txn[] | null>(null);
+  const [byBrand, setByBrand] = useState<Array<{ brandId: string | null; used: number }> | null>(null);
+  const [brandNames, setBrandNames] = useState<Record<string, string>>({});
   const [cycle, setCycle] = useState<"monthly" | "weekly">("monthly");
   const [allTxns, setAllTxns] = useState(false);
   const [pay, setPay] = useState<PayStatus>({ online: false });
@@ -48,13 +51,18 @@ function BillingPage() {
     Promise.all([
       supabase.from("clients").select("plan_tier, billing_status, billing_cycle, current_period_end, billing_subscription_code").eq("id", clientId).maybeSingle(),
       supabase.from("credit_balances").select("balance").eq("client_id", clientId).maybeSingle(),
-      supabase.from("credit_transactions").select("id, amount, description, operation, created_at").eq("client_id", clientId).order("created_at", { ascending: false }).limit(25),
-    ]).then(([c, b, t]) => {
+      supabase.from("credit_transactions").select("id, amount, description, operation, created_at, brand_id").eq("client_id", clientId).order("created_at", { ascending: false }).limit(25),
+      // Credits by brand, last 30 days (2026-10-14).
+      supabase.from("credit_transactions").select("amount, brand_id, operation, description").eq("client_id", clientId).gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString()).limit(5000),
+      supabase.from("brand_profiles").select("id, brand_name").eq("client_id", clientId),
+    ]).then(([c, b, t, m, names]) => {
       if (cancelled) return;
       setPlan(planOf(c.data?.plan_tier));
       setSub({ status: c.data?.billing_status ?? null, cycle: c.data?.billing_cycle ?? null, periodEnd: c.data?.current_period_end ?? null, online: !!c.data?.billing_subscription_code });
       setBalance(b.data?.balance ?? 0);
       setTxns((t.data ?? []) as Txn[]);
+      setByBrand(creditsByBrand((m.data ?? []) as LedgerLine[]));
+      setBrandNames(Object.fromEntries((names.data ?? []).map((n) => [n.id as string, (n.brand_name as string) || "Brand"])));
     });
     return () => { cancelled = true; };
   }, [clientId, tick]);
@@ -187,12 +195,28 @@ function BillingPage() {
       </section>
 
       <section>
+        {byBrand && byBrand.length > 0 && (
+          <div className="mb-6">
+            <h3 className="s-section-h">Credits by brand · last 30 days</h3>
+            <div className="s-card p-4 grid gap-2.5" aria-label="Credits by brand">
+              {byBrand.map((r) => (
+                <div key={r.brandId ?? "none"} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 items-center">
+                  <span className="text-[13px] truncate" style={{ color: r.brandId ? "var(--s-text)" : "var(--s-mute)" }}>{r.brandId ? brandNames[r.brandId] ?? "A deleted brand" : "Not tied to a brand (account, or before 14 Oct)"}</span>
+                  <b className="mono text-[13px] text-right">{r.used.toLocaleString("en-US")} cr</b>
+                  <div className="col-span-2 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--s-line)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${Math.max(2, (r.used / byBrand[0].used) * 100)}%`, background: r.brandId ? "var(--s-accent)" : "var(--s-mute)" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <h3 className="s-section-h">Recent credit activity</h3>
         {txns && txns.length ? (
           <div className="s-card divide-y" style={{ borderColor: "var(--s-line)" }}>
             {(allTxns ? txns : txns.slice(0, 8)).map((t) => (
               <div key={t.id} className="flex items-center gap-3 px-4 py-2.5" style={{ borderColor: "var(--s-line)" }}>
-                <span className="text-[13px] flex-1 min-w-0 truncate" style={{ color: "var(--s-soft)" }}>{(t.description || t.operation).replace(/\s*\[vid:[^\]]*\]/, "")}</span>
+                <span className="text-[13px] flex-1 min-w-0 truncate" style={{ color: "var(--s-soft)" }}>{(t.description || t.operation).replace(/\s*\[vid:[^\]]*\]/, "")}{t.brand_id && brandNames[t.brand_id] && <span style={{ color: "var(--s-mute)" }}> · {brandNames[t.brand_id]}</span>}</span>
                 <span className="text-[11.5px] shrink-0" style={{ color: "var(--s-mute)" }}>{new Date(t.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
                 <b className="mono text-[13px] w-16 text-right shrink-0" style={{ color: t.amount > 0 ? "var(--s-ok)" : "var(--s-text)" }}>{t.amount > 0 ? "+" : ""}{t.amount}</b>
               </div>

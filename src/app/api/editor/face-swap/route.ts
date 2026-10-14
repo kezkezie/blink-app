@@ -5,6 +5,7 @@ import { verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { requestWorkspace } from "@/lib/brand-access";
+import { brandArg } from "@/lib/credits-meter";
 
 /**
  * Editor → Swap the face. A dedicated face-swap model on Replicate (cdingram/face-swap, about
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const key = process.env.REPLICATE_API_TOKEN;
   if (!key) return NextResponse.json({ error: "Face swap is not configured." }, { status: 503 });
-  let body: { url?: unknown; face?: unknown };
+  let body: { url?: unknown; face?: unknown; brandId?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const url = typeof body.url === "string" ? body.url : "";
   const face = typeof body.face === "string" ? body.face : "";
@@ -33,9 +34,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: COST, p_operation: "debit", p_description: "Editor: swap a face" });
+  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: COST, p_operation: "debit", p_description: "Editor: swap a face", ...brandArg(body.brandId) });
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: "Not enough credits. Get more in Billing." }, { status: 402 });
-  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: COST, p_operation: "credit", p_description: "Refund: editor face swap failed" }).then(() => {}, () => {});
+  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: COST, p_operation: "credit", p_description: "Refund: editor face swap failed", ...brandArg(body.brandId) }).then(() => {}, () => {});
   const fail = async (message: string, status = 502) => { await refund(); return NextResponse.json({ error: `${message} Your credits were refunded.` }, { status }); };
 
   try {

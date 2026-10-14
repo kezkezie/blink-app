@@ -63,7 +63,7 @@ describe("Ask BlinkSpot billing", () => {
     const body = await (await ask({ effort: "medium" })).json();
     expect(body.reply).toBe("ok");
     expect(body.credits).toBe(3);
-    expect(h.charge).toHaveBeenCalledWith("client-1", 3, expect.stringContaining("Balanced"));
+    expect(h.charge).toHaveBeenCalledWith("client-1", 3, expect.stringContaining("Balanced"), null);
   });
 
   it("a level above the plan works on Free with credits, and never uses the day's messages", async () => {

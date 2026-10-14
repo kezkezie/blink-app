@@ -113,14 +113,14 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   await page.goto(`${BASE}/studio/image`);
   await expect(page.getByText("Seen a post you love? Make it yours.")).toBeVisible();
   await expect(page.getByLabel("Inspiration link")).toBeVisible();
-  // Generate is the simple flow; the classic studio is one click away under Pro controls.
+  // Generate is the simple flow.
   await page.getByRole("tab", { name: /^Generate/ }).click();
   await expect(page.getByRole("button", { name: /Get 3 ideas/ })).toBeVisible();
   // Voice input: a mic appears inside the focused text box.
   await page.getByLabel("Your idea").click();
   await expect(page.getByRole("button", { name: "Speak instead of typing" })).toBeVisible();
-  await page.getByRole("button", { name: "Pro controls" }).click();
-  await expect(page.getByRole("button", { name: /Back to simple Generate/ })).toBeVisible();
+  // Pro controls left the new look (2026-10-14); the classic studio lives on in Vintage look.
+  await expect(page.getByRole("button", { name: "Pro controls" })).toHaveCount(0);
   await page.getByRole("tab", { name: /Edit with AI/ }).click();
   await expect(page.getByText("Which photo?")).toBeVisible();
   // Image Editor: blank canvas -> text -> rectangle -> layers -> export PNG (no credits).

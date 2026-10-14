@@ -122,7 +122,7 @@ export function PostDetail({ id }: { id: string }) {
       const res = await fetch("/api/content/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clientId, contentId: post.id, mediaUrl, mediaType: mediaUrl && !imgs[0] && isVideo ? "video/mp4" : "image/jpeg", lengthPreference: length,
+          clientId, contentId: post.id, brandId: post.brand_id, mediaUrl, mediaType: mediaUrl && !imgs[0] && isVideo ? "video/mp4" : "image/jpeg", lengthPreference: length,
           brandContext: kit ? { name: kit.name, industry: kit.industry, description: kit.description, imageStyle: kit.imageStyle, brandVoice: kit.brandVoice, logoUrl: kit.logoUrl, websiteUrl: kit.websiteUrl } : null,
         }),
       });

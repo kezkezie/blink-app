@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     let credits = 0;
     if (!included) {
       credits = meteredCredits(usd, cap);
-      const charged = await chargeCredits(client.id, credits, `Ask BlinkSpot (${EFFORT_INFO[effort].label}${editing ? ", editing" : ""})`);
+      const charged = await chargeCredits(client.id, credits, `Ask BlinkSpot (${EFFORT_INFO[effort].label}${editing ? ", editing" : ""})`, brandId);
       if (!charged) console.error("assistant: charge failed after reply", client.id, credits);
     }
     console.info("assistant usage", JSON.stringify({ client: client.id, model: result.model, effort, included, credits, ...result.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));

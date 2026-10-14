@@ -92,6 +92,6 @@ export async function POST(request: NextRequest) {
   if (!res?.ok || !result) return NextResponse.json({ error: "Couldn't read that video this time. Nothing was charged; try again." }, { status: 502 });
 
   const credits = meteredCredits(usd, cap, mode === "edit" ? 2 : 3);
-  if (!(await chargeCredits(client.id, credits, mode === "edit" ? "Video Inspo: read the edit" : "Video Inspo: remake for your brand"))) console.error("video inspo: charge failed", client.id, credits);
+  if (!(await chargeCredits(client.id, credits, mode === "edit" ? "Video Inspo: read the edit" : "Video Inspo: remake for your brand", brandId))) console.error("video inspo: charge failed", client.id, credits);
   return NextResponse.json(mode === "edit" ? { recipe: result, credits } : { plan: result, credits });
 }

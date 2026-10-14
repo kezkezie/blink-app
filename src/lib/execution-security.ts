@@ -16,6 +16,8 @@ const IMAGE_ENGINES = new Set(["nb2", "gpt-image-2-text-to-image", "gpt-image-2-
 const IMAGE_STYLES = new Set([
   "studio", "lifestyle", "cinematic", "poster", "brand", "abstract", "flatlay",
   "realistic", "3d_render", "illustrative", "2d_flat",
+  // Generate's Plain: the user's words as they are, no art direction (2026-10-14).
+  "plain",
 ]);
 const ASPECT_RATIOS = new Set(["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3"]);
 const CONTENT_TYPES = new Set([

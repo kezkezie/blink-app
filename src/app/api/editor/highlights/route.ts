@@ -8,6 +8,7 @@ import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { transcribeCredits, transcriptForModel, validateHighlights, type Segment } from "@/lib/editor/highlights";
 import { requestWorkspace } from "@/lib/brand-access";
+import { brandArg } from "@/lib/credits-meter";
 
 /**
  * Editor AI (2026-10-11): captions for a video, or the best short moments of a long one.
@@ -49,9 +50,9 @@ export async function POST(request: NextRequest) {
 
   const credits = transcribeCredits(seconds);
   const label = mode === "highlights" ? "Editor: shorts from a long video" : "Editor: captions";
-  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: credits, p_operation: "debit", p_description: `${label} (${Math.ceil(seconds / 60)} min)` });
+  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: credits, p_operation: "debit", p_description: `${label} (${Math.ceil(seconds / 60)} min)`, ...brandArg(body.brandId) });
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `Not enough credits (this needs ${credits}). Get more in Billing.` }, { status: 402 });
-  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: `Refund: ${label.toLowerCase()} failed` }).then(() => {}, () => {});
+  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: `Refund: ${label.toLowerCase()} failed`, ...brandArg(body.brandId) }).then(() => {}, () => {});
 
   try {
     const got = await safeFetchBytes(audioUrl, { maxBytes: 25_000_000, timeoutMs: 30_000 });

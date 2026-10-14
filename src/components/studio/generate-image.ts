@@ -8,13 +8,14 @@ import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { assemblePrompt, selectCreativeDirection, type BrandContext } from "@/lib/creative-direction";
 import { MARKETING_STYLES } from "@/lib/marketing-styles";
 import { contactRule } from "@/lib/inspo";
+import { validateResearch, type BrandResearch } from "@/lib/brand-research";
 
 /**
  * The studio's one way to make images (Generate and Inspo Remix): the same workflow, billing,
  * refunds and Library rows as the classic Image Studio's synchronous path.
  */
 
-export type BrandKit = BrandContext & { socials?: string; dna?: BrandDna };
+export type BrandKit = BrandContext & { socials?: string; dna?: BrandDna; research?: BrandResearch | null };
 export type ImageEngine = "nb2" | "gpt-image-2-text-to-image" | "gpt-image-2-image-to-image" | "z-image";
 
 /** The active brand's identity, as the classic Image Studio loads it. */
@@ -25,7 +26,7 @@ export function useBrandKit(brandId: string | null | undefined, fallbackName?: s
     let cancelled = false;
     supabase
       .from("brand_profiles")
-      .select("brand_name, company_name, website_url, social_urls, description, industry, image_style, brand_voice, logo_url, primary_color, secondary_color, primary_font, dna")
+      .select("brand_name, company_name, website_url, social_urls, description, industry, image_style, brand_voice, logo_url, primary_color, secondary_color, primary_font, dna, research")
       .eq("id", brandId)
       .maybeSingle()
       .then(({ data }) => {
@@ -43,6 +44,7 @@ export function useBrandKit(brandId: string | null | undefined, fallbackName?: s
           websiteUrl: data?.website_url ?? undefined,
           socials: typeof data?.social_urls === "string" ? data.social_urls : undefined,
           dna: data?.dna && typeof data.dna === "object" ? (data.dna as BrandDna) : undefined,
+          research: validateResearch(data?.research),
         });
       });
     return () => { cancelled = true; };
@@ -81,7 +83,8 @@ export type GenerateRequest = {
   references?: string[];
   engine: ImageEngine;
   aspect: string;
-  style: (typeof MARKETING_STYLES)[number]["id"];
+  /** A look (lib/generate-prompt) or a classic marketing style; "plain" adds no art direction. */
+  style: (typeof MARKETING_STYLES)[number]["id"] | "plain";
   count?: number;
   caption: string;
   /** "edit" changes the reference image itself (face swap, prompt edits) instead of making a new one. */

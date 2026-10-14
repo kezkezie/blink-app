@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   let credits = 0;
   if (payer) {
     credits = meteredCredits(usd, VECTOR_CAP, 2);
-    if (!(await chargeCredits(payer, credits, "Editor: draw a vector"))) console.error("vector: charge failed after drawing", payer, credits);
+    if (!(await chargeCredits(payer, credits, "Editor: draw a vector", body.brandId as string | undefined))) console.error("vector: charge failed after drawing", payer, credits);
   }
   return NextResponse.json({ svg, credits });
 }

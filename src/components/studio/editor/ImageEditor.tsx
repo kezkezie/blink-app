@@ -749,7 +749,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     setAiBusy("Removing the background…");
     try {
       const url = await imageForAi(activeImage);
-      const res = await fetch("/api/editor/remove-bg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+      const res = await fetch("/api/editor/remove-bg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, brandId: activeBrand?.id }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) throw new Error(data.error || "Couldn't remove the background.");
       await replaceImageSrc(activeImage, data.url);
@@ -762,7 +762,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     setAiBusy("Swapping the face…");
     try {
       const url = await imageForAi(activeImage);
-      const res = await fetch("/api/editor/face-swap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, face: faceUrl }) });
+      const res = await fetch("/api/editor/face-swap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, face: faceUrl, brandId: activeBrand?.id }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) throw new Error(data.error || "Couldn't swap the face.");
       await replaceImageSrc(activeImage, data.url);
@@ -851,7 +851,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       const small = document.createElement("canvas");
       small.width = Math.round(el.naturalWidth * sc); small.height = Math.round(el.naturalHeight * sc);
       small.getContext("2d")!.drawImage(el, 0, 0, small.width, small.height);
-      const res = await fetch("/api/editor/layers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: small.toDataURL("image/jpeg", 0.85).split(",")[1], width: el.naturalWidth, height: el.naturalHeight }) });
+      const res = await fetch("/api/editor/layers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: small.toDataURL("image/jpeg", 0.85).split(",")[1], width: el.naturalWidth, height: el.naturalHeight, brandId: activeBrand?.id }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.layers) throw new Error(data.error || "Couldn't read the design.");
       const layers = data.layers as DesignLayers;

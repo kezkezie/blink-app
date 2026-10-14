@@ -61,6 +61,14 @@ function ImageStudioInner() {
     if (recipe.from) toast.info(`This recipe was made for ${recipe.from}. We've put your brand in; change the product and the words to yours.`, { duration: 9000 });
   }, [recipe.from]);
   const [mode, setMode] = useState<Mode>(initialMode);
+  // Links within Image Studio (a result's "Change colours or objects", "Add type") only change the
+  // query; follow them (2026-10-14: the buttons on Generate's results did nothing).
+  const linkedMode = (["remix", "generate", "edit", "design", "pro"] as const).find((m) => m === params.get("mode"));
+  const [seenMode, setSeenMode] = useState(linkedMode);
+  if (linkedMode !== seenMode) {
+    setSeenMode(linkedMode);
+    if (linkedMode) setMode(linkedMode);
+  }
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [loadingPick, setLoadingPick] = useState(!!params.get("content"));
   const [designKey, setDesignKey] = useState(0);
@@ -110,7 +118,7 @@ function ImageStudioInner() {
 
       {mode === "remix" && <InspoRemix />}
 
-      {mode === "generate" && <StudioGenerate initialIdea={initialIdea} autoIdeas={!!initialIdea} onPro={() => setMode("pro")} />}
+      {mode === "generate" && <StudioGenerate initialIdea={initialIdea} autoIdeas={!!initialIdea} />}
 
       {mode === "pro" && (
         <div className="p-4 md:p-6 mx-auto w-full max-w-[1320px]">
