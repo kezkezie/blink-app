@@ -103,7 +103,7 @@ Light: soft and big for skincare and food (window light or a large softbox), har
 Surfaces and props: one surface material (linen, terrazzo, raw wood, wet stone), 1-3 props that tell the story (the ingredient, the place, the use), never clutter. Props in the brand palette.
 Lifestyle: a real local setting the customer knows, people of the brand's audience, natural poses, the product clearly the hero.
 A set that looks like one brand: same light, same surface family, same angle grammar, same colour grade across every image. Say "matching the set: same light and grade" in each prompt.
-In BlinkSpot: Product shot in Video Studio animates a still; the Image studio makes the still. For an existing photo, Edit with AI (X-ray) changes colours, materials or the label without reshooting. Offer the cheap preview first.`,
+In BlinkSpot: Product shot in Video Studio animates a still; the Image studio makes the still. For an existing photo, Edit with AI (Library → a post → Edit with AI) scans it once (4 credits, kept on the post, free to reopen), then changes one thing and keeps the rest: the words, a colour (brand colours one tap away), a material, swapping a thing for a Library picture or a product photo, removing it, or a described change (18 credits). The result is a new post, already scanned; the original stays. Offer the cheap preview first.`,
   },
   {
     id: "ugc-ads",
