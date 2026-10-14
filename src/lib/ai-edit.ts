@@ -148,6 +148,13 @@ export function normalizeChanges(scan: Scan, raw: unknown, swapIds: string[] = [
 
 export const changeCount = (c: EditChanges) => c.objects.length + (c.light ? 1 : 0) + (c.instruction ? 1 : 0);
 
+/** Most of box a (70%+) lies inside box b. */
+export function insideOf(a: Box, b: Box) {
+  const w = Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0]);
+  const h = Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]);
+  return w > 0 && h > 0 && (w * h) / (a[2] * a[3]) >= 0.7;
+}
+
 /** "upper left", "centre", "lower right"... from a box, so the model finds the right thing. */
 export function whereIs(b?: Box) {
   if (!b) return "";
@@ -190,11 +197,15 @@ export function buildEditPrompt(scan: Scan, changes: EditChanges, swapOrder: str
   }
   if (changes.light) lines.push(`Change the lighting to: ${changes.light}. Update shadows and highlights to match.`);
   if (changes.instruction) lines.push(changes.instruction);
-  const kept = scan.objects.filter((o) => !changes.objects.some((c) => c.id === o.id)).map((o) => (o.kind === "words" && o.text ? `the words "${o.text}"` : `the ${o.name}`));
+  // Parts of a thing being swapped or removed (the sneaker's laces) go with it, so they aren't "kept".
+  const going = changes.objects.filter((c) => c.swap || c.remove).map((c) => byId.get(c.id)?.box).filter((b): b is Box => !!b);
+  const kept = scan.objects
+    .filter((o) => !changes.objects.some((c) => c.id === o.id) && !(o.box && o.kind !== "background" && going.some((g) => insideOf(o.box!, g))))
+    .map((o) => (o.kind === "words" && o.text ? `the words "${o.text}"` : `the ${o.name}`));
   return [
     "Edit image 1. Make only these changes:",
     ...lines.map((l) => `- ${l}`),
-    `Keep everything else exactly as it is in image 1: the composition, framing, camera angle, lighting, people and faces${kept.length ? `, ${kept.slice(0, 10).join(", ")}` : ""}. Same size and shape as image 1. Do not add any new words, logos or objects.`,
+    `Keep everything else exactly as it is in image 1: the composition, framing, camera angle, lighting, people and faces${kept.length ? `, ${kept.slice(0, 10).join(", ")}` : ""}. Same size and shape as image 1. Add nothing that isn't asked for above.`,
   ].join("\n");
 }
 

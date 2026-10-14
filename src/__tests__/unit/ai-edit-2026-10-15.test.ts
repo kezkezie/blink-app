@@ -96,13 +96,29 @@ describe("edit prompt", () => {
     expect(p).toContain("Change the Background (centre) to Soft gradient (it is light grey paper now), keeping everything in front of it exactly as it is.");
     expect(p).toContain("Change the lighting to: golden hour.");
     expect(p).not.toMatch(/DO NOT TOUCH/);
-    expect(p).toMatch(/Same size and shape as image 1\. Do not add any new words, logos or objects\.$/);
+    expect(p).toMatch(/Same size and shape as image 1\. Add nothing that isn't asked for above\.$/);
+    expect(p).not.toMatch(/Do not add any new/);
   });
 
   it("names what to keep, including the exact words", () => {
     const p = buildEditPrompt(SCAN, normalizeChanges(SCAN, { objects: [{ id: "o2", color: "#FF5733" }] }), []);
     expect(p).toContain("Make the Mushroom photo (lower left) #FF5733 (it is #8A7F7A now), keeping its shading and texture.");
     expect(p).toContain(`the words "Weekly Availability", the Brand logo, the Background`);
+  });
+
+  it("doesn't ask to keep the parts of a thing that is swapped or removed", () => {
+    const shoe = validateScan({ objects: [
+      { id: "s", name: "High-top sneaker", kind: "thing", box: [200, 300, 600, 500] },
+      { id: "l", name: "Shoelaces", kind: "thing", box: [350, 350, 200, 150] },
+      { id: "t", name: "Tagline", kind: "words", text: "Limited pairs", box: [100, 880, 300, 60] },
+      { id: "b", name: "Background", kind: "background", box: [0, 0, 1000, 1000] },
+    ] })!;
+    const p = buildEditPrompt(shoe, normalizeChanges(shoe, {}, ["s"]), ["s"]);
+    expect(p).toContain("Replace the High-top sneaker (centre) with the object shown in image 2");
+    expect(p).not.toContain("the Shoelaces");
+    expect(p).toContain(`the words "Limited pairs", the Background`);
+    const recolour = buildEditPrompt(shoe, normalizeChanges(shoe, { objects: [{ id: "s", color: "#FF0000" }] }), []);
+    expect(recolour).toContain("the Shoelaces");
   });
 
   it("takes words out when they are emptied, and changes lettering alone", () => {

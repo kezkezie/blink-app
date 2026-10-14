@@ -94,12 +94,17 @@ test("scan once, keep it, swap from the Library, edit into a new post", async ({
     // 5. Apply: a new post, pre-scanned, 18 credits; the original untouched.
     await page.getByRole("button", { name: /Apply 2 changes/ }).click();
     await expect(page.getByText("Your edit is ready")).toBeVisible({ timeout: 300_000 });
+    // The edited picture is what's on screen (loaded before "ready" shows).
+    const after = page.getByRole("img", { name: "Your edited picture" });
+    await expect(after).toHaveAttribute("src", /\/edit_\d+\.(jpg|png)$/);
+    expect(await after.evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
     await page.screenshot({ path: "test-results/ai-edit-result.png" });
     expect(await balance()).toBe(178);
-    const { data: made } = await sb.from("content").select("id, caption, image_urls, xray, creation_metadata, generation_status_text").eq("client_id", clientId!).like("caption", "Edited ·%").single();
+    const { data: made } = await sb.from("content").select("id, caption, image_urls, xray, creation_metadata, generation_status_text, image_prompt_used").eq("client_id", clientId!).like("caption", "Edited ·%").single();
     expect(made!.caption).toBe("Edited · E2E poster");
     expect(made!.generation_status_text).toBeNull();
     const url = (made!.image_urls as string[])[0];
+    console.log(`edit result ${url}\n--- prompt ---\n${made!.image_prompt_used}`);
     expect(url).toContain(`/assets/images/${clientId}/edit_`);
     expect((await fetch(url, { method: "HEAD" })).ok).toBe(true);
     expect((made!.xray as { from: string; source: string }).from).toBe("edit");

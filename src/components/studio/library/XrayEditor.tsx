@@ -92,7 +92,7 @@ export function XrayEditor({ id }: { id: string }) {
       const draft = readDraft(id, src);
       if (draft && kept?.scan) {
         setEdits(draft.edits ?? {}); setSwaps(draft.swaps ?? {}); setLight(draft.light ?? ""); setInstruction(draft.instruction ?? ""); setEngine(draft.engine ?? "nano-banana-2");
-        if (Object.keys(draft.edits ?? {}).length || Object.keys(draft.swaps ?? {}).length) toast.message("Your unsent changes are back.");
+        if (Object.keys(draft.edits ?? {}).length || Object.keys(draft.swaps ?? {}).length) toast.message("Your unsent changes to this picture are back. Reset clears them.");
       }
       restored.current = true;
     });
@@ -181,6 +181,8 @@ export function XrayEditor({ id }: { id: string }) {
       const data = await res.json().catch(() => ({}));
       if (res.status === 409) { setScan(null); throw new Error(data.error || "Scan the picture first."); }
       if (!res.ok) throw new Error(data.error || (res.status === 504 ? "The edit took longer than the connection allowed. It may still land in your Library in a minute." : "The edit didn't work."));
+      // Show it once it has loaded (the old picture stays on screen until the new one decodes).
+      await new Promise<void>((resolve) => { const im = new Image(); im.onload = () => resolve(); im.onerror = () => resolve(); im.src = thumbUrl(data.url, 1600); setTimeout(resolve, 15_000); });
       setResult({ contentId: data.contentId, url: data.url }); setShowBefore(false);
       writeDraft(id, null);
       toast.success("Edit ready · saved as a new post, your original is untouched");
@@ -299,9 +301,11 @@ export function XrayEditor({ id }: { id: string }) {
 
               <div className="p-3 grid gap-2" style={{ borderTop: "1px solid var(--s-line)" }}>
                 <div className="s-seg" role="group" aria-label="How to render">{ENGINES.map((e) => <button key={e.id} aria-pressed={engine === e.id} onClick={() => setEngine(e.id)} title={e.line}>{e.label}</button>)}</div>
-                <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>
-                  {wordsChanged && engine === "nano-banana-2" ? "Changing words? Clean text is best for signs, labels and logos." : `${ENGINES.find((e) => e.id === engine)!.line}.`}
-                </span>
+                {wordsChanged && engine === "nano-banana-2" ? (
+                  <button className="text-[11.5px] text-left underline" style={{ color: "var(--s-ai)" }} onClick={() => setEngine("gpt-image-2-image-to-image")}>Changing words? Switch to Clean text, best for signs, labels and logos.</button>
+                ) : (
+                  <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{ENGINES.find((e) => e.id === engine)!.line}.</span>
+                )}
                 <button className="s-btn primary justify-between" disabled={!count || applying} onClick={apply}>
                   <span className="flex items-center gap-2">{applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} {count ? `Apply ${count} change${count === 1 ? "" : "s"}` : "Change something first"}</span><span className="cost">{EDIT_CREDITS} cr</span>
                 </button>
