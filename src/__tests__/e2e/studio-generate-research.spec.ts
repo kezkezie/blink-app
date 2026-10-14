@@ -70,6 +70,14 @@ test("ideas follow the industry, Plain and words are there, a Draft is charged t
     console.log("IMAGE", JSON.stringify(made?.[0]?.image_urls));
     await expect.poll(async () => (await sb.from("credit_transactions").select("amount, brand_id").eq("client_id", clientId!).gte("created_at", t0).lt("amount", 0)).data ?? [], { timeout: 30_000 })
       .toEqual([{ amount: best ? -18 : -1, brand_id: brandId }]);
+    // Ask BlinkSpot does the research too (Kezie, 2026-10-14): it answers from the kept playbook.
+    const peers = ((researched!.research as { peers: Array<{ name: string }> }).peers).map((p) => p.name);
+    const ask = await page.request.post(`${BASE}/api/assistant`, { data: { messages: [{ role: "user", text: "How do the best brands in my industry design their posts? Research it." }], brandId, effort: "medium", page: "/studio" }, timeout: 240_000 });
+    const askBody = await ask.json();
+    expect(ask.status(), JSON.stringify(askBody)).toBe(200);
+    console.log("ASK", String(askBody.reply).slice(0, 400));
+    expect(peers.some((n) => String(askBody.reply).includes(n))).toBe(true);
+    expect(JSON.stringify(askBody.actions ?? [])).toContain("/studio/image?mode=generate");
     await page.goto(`${BASE}/studio/account/billing`);
     const card = page.getByLabel("Credits by brand");
     await expect(card).toContainText("Gasless Test", { timeout: 30_000 });

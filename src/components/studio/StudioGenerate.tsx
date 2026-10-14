@@ -296,7 +296,11 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
             <button className="s-btn primary lg w-full mt-auto" disabled={!ready || busy || !kit} onClick={generate}>
               {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Making it… {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
             </button>
-            <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>Uses your logo, colours and voice automatically. Failed images are refunded.</p>
+            {/* Say what to expect and what you can do about it, not a disclaimer (Microsoft HAX: make
+                clear how well the system can do what it can do; PAIR: set expectations, give control). */}
+            <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>
+              AI makes a first version of your brief. If it isn&apos;t quite right, change one thing with Edit with AI, add your exact words in the Editor, or make more. Failed images are refunded.
+            </p>
           </div>
         </section>
       )}
@@ -304,6 +308,7 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
       {results.length > 0 && (
         <section className="mt-8">
           <h3 className="s-section-h">Made just now</h3>
+          <p className="text-[12px] -mt-1 mb-3" style={{ color: "var(--s-mute)" }}>Close but not quite? <Wand2 className="inline h-3 w-3" /> changes one thing in the picture, <b>Add type</b> puts your words and logo on in the real font.</p>
           <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             {results.map((r) => (
               <div key={r.url} className="s-media">
