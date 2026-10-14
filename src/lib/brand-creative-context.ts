@@ -29,6 +29,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { sharedWorkspace } from "@/lib/brand-access";
+import { softenForAi } from "@/lib/ai-safe-text";
 
 export const BRAND_CONTEXT_VERSION = 1 as const;
 
@@ -170,7 +171,7 @@ export function toAssistedBrandContext(context: BrandCreativeContext) {
     name: context.name,
     companyName: context.companyName,
     industry: context.industry,
-    description: context.description,
+    description: softenForAi(context.description),
     websiteUrl: context.websiteUrl,
     brandVoice: context.brandVoice,
     toneKeywords: context.toneKeywords,
@@ -220,7 +221,8 @@ export function toDirectorBrief(context: BrandCreativeContext): string {
 export function toVideoWorkflowFields(context: BrandCreativeContext): Record<string, string | number> {
   const fields: Record<string, string | number> = {
     brand_name: context.name,
-    brand_info: toDirectorBrief(context),
+    // The script writer refused a breast-reconstruction brand over its own description (2026-10-14).
+    brand_info: softenForAi(toDirectorBrief(context)),
     brand_context_version: context.schemaVersion,
   };
   if (context.logoUrl) fields.logo_url = context.logoUrl;

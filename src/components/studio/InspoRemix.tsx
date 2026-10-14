@@ -12,6 +12,7 @@ import { remixPrompt } from "@/lib/inspo";
 import { ImagePicker } from "./ImagePicker";
 import { thumbUrl } from "./media";
 import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage } from "./generate-image";
+import { SENSITIVE, SENSITIVE_FAILURE } from "@/lib/ai-safe-text";
 
 /**
  * Inspo Remix: drop (or paste a link to) a design you love, and BlinkSpot remakes it for the active
@@ -98,7 +99,9 @@ export function InspoRemix() {
       setResults((prev) => [...saved, ...prev]);
       toast.success("Remixed for your brand and saved to the Library.");
     } catch (e) {
-      toast.error(generationErrorMessage(e), { duration: 10000 });
+      const msg = generationErrorMessage(e);
+      // A refused picture of a medical or intimate subject: say why and what to try (2026-10-14).
+      toast.error(SENSITIVE.test(`${kit?.description ?? ""} ${kit?.industry ?? ""}`) && /could not make|couldn't make|refused|safety|internal error/i.test(msg) ? SENSITIVE_FAILURE : msg, { duration: 12000 });
       console.error("Inspo Remix failed:", e);
     } finally {
       setBusy(false);

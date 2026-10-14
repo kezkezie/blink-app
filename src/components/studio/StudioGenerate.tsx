@@ -9,6 +9,8 @@ import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { IMAGE_STUDIO_ALLOWED_FORMATS, type AssistedCreativeDirection, type CreativeConcept } from "@/lib/assisted-creation";
+import { SENSITIVE, SENSITIVE_FAILURE, softenForAi } from "@/lib/ai-safe-text";
+import { mustKeep } from "@/lib/design-pass";
 import { GENERATE_LOOKS, buildGeneratePrompt, lookForVibes, routerTopic, type GenerateLook } from "@/lib/generate-prompt";
 import type { BrandResearch } from "@/lib/brand-research";
 import { thumbUrl } from "./media";
@@ -51,6 +53,8 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
   const [refs, setRefs] = useState<Array<{ url: string; preview: string }>>([]);
   const [thinking, setThinking] = useState<"research" | "ideas" | "brief" | null>(null);
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<"design" | "make" | null>(null);
+  const [designNote, setDesignNote] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -150,26 +154,53 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
     return () => { clearInterval(t); setElapsed(0); };
   }, [busy]);
 
-  async function generate() {
-    if (!clientId || !activeBrand || !kit || !ready) return;
+  async function generate(override?: string) {
+    const text = override ?? brief;
+    if (!clientId || !activeBrand || !kit || text.trim().length < 8) return;
     setBusy(true);
     try {
-      const assembledPrompt = buildGeneratePrompt({
-        brief, look: activeLook, colours: [kit.primaryColor, kit.secondaryColor], font: kit.primaryFont,
+      let assembledPrompt = buildGeneratePrompt({
+        brief: text, look: activeLook, colours: [kit.primaryColor, kit.secondaryColor], font: kit.primaryFont,
         words, logo: withLogo, products: refs.length, research: brandResearch, basedOn,
       });
+      // Design it before rendering (2026-10-14): Best and Fast get an art director's prompt from the
+      // design playbook; Plain and Draft go as written. If design fails, the requirements go as they are.
+      let note: string | null = null;
+      if (activeLook !== "plain" && pick !== "draft") {
+        setPhase("design");
+        const designed = await fetch("/api/generate/design", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ brandId: activeBrand.id, look: activeLook, requirements: assembledPrompt }),
+        }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { prompt?: string; notes?: string } | null;
+        if (designed?.prompt) {
+          const keep = mustKeep(assembledPrompt);
+          assembledPrompt = `${designed.prompt}${keep ? `\n${keep}` : ""}`;
+          note = designed.notes || null;
+        }
+      }
+      setPhase("make");
       const saved = await generateBrandImages({
         clientId, brandId: activeBrand.id, kit,
-        prompt: routerTopic(brief.trim()), assembledPrompt,
+        prompt: routerTopic(text.trim()), assembledPrompt,
         references: [...(withLogo && kit.logoUrl ? [kit.logoUrl] : []), ...refs.map((r) => r.url)],
         engine, aspect: format, style: activeLook, count,
-        caption: (words.trim() || brief.trim().split(/[.!?]/)[0]).slice(0, 120),
+        caption: (words.trim() || text.trim().split(/[.!?]/)[0]).slice(0, 120),
       });
       setResults((prev) => [...saved, ...prev]);
+      setDesignNote(note);
       toast.success(`${saved.length} image${saved.length === 1 ? "" : "s"} made and saved to your Library.`);
     } catch (e) {
-      toast.error(generationErrorMessage(e), { duration: 10000 });
-    } finally { setBusy(false); }
+      const msg = generationErrorMessage(e);
+      // A refused picture of a medical or intimate subject: say why and what to try (2026-10-14).
+      const sensitive = SENSITIVE.test(`${text} ${kit.description ?? ""}`) && /could not make|couldn't make|refused|safety|internal error/i.test(msg);
+      const softer = softenForAi(text);
+      toast.error(sensitive ? SENSITIVE_FAILURE : msg, {
+        duration: 15000,
+        // Only on the user's say-so: their words are theirs (2026-10-14: a brief with anatomy words
+        // failed on every model; the same brief in clinical wording worked).
+        ...(sensitive && softer !== text ? { action: { label: "Retry in clinical wording", onClick: () => { setBrief(softer); void generate(softer); } } } : {}),
+      });
+    } finally { setBusy(false); setPhase(null); }
   }
 
   const name = kit?.name || activeBrand?.brand_name || "your brand";
@@ -293,8 +324,8 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
               <span className="s-label">How many</span>
               <div className="flex gap-1.5">{[1, 2, 3, 4].map((n) => <button key={n} className="s-chip" aria-pressed={count === n} onClick={() => setCount(n)}>{n}</button>)}</div>
             </div>
-            <button className="s-btn primary lg w-full mt-auto" disabled={!ready || busy || !kit} onClick={generate}>
-              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Making it… {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
+            <button className="s-btn primary lg w-full mt-auto" disabled={!ready || busy || !kit} onClick={() => void generate()}>
+              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {phase === "design" ? "Designing it…" : "Making it…"} {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
             </button>
             {/* Say what to expect and what you can do about it, not a disclaimer (Microsoft HAX: make
                 clear how well the system can do what it can do; PAIR: set expectations, give control). */}
@@ -308,6 +339,7 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
       {results.length > 0 && (
         <section className="mt-8">
           <h3 className="s-section-h">Made just now</h3>
+          {designNote && <p className="text-[12px] -mt-1 mb-1" style={{ color: "var(--s-soft)" }}><Sparkles className="inline h-3 w-3" style={{ color: "var(--s-ai)" }} /> Designed as: {designNote}</p>}
           <p className="text-[12px] -mt-1 mb-3" style={{ color: "var(--s-mute)" }}>Close but not quite? <Wand2 className="inline h-3 w-3" /> changes one thing in the picture, <b>Add type</b> puts your words and logo on in the real font.</p>
           <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             {results.map((r) => (
@@ -323,7 +355,7 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
               </div>
             ))}
           </div>
-          <button className="s-btn ghost sm mt-3" onClick={generate} disabled={busy}><RotateCcw className="h-3.5 w-3.5" /> More like this · {cost} cr</button>
+          <button className="s-btn ghost sm mt-3" onClick={() => void generate()} disabled={busy}><RotateCcw className="h-3.5 w-3.5" /> More like this · {cost} cr</button>
         </section>
       )}
 

@@ -9,6 +9,7 @@ import { assemblePrompt, selectCreativeDirection, type BrandContext } from "@/li
 import { MARKETING_STYLES } from "@/lib/marketing-styles";
 import { contactRule } from "@/lib/inspo";
 import { validateResearch, type BrandResearch } from "@/lib/brand-research";
+import { softenForAi } from "@/lib/ai-safe-text";
 
 /**
  * The studio's one way to make images (Generate and Inspo Remix): the same workflow, billing,
@@ -59,9 +60,10 @@ export function brandConstraintFor(kit: BrandKit) {
   return [
     `CRITICAL BRAND CONSTRAINT: This content belongs to the brand "${kit.name}".`,
     kit.websiteUrl ? `The website is ${kit.websiteUrl}.` : "",
-    kit.description ? `Brand description: ${kit.description}.` : "",
+    // Softened for medical and intimate brands (lib/ai-safe-text): models refuse anatomy words.
+    kit.description ? `Brand description: ${softenForAi(kit.description)}.` : "",
     kit.industry ? `Industry: ${kit.industry}.` : "",
-    dna.audience ? `It is for: ${dna.audience}.` : "",
+    dna.audience ? `It is for: ${softenForAi(dna.audience)}.` : "",
     dna.location ? `Set for ${dna.location}: local people, places and details where it fits.` : "",
     kit.primaryColor ? `Brand colours: ${[kit.primaryColor, kit.secondaryColor].filter(Boolean).join(", ")}.` : "",
     dna.languages?.length ? `Write any on-image text in ${dna.languages.slice(0, 2).join(" or ")}.` : "",
