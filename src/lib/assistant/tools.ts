@@ -166,6 +166,18 @@ export const ASSISTANT_TOOLS = [
     input_schema: { type: "object", properties: { refresh: { type: "boolean" } }, additionalProperties: false },
   },
   {
+    name: "make_motion",
+    description: "Offer a button that opens the video editor's Motion panel with a brief filled in: animated brand motion graphics (kinetic headline, a number counting up, product reveal, logo sting, a see-through lower third over footage, end card) drawn exactly in the brand's font and colours. Writing the plan costs 4 credits there; previews and edits are free; it renders into a clip on the timeline and the Library. Use for intros, title cards, stats, end cards and lower thirds, not for filmed footage.",
+    input_schema: {
+      type: "object",
+      properties: {
+        brief: { type: "string", description: "What the motion is for, in one or two sentences, with the exact words, numbers and prices to use." },
+      },
+      required: ["brief"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "open_page",
     description: "Offer a button to a page: inspo (Inspo Remix: the user drops a design they love and gets it remade for their brand), video_inspo (Video Inspo: the same for a video, rebuilt shot by shot), voiceover (text to speech in the Editor, 1 credit per ~20 s), library, upload, plan (calendar), approvals, brand, billing, settings, skills (add or import Ask skills).",
     input_schema: {
@@ -466,6 +478,11 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
         content: `${r.cached ? "Kept research" : "Fresh research"} (${new Date(r.researchedAt).toDateString()}). Peers: ${r.research.peers.map((p) => `${p.name} (${p.why})`).join("; ")}.\nVisual language: ${r.research.visualLanguage}\nFormats:\n${f}\nAvoid: ${r.research.avoid.join("; ")}\nSummarise this for the user in a few lines (peers, the look, the formats by name), say Generate's ideas now follow it, and offer to propose a post.`,
         action: { kind: "open_page", label: PAGES.generate.label, href: PAGES.generate.href },
       };
+    }
+    case "make_motion": {
+      const brief = typeof input.brief === "string" ? input.brief.replace(/\s+/g, " ").trim().slice(0, 600) : "";
+      if (brief.length < 3) return { content: "Say what the motion is for." };
+      return { content: "Button shown: it opens the Motion panel with this brief.", action: { kind: "open_page", label: "Make this motion", href: `/studio/video?tab=editor&rail=motion&motion=${encodeURIComponent(brief)}` } };
     }
     case "open_page": {
       const page = PAGES[oneOf(input.page, Object.keys(PAGES), "library")];

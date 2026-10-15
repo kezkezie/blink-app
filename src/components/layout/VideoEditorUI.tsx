@@ -6,7 +6,7 @@ import {
   Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music,
   Image as ImageIcon, UploadCloud, Settings, Download,
   ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check, Maximize2, Minimize2,
-  Scissors, Copy, Sparkles, Wand2, Undo2, AudioLines, Subtitles
+  Scissors, Copy, Sparkles, Wand2, Undo2, AudioLines, Subtitles, Clapperboard
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCredits } from "@/components/studio/hooks";
@@ -16,7 +16,7 @@ import { inspoPatternKey, type EditRecipe, type InspoPattern } from "@/lib/video
 import { VOICES, voiceoverCredits } from "@/lib/voiceover";
 import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
-import { canvasSize, drawtextFilter, frameAt, normalizeFilter, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
+import { canvasSize, drawtextFilter, frameAt, normalizeFilter, overlayFilter, overlayStep, webmDecoder, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
 import "./video-editor.css";
 import { Button } from "@/components/ui/button";
 import { cn, cloudinaryVideoPoster } from "@/lib/utils";
@@ -27,6 +27,8 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ Added to isolate libraries by brand
 import { useEditorBridge } from "@/components/video/editor-bridge";
 import { applyEditOps, type EditorState } from "@/lib/editor-ops";
+import { MotionBin } from "@/components/studio/motion/MotionBin";
+import type { AddedMotion, MotionPlace } from "@/components/studio/motion/MotionStudio";
 
 interface MediaAsset {
   id: string;
@@ -116,7 +118,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   const [canvasAspect, setCanvasAspect] = useState<CanvasAspect>("16:9");
   const [fitMode, setFitMode] = useState<FitMode>("fit");
   // Studio look: left rail, AI tools state, waveforms, beat markers, measured canvas width.
-  const [rail, setRail] = useState<"media" | "scenes" | "audio" | "text" | "ai">("media");
+  const [rail, setRail] = useState<"media" | "scenes" | "audio" | "text" | "motion" | "ai">("media");
+  // Motion deep link (Ask BlinkSpot's make_motion, the Library's "Animate this"): ?rail=motion&motion=...&motionPicture=<post>.
+  const [motionStart, setMotionStart] = useState<{ prompt: string | null; picture: string | null }>({ prompt: null, picture: null });
   const [peaks, setPeaks] = useState<Record<string, number[]>>({});
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [cutEvery, setCutEvery] = useState<1 | 2 | 4>(2);
@@ -391,7 +395,10 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
 
   const handleRender = async () => {
     if (!clientId) { toast("Still loading your account. Try Export again in a second."); return; }
-    const orderedVideos = [...videoClips].sort((a, b) => a.timelineStart - b.timelineStart);
+    // V1 plays in sequence; clips on the rows above are laid over it at their time (2026-10-15).
+    const hasBase = videoClips.some((c) => (c.trackRow ?? 0) === 0);
+    const orderedVideos = videoClips.filter((c) => !hasBase || (c.trackRow ?? 0) === 0).sort((a, b) => a.timelineStart - b.timelineStart);
+    const overlays = hasBase ? videoClips.filter((c) => (c.trackRow ?? 0) > 0).sort((a, b) => (a.trackRow ?? 0) - (b.trackRow ?? 0) || a.timelineStart - b.timelineStart) : [];
     if (orderedVideos.length === 0) return alert("Please add at least one visual layer (image or video) to the timeline!");
 
     setIsRendering(true);
@@ -464,13 +471,36 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
 
       let finalVideoMap = '[outv]';
 
+      // Layers above V1 (motion lower thirds, picture-in-picture), see-through where they are.
+      for (let j = 0; j < overlays.length; j++) {
+        setRenderStatusText(`Layering ${j + 1} of ${overlays.length}...`);
+        const clip = overlays[j];
+        const index = orderedVideos.length + j;
+        const duration = clip.trimEnd - clip.trimStart;
+        const isImg = clip.type === 'image';
+        const fileName = `overlay_${j}.${isImg ? 'jpg' : 'video'}`;
+        try {
+          const bytes = isImg ? await imageForExport(clip.url, Math.max(W, H)) : await fetchFile(getProxyUrl(clip.url));
+          // Read the codec first: writeFile hands the bytes to ffmpeg's worker and empties this copy.
+          const decoder = isImg ? null : webmDecoder(bytes as Uint8Array);
+          await ffmpeg.writeFile(fileName, bytes);
+          if (isImg) inputArgs.push('-loop', '1', '-framerate', '30', '-t', String(duration), '-i', fileName);
+          else inputArgs.push(...(decoder ? ['-c:v', decoder] : []), '-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
+        } catch {
+          throw new Error(`Failed to download layer ${j + 1}.`);
+        }
+        filterSteps.push(overlayFilter(index, W, H, fitMode, clip.timelineStart, clip.opacity ?? 100));
+        filterSteps.push(overlayStep(finalVideoMap, index, clip.timelineStart, clip.timelineStart + duration, `lay${j}`));
+        finalVideoMap = `[lay${j}]`;
+      }
+
       if (textLayers.length > 0 && hasFont) {
         setRenderStatusText("Baking text layers...");
         let textFilters: string[] = [];
         // Centred on its point like the preview, sized for the canvas width, captions outlined.
         textLayers.forEach((layer) => textFilters.push(drawtextFilter(layer, W)));
         if (textFilters.length > 0) {
-          filterSteps.push(`[outv]${textFilters.join(',')}[textout]`);
+          filterSteps.push(`${finalVideoMap}${textFilters.join(',')}[textout]`);
           finalVideoMap = '[textout]';
         }
       }
@@ -492,7 +522,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
           inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
 
           const delayMs = Math.floor(clip.timelineStart * 1000);
-          const audioInputIndex = orderedVideos.length;
+          const audioInputIndex = orderedVideos.length + overlays.length;
           filterSteps.push(`[${audioInputIndex}:a]adelay=${delayMs}|${delayMs}[outa]`);
           hasAudio = true;
         } else {
@@ -510,7 +540,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
 
             const delayMs = Math.floor(clip.timelineStart * 1000);
-            const audioInputIndex = orderedVideos.length + i;
+            const audioInputIndex = orderedVideos.length + overlays.length + i;
             filterSteps.push(`[${audioInputIndex}:a]adelay=${delayMs}|${delayMs}[a${i}]`);
             audioMixStr += `[a${i}]`;
             hasAudio = true;
@@ -541,7 +571,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
         execArgs.push('-t', String(maxVideoTime));
       }
 
-      execArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', 'output.mp4');
+      // CRF 20 (default 23): ultrafast at 23 left faint specks around sharp coloured edges (motion end cards).
+      execArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p', 'output.mp4');
 
       const retCode = await ffmpeg.exec(execArgs);
 
@@ -631,6 +662,27 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     const newAsset: MediaAsset = { id: crypto.randomUUID(), type: trackType, url, thumb: url, name: file.name, duration: 10 };
     setAssets((prev) => [newAsset, ...prev]);
     addClipToTimeline(newAsset, trackType === "audio" ? "audio" : "video", dropTime, row);
+  }
+
+  /**
+   * A rendered motion graphic onto the timeline (2026-10-15): full-frame ones at the start (the
+   * rest moves along, text and audio too, so everything stays in sync) or after the last clip; a
+   * see-through lower third over the video at the playhead, on the row above.
+   */
+  function addMotion(m: AddedMotion, where: MotionPlace) {
+    const asset: MediaAsset = { id: crypto.randomUUID(), type: "video", url: m.url, thumb: m.url, name: m.name, duration: m.seconds };
+    setAssets((prev) => [asset, ...prev]);
+    const clip = (start: number, row: number): TrackClip => ({ id: crypto.randomUUID(), assetId: asset.id, url: m.url, type: "video", name: m.name, timelineStart: start, trimStart: 0, trimEnd: m.seconds, maxDuration: m.seconds, opacity: 100, volume: 100, trackRow: row });
+    if (m.kind === "overlay") {
+      setVideoClips((prev) => [...prev, clip(globalTime, Math.max(1, ...prev.filter((c) => (c.trackRow ?? 0) > 0 && c.timelineStart < globalTime + m.seconds && c.timelineStart + (c.trimEnd - c.trimStart) > globalTime).map((c) => (c.trackRow ?? 0) + 1)))]);
+    } else if (where === "start") {
+      const later = <T extends { timelineStart: number }>(x: T) => ({ ...x, timelineStart: x.timelineStart + m.seconds });
+      setVideoClips((prev) => [clip(0, 0), ...prev.map(later)]);
+      setTextLayers((prev) => prev.map(later));
+      setAudioClips((prev) => prev.map(later));
+    } else {
+      setVideoClips((prev) => [...prev, clip(Math.max(0, ...prev.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (c.trimEnd - c.trimStart))), 0)]);
+    }
   }
 
   function addClipToTimeline(asset: MediaAsset, trackType: "video" | "audio", dropTime: number, row: number) {
@@ -1005,6 +1057,11 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   useEffect(() => {
     const r = new URLSearchParams(window.location.search).get("rail");
     if (r === "audio") { setRail("audio"); handleFilterSwitch("audio"); }
+    else if (r === "motion") {
+      const q = new URLSearchParams(window.location.search);
+      setMotionStart({ prompt: q.get("motion")?.slice(0, 600) ?? null, picture: q.get("motionPicture") });
+      setRail("motion");
+    }
     else if (r === "ai" || r === "text" || r === "scenes" || r === "media") setRail(r);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1219,6 +1276,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             {railBtn("scenes", "Scenes", Layers)}
             {railBtn("audio", "Audio", Music)}
             {railBtn("text", "Text", Type)}
+            {railBtn("motion", "Motion", Clapperboard)}
             {railBtn("ai", "AI", Sparkles, "ai")}
           </nav>
 
@@ -1234,6 +1292,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Adds at the playhead. Drag it on the preview to move it.</p>
                 </div>
               </>
+            ) : rail === "motion" ? (
+              <MotionBin key={`${motionStart.prompt ?? ""}|${motionStart.picture ?? ""}`} clientId={clientId} shape={canvasAspect} initialPrompt={motionStart.prompt} pictureId={motionStart.picture} onAdded={addMotion} />
             ) : rail === "ai" ? (
               <>
                 <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}</div>

@@ -37,3 +37,31 @@ export function frameAt(url: string, seconds: number, height = 64): string | und
   if (!url.includes("res.cloudinary.com") || !url.includes("/video/upload/")) return undefined;
   return url.replace("/video/upload/", `/video/upload/so_${Math.max(0, seconds).toFixed(1)},h_${height},c_fill,q_auto,f_jpg/`).replace(/\.(mp4|mov|webm)(\?.*)?$/i, ".jpg$2");
 }
+
+/**
+ * A clip on a row above V1, laid over the video (2026-10-15, for see-through motion graphics: the
+ * export used to string every clip one after another, so the preview's layers didn't survive).
+ * Fitted to the canvas with a transparent surround, placed at its timeline time, faded by its opacity.
+ */
+export function overlayFilter(index: number, W: number, H: number, fit: FitMode, start: number, opacity = 100): string {
+  const size = fit === "fill"
+    ? `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`
+    : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0`;
+  const fade = opacity < 100 ? `,colorchannelmixer=aa=${(Math.max(0, opacity) / 100).toFixed(2)}` : "";
+  return `[${index}:v]format=yuva420p,${size},setsar=1,fps=30${fade},setpts=PTS-STARTPTS+${start}/TB[ov${index}]`;
+}
+
+/** Lay one overlay onto the running picture between its start and end. */
+export function overlayStep(input: string, index: number, start: number, end: number, out: string): string {
+  return `${input}[ov${index}]overlay=0:0:enable='between(t,${start},${end})':eof_action=pass[${out}]`;
+}
+
+/**
+ * VP8 or VP9, read from a WebM's header ("V_VP8" / "V_VP9"), so its transparency is decoded:
+ * ffmpeg's own VP8/VP9 decoders drop the alpha channel; libvpx keeps it.
+ */
+export function webmDecoder(bytes: Uint8Array): "libvpx" | "libvpx-vp9" | null {
+  if (bytes.length < 4 || bytes[0] !== 0x1a || bytes[1] !== 0x45 || bytes[2] !== 0xdf || bytes[3] !== 0xa3) return null;
+  const head = String.fromCharCode(...bytes.slice(0, Math.min(bytes.length, 4096)));
+  return head.includes("V_VP9") ? "libvpx-vp9" : head.includes("V_VP8") ? "libvpx" : null;
+}

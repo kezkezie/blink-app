@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, CalendarPlus, Check, Clock, Film, LayoutTemplate, Loader2, MessageSquareWarning, RefreshCw, Save, Send, Sparkles, Trash2, Wand2, X, ZoomIn, Zap } from "lucide-react";
+import { ArrowLeft, CalendarPlus, Check, Clapperboard, Clock, Film, LayoutTemplate, Loader2, MessageSquareWarning, RefreshCw, Save, Send, Sparkles, Trash2, Wand2, X, ZoomIn, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -247,6 +247,7 @@ export function PostDetail({ id }: { id: string }) {
           <>
             <Link href={`/studio/image?mode=design&content=${post.id}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> Open in Editor</Link>
             <Link href={`/studio/library/${post.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>
+            <Link href={`/studio/video?tab=editor&rail=motion&motionPicture=${post.id}&motion=${encodeURIComponent(`Animate this picture${post.caption ? `: ${cleanCaption(post.caption).slice(0, 120)}` : ""}`)}`} className="s-btn sm" title="Animated titles and a reveal from this picture, in your brand font"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>
             <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>
           </>
         )}
