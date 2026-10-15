@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/supabase-server", () => ({ supabaseAdmin: { from: vi.fn() } }));
 import {
   MAX_MOTION_SECONDS, MOTION_SYSTEM, contrast, motionTitle, motionUserPrompt, paletteFor, sizeFor, totalFrames, totalSeconds, validateMotionSpec,
 } from "@/lib/motion/spec";
