@@ -10,7 +10,7 @@ import { StudioGenerate } from "@/components/studio/StudioGenerate";
 import { supabase } from "@/lib/supabase";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import ClassicImageStudio from "@/app/dashboard/generate/page";
-import { SemanticImageEditor } from "@/components/image/SemanticImageEditor";
+import { XrayEditor } from "@/components/studio/library/XrayEditor";
 import dynamic from "next/dynamic";
 import { ImagePicker, type PickedImage } from "@/components/studio/ImagePicker";
 import { cleanCaption, resolveMedia } from "@/components/studio/media";
@@ -130,16 +130,16 @@ function ImageStudioInner() {
       {mode === "edit" && (
         loadingPick ? <div className="p-6"><div className="s-skel h-80" /></div> : picked?.contentId ? (
           <div className="p-4 md:p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <button className="s-btn ghost sm" onClick={() => setPicked(null)}><ArrowLeft className="h-3.5 w-3.5" /> Pick another</button>
-              <span className="text-sm truncate" style={{ color: "var(--s-soft)" }}>{picked.title}</span>
-            </div>
-            <SemanticImageEditor key={picked.contentId} contentId={picked.contentId} initialImageUrl={picked.url} />
+            {/* The rebuilt Edit with AI (2026-10-15); the classic SemanticImageEditor stays on /dashboard/content/[id]/edit. */}
+            <XrayEditor
+              key={picked.contentId} id={picked.contentId} onBack={() => setPicked(null)}
+              onContinue={(contentId, url) => setPicked({ contentId, url, title: picked.title.startsWith("Edited · ") ? picked.title : `Edited · ${picked.title}` })}
+            />
           </div>
         ) : (
           <div className="max-w-[980px] mx-auto p-4 md:p-8">
             <h2 className="text-xl font-semibold mb-1">Which photo?</h2>
-            <p className="text-sm mb-5" style={{ color: "var(--s-soft)" }}>The AI reads the photo into objects (colour, material, text). Change what you want, then it re-renders with Nano Banana 2 or GPT Image 2.</p>
+            <p className="text-sm mb-5" style={{ color: "var(--s-soft)" }}>The AI scans the photo once (saved, so coming back is free). Then change the words, a colour or a material, swap a thing for a Library picture or a product, or remove it. The result is a new post; your original stays.</p>
             <ImagePicker allowUpload={false} onPick={setPicked} />
           </div>
         )

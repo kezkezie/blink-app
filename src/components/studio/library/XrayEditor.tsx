@@ -48,7 +48,11 @@ function writeDraft(id: string, d: Draft | null) {
   try { if (d) localStorage.setItem(draftKey(id), JSON.stringify(d)); else localStorage.removeItem(draftKey(id)); } catch { /* private window */ }
 }
 
-export function XrayEditor({ id }: { id: string }) {
+/**
+ * `onBack` / `onContinue`: embedded in Image Studio's Edit with AI tab (2026-10-15: that tab still
+ * showed the classic "JSON Object Control" editor, so Kezie saw no change). Standalone otherwise.
+ */
+export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: () => void; onContinue?: (contentId: string, url: string) => void }) {
   const router = useRouter();
   const { clientId } = useClient();
   const [image, setImage] = useState<string | null | undefined>(undefined);
@@ -199,7 +203,9 @@ export function XrayEditor({ id }: { id: string }) {
   return (
     <div className="grid gap-4 s-reading">
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/studio/library/${id}`} className="s-btn ghost sm -ml-2"><ArrowLeft className="h-3.5 w-3.5" /> Back to the post</Link>
+        {onBack
+          ? <button className="s-btn ghost sm -ml-2" onClick={onBack}><ArrowLeft className="h-3.5 w-3.5" /> Pick another</button>
+          : <Link href={`/studio/library/${id}`} className="s-btn ghost sm -ml-2"><ArrowLeft className="h-3.5 w-3.5" /> Back to the post</Link>}
         <h2 className="text-[16px] font-semibold">Edit with AI</h2>
         <span className="text-[12.5px]" style={{ color: "var(--s-mute)" }}>Change one thing, keep the rest. Your original is never overwritten.</span>
       </div>
@@ -246,7 +252,7 @@ export function XrayEditor({ id }: { id: string }) {
               <span className="h-11 w-11 rounded-xl grid place-items-center" style={{ background: "color-mix(in oklab, var(--s-ai) 14%, transparent)" }}><Check className="h-5 w-5" style={{ color: "var(--s-ai)" }} /></span>
               <b className="text-[15px]">Your edit is ready</b>
               <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>It&apos;s a new post in your Library, already scanned, so you can keep editing it without paying for another scan.</p>
-              <button className="s-btn ai justify-between" onClick={() => router.push(`/studio/library/${result.contentId}/edit`)}><span className="flex items-center gap-2"><Wand2 className="h-4 w-4" /> Keep editing this one</span><ChevronRight className="h-4 w-4" /></button>
+              <button className="s-btn ai justify-between" onClick={() => (onContinue ? onContinue(result.contentId, result.url) : router.push(`/studio/library/${result.contentId}/edit`))}><span className="flex items-center gap-2"><Wand2 className="h-4 w-4" /> Keep editing this one</span><ChevronRight className="h-4 w-4" /></button>
               <Link href={`/studio/library/${result.contentId}`} className="s-btn justify-between"><span>Open the new post</span><ChevronRight className="h-4 w-4" /></Link>
               <button className="s-btn ghost justify-start" onClick={() => setResult(null)}><Undo2 className="h-4 w-4" /> Back to the original and try again</button>
             </div>

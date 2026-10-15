@@ -72,6 +72,16 @@ test("scan once, keep it, swap from the Library, edit into a new post", async ({
     await expect(page.getByRole("button", { name: /Scan it/ })).toHaveCount(0);
     expect(await balance()).toBe(196);
 
+    // 2b. Image Studio's Edit with AI tab is the same new editor (it showed the classic one until 10-15).
+    await page.goto(`${BASE}/studio/image?mode=edit`);
+    await page.getByTitle("E2E poster").click({ timeout: 30_000 });
+    await expect(page.getByText("Saved scan")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("JSON Object Control")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Pick another" })).toBeVisible();
+    expect(await balance()).toBe(196);
+    await page.goto(`${BASE}/studio/library/${poster.id}/edit`);
+    await expect(page.getByText("Saved scan")).toBeVisible({ timeout: 30_000 });
+
     // 3. Change the words; the change survives a reload.
     await openRow(page, "Words");
     const words = page.getByRole("textbox", { name: / words$/ }).first();
