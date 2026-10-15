@@ -8,7 +8,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * renders in this browser and lands on the timeline and in the Library; a see-through lower third
  * goes over it at the playhead; the export lays the lower third over the intro (its accent shows
  * bottom-left while it's on screen, not after). Frames saved for a look. Everything deleted after.
- *   PLAYWRIGHT_BASE_URL=https://www.blinkspot.io npx playwright test studio-motion
+ *   PLAYWRIGHT_BASE_URL=https://www.blinkspot.io npx playwright test studio-motion --workers=1
+ * (alone: rendering and ffmpeg run in the browser, and two heavy specs at once time out.)
  */
 const BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 const ACCENT = "#E4572E";

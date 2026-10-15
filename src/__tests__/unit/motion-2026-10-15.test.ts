@@ -3,6 +3,7 @@ import {
   MAX_MOTION_SECONDS, MOTION_SYSTEM, contrast, motionTitle, motionUserPrompt, paletteFor, sizeFor, totalFrames, totalSeconds, validateMotionSpec,
 } from "@/lib/motion/spec";
 import { overlayFilter, overlayStep, webmDecoder } from "@/lib/editor/export-graph";
+import { runAssistantTool } from "@/lib/assistant/tools";
 
 /** Motion graphics (2026-10-15): Claude's plan checked, palettes readable, overlays in the export. */
 const ctx = { shape: "9:16" as const, brand: { primary: "#6BBD51", secondary: "#231F20" }, images: ["img1", "img2"] };
@@ -104,3 +105,15 @@ describe("export overlays", () => {
     expect(webmDecoder(new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70]))).toBeNull();
   });
 });
+
+describe("Ask BlinkSpot make_motion", () => {
+  it("opens the Motion panel with the brief, and only that page", async () => {
+    const r = await runAssistantTool("make_motion", { brief: "  A 6 second intro:\n Drop 01 this Friday " }, { clientId: "c1", brandId: "b1" });
+    const url = new URL(r.action!.href!, "https://x");
+    expect(url.pathname).toBe("/studio/video");
+    expect(url.searchParams.get("rail")).toBe("motion");
+    expect(url.searchParams.get("motion")).toBe("A 6 second intro: Drop 01 this Friday");
+    expect((await runAssistantTool("make_motion", { brief: "" }, { clientId: "c1", brandId: "b1" })).action).toBeUndefined();
+  });
+});
+
