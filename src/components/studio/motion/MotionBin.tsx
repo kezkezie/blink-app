@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Clapperboard, Loader2, Sparkles } from "lucide-react";
+import { Clapperboard, Compass, ExternalLink, Loader2, Sparkles, X } from "lucide-react";
+import { styleLine, type MotionStyleIdea } from "@/lib/motion/inspo";
 import { toast } from "sonner";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useBrandKit } from "@/components/studio/generate-image";
@@ -38,12 +39,36 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded }
   const [open, setOpen] = useState(false);
   const [made, setMade] = useState<AddedMotion[]>([]);
   const [picture, setPicture] = useState<string | null>(pictureId ?? null);
+  // Inspiration from whatships.com, only after the user says yes (2026-10-16).
+  const [asking, setAsking] = useState(false);
+  const [looking, setLooking] = useState(false);
+  const [ideas, setIdeas] = useState<MotionStyleIdea[] | null>(null);
+  const [style, setStyle] = useState<MotionStyleIdea | null>(null);
+  const allowedKey = "blink.motionInspo.ok";
+  function findInspiration() {
+    let ok = false;
+    try { ok = sessionStorage.getItem(allowedKey) === "1"; } catch { /* private window */ }
+    if (ok) void look(); else setAsking(true);
+  }
+  async function look() {
+    if (!activeBrand) return;
+    setAsking(false); setLooking(true);
+    try { sessionStorage.setItem(allowedKey, "1"); } catch { /* private window */ }
+    try {
+      const res = await fetch("/api/editor/motion-inspo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, brief: prompt }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't find ideas.");
+      setIdeas(data.ideas ?? []);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't find ideas."); }
+    finally { setLooking(false); }
+  }
 
   async function write(text = prompt) {
     if (!activeBrand || text.trim().length < 3) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, prompt: text, shape, ...(picture ? { pictureId: picture } : {}) }) });
+      const brief = style ? `${text}\n${styleLine(style)}` : text;
+      const res = await fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, prompt: brief.slice(0, 600), shape, ...(picture ? { pictureId: picture } : {}) }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't plan the motion.");
       setSpec(data.spec); setPictures(data.pictures ?? []); setOpen(true);
@@ -61,6 +86,40 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded }
         <textarea className="s-input s-grow" rows={3} style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 7 }} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What's it for? e.g. a 6 second intro for our USDT launch" aria-label="What the motion is for" />
         <div className="flex flex-wrap gap-1">{STARTS.map((s) => <button key={s.label} className="s-chip" aria-pressed={prompt === s.prompt} onClick={() => setPrompt(s.prompt)}>{s.label}</button>)}</div>
         {picture && <span className="text-[11.5px] flex items-center gap-1" style={{ color: "var(--s-soft)" }}>Using the picture you picked <button className="underline" onClick={() => setPicture(null)}>(clear)</button></span>}
+        {style ? (
+          <span className="text-[11.5px] flex items-center gap-1.5" style={{ color: "var(--s-soft)" }}><Compass className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} /> Style: {style.title} <button className="underline" onClick={() => setStyle(null)}>(clear)</button></span>
+        ) : (
+          <button className="s-btn ghost sm justify-start" disabled={looking || !activeBrand} onClick={findInspiration}>{looking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Compass className="h-3.5 w-3.5" />} {looking ? "Looking at launch films…" : "Find inspiration"}</button>
+        )}
+        {asking && (
+          <div className="s-card p-3 grid gap-2" role="dialog" aria-label="Look for inspiration">
+            <p className="text-[12.5px]">Look at <b>whatships.com</b> for ideas? BlinkSpot reads its public gallery of launch films (titles and stills only) and suggests 3 styles for {kit?.name || activeBrand?.brand_name || "your brand"}. Nothing is copied; each idea links to the original.</p>
+            <div className="flex gap-2"><button className="s-btn primary sm" onClick={() => void look()}>Yes, look</button><button className="s-btn ghost sm" onClick={() => setAsking(false)}>Not now</button></div>
+          </div>
+        )}
+        {ideas && !style && (
+          <div className="grid gap-2">
+            <div className="flex items-center"><span className="s-label" style={{ margin: 0 }}>Styles from whatships.com</span><div className="flex-1" /><button className="s-btn ghost sm" onClick={() => setIdeas(null)} aria-label="Close ideas"><X className="h-3.5 w-3.5" /></button></div>
+            {ideas.map((idea) => (
+              <div key={idea.title} className="s-card p-2.5 grid gap-1.5">
+                <b className="text-[12.5px]">{idea.title}</b>
+                <span className="text-[11.5px]" style={{ color: "var(--s-soft)" }}>{idea.why}</span>
+                {!!idea.refs.length && (
+                  <div className="flex gap-1.5">
+                    {idea.refs.map((r) => (
+                      <a key={r.page} href={r.page} target="_blank" rel="noopener noreferrer" title={`${r.name} · ${r.meta}`} className="block h-10 w-16 rounded-md overflow-hidden" style={{ border: "1px solid var(--s-line)" }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={r.poster} alt={r.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                      </a>
+                    ))}
+                    <ExternalLink className="h-3 w-3 self-end" style={{ color: "var(--s-mute)" }} />
+                  </div>
+                )}
+                <button className="s-btn sm justify-start" onClick={() => { setStyle(idea); setIdeas(null); }}>Use this style</button>
+              </div>
+            ))}
+          </div>
+        )}
         <button className="s-btn ai justify-between" disabled={busy || !activeBrand || prompt.trim().length < 3} onClick={() => write()}>
           <span className="flex items-center gap-2">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {busy ? "Planning it…" : "Write it"}</span><span className="cost">{MOTION_CREDITS} cr</span>
         </button>
