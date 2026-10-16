@@ -11,6 +11,7 @@ import { SiteRenderer } from "@/components/sites/SiteRenderer";
 import { SECTION_LABEL, type SiteSection, type SiteSpec, type SiteStyle } from "@/lib/sites/spec";
 import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
 import { Modal } from "../Modal";
+import { PageSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * Website: a landing page built from the brand (Brand Brain), edited section by section, published
@@ -247,7 +248,7 @@ export function SiteBuilder() {
   }
 
   if (!activeBrand) return <div className="s-card p-10 text-center max-w-[560px] mx-auto mt-10"><b>Pick a brand first</b><p className="text-[13px] mt-1" style={{ color: "var(--s-soft)" }}>Use the brand menu at the top.</p></div>;
-  if (!loaded) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (!loaded) return <PageSkeleton />;
 
   if (!spec) {
     return (

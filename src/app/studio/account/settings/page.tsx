@@ -9,6 +9,7 @@ import { useClient } from "@/hooks/useClient";
 import { isSharedBrand, useBrandStore } from "@/app/store/useBrandStore";
 import { Modal } from "@/components/studio/Modal";
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
+import { FormSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * Settings & social accounts in the studio look (2026-10-11; classic stays at /dashboard/settings).
@@ -118,7 +119,7 @@ function SettingsPage() {
     router.refresh();
   }
 
-  if (loading || socials === null) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (loading || socials === null) return <FormSkeleton />;
   const shared = isSharedBrand(activeBrand);
   const byPlatform = (p: string) => socials.filter((s) => norm(s.platform) === p);
   const connectedCount = socials.filter((s) => s.is_active).length;

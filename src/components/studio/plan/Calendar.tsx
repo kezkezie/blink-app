@@ -13,6 +13,7 @@ import { MediaThumb, NOT_STORYBOARD_FRAME, PART_TYPES, STATUS_LABEL, cleanCaptio
 import { PlatformGlyph } from "./PlatformGlyph";
 import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, savePlatforms, takeOffCalendar, toLocalInput, whenLabel, type CalRow, type PlaceResult, type PostState } from "./schedule";
 import "./calendar.css";
+import { CalendarSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * The calendar in the studio look (2026-10-11; the classic one stays at /dashboard/calendar).
@@ -166,7 +167,7 @@ export function Calendar() {
   } : {};
 
   if (!activeBrand) return <div className="s-empty"><h3>No brand open</h3><p className="text-[13px]">Pick a brand in the top bar to see its calendar.</p></div>;
-  if (!scheduled || !ready) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (!scheduled || !ready) return <CalendarSkeleton />;
 
   const monthName = month.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   const inMonth = scheduled.filter((p) => p.scheduled_at && new Date(p.scheduled_at).getMonth() === month.getMonth()).length;

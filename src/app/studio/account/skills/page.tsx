@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BookOpen, ChevronDown, Link2, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ListSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * Ask skills (2026-10-12): the playbooks Ask BlinkSpot loads when a request needs one. Built-in
@@ -49,7 +50,7 @@ export default function SkillsPage() {
     setMine((m) => m.filter((x) => x.id !== s.id));
   }
 
-  if (builtin === null) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (builtin === null) return <ListSkeleton />;
   const canAdd = mode === "link" ? /^https:\/\/\S+$/.test(url.trim()) : draft.name.trim() && draft.description.trim() && draft.body.trim().length > 20;
 
   const card = (s: Skill, own: boolean) => (

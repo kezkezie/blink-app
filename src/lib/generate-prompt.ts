@@ -1,5 +1,6 @@
 import { MARKETING_STYLES } from "@/lib/marketing-styles";
 import type { BrandResearch } from "@/lib/brand-research";
+import { directionFor, type VisualRefs } from "@/lib/visual-refs";
 
 /**
  * Generate's prompt (2026-10-14). Kezie and a friend testing Gasless Cash: "the planning, the ideas,
@@ -51,6 +52,8 @@ export type PromptInput = {
   research?: BrandResearch | null;
   /** The researched format the chosen idea follows. */
   basedOn?: string | null;
+  /** Art direction from reference pictures in the brand's category (2026-10-16). */
+  visual?: VisualRefs | null;
 };
 
 const firstSentences = (text: string, n: number) => (text.match(/[^.!?]+[.!?]+/g) ?? [text]).slice(0, n).join(" ").trim();
@@ -63,6 +66,8 @@ export function buildGeneratePrompt(i: PromptInput): string {
     const format = i.basedOn ? i.research?.formats.find((f) => f.name.toLowerCase() === i.basedOn!.toLowerCase()) : undefined;
     if (format) lines.push(`Layout to follow: ${format.layout}${format.imagery ? ` In the picture: ${format.imagery}` : ""}`);
     if (i.research?.visualLanguage) lines.push(`Make it look like the best posts in this industry: ${firstSentences(i.research.visualLanguage, 2)}`);
+    const fromRefs = directionFor(i.visual, i.look);
+    if (fromRefs) lines.push(fromRefs);
     const colours = (i.colours ?? []).filter((c): c is string => !!c && /^#?[0-9a-f]{6}$/i.test(c));
     if (colours.length) lines.push(`Use the brand's colours as the palette: ${colours.join(", ")}.`);
     if (i.font && (words || i.look === "poster")) lines.push(`Set headlines in a typeface like ${i.font}.`);

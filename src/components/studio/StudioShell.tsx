@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -31,6 +31,18 @@ const PLACES: Array<{ id: StudioSection; label: string; href: string; icon: type
   { id: "site", label: "Website", href: "/studio/sites", icon: Globe },
 ];
 
+/** A tab's icon and label; while its page is on the way, the tab lights up and shimmers (2026-10-16). */
+function NavInner({ icon: Icon, label }: { icon: (typeof PLACES)[number]["icon"]; label: string }) {
+  const { pending } = useLinkStatus();
+  return (
+    <>
+      {pending && <span className="s-navpending" aria-hidden />}
+      <Icon strokeWidth={1.8} />
+      {label}
+    </>
+  );
+}
+
 /** The four places. A rail on desktop, a bottom tab bar on phones (with Ask as the fifth tab). */
 export function StudioNav() {
   const pathname = usePathname();
@@ -38,8 +50,7 @@ export function StudioNav() {
   const { setOpen } = useAskStore();
   const links = PLACES.map((p) => (
     <Link key={p.id} href={p.href} className="s-navbtn" aria-current={section === p.id ? "page" : undefined}>
-      <p.icon strokeWidth={1.8} />
-      {p.label}
+      <NavInner icon={p.icon} label={p.label} />
     </Link>
   ));
   return (

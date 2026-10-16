@@ -214,5 +214,7 @@ export async function runAssistant(
     messages.push({ role: "user", content: results });
   }
 
-  return { reply: reply || (actions.length ? "Here you go." : "Sorry, I could not finish that. Try asking again."), actions, usage, provider: provider.name, model, effort };
+  // The chat shows text as typed: markdown bold and headings (which the model sometimes adds) are dropped.
+  const plain = reply.replace(/\*\*([^*\n]+)\*\*/g, "$1").replace(/^#{1,6}\s+/gm, "");
+  return { reply: plain || (actions.length ? "Here you go." : "Sorry, I could not finish that. Try asking again."), actions, usage, provider: provider.name, model, effort };
 }

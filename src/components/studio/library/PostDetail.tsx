@@ -18,6 +18,7 @@ import { InstagramTroubleshootModal } from "@/components/publishing/InstagramTro
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, publishNow, settingsFor, takeOffCalendar, toLocalInput, whenLabel, type CalRow } from "@/components/studio/plan/schedule";
 import { UpscaleButton } from "./Upscale";
+import { DetailSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * A post in the studio look (2026-10-11; the classic page stays at /dashboard/content/[id]).
@@ -223,7 +224,7 @@ export function PostDetail({ id }: { id: string }) {
     finally { setBusy(null); }
   }
 
-  if (post === undefined) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (post === undefined) return <DetailSkeleton />;
   if (post === null) return (
     <div className="s-empty"><h3>Post not found</h3><p className="text-[13px]">It may have been deleted, or it belongs to another account.</p><Link href="/studio/library" className="s-btn sm mt-3">Back to Library</Link></div>
   );

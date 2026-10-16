@@ -13,6 +13,7 @@ import { SENSITIVE, SENSITIVE_FAILURE, softenForAi } from "@/lib/ai-safe-text";
 import { mustKeep } from "@/lib/design-pass";
 import { GENERATE_LOOKS, buildGeneratePrompt, lookForVibes, routerTopic, type GenerateLook } from "@/lib/generate-prompt";
 import type { BrandResearch } from "@/lib/brand-research";
+import type { VisualRefs } from "@/lib/visual-refs";
 import { thumbUrl } from "./media";
 import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage, type ImageEngine } from "./generate-image";
 
@@ -47,13 +48,18 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
   const [logoOn, setLogoOn] = useState<boolean | null>(null);
   const [basedOn, setBasedOn] = useState<string | null>(null);
   const [research, setResearch] = useState<BrandResearch | null | undefined>(undefined);
+  // Reference pictures from the brand's category and the art direction Claude took from them (2026-10-16).
+  const [visual, setVisual] = useState<VisualRefs | null>(null);
+  const [visualFor, setVisualFor] = useState<string | null>(null);
+  const [studying, setStudying] = useState(false);
+  const [showRefs, setShowRefs] = useState(false);
   const [format, setFormat] = useState<(typeof FORMATS)[number]>("4:5");
   const [quality, setQuality] = useState<Quality>("best");
   const [count, setCount] = useState(1);
   const [refs, setRefs] = useState<Array<{ url: string; preview: string }>>([]);
   const [thinking, setThinking] = useState<"research" | "ideas" | "brief" | null>(null);
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<"design" | "make" | null>(null);
+  const [phase, setPhase] = useState<"refs" | "design" | "make" | null>(null);
   const [designNote, setDesignNote] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [results, setResults] = useState<GeneratedImage[]>([]);
@@ -74,6 +80,30 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
   const cost = IMAGE_ENGINE_REGISTRY[engine].creditCost * count;
   const ready = brief.trim().length >= 8;
 
+  // The kept reference board, if this brand has one (free, never starts a study).
+  useEffect(() => {
+    if (!activeBrand) return;
+    let cancelled = false;
+    fetch("/api/brand/visual-refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, cachedOnly: true }) })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (!cancelled) { setVisual(d?.refs ? (d as VisualRefs) : null); setVisualFor(activeBrand.id); } }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeBrand]);
+  const brandVisual = visualFor === activeBrand?.id ? visual : null;
+
+  /** Reference pictures from the brand's category: studied once per brand (about a minute, no credits). */
+  async function ensureVisual(): Promise<VisualRefs | null> {
+    if (brandVisual || !activeBrand) return brandVisual;
+    setStudying(true);
+    try {
+      const res = await fetch("/api/brand/visual-refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id }) });
+      const d = res.ok ? await res.json().catch(() => null) : null;
+      const v = d?.refs ? (d as VisualRefs) : null;
+      setVisual(v); setVisualFor(activeBrand.id);
+      return v;
+    } catch { return null; }
+    finally { setStudying(false); }
+  }
+
   /** How leading brands in this industry post: researched once per brand (about 30 s, no credits). */
   async function ensureResearch(): Promise<BrandResearch | null> {
     if (brandResearch || !activeBrand) return brandResearch;
@@ -92,6 +122,8 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
     if (!activeBrand || text.trim().length < 8) { toast.info("Tell me a bit more first (a few words is enough)."); return; }
     setConcepts([]); setPicked(null);
     await ensureResearch();
+    // The reference board is studied alongside, so it's ready when they press Generate.
+    if (!brandVisual && !studying) void ensureVisual();
     setThinking("ideas");
     try {
       const data = await assisted<{ concepts: CreativeConcept[] }>({ operation: "concepts", brandId: activeBrand.id, idea: text.trim() });
@@ -159,9 +191,12 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
     if (!clientId || !activeBrand || !kit || text.trim().length < 8) return;
     setBusy(true);
     try {
+      // Best looks at real references first (once per brand); Fast uses them if they're there.
+      let board = brandVisual;
+      if (!board && pick === "best" && activeLook !== "plain") { setPhase("refs"); board = await ensureVisual(); }
       let assembledPrompt = buildGeneratePrompt({
         brief: text, look: activeLook, colours: [kit.primaryColor, kit.secondaryColor], font: kit.primaryFont,
-        words, logo: withLogo, products: refs.length, research: brandResearch, basedOn,
+        words, logo: withLogo, products: refs.length, research: brandResearch, basedOn, visual: board,
       });
       // Design it before rendering (2026-10-14): Best and Fast get an art director's prompt from the
       // design playbook; Plain and Draft go as written. If design fails, the requirements go as they are.
@@ -325,8 +360,31 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
               <div className="flex gap-1.5">{[1, 2, 3, 4].map((n) => <button key={n} className="s-chip" aria-pressed={count === n} onClick={() => setCount(n)}>{n}</button>)}</div>
             </div>
             <button className="s-btn primary lg w-full mt-auto" disabled={!ready || busy || !kit} onClick={() => void generate()}>
-              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {phase === "design" ? "Designing it…" : "Making it…"} {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
+              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {phase === "refs" ? "Studying references…" : phase === "design" ? "Designing it…" : "Making it…"} {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
             </button>
+            {/* What it learned from: reference pictures from the brand's category (2026-10-16). */}
+            {studying ? (
+              <p className="text-[11.5px] flex items-center gap-1.5" style={{ color: "var(--s-soft)" }} role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Studying reference pictures for {name} from Pinterest, brands and design studios, once for this brand (about a minute)…</p>
+            ) : brandVisual ? (
+              <div className="grid gap-1.5">
+                <button className="text-[11.5px] text-left flex items-center gap-1.5" style={{ color: "var(--s-soft)" }} onClick={() => setShowRefs((v) => !v)} aria-expanded={showRefs}>
+                  <Sparkles className="h-3 w-3" style={{ color: "var(--s-ai)" }} /> Learning from {brandVisual.refs.length} reference pictures in your category <span className="underline">{showRefs ? "hide" : "see them"}</span>
+                </button>
+                {showRefs && (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      {brandVisual.refs.map((r) => (
+                        <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" title={`${r.title} · ${r.source}`} className="h-14 w-14 rounded-lg overflow-hidden block" style={{ border: "1px solid var(--s-line)" }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={r.image} alt={r.title} className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                        </a>
+                      ))}
+                    </div>
+                    {brandVisual.notes && <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>{brandVisual.notes} References guide the craft; nothing is copied.</p>}
+                  </>
+                )}
+              </div>
+            ) : null}
             {/* Say what to expect and what you can do about it, not a disclaimer (Microsoft HAX: make
                 clear how well the system can do what it can do; PAIR: set expectations, give control). */}
             <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>

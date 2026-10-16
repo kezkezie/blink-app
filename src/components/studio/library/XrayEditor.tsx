@@ -12,6 +12,7 @@ import { Modal } from "@/components/studio/Modal";
 import { ImagePicker } from "@/components/studio/ImagePicker";
 import { useBrandKit } from "@/components/studio/generate-image";
 import { EDIT_CREDITS, MAX_SWAPS, SCAN_CREDITS, changeCount, normalizeChanges, type EditEngine, type EditKind, type Scan, type ScanObject } from "@/lib/ai-edit";
+import { DetailSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * Edit with AI in the studio look (rebuilt 2026-10-15; the classic X-ray page stays at
@@ -194,7 +195,7 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
     finally { setApplying(false); }
   }
 
-  if (image === undefined) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (image === undefined) return <DetailSkeleton />;
   if (!image) return <div className="s-empty"><h3>No picture to edit</h3><p className="text-[13px]">Edit with AI works on images. Open an image post from your Library.</p><Link href="/studio/library" className="s-btn sm mt-3">Library</Link></div>;
 
   const shown = result && !showBefore ? result.url : image;

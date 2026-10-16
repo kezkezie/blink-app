@@ -11,6 +11,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { cleanCaption, MediaThumb, resolveMedia, timeAgo } from "@/components/studio/media";
 import { Modal } from "@/components/studio/Modal";
 import type { Content } from "@/types/database";
+import { ListSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * Approvals in the studio look (the classic page was a white card that ignored the theme).
@@ -77,7 +78,7 @@ export default function ApprovalsPage() {
   }
 
   if (clientLoading || pending === null) {
-    return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+    return <ListSkeleton />;
   }
 
   const Card = ({ item, kind }: { item: Row; kind: "pending" | "draft" }) => {

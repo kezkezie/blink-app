@@ -9,6 +9,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { useCredits } from "@/components/studio/hooks";
 import { readVideo, type VideoReading } from "@/lib/video-inspo/analyze";
 import { INSPO_HANDOFF_KEY, inspoPattern, inspoPatternKey, type InspoPlan } from "@/lib/video-inspo/plan";
+import { videoLinkProblem } from "@/lib/video-inspo/links";
 
 /**
  * Video Inspo (Kezie, 2026-10-12: "the inspo for stealing videos ... replicate the video but for our
@@ -41,16 +42,22 @@ export function VideoInspo() {
     setPlan(null); setReading(null);
     setSrc({ url: URL.createObjectURL(f), name: f.name });
   }
-  function takeLink() {
+  // A link is copied into storage first (2026-10-16): other sites rarely let a browser read their
+  // video frames, and app links (Pinterest, TikTok...) get the steps to save the video instead.
+  const [fetchingLink, setFetchingLink] = useState(false);
+  async function takeLink() {
     const url = link.trim();
-    if (!/^https:\/\/\S+$/.test(url)) { toast.error("Paste a full https link to a video file."); return; }
-    if (/tiktok\.com|instagram\.com|youtube\.com|youtu\.be|facebook\.com/i.test(url)) {
-      toast.info("Those apps don't let other sites read their videos. Save the video to your phone (Share > Save video), then drop the file here.", { duration: 9000 });
-      return;
-    }
-    setPlan(null); setReading(null);
-    setSrc({ url, name: url.split("/").pop()?.split("?")[0] || "video" });
-    setLink("");
+    const problem = videoLinkProblem(url);
+    if (problem) { (problem.app ? toast.info : toast.error)(problem.message, { duration: 10_000 }); return; }
+    setFetchingLink(true);
+    try {
+      const res = await fetch("/api/inspo/video-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) { toast.error(data.error || "Couldn't use that link. Download the video and drop the file here."); return; }
+      setPlan(null); setReading(null);
+      setSrc({ url: data.url, name: data.name || "video" });
+      setLink("");
+    } finally { setFetchingLink(false); }
   }
 
   async function run() {
@@ -114,9 +121,9 @@ export function VideoInspo() {
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); takeLink(); }}>
                 <div className="relative flex-1">
                   <Link2 className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--s-mute)" }} />
-                  <input className="s-input" style={{ paddingLeft: 30 }} value={link} onChange={(e) => setLink(e.target.value)} placeholder="…or paste a link to a video file (.mp4)" aria-label="Video link" data-no-mic />
+                  <input className="s-input" style={{ paddingLeft: 30 }} value={link} onChange={(e) => setLink(e.target.value)} placeholder="…or paste a link to a video file (.mp4, .mov, .webm)" aria-label="Video link" data-no-mic />
                 </div>
-                <button className="s-btn" type="submit" disabled={!link.trim()}>Use link</button>
+                <button className="s-btn" type="submit" disabled={!link.trim() || fetchingLink}>{fetchingLink ? <><Loader2 className="h-4 w-4 animate-spin" /> Getting it…</> : "Use link"}</button>
               </form>
               <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>From TikTok or Instagram: tap Share, Save video, then drop the file here.</p>
             </>

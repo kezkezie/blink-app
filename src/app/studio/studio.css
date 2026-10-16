@@ -100,6 +100,13 @@ body.studio [role="menuitem"], body.studio [role="option"] { cursor: pointer; }
   .s-navbtn:hover { background: var(--s-raised); color: var(--s-soft); }
   .s-navbtn[aria-current="page"] { background: var(--s-raised); color: var(--s-text); }
   .s-navbtn[aria-current="page"] svg { color: var(--s-accent); }
+  /* The tapped tab answers at once: lit and shimmering until its page arrives (2026-10-16). */
+  .s-navbtn { position: relative; }
+  .s-navbtn:has(.s-navpending) { background: var(--s-raised); color: var(--s-text); }
+  .s-navbtn:has(.s-navpending) svg { color: var(--s-accent); }
+  .s-navpending { position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--s-accent) 22%, transparent), transparent); background-size: 200% 100%;
+    animation: s-shimmer 0.9s infinite linear; }
   .s-navbtn.ask svg { color: var(--s-ai); }
   .s-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .s-top { position: sticky; top: 0; z-index: 20; height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 10px;

@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { getBrandAllowance } from "@/app/actions/brand";
 import { BrandQuickStart } from "@/components/studio/brand/BrandQuickStart";
+import { FormSkeleton } from "@/components/studio/Skeletons";
 
 /** A new brand, the same two screens as sign-up (2026-10-12; the classic modal stays in Vintage). */
 export default function NewBrandPage() {
@@ -25,7 +25,7 @@ export default function NewBrandPage() {
     });
   }, []);
 
-  if (!clientId || !allowed) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (!clientId || !allowed) return <FormSkeleton />;
   if (!allowed.ok) {
     return (
       <div className="s-empty max-w-[560px] mx-auto mt-10">

@@ -13,6 +13,7 @@ import { GOOGLE_FONTS_REGISTRY, injectGoogleFont } from "@/lib/fonts";
 import { brandStrength, canonicalIndustry, CTAS, INDUSTRIES, LANGUAGES, PERSONALITY, PHOTO_VIBES, type BrandDna, type BrandProduct } from "@/lib/brand-dna";
 import { canvasSafe, loadImage, paletteOf } from "../editor/util";
 import { thumbUrl } from "../media";
+import { FormSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * The Brand page in the studio look (2026-10-11). Asks what decides whether content is usable:
@@ -287,7 +288,7 @@ export function BrandEditor() {
       </div>
     );
   }
-  if (!form) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (!form) return <FormSkeleton />;
 
   const fonts = GOOGLE_FONTS_REGISTRY.map((f) => f.family);
   const formality = form.dna.formality ?? 40;

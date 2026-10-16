@@ -9,6 +9,7 @@ import { useClient } from "@/hooks/useClient";
 import { CREDIT_PACKS, PLANS, TOP_UP_NEEDS_PLAN, canTopUp, planOf, type PlanTier } from "@/lib/plans";
 import { formatCredits } from "@/components/studio/hooks";
 import { creditsByBrand, type LedgerLine } from "@/lib/credits-by-brand";
+import { FormSkeleton } from "@/components/studio/Skeletons";
 
 /**
  * Billing & credits in the studio look (2026-10-11; the classic page stays at /dashboard/billing).
@@ -113,7 +114,7 @@ function BillingPage() {
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't open the subscription page."); setBusy(null); }
   }, []);
 
-  if (loading || plan === null) return <div className="grid place-items-center py-24"><Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--s-mute)" }} /></div>;
+  if (loading || plan === null) return <FormSkeleton />;
   const current = PLANS.find((p) => p.id === plan)!;
   const rank = ORDER.indexOf(plan);
 
