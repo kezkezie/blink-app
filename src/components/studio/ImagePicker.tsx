@@ -7,7 +7,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import type { Content } from "@/types/database";
 import { NOT_STORYBOARD_FRAME, PART_TYPES, VIDEO_TYPES, cleanCaption, resolveMedia, thumbUrl } from "./media";
 
-export type PickedImage = { url: string; contentId: string | null; title: string };
+export type PickedImage = { url: string; contentId: string | null; title: string; /** A carousel's slide (2026-10-16): the Editor can save back to it. */ slide?: number };
 
 /** The brand's images from the Library, plus "upload from this device". */
 export function ImagePicker({ onPick, allowUpload = true, selectedId }: { onPick: (img: PickedImage) => void; allowUpload?: boolean; selectedId?: string | null }) {

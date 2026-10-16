@@ -1,7 +1,8 @@
 "use client";
 
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, GalleryHorizontal, Loader2, Play } from "lucide-react";
 import { cloudinaryVideoPoster } from "@/lib/utils";
 import type { Content } from "@/types/database";
 
@@ -117,12 +118,29 @@ export function MediaCard({ content, href, actions, selected, aspect = "4 / 3", 
   const media = resolveMedia(content);
   const status = STATUS_LABEL[content.status] ?? { label: content.status };
   const title = cleanCaption(content.caption) || (media.isVideo ? "Video" : "Image");
+  // A carousel (several pictures): swipe through it right on the card (2026-10-16).
+  const slides = !media.isVideo && media.images.length > 1 ? media.images : null;
+  const [slide, setSlide] = useState(0);
+  const swipeX = useRef<number | null>(null);
+  const swiped = useRef(false);
+  const go = (e: React.SyntheticEvent, by: number) => { e.preventDefault(); e.stopPropagation(); if (slides) setSlide((i) => (i + by + slides.length) % slides.length); };
   return (
     <div className={`s-media${selected ? " sel" : ""}`}>
       {(() => {
         const inner = (
-          <div className="m" style={{ aspectRatio: aspect }}>
-            <MediaThumb {...media} alt={title} />
+          <div className="m" style={{ aspectRatio: aspect }}
+            onPointerDown={slides ? (e) => { swipeX.current = e.clientX; swiped.current = false; } : undefined}
+            onPointerUp={slides ? (e) => { const x = swipeX.current; swipeX.current = null; if (x !== null && Math.abs(e.clientX - x) > 40) { swiped.current = true; setSlide((i) => (i + (e.clientX < x ? 1 : -1) + slides.length) % slides.length); } } : undefined}
+            onClickCapture={slides ? (e) => { if (swiped.current) { e.preventDefault(); e.stopPropagation(); swiped.current = false; } } : undefined}>
+            <MediaThumb {...media} url={slides ? slides[slide] : media.url} alt={title} />
+            {slides && (
+              <>
+                <span className="s-badge absolute top-2 right-2 flex items-center gap-1" style={{ background: "rgba(12,13,15,.7)", color: "#fff" }}><GalleryHorizontal className="h-3 w-3" /> {slide + 1}/{slides.length}</span>
+                <span role="button" tabIndex={-1} aria-label="Previous slide" className="s-cslide l" onClick={(e) => go(e, -1)}><ChevronLeft className="h-4 w-4" /></span>
+                <span role="button" tabIndex={-1} aria-label="Next slide" className="s-cslide r" onClick={(e) => go(e, 1)}><ChevronRight className="h-4 w-4" /></span>
+                <span className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">{slides.map((_, i) => <i key={i} className="block h-1.5 w-1.5 rounded-full" style={{ background: i === slide ? "#fff" : "rgba(255,255,255,.45)" }} />)}</span>
+              </>
+            )}
             {!media.url && content.generation_status_text && <PendingNote content={content} />}
             <div className="tl">
               {media.isVideo && <span className="s-badge"><Play className="inline h-2.5 w-2.5 -mt-px" /> VIDEO</span>}

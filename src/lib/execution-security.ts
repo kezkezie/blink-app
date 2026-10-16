@@ -19,7 +19,8 @@ const IMAGE_STYLES = new Set([
   // Generate's Plain: the user's words as they are, no art direction (2026-10-14).
   "plain",
 ]);
-const ASPECT_RATIOS = new Set(["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3"]);
+// 21:9 for seamless carousels (one wide picture cut into slides, 2026-10-16).
+const ASPECT_RATIOS = new Set(["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3", "21:9"]);
 const CONTENT_TYPES = new Set([
   "video", "reel", "carousel", "story", "post", "post_image", "raw_clip",
   "sequence_clip", "generated_audio",

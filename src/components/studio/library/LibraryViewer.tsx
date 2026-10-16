@@ -19,12 +19,20 @@ export function LibraryViewer({ items, index, onIndex, onClose, onDelete, hasMor
 }) {
   const item = items[index];
   const media = item ? resolveMedia(item) : null;
+  // A carousel: its slides come first, then the next post (2026-10-16).
+  const slides = media && !media.isVideo && media.images.length > 1 ? media.images : null;
+  const [slideAt, setSlideAt] = useState<{ id: string; n: number }>({ id: "", n: 0 });
+  const slide = item && slideAt.id === item.id ? slideAt.n : 0;
   const [downloading, setDownloading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const swipe = useRef<number | null>(null);
   const atEnd = index >= items.length - 1;
 
   const go = useCallback(async (by: number) => {
+    if (slides && item) {
+      const n = slide + by;
+      if (n >= 0 && n < slides.length) { setSlideAt({ id: item.id, n }); return; }
+    }
     const next = index + by;
     if (next < 0) return;
     if (next >= items.length) {
@@ -35,7 +43,7 @@ export function LibraryViewer({ items, index, onIndex, onClose, onDelete, hasMor
       return;
     }
     onIndex(next);
-  }, [index, items.length, hasMore, loadingMore, onLoadMore, onIndex]);
+  }, [index, items.length, hasMore, loadingMore, onLoadMore, onIndex, slides, slide, item]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -58,22 +66,24 @@ export function LibraryViewer({ items, index, onIndex, onClose, onDelete, hasMor
   }, [index, items]);
 
   async function download() {
-    if (!media?.url) return;
+    const url = slides ? slides[slide] : media?.url;
+    if (!url) return;
     setDownloading(true);
     try {
-      const blob = await (await fetch(media.url)).blob();
+      const blob = await (await fetch(url)).blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `${(cleanCaption(item.caption) || "blinkspot").slice(0, 40).replace(/[^\w\- ]+/g, "").trim() || "blinkspot"}.${media.isVideo ? "mp4" : blob.type.includes("png") ? "png" : "jpg"}`;
+      a.download = `${(cleanCaption(item.caption) || "blinkspot").slice(0, 40).replace(/[^\w\- ]+/g, "").trim() || "blinkspot"}.${media?.isVideo ? "mp4" : blob.type.includes("png") ? "png" : "jpg"}`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    } catch { window.open(media.url, "_blank", "noopener"); }
+    } catch { window.open(url, "_blank", "noopener"); }
     finally { setDownloading(false); }
   }
 
   if (!item || !media || typeof document === "undefined") return null;
   const title = cleanCaption(item.caption) || (media.isVideo ? "Video" : "Image");
-  const image = !media.isVideo && media.url ? media.url : null;
+  const shownUrl = slides ? slides[slide] : media.url;
+  const image = !media.isVideo && shownUrl ? shownUrl : null;
   const made = item.ai_model && item.ai_model !== "caption-ai" ? "Made with AI" : "Uploaded";
 
   return createPortal(
@@ -91,17 +101,23 @@ export function LibraryViewer({ items, index, onIndex, onClose, onDelete, hasMor
           ? <video key={item.id} src={media.url!} controls autoPlay playsInline className="max-h-full max-w-full rounded-lg" style={{ maxHeight: "calc(100dvh - 170px)" }} />
           : media.url
             // eslint-disable-next-line @next/next/no-img-element
-            ? <img key={item.id} src={thumbUrl(media.url, 1600)} alt={title} className="max-h-full max-w-full object-contain rounded-lg select-none" draggable={false} style={{ maxHeight: "calc(100dvh - 170px)" }} />
+            ? <img key={`${item.id}-${slide}`} src={thumbUrl(shownUrl!, 1600)} alt={slides ? `${title}, slide ${slide + 1} of ${slides.length}` : title} className="max-h-full max-w-full object-contain rounded-lg select-none" draggable={false} style={{ maxHeight: "calc(100dvh - 170px)" }} />
             : <span style={{ color: "#a0a4ad" }}>{item.generation_status_text || "No picture yet"}</span>}
-        <button className="absolute left-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full grid place-items-center disabled:opacity-30" style={{ background: "rgba(255,255,255,.1)", color: "#fff" }} disabled={index === 0} onClick={() => void go(-1)} aria-label="Previous"><ChevronLeft className="h-6 w-6" /></button>
-        <button className="absolute right-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full grid place-items-center disabled:opacity-30" style={{ background: "rgba(255,255,255,.1)", color: "#fff" }} disabled={atEnd && !hasMore} onClick={() => void go(1)} aria-label="Next">
+        {slides && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: "rgba(12,13,15,.7)", color: "#fff" }}>
+            {slides.map((_, i) => <button key={i} aria-label={`Slide ${i + 1}`} onClick={() => setSlideAt({ id: item.id, n: i })} className="h-2 w-2 rounded-full" style={{ background: i === slide ? "#fff" : "rgba(255,255,255,.4)" }} />)}
+            <span className="mono text-[11px]">slide {slide + 1} of {slides.length}</span>
+          </div>
+        )}
+        <button className="absolute left-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full grid place-items-center disabled:opacity-30" style={{ background: "rgba(255,255,255,.1)", color: "#fff" }} disabled={index === 0 && slide === 0} onClick={() => void go(-1)} aria-label="Previous"><ChevronLeft className="h-6 w-6" /></button>
+        <button className="absolute right-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full grid place-items-center disabled:opacity-30" style={{ background: "rgba(255,255,255,.1)", color: "#fff" }} disabled={atEnd && !hasMore && (!slides || slide === slides.length - 1)} onClick={() => void go(1)} aria-label="Next">
           {loadingMore ? <Loader2 className="h-5 w-5 animate-spin" /> : <ChevronRight className="h-6 w-6" />}
         </button>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2 px-4 py-3">
         <Link href={`/studio/library/${item.id}`} className="s-btn sm"><ExternalLink className="h-3.5 w-3.5" /> Open the post</Link>
-        {image && <Link href={`/studio/library/${item.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>}
-        {image && <Link href={`/studio/image?mode=design&content=${item.id}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> Editor</Link>}
+        {image && !slides && <Link href={`/studio/library/${item.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>}
+        {image && <Link href={`/studio/image?mode=design&content=${item.id}${slides ? `&slide=${slide}` : ""}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> {slides ? `Edit slide ${slide + 1}` : "Editor"}</Link>}
         {image && <Link href={`/studio/video?tab=editor&rail=motion&motionPicture=${item.id}&motion=${encodeURIComponent(`Animate this picture${title ? `: ${title.slice(0, 120)}` : ""}`)}`} className="s-btn sm"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>}
         {image && <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>}
         <button className="s-btn sm" disabled={!media.url || downloading} onClick={download}>{downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download</button>

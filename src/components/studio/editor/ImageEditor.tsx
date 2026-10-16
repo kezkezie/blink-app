@@ -204,6 +204,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const bump = useCallback(() => setVersion((v) => v + 1), []);
   const [started, setStarted] = useState(!!initial);
   const pendingPhoto = useRef<PickedImage | null>(initial ?? null);
+  // The carousel slide this design came from, if any (kept after the photo is placed).
+  const [slideTarget] = useState<PickedImage | null>(initial?.slide !== undefined ? initial : null);
   const [picking, setPicking] = useState<null | "photo" | "face">(null);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [vectorPrompt, setVectorPrompt] = useState("");
@@ -290,7 +292,9 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     c.requestRenderAll();
     // The canvas is centred in its area, so a resize moves it on screen: fabric must re-measure
     // where it is, or every click lands offset from the pointer.
-    requestAnimationFrame(() => c.calcOffset());
+    // Not on a canvas that was disposed meanwhile (the Editor remounts when a post finishes loading).
+    const frame = requestAnimationFrame(() => { if (cv.current === c) c.calcOffset(); });
+    return () => cancelAnimationFrame(frame);
   }, [zoom, size, started]);
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -1001,6 +1005,28 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       a.click();
     } catch (e) { console.error(e); toast.error("Export failed. A photo from another site may be blocking it; re-add it from your Library."); }
   }
+  /** Back into the carousel this slide came from, in its place (2026-10-16); the old slide is kept in the post's history. */
+  async function saveToSlide() {
+    const target = slideTarget;
+    if (!target?.contentId || target.slide === undefined) return;
+    if (!clientId) { toast.error("Your account is still loading. Try again in a moment."); return; }
+    setAiBusy(`Saving slide ${target.slide + 1}…`);
+    try {
+      const url = await uploadBlob(await (await fetch(await render("jpeg"))).blob(), "slide");
+      const { data: row } = await supabase.from("content").select("image_urls, creation_metadata").eq("id", target.contentId).single();
+      const slides = Array.isArray(row?.image_urls) ? [...(row!.image_urls as string[])] : [];
+      if (!slides[target.slide]) throw new Error("That slide isn't in the carousel any more.");
+      const meta = (row?.creation_metadata && typeof row.creation_metadata === "object" ? row.creation_metadata : {}) as Record<string, unknown>;
+      const history = Array.isArray(meta.replaced_slides) ? meta.replaced_slides : [];
+      const old = slides[target.slide];
+      slides[target.slide] = url;
+      const { error } = await supabase.from("content").update({ image_urls: slides, creation_metadata: { ...meta, replaced_slides: [...history, { slide: target.slide, url: old, at: new Date().toISOString() }].slice(-30) } }).eq("id", target.contentId);
+      if (error) throw error;
+      toast.success(`Slide ${target.slide + 1} saved in the carousel`, { action: { label: "Open", onClick: () => { window.location.href = `/studio/library/${target.contentId}`; } } });
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't save the slide."); }
+    finally { setAiBusy(null); }
+  }
+
   async function saveToLibrary() {
     if (!clientId || !activeBrand) return;
     setAiBusy("Saving to your Library…");
@@ -1222,7 +1248,9 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               </div>
             </div>
           </div>
-          <button className="s-btn primary sm shrink-0" onClick={saveToLibrary} disabled={!!aiBusy}><Save className="h-3.5 w-3.5" /> Save to Library</button>
+          {/* Never a button that silently does nothing while the account loads (known issue, 2026-10-11). */}
+          {slideTarget?.slide !== undefined && <button className="s-btn primary sm shrink-0" onClick={saveToSlide} disabled={!!aiBusy || !clientId}><Save className="h-3.5 w-3.5" /> {clientId ? `Save to slide ${slideTarget.slide + 1}` : "Loading your account…"}</button>}
+          <button className={`s-btn ${slideTarget?.slide !== undefined ? "" : "primary "}sm shrink-0`} onClick={saveToLibrary} disabled={!!aiBusy || !clientId}><Save className="h-3.5 w-3.5" /> {!clientId ? "Loading your account…" : slideTarget?.slide !== undefined ? "Save as a new post" : "Save to Library"}</button>
         </div>
         <div
           ref={wrapRef}

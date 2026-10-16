@@ -178,6 +178,12 @@ body.studio [role="menuitem"], body.studio [role="option"] { cursor: pointer; }
      need to see the full text... expand, but not all the way"). --min-lines / --max-lines per box. */
   textarea.s-grow { field-sizing: content; resize: none; overflow-y: auto;
     min-height: calc(var(--min-lines, 2) * 1.6em + 0.6em); max-height: calc(var(--max-lines, 5) * 1.6em + 0.6em); line-height: 1.6; }
+  /* Carousel cards: arrows to swipe slides on the card itself (2026-10-16). */
+  .s-cslide { position: absolute; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center;
+    background: rgba(12,13,15,.6); color: #fff; opacity: 0; transition: opacity .15s; cursor: pointer; }
+  .s-cslide.l { left: 8px; } .s-cslide.r { right: 8px; }
+  .s-media:hover .s-cslide, .s-cslide:focus-visible { opacity: 1; }
+  @media (hover: none) { .s-cslide { opacity: .8; } }
   .s-skel { background: linear-gradient(90deg, var(--s-panel), var(--s-raised), var(--s-panel)); background-size: 200% 100%;
     animation: s-shimmer 1.4s infinite linear; border-radius: var(--s-r-lg); }
   @keyframes s-shimmer { to { background-position: -200% 0; } }

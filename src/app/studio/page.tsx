@@ -16,8 +16,8 @@ import { useStudioBrands } from "@/components/studio/hooks";
 import { useAskStore } from "@/components/studio/ask-store";
 import { toast } from "sonner";
 
-type Kind = "video" | "image";
-const KIND_LABEL: Record<Kind, string> = { video: "Video", image: "Image" };
+type Kind = "video" | "image" | "carousel";
+const KIND_LABEL: Record<Kind, string> = { video: "Video", image: "Image", carousel: "Carousel" };
 
 const fromCredits = (mode: string, s = 5) => estimateVideoCredits("auto", s, { videoMode: mode, hasStartFrame: true }) ?? 0;
 
@@ -85,6 +85,7 @@ export default function CreatePage() {
   function start() {
     const b = brief.trim();
     if (kind === "image") router.push(`/studio/image${b ? `?prompt=${encodeURIComponent(b)}` : ""}`);
+    else if (kind === "carousel") router.push(`/studio/image?mode=carousel${b ? `&prompt=${encodeURIComponent(b)}` : ""}`);
     else router.push(`/studio/video?mode=storytelling${b ? `&brief=${encodeURIComponent(b)}` : ""}`);
   }
 
@@ -111,7 +112,7 @@ export default function CreatePage() {
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) start(); }}
           rows={3}
           style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 6 }}
-          placeholder={kind === "image" ? "Describe the image, e.g. a launch poster for our new flavour on a sunny kitchen table" : "Describe the video, e.g. a 20 second launch: the farm at dawn, the harvest, the pack, the plate. One line is fine for a single shot."}
+          placeholder={kind === "carousel" ? "What's the carousel about? e.g. 5 ways to keep our mushrooms fresh, or one wide picture of our farm across 3 slides" : kind === "image" ? "Describe the image, e.g. a launch poster for our new flavour on a sunny kitchen table" : "Describe the video, e.g. a 20 second launch: the farm at dawn, the harvest, the pack, the plate. One line is fine for a single shot."}
           aria-label="What do you want to make?"
           className="s-grow w-full bg-transparent outline-none resize-none text-base leading-relaxed px-1"
         />

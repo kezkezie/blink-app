@@ -4,7 +4,9 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { adaptRecipePrompt } from "@/lib/examples/adapt";
 import { toast } from "sonner";
-import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, Shuffle } from "lucide-react";
+import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, Shuffle, GalleryHorizontal } from "lucide-react";
+import { CarouselStudio } from "@/components/carousel/CarouselStudio";
+import { slidesOf } from "@/lib/carousel";
 import { InspoRemix } from "@/components/studio/InspoRemix";
 import { StudioGenerate } from "@/components/studio/StudioGenerate";
 import { supabase } from "@/lib/supabase";
@@ -32,17 +34,21 @@ const ImageEditor = dynamic(() => import("@/components/studio/editor/ImageEditor
  *   Editor       layers, shapes, pen, brush, eraser, text and AI on the canvas (remove background,
  *                swap a face, edit with words, vectorise, draw a vector/logo); Ask BlinkSpot can edit it
  */
-type Mode = "remix" | "generate" | "edit" | "design" | "pro";
+type Mode = "remix" | "generate" | "carousel" | "edit" | "design" | "pro";
 const MODES: Array<{ id: Mode; label: string; icon: typeof Sparkles; hint: string }> = [
   { id: "remix", label: "Inspo Remix", icon: Shuffle, hint: "Drop a design you love, get it for your brand" },
   { id: "generate", label: "Generate", icon: Sparkles, hint: "Make new images from an idea" },
+  { id: "carousel", label: "Carousel", icon: GalleryHorizontal, hint: "Slides people swipe: from a topic, one wide picture, or your pictures" },
   { id: "edit", label: "Edit with AI", icon: Wand2, hint: "Change a photo you have" },
   { id: "design", label: "Editor", icon: LayoutTemplate, hint: "Layers, shapes, pen, text and AI edits" },
 ];
 
-async function loadPicked(contentId: string): Promise<(PickedImage & { brandId: string | null }) | null> {
+async function loadPicked(contentId: string, slide?: number): Promise<(PickedImage & { brandId: string | null }) | null> {
   const { data } = await supabase.from("content").select("id, brand_id, caption, image_urls, video_urls, reference_image_url").eq("id", contentId).maybeSingle();
   if (!data) return null;
+  // A carousel's slide: that picture, and the Editor can save back to it (2026-10-16).
+  const slides = slidesOf(data.image_urls);
+  if (slide !== undefined && slides[slide]) return { url: slides[slide], contentId: data.id, title: `${cleanCaption(data.caption) || "Carousel"} · slide ${slide + 1}`, slide, brandId: (data.brand_id as string | null) ?? null };
   const m = resolveMedia(data as unknown as Content);
   return m.url && !m.isVideo ? { url: m.url, contentId: data.id, title: cleanCaption(data.caption) || "Image", brandId: (data.brand_id as string | null) ?? null } : null;
 }
@@ -52,7 +58,7 @@ function ImageStudioInner() {
   const router = useRouter();
   const { activeBrand } = useBrandStore();
   // No mode in the link: a typed idea opens Generate, otherwise Inspo Remix (the fastest way in).
-  const initialMode = (["remix", "generate", "edit", "design", "pro"] as const).find((m) => m === params.get("mode")) ?? (params.get("prompt") ? "generate" : "remix");
+  const initialMode = (["remix", "generate", "carousel", "edit", "design", "pro"] as const).find((m) => m === params.get("mode")) ?? (params.get("prompt") ? "generate" : "remix");
   // An idea from Create or Ask, read once (the query is cleared after arrival).
   // A recipe from an example is adapted to this brand (its brand rules and name taken out; QA-018).
   const [recipe] = useState(() => adaptRecipePrompt(params.get("prompt") ?? "", activeBrand?.brand_name));
@@ -63,7 +69,7 @@ function ImageStudioInner() {
   const [mode, setMode] = useState<Mode>(initialMode);
   // Links within Image Studio (a result's "Change colours or objects", "Add type") only change the
   // query; follow them (2026-10-14: the buttons on Generate's results did nothing).
-  const linkedMode = (["remix", "generate", "edit", "design", "pro"] as const).find((m) => m === params.get("mode"));
+  const linkedMode = (["remix", "generate", "carousel", "edit", "design", "pro"] as const).find((m) => m === params.get("mode"));
   const [seenMode, setSeenMode] = useState(linkedMode);
   if (linkedMode !== seenMode) {
     setSeenMode(linkedMode);
@@ -78,7 +84,9 @@ function ImageStudioInner() {
   useEffect(() => {
     const id = params.get("content");
     if (!id) return;
-    loadPicked(id).then((p) => { setPickedBrand(p?.brandId ?? null); setPicked(p); setLoadingPick(false); setDesignKey((k) => k + 1); });
+    const slideParam = params.get("slide");
+    const slide = slideParam !== null && /^\d{1,2}$/.test(slideParam) ? Number(slideParam) : undefined;
+    loadPicked(id, slide).then((p) => { setPickedBrand(p?.brandId ?? null); setPicked(p); setLoadingPick(false); setDesignKey((k) => k + 1); });
   }, [params]);
   // A post opens in its own brand, so AI edits use that brand's name, rules and logo (2026-10-13: a
   // NUF FARMS poster edited while "mama njeri kitchen" was active got Mama Njeri's name painted on).
@@ -119,6 +127,8 @@ function ImageStudioInner() {
       {mode === "remix" && <InspoRemix />}
 
       {mode === "generate" && <StudioGenerate initialIdea={initialIdea} autoIdeas={!!initialIdea} />}
+
+      {mode === "carousel" && <CarouselStudio initialTopic={initialIdea} />}
 
       {mode === "pro" && (
         <div className="p-4 md:p-6 mx-auto w-full max-w-[1320px]">
