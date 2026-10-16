@@ -28,6 +28,21 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
     return () => document.body.classList.remove("studio");
   }, []);
 
+  // Growing prompt boxes (textarea.s-grow) where CSS field-sizing isn't there yet (Firefox, older
+  // Safari): sized to their text as you type, up to their --max-lines.
+  useEffect(() => {
+    if (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")) return;
+    const fit = (el: HTMLTextAreaElement) => {
+      el.style.height = "auto";
+      const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
+      el.style.height = `${Math.min(el.scrollHeight + 2, max)}px`;
+    };
+    const onInput = (e: Event) => { const t = e.target; if (t instanceof HTMLTextAreaElement && t.classList.contains("s-grow")) fit(t); };
+    document.addEventListener("input", onInput, true);
+    document.addEventListener("focusin", onInput, true);
+    return () => { document.removeEventListener("input", onInput, true); document.removeEventListener("focusin", onInput, true); };
+  }, []);
+
   // Seeing the studio switches you to the new look (only a page that actually renders can do this).
   useEffect(() => {
     if (!document.cookie.split("; ").includes(`${UI_COOKIE}=studio`)) {

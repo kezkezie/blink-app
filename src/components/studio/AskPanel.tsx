@@ -273,10 +273,11 @@ export function AskPanel() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
             rows={2}
+            style={{ ["--min-lines" as string]: 1, ["--max-lines" as string]: 5 }}
             maxLength={4000}
             placeholder="Ask anything, or describe what to make"
             aria-label="Message"
-            className="flex-1 bg-transparent outline-none resize-none text-sm px-1"
+            className="s-grow flex-1 bg-transparent outline-none resize-none text-sm px-1"
           />
           <button type="submit" className="s-btn primary" style={{ width: 34, padding: 0 }} disabled={busy || !draft.trim()} aria-label="Send">
             <ArrowUp className="h-4 w-4" />

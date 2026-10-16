@@ -174,6 +174,10 @@ body.studio [role="menuitem"], body.studio [role="option"] { cursor: pointer; }
     display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
   .s-empty { border: 1px dashed var(--s-line-2); border-radius: var(--s-r-lg); padding: 48px 20px; text-align: center; color: var(--s-soft); }
   .s-empty h3 { color: var(--s-text); font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  /* Prompt boxes grow with the text, to about five lines, then scroll (Kezie, 2026-10-16: "people
+     need to see the full text... expand, but not all the way"). --min-lines / --max-lines per box. */
+  textarea.s-grow { field-sizing: content; resize: none; overflow-y: auto;
+    min-height: calc(var(--min-lines, 2) * 1.6em + 0.6em); max-height: calc(var(--max-lines, 5) * 1.6em + 0.6em); line-height: 1.6; }
   .s-skel { background: linear-gradient(90deg, var(--s-panel), var(--s-raised), var(--s-panel)); background-size: 200% 100%;
     animation: s-shimmer 1.4s infinite linear; border-radius: var(--s-r-lg); }
   @keyframes s-shimmer { to { background-position: -200% 0; } }

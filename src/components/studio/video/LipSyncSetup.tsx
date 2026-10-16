@@ -204,7 +204,7 @@ export function LipSyncSetup({ v }: { v: VideoStudio }) {
         </div>
         <div className="s-card p-3 grid gap-2">
           <b className="text-[13px]">3 · What&apos;s happening</b>
-          <textarea className="s-input" rows={4} value={scene} onChange={(e) => setScene(e.target.value)} placeholder="Who is speaking and where? e.g. a friendly chef in a bright kitchen, talking to the camera, warm light" aria-label="What's happening" />
+          <textarea className="s-input s-grow" rows={4} style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 7 }} value={scene} onChange={(e) => setScene(e.target.value)} placeholder="Who is speaking and where? e.g. a friendly chef in a bright kitchen, talking to the camera, warm light" aria-label="What's happening" />
           <div className="flex flex-wrap gap-1.5">
             {["Talking to camera in a bright studio", "Selfie video in a car", "Presenter at a desk, soft light", "Walking down a city street"].map((ex) => (
               <button key={ex} className="s-chip" onClick={() => setScene(ex)}>{ex}</button>

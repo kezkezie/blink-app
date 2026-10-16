@@ -249,10 +249,11 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
           onChange={(e) => setIdea(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void getIdeas(); }}
           rows={3}
+          style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 6 }}
           maxLength={1200}
           placeholder={`What do you want to make for ${name}? e.g. a poster for our weekend lunch special`}
           aria-label="Your idea"
-          className="w-full bg-transparent outline-none resize-none text-base leading-relaxed px-1"
+          className="s-grow w-full bg-transparent outline-none resize-none text-base leading-relaxed px-1"
         />
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <button className="s-btn ghost sm" onClick={() => fileRef.current?.click()} disabled={refs.length >= MAX_PRODUCTS} title="One photo: the product stays exactly as it is. Several: they're arranged together in one scene.">
@@ -314,7 +315,7 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
         <section ref={briefRef} className="mt-6 s-card p-4 grid gap-4 md:grid-cols-[1.4fr_1fr]">
           <div>
             <span className="s-label">Your brief</span>
-            <textarea className="s-input" rows={6} value={brief} onChange={(e) => setBrief(e.target.value)} aria-label="Your brief" />
+            <textarea className="s-input s-grow" rows={6} style={{ ["--min-lines" as string]: 5, ["--max-lines" as string]: 12 }} value={brief} onChange={(e) => setBrief(e.target.value)} aria-label="Your brief" />
             <span className="s-label mt-3">Look</span>
             <div className="flex flex-wrap gap-1.5">{GENERATE_LOOKS.map((l) => <button key={l.id} className="s-chip" aria-pressed={activeLook === l.id} title={l.line} onClick={() => setLook(l.id)}>{l.label}</button>)}</div>
             <p className="text-[11.5px] mt-1.5" style={{ color: "var(--s-mute)" }}>

@@ -110,9 +110,10 @@ export default function CreatePage() {
           onChange={(e) => setBrief(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) start(); }}
           rows={3}
+          style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 6 }}
           placeholder={kind === "image" ? "Describe the image, e.g. a launch poster for our new flavour on a sunny kitchen table" : "Describe the video, e.g. a 20 second launch: the farm at dawn, the harvest, the pack, the plate. One line is fine for a single shot."}
           aria-label="What do you want to make?"
-          className="w-full bg-transparent outline-none resize-none text-base leading-relaxed px-1"
+          className="s-grow w-full bg-transparent outline-none resize-none text-base leading-relaxed px-1"
         />
         <div className="flex flex-wrap items-center gap-2 mt-2">
           {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (

@@ -2833,7 +2833,7 @@ export function StorytellingSetup({
               <div className="flex-1" />
               <button type="button" className="s-btn ghost sm" onClick={handleNewStoryboard}><Plus className="h-3.5 w-3.5" /> New story</button>
             </div>
-            <textarea className="s-input" rows={3} value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder={'e.g. 20 seconds: a busy Nairobi morning, a runner grabs our mango juice at the kiosk, takes a sip and smiles. She says "Fresh, every morning." End on the bottle and our logo.'} aria-label="Your story" />
+            <textarea className="s-input s-grow" rows={3} style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 7 }} value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder={'e.g. 20 seconds: a busy Nairobi morning, a runner grabs our mango juice at the kiosk, takes a sip and smiles. She says "Fresh, every morning." End on the bottle and our logo.'} aria-label="Your story" />
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" className="s-btn ai" onClick={handleWriteScript} disabled={isWritingScript || !bRollConcept.trim()}>{isWritingScript ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScrollText className="h-4 w-4" />} Write the scenes</button>
               <button type="button" className="s-btn" onClick={handleGenerateAllImages} disabled={isGeneratingAllImages || generatingSlot !== null || !bRollConcept.trim()}>{isGeneratingAllImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <Images className="h-4 w-4" />} Make all frames <span className="cost">{filledImageSlots}/{totalImageSlots}</span></button>

@@ -135,7 +135,7 @@ export function ShotSetup({ v }: { v: VideoStudio }) {
             {v.isSuggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write it for me
           </button>
         </div>
-        <textarea className="s-input" rows={5} value={v.prompt} onChange={(e) => v.setPrompt(e.target.value)} placeholder={config.placeholder} aria-label="What happens in the shot" />
+        <textarea className="s-input s-grow" rows={5} style={{ ["--min-lines" as string]: 4, ["--max-lines" as string]: 8 }} value={v.prompt} onChange={(e) => v.setPrompt(e.target.value)} placeholder={config.placeholder} aria-label="What happens in the shot" />
         <div>
           <span className="s-label">Or start from an example</span>
           <div className="grid gap-1.5">

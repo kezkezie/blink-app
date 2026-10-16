@@ -58,7 +58,7 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded }
       <div className="ve-bin-h"><b className="text-[13px]">Motion</b>{busy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}</div>
       <div className="grid gap-2.5 px-3 pb-3">
         <p className="text-[12px]" style={{ color: "var(--s-soft)" }}>Animated titles, numbers, product reveals and end cards in your brand&apos;s font and colours. Every letter comes out exact.</p>
-        <textarea className="s-input" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What's it for? e.g. a 6 second intro for our USDT launch" aria-label="What the motion is for" />
+        <textarea className="s-input s-grow" rows={3} style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 7 }} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What's it for? e.g. a 6 second intro for our USDT launch" aria-label="What the motion is for" />
         <div className="flex flex-wrap gap-1">{STARTS.map((s) => <button key={s.label} className="s-chip" aria-pressed={prompt === s.prompt} onClick={() => setPrompt(s.prompt)}>{s.label}</button>)}</div>
         {picture && <span className="text-[11.5px] flex items-center gap-1" style={{ color: "var(--s-soft)" }}>Using the picture you picked <button className="underline" onClick={() => setPicture(null)}>(clear)</button></span>}
         <button className="s-btn ai justify-between" disabled={busy || !activeBrand || prompt.trim().length < 3} onClick={() => write()}>
