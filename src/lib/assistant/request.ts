@@ -65,23 +65,62 @@ export function parseCanvasContext(raw: unknown): CanvasSummary | null {
   return { width: W, height: H, background: str(r.background, 30) ?? "#FFFFFF", layers, brandColors, ...(preview ? { preview } : {}) };
 }
 
-/** Only plain user/assistant text is accepted from the browser; tool traffic is rebuilt server side. */
-export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; brandId: string | null; page?: string; editor?: EditorContext; canvas?: CanvasSummary; tz?: string; tzOffset?: number; effort?: string } | null {
+/** Pictures a user attached in Ask (2026-10-16): our own storage's public URLs only, up to 4. */
+const MAX_PICTURES = 4;
+function pictureUrls(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const origin = (() => { try { return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").origin; } catch { return ""; } })();
+  return v.filter((u): u is string => typeof u === "string" && u.length <= 600).flatMap((u) => {
+    try {
+      const url = new URL(u);
+      return url.protocol === "https:" && url.origin === origin && url.pathname.startsWith("/storage/v1/object/public/assets/images/") && !url.pathname.includes("..") ? [url.toString()] : [];
+    } catch { return []; }
+  }).slice(0, MAX_PICTURES);
+}
+
+/**
+ * The pictures become images Claude can see, for the most recent messages that have them (older
+ * ones are noted in words, so long chats don't resend every picture). Only pictures in this
+ * workspace's own folder are kept: images/<clientId>/...
+ */
+export function withPictures(messages: AgentMessage[], pictures: string[][], clientId: string, keepLast = 3): AgentMessage[] {
+  const mine = (u: string) => new URL(u).pathname.startsWith(`/storage/v1/object/public/assets/images/${clientId}/`);
+  let shown = 0;
+  const out = [...messages];
+  for (let i = out.length - 1; i >= 0; i--) {
+    const pics = (pictures[i] ?? []).filter(mine);
+    if (!pics.length || out[i].role !== "user" || typeof out[i].content !== "string") continue;
+    const text = out[i].content as string;
+    if (shown >= keepLast) { out[i] = { ...out[i], content: `${text}\n(They attached ${pics.length} picture${pics.length === 1 ? "" : "s"} here earlier.)` }; continue; }
+    shown++;
+    out[i] = { ...out[i], content: [
+      ...pics.map((url) => ({ type: "image", source: { type: "url", url } })),
+      { type: "text", text: `${text}\n(Attached picture link${pics.length === 1 ? "" : "s"}, if a tool needs ${pics.length === 1 ? "it" : "them"}: ${pics.join(" ")})` },
+    ] };
+  }
+  return out;
+}
+
+/** Only plain user/assistant text (and a user's own pictures) is accepted from the browser; tool traffic is rebuilt server side. */
+export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; pictures: string[][]; brandId: string | null; page?: string; editor?: EditorContext; canvas?: CanvasSummary; tz?: string; tzOffset?: number; effort?: string } | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
   if (!Array.isArray(b.messages) || b.messages.length === 0 || b.messages.length > MAX_MESSAGES) return null;
   const messages: AgentMessage[] = [];
+  const pictures: string[][] = [];
   for (const m of b.messages) {
     if (!m || typeof m !== "object") return null;
-    const { role, text } = m as Record<string, unknown>;
+    const { role, text, images } = m as Record<string, unknown>;
     if ((role !== "user" && role !== "assistant") || typeof text !== "string") return null;
-    const t = text.trim();
+    const pics = role === "user" ? pictureUrls(images) : [];
+    const t = text.trim() || (pics.length ? "What do you think of this?" : "");
     if (!t || t.length > MAX_TEXT) return null;
     messages.push({ role, content: t });
+    pictures.push(pics);
   }
   if (messages[messages.length - 1].role !== "user") return null;
   // The Messages API needs the conversation to start with the user.
-  while (messages.length && messages[0].role !== "user") messages.shift();
+  while (messages.length && messages[0].role !== "user") { messages.shift(); pictures.shift(); }
   const brandId = typeof b.brandId === "string" && UUID.test(b.brandId) ? b.brandId : null;
   const page = typeof b.page === "string" && /^\/studio[\w/-]{0,80}$/.test(b.page) ? b.page : undefined;
   const editor = parseEditorContext(b.editor) ?? undefined;
@@ -91,5 +130,5 @@ export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]
   const tzOffset = typeof b.tzOffset === "number" && Number.isInteger(b.tzOffset) && Math.abs(b.tzOffset) <= 840 ? b.tzOffset : undefined;
   // The effort dial; the route clamps it to the plan.
   const effort = typeof b.effort === "string" && /^(low|medium|high|xhigh|max)$/.test(b.effort) ? b.effort : undefined;
-  return { messages, brandId, page, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}), ...(tz ? { tz } : {}), ...(tzOffset !== undefined ? { tzOffset } : {}), ...(effort ? { effort } : {}) };
+  return { messages, pictures, brandId, page, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}), ...(tz ? { tz } : {}), ...(tzOffset !== undefined ? { tzOffset } : {}), ...(effort ? { effort } : {}) };
 }

@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { AssistantUnavailableError, estimateUsd, runAssistant } from "@/lib/assistant/agent";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { loadAccountBrief } from "@/lib/assistant/tools";
-import { parseAssistantRequest } from "@/lib/assistant/request";
+import { parseAssistantRequest, withPictures } from "@/lib/assistant/request";
 import { isPaidPlan } from "@/lib/plans";
 import { EFFORT_INFO, allowedEfforts, creditCapFor, effortFor, planFor } from "@/lib/assistant/effort";
 import { chargeCredits, creditBalance, meteredCredits } from "@/lib/credits-meter";
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       } catch { return []; }
     };
     const [brief, skills] = await Promise.all([loadAccountBrief(ctx).catch(() => undefined), loadSkills()]);
-    const result = await runAssistant(parsed.messages, { ...ctx, brief, skills, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas, effort });
+    const result = await runAssistant(withPictures(parsed.messages, parsed.pictures, client.id), { ...ctx, brief, skills, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas, effort });
     // One line per answer so the Claude bill can be traced to accounts in the Vercel logs.
     const usd = estimateUsd(result.model, result.usage);
     let credits = 0;

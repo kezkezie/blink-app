@@ -25,7 +25,7 @@ export type AskAction = {
   note?: string;
 };
 
-export type AskMessage = { role: "user" | "assistant"; text: string; actions?: AskAction[]; /** Credits this reply used (0 or absent: included in the plan). */ credits?: number };
+export type AskMessage = { role: "user" | "assistant"; text: string; actions?: AskAction[]; /** Credits this reply used (0 or absent: included in the plan). */ credits?: number; /** Pictures the user attached (2026-10-16). */ images?: string[] };
 
 type AskState = {
   open: boolean;

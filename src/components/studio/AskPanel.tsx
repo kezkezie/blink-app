@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUp, CalendarCheck, Check, ChevronUp, Coins, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
+import { ArrowUp, CalendarCheck, Check, ChevronUp, Coins, ImagePlus, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
+import { toast } from "sonner";
+import { useClient } from "@/hooks/useClient";
 import { EFFORTS, EFFORT_INFO, allowedEfforts, creditCapFor, type Effort } from "@/lib/assistant/effort";
 import { useCredits } from "./hooks";
 import { supabase } from "@/lib/supabase";
@@ -39,6 +41,28 @@ const STARTERS = [
 /** Ask BlinkSpot: a chat panel that reads the account and proposes actions as buttons. It never starts a paid generation itself; its own messages are included in the plan or use a few credits (shown under the reply). */
 export function AskPanel() {
   const { open, setOpen, draft, setDraft, messages, push, reset, effort, setEffort } = useAskStore();
+  // Pictures to send with the next message (2026-10-16: "Ask should let us upload images").
+  const { clientId } = useClient();
+  const [pics, setPics] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const picInput = useRef<HTMLInputElement>(null);
+  async function addPictures(files: File[]) {
+    const ok = files.filter((f) => /^image\/(jpeg|png|webp|gif)$/.test(f.type)).slice(0, 4 - pics.length);
+    if (!ok.length) { if (files.length) toast.error("Add a JPG, PNG, WebP or GIF picture (up to 4)."); return; }
+    if (!clientId) return;
+    for (const f of ok) {
+      if (f.size > 5 * 1024 * 1024) { toast.error(`${f.name} is over 5 MB.`); continue; }
+      setUploading((n) => n + 1);
+      try {
+        const path = `images/${clientId}/ask_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${f.type.split("/")[1].replace("jpeg", "jpg")}`;
+        const { error } = await supabase.storage.from("assets").upload(path, f, { contentType: f.type });
+        if (error) throw error;
+        const url = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+        setPics((p) => [...p, url].slice(0, 4));
+      } catch { toast.error("Couldn't add that picture."); }
+      finally { setUploading((n) => n - 1); }
+    }
+  }
   const { plan } = useCredits();
   const [dialOpen, setDialOpen] = useState(false);
   // What the plan allows; the server clamps too.
@@ -79,14 +103,16 @@ export function AskPanel() {
 
   async function send(text: string) {
     const t = text.trim();
-    if (!t || busy) return;
-    const mine: AskMessage = { role: "user", text: t };
+    const images = pics;
+    if ((!t && !images.length) || busy || uploading) return;
+    const mine: AskMessage = { role: "user", text: t || "What do you think of this?", ...(images.length ? { images } : {}) };
     push(mine);
     setDraft("");
+    setPics([]);
     setBusy(true);
     setError(null);
     try {
-      const history = [...useAskStore.getState().messages].slice(-20).map((m) => ({ role: m.role, text: m.text }));
+      const history = [...useAskStore.getState().messages].slice(-20).map((m) => ({ role: m.role, text: m.text, ...(m.images?.length ? { images: m.images } : {}) }));
       // In the Video Editor, send the timeline (and a few frames per clip) so the AI can edit it.
       const bridge = useEditorBridge.getState();
       let editor: { timeline: ReturnType<typeof summarizeTimeline>; frames: Awaited<ReturnType<typeof captureTimelineFrames>> } | undefined;
@@ -182,6 +208,12 @@ export function AskPanel() {
         )}
         {messages.map((m, i) => (
           <div key={i} className="flex flex-col gap-2">
+            {!!m.images?.length && (
+              <div className={`flex flex-wrap gap-1.5 ${m.role === "user" ? "justify-end" : ""}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {m.images.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="Attached" className="h-20 w-20 rounded-lg object-cover" style={{ border: "1px solid var(--s-line)" }} /></a>)}
+              </div>
+            )}
             <div className={`msg ${m.role === "user" ? "me" : "ai"}`}>{m.text}</div>
             {m.role === "assistant" && !!m.credits && <span className="text-[10.5px] mono flex items-center gap-1 -mt-1 px-1" style={{ color: "var(--s-mute)" }}><Coins className="h-3 w-3" /> {m.credits} credit{m.credits === 1 ? "" : "s"}</span>}
             {m.actions?.map((a, j) => {
@@ -266,12 +298,27 @@ export function AskPanel() {
         style={{ borderTop: "1px solid var(--s-line)" }}
         onSubmit={(e) => { e.preventDefault(); void send(draft); }}
       >
+        {(pics.length > 0 || uploading > 0) && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {pics.map((u) => (
+              <span key={u} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={u} alt="To send" className="h-14 w-14 rounded-lg object-cover" style={{ border: "1px solid var(--s-line)" }} />
+                <button type="button" className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full grid place-items-center" style={{ background: "var(--s-raised)", border: "1px solid var(--s-line-2)" }} onClick={() => setPics((p) => p.filter((x) => x !== u))} aria-label="Remove picture"><X className="h-3 w-3" /></button>
+              </span>
+            ))}
+            {uploading > 0 && <span className="h-14 w-14 rounded-lg grid place-items-center s-skel"><Loader2 className="h-4 w-4 animate-spin" /></span>}
+          </div>
+        )}
         <div className="flex items-end gap-2 rounded-xl p-2" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line-2)" }}>
+          <button type="button" className="s-btn ghost" style={{ width: 34, padding: 0 }} onClick={() => picInput.current?.click()} disabled={pics.length >= 4 || !clientId} aria-label="Add a picture" title="Add a picture (or paste one)"><ImagePlus className="h-4 w-4" /></button>
+          <input ref={picInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden" onChange={(e) => { void addPictures([...(e.target.files ?? [])]); e.target.value = ""; }} />
           <textarea
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
+            onPaste={(e) => { const files = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/")); if (files.length) { e.preventDefault(); void addPictures(files); } }}
             rows={2}
             style={{ ["--min-lines" as string]: 1, ["--max-lines" as string]: 5 }}
             maxLength={4000}
@@ -279,7 +326,7 @@ export function AskPanel() {
             aria-label="Message"
             className="s-grow flex-1 bg-transparent outline-none resize-none text-sm px-1"
           />
-          <button type="submit" className="s-btn primary" style={{ width: 34, padding: 0 }} disabled={busy || !draft.trim()} aria-label="Send">
+          <button type="submit" className="s-btn primary" style={{ width: 34, padding: 0 }} disabled={busy || uploading > 0 || (!draft.trim() && !pics.length)} aria-label="Send">
             <ArrowUp className="h-4 w-4" />
           </button>
         </div>
