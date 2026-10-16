@@ -105,28 +105,35 @@ function PendingNote({ content }: { content: Content }) {
   );
 }
 
-export function MediaCard({ content, href, actions, selected, aspect = "4 / 3" }: {
+export function MediaCard({ content, href, actions, selected, aspect = "4 / 3", onOpen }: {
   content: Content;
   href: string;
   actions?: React.ReactNode;
   selected?: boolean;
   aspect?: string;
+  /** Opens the post in a viewer instead of going to its page (the Library, 2026-10-16). */
+  onOpen?: () => void;
 }) {
   const media = resolveMedia(content);
   const status = STATUS_LABEL[content.status] ?? { label: content.status };
   const title = cleanCaption(content.caption) || (media.isVideo ? "Video" : "Image");
   return (
     <div className={`s-media${selected ? " sel" : ""}`}>
-      <Link href={href} className="block" aria-label={title}>
-        <div className="m" style={{ aspectRatio: aspect }}>
-          <MediaThumb {...media} alt={title} />
-          {!media.url && content.generation_status_text && <PendingNote content={content} />}
-          <div className="tl">
-            {media.isVideo && <span className="s-badge"><Play className="inline h-2.5 w-2.5 -mt-px" /> VIDEO</span>}
-            <span className={`s-badge ${status.tone ?? ""}`}>{status.label}</span>
+      {(() => {
+        const inner = (
+          <div className="m" style={{ aspectRatio: aspect }}>
+            <MediaThumb {...media} alt={title} />
+            {!media.url && content.generation_status_text && <PendingNote content={content} />}
+            <div className="tl">
+              {media.isVideo && <span className="s-badge"><Play className="inline h-2.5 w-2.5 -mt-px" /> VIDEO</span>}
+              <span className={`s-badge ${status.tone ?? ""}`}>{status.label}</span>
+            </div>
           </div>
-        </div>
-      </Link>
+        );
+        return onOpen
+          ? <button type="button" className="block w-full text-left" aria-label={`View ${title}`} onClick={onOpen}>{inner}</button>
+          : <Link href={href} className="block" aria-label={title}>{inner}</Link>;
+      })()}
       {actions && <div className="hov">{actions}</div>}
       <div className="ft">
         <b title={title}>{title}</b>

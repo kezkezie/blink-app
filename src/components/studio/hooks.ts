@@ -55,8 +55,8 @@ export function useStudioBrands() {
     ]);
     if (!data) return;
     const own: BrandProfile[] = data.map((b) => ({ ...b, role: "owner" as const }));
-    const theirs: BrandProfile[] = ((shared.data ?? []) as Array<{ id: string; brand_name: string | null; logo_url: string | null; client_id: string; role: string; owner_name: string }>)
-      .map((b) => ({ id: b.id, brand_name: b.brand_name || "Brand", logo_url: b.logo_url, client_id: b.client_id, role: b.role === "editor" ? "editor" as const : "viewer" as const, owner_name: b.owner_name }));
+    const theirs: BrandProfile[] = ((shared.data ?? []) as Array<{ id: string; brand_name: string | null; logo_url: string | null; client_id: string; role: string; owner_name: string; access_until?: string | null }>)
+      .map((b) => ({ id: b.id, brand_name: b.brand_name || "Brand", logo_url: b.logo_url, client_id: b.client_id, role: b.role === "editor" ? "editor" as const : "viewer" as const, owner_name: b.owner_name, access_until: b.access_until ?? null }));
     // If the shared list failed to load, keep a selected shared brand rather than switching away.
     const list = [...own, ...theirs];
     setAvailableBrands(list);

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Eye, Loader2, LogOut, Users } from "lucide-react";
 import { toast } from "sonner";
 import { isSharedBrand, useBrandStore, type BrandProfile } from "@/app/store/useBrandStore";
-import { ROLE_INFO, viewerCanOpen, type ShareRole } from "@/lib/brand-sharing";
+import { ROLE_INFO, accessLabel, viewerCanOpen, type ShareRole } from "@/lib/brand-sharing";
 
 /** Ask the brand list to reload (the top bar's useStudioBrands listens). */
 export const reloadBrands = () => window.dispatchEvent(new Event("blink:brands"));
@@ -89,6 +89,7 @@ export function SharedBrandBar() {
           <span className="flex-1 min-w-0 text-[12.5px]" style={{ color: "var(--s-soft)" }}>
             <b style={{ color: "var(--s-text)" }}>{shared.brand_name}</b> is shared with you by {shared.owner_name || "its owner"}.{" "}
             {shared.role === "viewer" ? "You can look, not change anything." : "What you make here uses their credits."}
+            {shared.access_until ? ` Your access lasts ${accessLabel(shared.access_until)}.` : ""}
           </span>
           <span className="s-badge">{ROLE_INFO[shared.role].label}</span>
           <button className="s-btn ghost sm" disabled={busy === "leave"} onClick={() => void leave()}>{busy === "leave" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />} Leave</button>

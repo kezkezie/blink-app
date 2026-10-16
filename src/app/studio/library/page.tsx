@@ -11,6 +11,7 @@ import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import type { Content } from "@/types/database";
 import { MediaCard, NOT_STORYBOARD_FRAME, PART_TYPES, VIDEO_TYPES, resolveMedia } from "@/components/studio/media";
+import { LibraryViewer } from "@/components/studio/library/LibraryViewer";
 
 type Kind = "all" | "videos" | "images" | "parts";
 const KINDS: Array<{ id: Kind; label: string }> = [
@@ -28,6 +29,9 @@ const STATUSES = [
   { id: "posted", label: "Posted" },
 ];
 const PAGE = 48;
+// Made with BlinkSpot's AI, or brought in (uploads keep no model, or only the caption helper).
+type Source = "" | "ai" | "uploaded";
+const SOURCES: Array<{ id: Source; label: string }> = [{ id: "", label: "Any source" }, { id: "ai", label: "Made with AI" }, { id: "uploaded", label: "Uploaded" }];
 
 /**
  * Library = the classic Content Grid + its "Story Sequences" tab + Upload, as one place.
@@ -39,6 +43,8 @@ export default function LibraryPage() {
   const router = useRouter();
   const [kind, setKind] = useState<Kind>("all");
   const [status, setStatus] = useState("");
+  const [source, setSource] = useState<Source>("");
+  const [viewing, setViewing] = useState<number | null>(null);
   const [q, setQ] = useState("");
   const [selecting, setSelecting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -46,7 +52,7 @@ export default function LibraryPage() {
 
   // One key per view (brand + filters). Results and the selection belong to a key, so switching
   // filters shows the skeleton and clears the selection without resetting state inside an effect.
-  const key = `${activeBrand?.id ?? ""}|${kind}|${status}`;
+  const key = `${activeBrand?.id ?? ""}|${kind}|${status}|${source}`;
   const [result, setResult] = useState<{ key: string; rows: Content[]; more: boolean; error: string | null } | null>(null);
   const [sel, setSel] = useState<{ key: string; ids: Set<string> }>({ key: "", ids: new Set() });
   const selected = sel.key === key ? sel.ids : new Set<string>();
@@ -69,12 +75,14 @@ export default function LibraryPage() {
       if (kind === "images") query = query.not("content_type", "in", `(${VIDEO_TYPES.join(",")})`);
     }
     if (status) query = query.eq("status", status);
+    if (source === "uploaded") query = query.or("ai_model.is.null,ai_model.eq.caption-ai");
+    if (source === "ai") query = query.not("ai_model", "is", null).neq("ai_model", "caption-ai");
     const { data, error: err } = await query;
     // Never show a failed query as an empty library.
     if (err) return { rows: [] as Content[], more: false, error: err.message || "Could not load your library." };
     const page = (data ?? []) as unknown as Content[];
     return { rows: page, more: page.length === PAGE, error: null };
-  }, [activeBrand, kind, status]);
+  }, [activeBrand, kind, status, source]);
 
   const [reloads, setReloads] = useState(0);
   useEffect(() => {
@@ -113,15 +121,16 @@ export default function LibraryPage() {
     router.push("/studio/video?tab=editor");
   }
 
-  async function remove(ids: string[]) {
-    if (ids.length === 0) return;
-    if (!confirm(ids.length === 1 ? "Delete this from your library?" : `Delete ${ids.length} items from your library?`)) return;
+  async function remove(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return false;
+    if (!confirm(ids.length === 1 ? "Delete this from your library?" : `Delete ${ids.length} items from your library?`)) return false;
     setDeleting(true);
     const { error: err } = await supabase.from("content").delete().in("id", ids);
     setDeleting(false);
-    if (err) { toast.error(err.message); return; }
+    if (err) { toast.error(err.message); return false; }
     setResult((cur) => (cur ? { ...cur, rows: cur.rows.filter((r) => !ids.includes(r.id)) } : cur));
     setSelected(() => new Set());
+    return true;
   }
 
   if (!activeBrand && !loading) {
@@ -141,6 +150,11 @@ export default function LibraryPage() {
             <button key={k.id} role="tab" aria-selected={kind === k.id} onClick={() => setKind(k.id)}>{k.label}</button>
           ))}
         </div>
+        {kind !== "parts" && (
+          <select className="s-input" style={{ width: "auto", height: 34 }} value={source} onChange={(e) => setSource(e.target.value as Source)} aria-label="Source">
+            {SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        )}
         <select className="s-input" style={{ width: "auto", height: 34 }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
           {STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
@@ -206,6 +220,7 @@ export default function LibraryPage() {
                   <MediaCard
                     content={c}
                     href={`/studio/library/${c.id}`}
+                    onOpen={selecting ? undefined : () => setViewing(shown.indexOf(c))}
                     selected={selected.has(c.id)}
                     actions={!selecting && (
                       <>
@@ -228,6 +243,12 @@ export default function LibraryPage() {
             </div>
           )}
         </>
+      )}
+      {viewing !== null && shown[viewing] && (
+        <LibraryViewer
+          items={shown} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)}
+          onDelete={(id) => remove([id])} hasMore={more} onLoadMore={loadMore}
+        />
       )}
     </div>
   );

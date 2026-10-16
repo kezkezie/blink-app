@@ -9,6 +9,8 @@ export interface BrandProfile {
     client_id?: string;
     role?: 'owner' | 'editor' | 'viewer';
     owner_name?: string;
+    /** When a shared brand's access ends (2026-10-16); null or absent: no end. */
+    access_until?: string | null;
 }
 
 /** The active brand is someone else's, shared with this user. */

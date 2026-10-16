@@ -26,8 +26,10 @@ export async function brandAccess(userId: string, brandId: string, own?: string 
   if (ownId && brand.client_id === ownId) return { brandId, clientId: ownId, role: "owner", active };
   // An archived brand is closed to everyone but its owner.
   if (!active) return null;
-  const { data: member } = await supabaseAdmin.from("brand_members").select("role").eq("brand_id", brandId).eq("user_id", userId).maybeSingle();
+  const { data: member } = await supabaseAdmin.from("brand_members").select("role, access_until").eq("brand_id", brandId).eq("user_id", userId).maybeSingle();
   if (member?.role !== "editor" && member?.role !== "viewer") return null;
+  // Shared for a while (2026-10-16): once access ends it's as if it was never shared.
+  if (member.access_until && new Date(member.access_until as string).getTime() <= Date.now()) return null;
   return { brandId, clientId: brand.client_id, role: member.role, active };
 }
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { brandAccess, ownClientId } from "@/lib/brand-access";
-import { isShareRole, maskEmail, normaliseEmail, type ShareRole } from "@/lib/brand-sharing";
+import { accessUntilFrom, inviteLinkExpiry, isShareRole, maskEmail, normaliseEmail, type ShareRole } from "@/lib/brand-sharing";
 import { planOf, shareSeatsFor } from "@/lib/plans";
 
 /**
@@ -13,13 +13,14 @@ import { planOf, shareSeatsFor } from "@/lib/plans";
  *   GET  ?token=…      invite preview for /join (no sign-in needed: brand, inviter, role, status)
  *   GET  ?brandId=…    who has access (owner) or your own access (member)
  *   GET  ?view=invites invites sent to your email
- *   POST { action: invite | revoke | set_role | remove | leave | accept | decline, … }
+ *   POST { action: invite | revoke | set_role | set_access | remove | leave | accept | decline, … }
+ *   invite and set_access take access: { days } | { until: "YYYY-MM-DD" } | null (no end), 2026-10-16.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{32,64}$/;
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
-type InviteRow = { id: string; brand_id: string; token: string; email: string | null; role: ShareRole; created_by: string; created_at: string; expires_at: string; accepted_at: string | null; revoked_at: string | null };
+type InviteRow = { id: string; brand_id: string; token: string; email: string | null; role: ShareRole; created_by: string; created_at: string; expires_at: string; accepted_at: string | null; revoked_at: string | null; access_until: string | null };
 
 function inviteStatus(i: Pick<InviteRow, "accepted_at" | "revoked_at" | "expires_at">) {
   if (i.revoked_at) return "revoked" as const;
@@ -99,15 +100,17 @@ export async function GET(request: NextRequest) {
   const access = await brandAccess(auth.value, brandId);
   if (!access) return bad("Brand not found.", 404);
   if (access.role !== "owner") {
-    return NextResponse.json({ role: access.role, ownerName: await ownerName(access.clientId) });
+    const { data: mine } = await supabaseAdmin.from("brand_members").select("access_until").eq("brand_id", brandId).eq("user_id", auth.value).maybeSingle();
+    return NextResponse.json({ role: access.role, ownerName: await ownerName(access.clientId), accessUntil: (mine?.access_until as string | null) ?? null });
   }
   const [{ data: members }, { data: invites }] = await Promise.all([
-    supabaseAdmin.from("brand_members").select("user_id, role, created_at").eq("brand_id", brandId).order("created_at"),
+    supabaseAdmin.from("brand_members").select("user_id, role, created_at, access_until").eq("brand_id", brandId).order("created_at"),
     supabaseAdmin.from("brand_invites").select("*").eq("brand_id", brandId).is("accepted_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }),
   ]);
   const people = await Promise.all((members ?? []).map(async (m) => {
     const who = await userEmail(m.user_id as string);
-    return { userId: m.user_id, role: m.role, since: m.created_at, email: who.email || null, name: who.name };
+    const ended = !!m.access_until && new Date(m.access_until as string).getTime() <= Date.now();
+    return { userId: m.user_id, role: m.role, since: m.created_at, email: who.email || null, name: who.name, accessUntil: (m.access_until as string | null) ?? null, ended };
   }));
   const origin = appOrigin(request);
   const plan = await ownerPlan(access.clientId);
@@ -116,7 +119,7 @@ export async function GET(request: NextRequest) {
     plan,
     limit: shareSeatsFor(plan),
     members: people,
-    invites: ((invites ?? []) as InviteRow[]).map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expires_at, link: `${origin}/join/${i.token}` })),
+    invites: ((invites ?? []) as InviteRow[]).map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expires_at, accessUntil: i.access_until ?? null, link: `${origin}/join/${i.token}` })),
   });
 }
 
@@ -145,7 +148,10 @@ export async function POST(request: NextRequest) {
     if (!brand || brand.is_active === false) return bad("That brand isn't available any more.", 410);
     const own = await ownClientId(auth.value);
     if (brand.client_id === own) return bad("This is your own brand, so you already have it.", 409);
-    const { data: existing } = await supabaseAdmin.from("brand_members").select("role").eq("brand_id", brand.id).eq("user_id", auth.value).maybeSingle();
+    const { data: member } = await supabaseAdmin.from("brand_members").select("role, access_until").eq("brand_id", brand.id).eq("user_id", auth.value).maybeSingle();
+    // Access that has ended doesn't count: a new invite renews it (2026-10-16).
+    const lapsed = !!member?.access_until && new Date(member.access_until as string).getTime() <= Date.now();
+    const existing = member && !lapsed ? member : null;
 
     if (action === "decline") {
       if (!invite.email) return NextResponse.json({ ok: true }); // a link is just not used
@@ -160,7 +166,10 @@ export async function POST(request: NextRequest) {
         .update({ accepted_by: auth.value, accepted_at: new Date().toISOString() })
         .eq("id", invite.id).is("accepted_at", null).is("revoked_at", null).select("id");
       if (!claimed?.length) return bad("This invite has already been used. Each link lets one person in; ask for a new one.", 410);
-      const { error } = await supabaseAdmin.from("brand_members").insert({ brand_id: brand.id, user_id: auth.value, role: invite.role, invited_by: invite.created_by });
+      const row = { role: invite.role, invited_by: invite.created_by, access_until: invite.access_until ?? null };
+      const { error } = lapsed
+        ? await supabaseAdmin.from("brand_members").update(row).eq("brand_id", brand.id).eq("user_id", auth.value)
+        : await supabaseAdmin.from("brand_members").insert({ brand_id: brand.id, user_id: auth.value, ...row });
       if (error) {
         await supabaseAdmin.from("brand_invites").update({ accepted_by: null, accepted_at: null }).eq("id", invite.id);
         return bad("Couldn't join just now. Try again.", 500);
@@ -202,7 +211,8 @@ export async function POST(request: NextRequest) {
     const email = typeof body.email === "string" && body.email.trim() ? normaliseEmail(body.email) : null;
     if (email === "") return bad("That email doesn't look right.");
     const [{ count: memberCount }, { count: inviteCount }] = await Promise.all([
-      supabaseAdmin.from("brand_members").select("user_id", { count: "exact", head: true }).eq("brand_id", brandId),
+      // People whose access has ended don't take a seat.
+      supabaseAdmin.from("brand_members").select("user_id", { count: "exact", head: true }).eq("brand_id", brandId).or(`access_until.is.null,access_until.gt.${new Date().toISOString()}`),
       supabaseAdmin.from("brand_invites").select("id", { count: "exact", head: true }).eq("brand_id", brandId).is("accepted_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()),
     ]);
     const plan = await ownerPlan(access.clientId);
@@ -219,10 +229,14 @@ export async function POST(request: NextRequest) {
       const { data: open } = await supabaseAdmin.from("brand_invites").select("id").eq("brand_id", brandId).eq("email", email).is("accepted_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()).limit(1);
       if (open?.length) return bad("There's already an open invite for that email.", 409);
     }
+    const accessUntil = accessUntilFrom(body.access);
+    if (accessUntil === undefined) return bad("Pick how long they get access: a date in the future, up to 5 years.");
     const token = randomBytes(32).toString("base64url");
-    const { data, error } = await supabaseAdmin.from("brand_invites").insert({ brand_id: brandId, token, email, role, created_by: auth.value }).select("id, email, role, expires_at").single();
+    const { data, error } = await supabaseAdmin.from("brand_invites")
+      .insert({ brand_id: brandId, token, email, role, created_by: auth.value, access_until: accessUntil, expires_at: inviteLinkExpiry(accessUntil) })
+      .select("id, email, role, expires_at, access_until").single();
     if (error || !data) return bad("Couldn't create the invite. Try again.", 500);
-    return NextResponse.json({ invite: { id: data.id, email: data.email, role: data.role, expiresAt: data.expires_at, link: `${appOrigin(request)}/join/${token}` } });
+    return NextResponse.json({ invite: { id: data.id, email: data.email, role: data.role, expiresAt: data.expires_at, accessUntil: data.access_until ?? null, link: `${appOrigin(request)}/join/${token}` } });
   }
 
   const userId = typeof body.userId === "string" && UUID.test(body.userId) ? body.userId : null;
@@ -231,6 +245,12 @@ export async function POST(request: NextRequest) {
     if (!isShareRole(body.role)) return bad("Invalid request");
     const { data } = await supabaseAdmin.from("brand_members").update({ role: body.role }).eq("brand_id", brandId).eq("user_id", userId).select("user_id");
     return data?.length ? NextResponse.json({ ok: true }) : bad("They don't have access to this brand.", 404);
+  }
+  if (action === "set_access") {
+    const accessUntil = accessUntilFrom(body.access);
+    if (accessUntil === undefined) return bad("Pick a date in the future, up to 5 years.");
+    const { data } = await supabaseAdmin.from("brand_members").update({ access_until: accessUntil }).eq("brand_id", brandId).eq("user_id", userId).select("user_id");
+    return data?.length ? NextResponse.json({ ok: true, accessUntil }) : bad("They don't have access to this brand.", 404);
   }
   if (action === "remove") {
     await supabaseAdmin.from("brand_members").delete().eq("brand_id", brandId).eq("user_id", userId);
