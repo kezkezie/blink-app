@@ -52,7 +52,7 @@ test("share for 14 days, access ends; hand the brand over", async ({ browser }) 
     const panel = a.page.getByRole("dialog", { name: /Share Handover Test/ });
     await panel.getByRole("button", { name: "14 days", exact: true }).click();
     await panel.getByLabel("Their email").fill(B.email);
-    await panel.getByRole("button", { name: "Invite" }).click();
+    await panel.getByRole("button", { name: "Invite", exact: true }).click();
     await expect(panel.getByText(/Their access lasts/)).toBeVisible({ timeout: 20_000 });
     const { data: invite } = await sb.from("brand_invites").select("token, access_until").eq("brand_id", brand!.id).single();
     const days = (Date.parse(invite!.access_until as string) - Date.now()) / 86_400_000;
