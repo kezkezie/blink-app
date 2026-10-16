@@ -21,6 +21,15 @@ function mix(a: string, b: string, t: number) {
   return `#${x.map((c, i) => Math.round(c + (y[i] - c) * t).toString(16).padStart(2, "0")).join("")}`;
 }
 
+/** A brand picture on a slide: rounded, cropped to fill (fixed height, or the rest of the slide). */
+function Picture({ src, u, height, grow }: { src: string; u: number; height?: number; grow?: boolean }) {
+  return (
+    <div style={{ ...(grow ? { flex: 1, minHeight: u * 22 } : { height }), width: "100%", borderRadius: u * 3, overflow: "hidden", marginTop: grow ? u * 2 : 0, marginBottom: grow ? 0 : u * 2 }}>
+      <Img src={src} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    </div>
+  );
+}
+
 export function CarouselSlide({ slide, index, total, palette, brand }: SlideProps) {
   const { width, height } = useVideoConfig();
   const u = Math.min(width, height) / 100;
@@ -39,20 +48,23 @@ export function CarouselSlide({ slide, index, total, palette, brand }: SlideProp
 
       {/* Points, numbers and quotes start at the same height on every slide, so nothing jumps as
           you swipe; the cover and end card sit in the middle. */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: slide.kind === "cover" || slide.kind === "end" ? "center" : "flex-start", paddingTop: slide.kind === "cover" || slide.kind === "end" ? 0 : u * 12, gap: u * 3, textWrap: "balance" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: (slide.kind === "cover" && !slide.image) || slide.kind === "end" ? "center" : "flex-start", paddingTop: slide.kind === "end" || slide.kind === "cover" ? (slide.kind === "cover" && slide.image ? u * 3 : 0) : ("image" in slide && slide.image ? u * 5 : u * 16), gap: u * 3, textWrap: "balance", minHeight: 0, overflow: "hidden" }}>
         {slide.kind === "cover" && (<>
+          {slide.image && <Picture src={slide.image} u={u} height={u * (height > width ? (slide.sub ? 44 : 50) : 34)} />}
           <div style={{ height: u * 1.4, width: u * 16, background: palette.accent, borderRadius: u }} />
           <div style={{ ...base, fontWeight: 800, fontSize: u * (slide.title.length > 40 ? 8.6 : 10.5), lineHeight: 1.1, letterSpacing: -u * 0.2 }}>{slide.title}</div>
           {slide.sub && <div style={{ ...base, fontWeight: 500, fontSize: u * 4.4, opacity: 0.85 }}>{slide.sub}</div>}
         </>)}
         {slide.kind === "point" && (<>
           <div style={{ ...base, fontWeight: 800, fontSize: u * 13, lineHeight: 1.05, color: palette.accent }}>{String(slide.number ?? index).padStart(2, "0")}</div>
-          <div style={{ ...base, fontWeight: 800, fontSize: u * (slide.title.length > 45 ? 6.4 : 7.6), lineHeight: 1.15 }}>{slide.title}</div>
-          {slide.body && <div style={{ ...base, fontWeight: 500, fontSize: u * 4.2, lineHeight: 1.4, opacity: 0.88 }}>{slide.body}</div>}
+          <div style={{ ...base, fontWeight: 800, fontSize: u * (slide.image ? (slide.title.length > 45 ? 6 : 7) : slide.title.length > 45 ? 7.4 : 8.8), lineHeight: 1.15 }}>{slide.title}</div>
+          {slide.body && <div style={{ ...base, fontWeight: 500, fontSize: u * (slide.image ? 4 : 4.8), lineHeight: 1.4, opacity: 0.88 }}>{slide.body}</div>}
+          {slide.image && <Picture src={slide.image} u={u} grow />}
         </>)}
         {slide.kind === "stat" && (<>
           <div style={{ ...base, fontWeight: 800, fontSize: u * (slide.value.length > 6 ? 17 : 23), lineHeight: 1.05, color: palette.accent, letterSpacing: -u * 0.4 }}>{slide.value}</div>
           <div style={{ ...base, fontWeight: 600, fontSize: u * 5.4 }}>{slide.label}</div>
+          {slide.image && <Picture src={slide.image} u={u} grow />}
         </>)}
         {slide.kind === "quote" && (<>
           <div style={{ ...base, fontWeight: 800, fontSize: u * 20, lineHeight: 0.8, color: palette.accent, paddingBottom: 0 }}>&ldquo;</div>
@@ -62,7 +74,7 @@ export function CarouselSlide({ slide, index, total, palette, brand }: SlideProp
         {slide.kind === "end" && (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: u * 4 }}>
           {brand.logoUrl && <Img src={brand.logoUrl} crossOrigin="anonymous" style={{ height: u * 16, width: u * 40, objectFit: "contain" }} />}
           <div style={{ ...base, fontWeight: 800, fontSize: u * 8, lineHeight: 1.15 }}>{slide.title}</div>
-          {slide.cta && <div style={{ padding: `${u * 2.4}px ${u * 6}px`, borderRadius: u * 10, background: palette.accent, color: on(palette.accent), fontFamily: font, fontWeight: 800, fontSize: u * 4.6, lineHeight: 1.3 }}>{slide.cta}</div>}
+          {slide.cta && <div style={{ padding: `${u * 2.4}px ${u * 6}px`, borderRadius: u * 6, maxWidth: "100%", whiteSpace: "normal", textAlign: "center", background: palette.accent, color: on(palette.accent), fontFamily: font, fontWeight: 800, fontSize: u * (slide.cta.length > 24 ? 4 : 4.6), lineHeight: 1.3 }}>{slide.cta}</div>}
           {(slide.handle || brand.handle) && <div style={{ ...base, fontWeight: 600, fontSize: u * 4, opacity: 0.85 }}>{slide.handle || brand.handle}</div>}
         </div>)}
       </div>

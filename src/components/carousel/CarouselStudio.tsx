@@ -10,13 +10,12 @@ import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { Modal } from "@/components/studio/Modal";
 import { ImagePicker } from "@/components/studio/ImagePicker";
-import { useBrandKit, generateBrandImages, generationErrorMessage } from "@/components/studio/generate-image";
+import { useBrandKit } from "@/components/studio/generate-image";
 import { ensureMotionFont } from "@/components/studio/motion/MotionStudio";
 import { CarouselSlide, type SlideBrand } from "./CarouselSlide";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { paletteFor, type Palette } from "@/lib/motion/spec";
-import { routerTopic } from "@/lib/generate-prompt";
-import { MAX_SLIDES, PLAN_CREDITS, SLIDE_SIZE, seamlessPlan, seamlessPrompt, sliceRects, type SlideShape, type TopicCarousel, type TopicSlide } from "@/lib/carousel";
+import { MAX_SLIDES, PLAN_CREDITS, SLIDE_SIZE, seamlessPlan, sliceRects, type SlideShape, type TopicCarousel, type TopicSlide } from "@/lib/carousel";
 
 /**
  * Make a carousel (2026-10-16). Seamless: one wide picture, cut into 2 or 3 slides so it flows as
@@ -57,6 +56,7 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
   const [count, setCount] = useState(6);
   const [plan, setPlan] = useState<TopicCarousel | null>(null);
   const [handle, setHandle] = useState<string | null>(null);
+  const [slidePics, setSlidePics] = useState<Array<{ url: string; title: string }>>([]);
   const [paletteEdit, setPaletteEdit] = useState<Palette | null>(null);
   const [brief, setBrief] = useState(initialTopic ?? "");
   const [panels, setPanels] = useState(3);
@@ -95,7 +95,7 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
       const res = await fetch("/api/carousel/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, topic, slides: count }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Couldn't write the carousel.");
-      setPlan(d.carousel); setHandle(d.handle ?? null); setMade(null);
+      setPlan(d.carousel); setHandle(d.handle ?? null); setSlidePics(d.pictures ?? []); setMade(null);
       await ensureMotionFont(kit?.primaryFont, clientId);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't write the carousel."); }
     finally { setBusy(null); }
@@ -123,13 +123,14 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
   }
 
   async function makeSeamless() {
-    if (!clientId || !activeBrand || !kit || brief.trim().length < 8) return;
-    setBusy("Making one wide picture…");
+    if (!clientId || !activeBrand || brief.trim().length < 8) return;
+    setBusy("Making one wide picture… (about a minute)");
     try {
-      const [wide] = await generateBrandImages({
-        clientId, brandId: activeBrand.id, kit, prompt: routerTopic(brief), assembledPrompt: seamlessPrompt(brief, seamless.slides),
-        engine: "nb2", aspect: seamless.aspect, style: "plain", count: 1, caption: brief.slice(0, 120), save: false,
-      });
+      // Its own route: one continuous panorama, checked (lib/carousel, /api/carousel/seamless).
+      const res = await fetch("/api/carousel/seamless", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, brief, slides: seamless.slides, shape }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.url) throw new Error(d.error || "Couldn't make the picture.");
+      const wide = { url: d.url as string };
       setBusy("Cutting it into slides…");
       const im = await loadImage(wide.url);
       const urls: string[] = [];
@@ -140,7 +141,7 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
       }
       setBusy("Saving…");
       await save(urls, "seamless", brief, { panorama: wide.url });
-    } catch (e) { toast.error(e instanceof Error && e.message === "picture" ? "Couldn't cut the picture. Try again." : generationErrorMessage(e)); }
+    } catch (e) { toast.error(e instanceof Error ? (e.message === "picture" ? "Couldn't cut the picture. Try again." : e.message) : "Couldn't make the picture."); }
     finally { setBusy(null); }
   }
 
@@ -225,6 +226,18 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
                     {s.kind === "stat" && <>{field("Number", s.value, (v) => setSlide(i, { value: v }))}{field("What it means", s.label, (v) => setSlide(i, { label: v }))}</>}
                     {s.kind === "quote" && <>{field("Quote", s.quote, (v) => setSlide(i, { quote: v }), true)}{field("Who said it", s.by, (v) => setSlide(i, { by: v || undefined }))}</>}
                     {s.kind === "end" && <>{field("Closing line", s.title, (v) => setSlide(i, { title: v }))}{field("Call to action", s.cta, (v) => setSlide(i, { cta: v || undefined }))}</>}
+                    {(s.kind === "cover" || s.kind === "point" || s.kind === "stat") && slidePics.length > 0 && (
+                      <div className="grid gap-1">
+                        <span className="text-[11px]" style={{ color: "var(--s-soft)" }}>Picture</span>
+                        <div className="flex flex-wrap gap-1">
+                          <button className="h-9 w-9 rounded-md text-[10px] grid place-items-center" style={{ border: `2px solid ${!s.image ? "var(--s-ai)" : "var(--s-line)"}`, color: "var(--s-soft)" }} onClick={() => setSlide(i, { image: undefined })} aria-label="No picture">None</button>
+                          {slidePics.map((p) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <button key={p.url} title={p.title} className="h-9 w-9 rounded-md overflow-hidden" style={{ border: `2px solid ${s.image === p.url ? "var(--s-ai)" : "var(--s-line)"}` }} onClick={() => setSlide(i, { image: p.url })}><img src={p.url} alt={p.title} className="h-full w-full object-cover" /></button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

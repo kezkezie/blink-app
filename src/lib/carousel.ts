@@ -48,13 +48,13 @@ export function sliceRects(imgW: number, imgH: number, slides: number, shape: Sl
  */
 export function seamlessPrompt(brief: string, slides: number) {
   return `${brief.trim()}
-ONE single continuous panoramic photograph, extra wide: one camera, one moment, one unbroken scene from the far left edge to the far right edge. Not a triptych, not a collage, no panels, no borders, no dividing lines, no repeated or mirrored elements. Long elements (a ledge, a road, a horizon, a stripe of colour) run unbroken across the whole width, and the ${slides === 3 ? "subjects are spread out along it from left to right" : "subject and the scene stretch across it"}, with open space between them. No words or text anywhere.`;
+ONE single continuous panoramic photograph, extra wide: one wide-angle shot from a single camera position, one moment, one place. The background (sky, horizon, buildings or walls), the ground and the light are the same continuous scene from the far left edge to the far right edge. Not a triptych, not a collage, no panels, no borders, no dividing lines, no repeated or mirrored elements. Long elements (a ledge, a road, a horizon, a stripe of colour) run unbroken across the whole width, and the ${slides === 3 ? "subjects are spread out along it from left to right" : "subject and the scene stretch across it"}, with open space between them. No words or text anywhere.`;
 }
 
 export type TopicSlide =
-  | { kind: "cover"; title: string; sub?: string }
-  | { kind: "point"; number?: number; title: string; body?: string }
-  | { kind: "stat"; value: string; label: string }
+  | { kind: "cover"; title: string; sub?: string; image?: string }
+  | { kind: "point"; number?: number; title: string; body?: string; image?: string }
+  | { kind: "stat"; value: string; label: string; image?: string }
   | { kind: "quote"; quote: string; by?: string }
   | { kind: "end"; title: string; cta?: string; handle?: string };
 export type TopicCarousel = { slides: TopicSlide[]; caption?: string };
@@ -63,19 +63,24 @@ const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s
 const opt = (v: unknown, max: number) => text(v, max) || undefined;
 const words = (s: string, n: number) => s.split(" ").slice(0, n).join(" ");
 
-/** Claude's outline, checked: 3 to 10 slides, short words, a cover first and an end card last. */
-export function validateTopicCarousel(raw: unknown): TopicCarousel | null {
+/**
+ * Claude's outline, checked: 3 to 10 slides, short words, a cover first and an end card last.
+ * Pictures only from the ones offered (refs from the server, or URLs once the browser has them).
+ */
+export function validateTopicCarousel(raw: unknown, pictures: string[] = []): TopicCarousel | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const list = Array.isArray(r.slides) ? r.slides : [];
+  const allowed = new Set(pictures);
+  const pic = (v: unknown) => (typeof v === "string" && allowed.has(v) ? { image: v } : {});
   let n = 0;
   const slides: TopicSlide[] = list.slice(0, MAX_SLIDES).flatMap((s): TopicSlide[] => {
     if (!s || typeof s !== "object") return [];
     const x = s as Record<string, unknown>;
     switch (x.kind) {
-      case "cover": { const title = words(text(x.title, 80), 9); return title ? [{ kind: "cover", title, sub: opt(x.sub, 90) }] : []; }
-      case "point": { const title = words(text(x.title, 80), 10); if (!title) return []; n++; return [{ kind: "point", number: n, title, body: opt(x.body, 220) }]; }
-      case "stat": { const value = text(x.value, 14), label = words(text(x.label, 70), 10); return value && label ? [{ kind: "stat", value, label }] : []; }
+      case "cover": { const title = words(text(x.title, 80), 9); return title ? [{ kind: "cover", title, sub: opt(x.sub, 90), ...pic(x.image) }] : []; }
+      case "point": { const title = words(text(x.title, 80), 10); if (!title) return []; n++; return [{ kind: "point", number: n, title, body: opt(x.body, 220), ...pic(x.image) }]; }
+      case "stat": { const value = text(x.value, 14), label = words(text(x.label, 70), 10); return value && label ? [{ kind: "stat", value, label, ...pic(x.image) }] : []; }
       case "quote": { const quote = text(x.quote, 200); return quote ? [{ kind: "quote", quote, by: opt(x.by, 40) }] : []; }
       case "end": { const title = words(text(x.title, 60), 8); return title ? [{ kind: "end", title, cta: opt(x.cta, 40), handle: opt(x.handle, 40) }] : []; }
       default: return [];
@@ -87,12 +92,14 @@ export function validateTopicCarousel(raw: unknown): TopicCarousel | null {
 }
 
 export const TOPIC_SYSTEM = `You write swipeable Instagram carousels for a brand: a cover that hooks, one idea per slide, and an end card. Reply with JSON only:
-{"slides":[{"kind":"cover","title":"hook, up to 9 words","sub":"optional, up to 12 words"},{"kind":"point","title":"up to 10 words","body":"optional, one or two short sentences"},{"kind":"stat","value":"e.g. 72%","label":"what it means, up to 10 words"},{"kind":"quote","quote":"short","by":"optional"},{"kind":"end","title":"up to 8 words","cta":"optional call to action","handle":"optional @handle"}],"caption":"the post caption, 1-3 short paragraphs and up to 5 hashtags"}
+{"slides":[{"kind":"cover","title":"hook, up to 9 words","sub":"optional, up to 12 words","image":"optional picture ref"},{"kind":"point","title":"up to 10 words","body":"optional, one or two short sentences","image":"optional picture ref"},{"kind":"stat","value":"e.g. 72%","label":"what it means, up to 10 words","image":"optional picture ref"},{"kind":"quote","quote":"short","by":"optional"},{"kind":"end","title":"up to 8 words","cta":"optional call to action","handle":"optional @handle"}],"caption":"the post caption, 1-3 short paragraphs and up to 5 hashtags"}
+Pictures: if the brand's pictures are listed, put one on the cover and on the point slides where it shows what the slide says (a product for a product tip); never invent a ref, and leave "image" out when none fits. Slides with a picture keep their words shorter.
 Rules: exactly the number of slides asked for (the cover and end card included). The first slide is the cover, the last is the end card. Mostly "point" slides; a "stat" only with a real number you were given; a "quote" only if it is real. Plain, specific, useful words for this brand's audience; no filler, no emoji. Spell names exactly.`;
 
-export function topicPrompt(i: { brandName: string; industry?: string | null; topic: string; slides: number; audience?: string | null; handle?: string | null; look?: string | null }) {
+export function topicPrompt(i: { brandName: string; industry?: string | null; topic: string; slides: number; audience?: string | null; handle?: string | null; look?: string | null; pictures?: Array<{ ref: string; title: string }> }) {
   return [
     `Brand: ${i.brandName}${i.industry ? ` (${i.industry})` : ""}`,
+    i.pictures?.length ? `The brand's pictures (ref: what it shows): ${i.pictures.map((p) => `${p.ref}: ${p.title}`).join("; ")}` : "",
     i.audience ? `Audience: ${i.audience}` : "",
     i.handle ? `Handle: ${i.handle}` : "",
     i.look ? `How the best posts in this industry look: ${i.look}` : "",

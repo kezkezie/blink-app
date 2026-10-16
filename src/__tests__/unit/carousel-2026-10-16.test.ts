@@ -54,6 +54,17 @@ describe("topic carousels", () => {
     expect(c.caption).toBe("Fresh tips");
   });
 
+  it("uses only the pictures it was offered", () => {
+    const c = validateTopicCarousel({ slides: [
+      { kind: "cover", title: "Hook", image: "img1" },
+      { kind: "point", title: "One", image: "https://evil.example/x.jpg" },
+      { kind: "point", title: "Two", image: "img2" },
+      { kind: "end", title: "Bye" },
+    ] }, ["img1", "img2"])!;
+    expect(c.slides.map((s) => ("image" in s ? s.image : undefined))).toEqual(["img1", undefined, "img2", undefined]);
+    expect(validateTopicCarousel({ slides: [{ kind: "cover", title: "Hook", image: "img1" }, { kind: "point", title: "a" }, { kind: "end", title: "b" }] })!.slides[0]).not.toHaveProperty("image");
+  });
+
   it("needs a cover first and adds an end card if it's missing", () => {
     expect(validateTopicCarousel({ slides: [{ kind: "point", title: "a" }, { kind: "point", title: "b" }, { kind: "end", title: "c" }] })).toBeNull();
     const c = validateTopicCarousel({ slides: [{ kind: "cover", title: "Hook" }, { kind: "point", title: "One" }, { kind: "point", title: "Two" }] })!;

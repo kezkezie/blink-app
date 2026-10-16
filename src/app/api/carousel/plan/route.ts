@@ -41,6 +41,17 @@ export async function POST(request: NextRequest) {
   const refund = (why: string) => supabaseAdmin.rpc("refund_credits", { p_client_id: ws.clientId, p_amount: PLAN_CREDITS, p_operation: "refund", p_description: "Refund: carousel outline failed", ...brandArg(brandId) })
     .then(() => NextResponse.json({ error: `${why} Your ${PLAN_CREDITS} credits were refunded.` }, { status: 502 }), () => NextResponse.json({ error: why }, { status: 502 }));
 
+  // The brand's pictures Claude may put on slides: product photos first, then recent Library pictures.
+  const [{ data: products }, { data: posts }] = await Promise.all([
+    supabaseAdmin.from("products").select("name, image_url").eq("brand_id", brandId).eq("client_id", ws.clientId).not("image_url", "is", null).limit(6),
+    supabaseAdmin.from("content").select("caption, image_urls").eq("brand_id", brandId).eq("client_id", ws.clientId).in("content_type", ["post_image", "post"]).order("created_at", { ascending: false }).limit(6),
+  ]);
+  const pictures: Array<{ ref: string; url: string; title: string }> = [];
+  for (const p of products ?? []) if (typeof p.image_url === "string" && p.image_url) pictures.push({ ref: `img${pictures.length + 1}`, url: p.image_url, title: `product photo: ${String(p.name ?? "product").slice(0, 50)}` });
+  for (const c of posts ?? []) {
+    const url = (Array.isArray(c.image_urls) ? c.image_urls : []).find((u: unknown): u is string => typeof u === "string" && !/\.(mp4|mov|webm)(\?|$)/i.test(u));
+    if (url) pictures.push({ ref: `img${pictures.length + 1}`, url, title: String(c.caption ?? "a brand picture").replace(/\s+/g, " ").slice(0, 60) });
+  }
   const handle = typeof brand.social_urls === "string" ? brand.social_urls.match(/instagram\.com\/([A-Za-z0-9_.]{2,30})/i)?.[1] : undefined;
   const research = validateResearch(brand.research);
   const model = assistantModelFor("chat", provider.name);
@@ -49,16 +60,19 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify({
       model, max_tokens: 4000,
       system: [{ type: "text", text: TOPIC_SYSTEM, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: topicPrompt({ brandName: brand.brand_name || brand.company_name || "the brand", industry: brand.industry, topic, slides, audience: (brand.dna as { audience?: string } | null)?.audience, handle: handle ? `@${handle}` : null, look: research?.visualLanguage?.slice(0, 240) }) }],
+      messages: [{ role: "user", content: topicPrompt({ brandName: brand.brand_name || brand.company_name || "the brand", industry: brand.industry, topic, slides, audience: (brand.dna as { audience?: string } | null)?.audience, handle: handle ? `@${handle}` : null, look: research?.visualLanguage?.slice(0, 240), pictures: pictures.map(({ ref, title }) => ({ ref, title })) }) }],
     }),
     signal: AbortSignal.timeout(70_000),
   }).catch(() => null);
   if (!res?.ok) return refund("Couldn't write the carousel just now. Try again in a minute.");
   const data = await res.json().catch(() => null);
   const text = ((data?.content ?? []) as Array<{ type: string; text?: string }>).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
-  const carousel = validateTopicCarousel(jsonFrom(text));
+  const carousel = validateTopicCarousel(jsonFrom(text), pictures.map((p) => p.ref));
+  // Picture refs become our URLs.
+  const byRef = new Map(pictures.map((p) => [p.ref, p.url]));
+  for (const sl of carousel?.slides ?? []) if ("image" in sl && sl.image) sl.image = byRef.get(sl.image);
   const usd = data ? estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 }) : null;
   console.info("carousel plan usage", JSON.stringify({ brand: brandId, model, ok: !!carousel, usd: usd === null ? null : Number(usd.toFixed(4)) }));
   if (!carousel) return refund("The outline came back unclear. Try saying it another way.");
-  return NextResponse.json({ carousel, handle: handle ? `@${handle}` : null, credits: PLAN_CREDITS });
+  return NextResponse.json({ carousel, pictures: pictures.map(({ url, title }) => ({ url, title })), handle: handle ? `@${handle}` : null, credits: PLAN_CREDITS });
 }
