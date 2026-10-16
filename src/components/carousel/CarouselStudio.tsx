@@ -244,7 +244,7 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
             <div className="flex-1" />
             <button className="s-btn primary" disabled={!!busy || brief.trim().length < 8 || !kit} onClick={makeSeamless}>{busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {busy}</> : <><Sparkles className="h-4 w-4" /> Make it <span className="cost">{nb2} cr</span></>}</button>
           </div>
-          <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>It's made as one continuous panorama (no panels), so the scene flows as people swipe. Add your words per slide afterwards: open a slide and use the Editor.</p>
+          <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>It&apos;s made as one continuous panorama (no panels), so the scene flows as people swipe. Add your words per slide afterwards: open a slide and use the Editor.</p>
         </div>
       )}
 
