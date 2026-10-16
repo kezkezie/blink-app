@@ -24,7 +24,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       "Content-Security-Policy": PUBLISHED_CSP,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin",
-      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+      // Not cached: "Take offline" and "Publish this version" must show at once (a CDN copy lingered for minutes).
+      "Cache-Control": "no-store",
     },
   });
 }
