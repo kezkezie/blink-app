@@ -373,12 +373,7 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
                 {showRefs && (
                   <>
                     <div className="flex flex-wrap gap-1.5">
-                      {brandVisual.refs.map((r) => (
-                        <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" title={`${r.title} · ${r.source}`} className="h-14 w-14 rounded-lg overflow-hidden block" style={{ border: "1px solid var(--s-line)" }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={r.image} alt={r.title} className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
-                        </a>
-                      ))}
+                      {brandVisual.refs.map((r) => <RefThumb key={r.url} r={r} />)}
                     </div>
                     {brandVisual.notes && <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>{brandVisual.notes} References guide the craft; nothing is copied.</p>}
                   </>
@@ -418,5 +413,18 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
       )}
 
     </div>
+  );
+}
+
+/** One reference: its picture linking to where it came from; a site that refuses the picture shows its name instead. */
+function RefThumb({ r }: { r: VisualRefs["refs"][number] }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <a href={r.url} target="_blank" rel="noopener noreferrer" title={`${r.title} · ${r.source}`} className="h-14 w-14 rounded-lg overflow-hidden grid place-items-center text-center" style={{ border: "1px solid var(--s-line)", background: "var(--s-panel)" }}>
+      {failed
+        ? <span className="text-[9.5px] leading-tight px-1" style={{ color: "var(--s-soft)" }}>{r.source}</span>
+        // eslint-disable-next-line @next/next/no-img-element
+        : <img src={r.image} alt={r.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={() => setFailed(true)} />}
+    </a>
   );
 }
