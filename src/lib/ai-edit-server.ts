@@ -127,15 +127,15 @@ async function swapUrl(clientId: string, contentId: string, raw: unknown): Promi
   return null;
 }
 
-type Render = { ok: true; url: string; provider: "kie" | "replicate" } | { ok: false; url: null; reason: string; refused: boolean };
+export type Render = { ok: true; url: string; provider: "kie" | "replicate" } | { ok: false; url: null; reason: string; refused: boolean };
 const REFUSED = /sensitive|nsfw|safety|policy|prohibit|flagged|violat|moderat/i;
 
-async function kieRender(engine: EditEngine, prompt: string, images: string[], aspect: string, deadline: number): Promise<Render> {
+async function kieRender(engine: EditEngine, prompt: string, images: string[], aspect: string, deadline: number, resolution = "1K"): Promise<Render> {
   const key = process.env.KIE_API_TOKEN;
   if (!key) return { ok: false, url: null, reason: "not configured", refused: false };
   const input = engine === "gpt-image-2-image-to-image"
-    ? { prompt, input_urls: images, aspect_ratio: aspect, resolution: "1K" }
-    : { prompt, image_input: images, aspect_ratio: aspect, resolution: "1K", output_format: "jpg" };
+    ? { prompt, input_urls: images, aspect_ratio: aspect, resolution }
+    : { prompt, image_input: images, aspect_ratio: aspect, resolution, output_format: "jpg" };
   const created = await fetch(`${KIE}/createTask`, {
     method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: engine, input }), signal: AbortSignal.timeout(20_000),
@@ -159,13 +159,13 @@ async function kieRender(engine: EditEngine, prompt: string, images: string[], a
   return { ok: false, url: null, reason: "timeout", refused: false };
 }
 
-async function replicateRender(prompt: string, images: string[], aspect: string, deadline: number): Promise<Render> {
+async function replicateRender(prompt: string, images: string[], aspect: string, deadline: number, resolution = "1K"): Promise<Render> {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) return { ok: false, url: null, reason: "no fallback", refused: false };
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const res = await fetch(REPLICATE_NB2, {
     method: "POST", headers: { ...headers, Prefer: "wait=60" },
-    body: JSON.stringify({ input: { prompt, image_input: images, aspect_ratio: aspect, resolution: "1K", output_format: "jpg" } }),
+    body: JSON.stringify({ input: { prompt, image_input: images, aspect_ratio: aspect, resolution, output_format: "jpg" } }),
     signal: AbortSignal.timeout(70_000),
   }).catch(() => null);
   let p = (await res?.json().catch(() => null)) as { id?: string; status?: string; output?: unknown; error?: unknown } | null;
@@ -181,10 +181,10 @@ async function replicateRender(prompt: string, images: string[], aspect: string,
 }
 
 /** Kie first; Replicate's Nano Banana 2 when Kie was slow, busy or errored (never when it refused the content). */
-export async function renderEdit(engine: EditEngine, prompt: string, images: string[], aspect: string, deadline: number): Promise<Render> {
-  const first = await kieRender(engine, prompt, images, aspect, Math.min(deadline, Date.now() + 150_000));
+export async function renderEdit(engine: EditEngine, prompt: string, images: string[], aspect: string, deadline: number, resolution = "1K"): Promise<Render> {
+  const first = await kieRender(engine, prompt, images, aspect, Math.min(deadline, Date.now() + 150_000), resolution);
   if (first.ok || first.refused) return first;
-  const second = await replicateRender(prompt, images, aspect, deadline);
+  const second = await replicateRender(prompt, images, aspect, deadline, resolution);
   return second.ok ? second : first;
 }
 

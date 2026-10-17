@@ -96,10 +96,12 @@ export function MediaThumb({ url, isVideo, poster, alt = "" }: { url: string | n
 
 /** A post whose picture or video is still being made (or never arrived). */
 function PendingNote({ content }: { content: Content }) {
-  const fresh = Date.now() - new Date(content.updated_at ?? content.created_at).getTime() < 10 * 60_000;
+  const [now] = useState(() => Date.now());
+  // Server-owned image jobs keep their own clock (they're rescued or closed, never left hanging).
+  const fresh = content.generation_state === "generating" || now - new Date(content.updated_at ?? content.created_at).getTime() < 10 * 60_000;
   return (
     <div className="absolute inset-0 grid place-items-center p-3 text-center text-[12px]" style={{ background: "rgba(10,11,13,.6)", color: "var(--s-soft)" }}>
-      {fresh
+      {content.generation_state === "failed" ? <span>{content.generation_status_text}</span> : fresh
         ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {content.generation_status_text}</span>
         : <span>This one didn&apos;t finish. If credits were taken they were refunded; you can delete it.</span>}
     </div>

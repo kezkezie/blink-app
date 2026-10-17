@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowUp, CalendarCheck, Check, ChevronUp, Coins, ImagePlus, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useClient } from "@/hooks/useClient";
@@ -83,6 +83,9 @@ export function AskPanel() {
   const [error, setError] = useState<string | null>(null);
   // apply_schedule results, per action: "placing" while it runs, then a one-line summary.
   const [placed, setPlaced] = useState<Record<string, string>>({});
+  // done cards: "undoing" while it runs, "undone" after (2026-10-17).
+  const [undone, setUndone] = useState<Record<string, "undoing" | "undone">>({});
+  const router = useRouter();
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -138,6 +141,18 @@ export function AskPanel() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "The assistant could not answer just now.");
       push({ role: "assistant", text: data.reply, actions: data.actions, credits: typeof data.credits === "number" ? data.credits : undefined });
+      // Do-it-now actions run as they arrive: a new brand opens, a studio opens and starts, a schedule goes on.
+      const at = useAskStore.getState().messages.length - 1;
+      (data.actions as AskAction[] | undefined)?.forEach((a, j) => {
+        if (!a.auto) return;
+        if (a.kind === "switch_brand" && a.brand) {
+          const { availableBrands, setAvailableBrands, setActiveBrand } = useBrandStore.getState();
+          const b = { id: a.brand.id, brand_name: a.brand.brand_name, logo_url: null, role: "owner" as const };
+          if (!availableBrands.some((x) => x.id === b.id)) setAvailableBrands([...availableBrands, b]);
+          setActiveBrand(b);
+        } else if (a.kind === "apply_schedule") void applySchedule(a, `${at}:${j}`);
+        else if (a.href) { router.push(a.href); if (window.innerWidth < 1200) setOpen(false); }
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -234,6 +249,27 @@ export function AskPanel() {
                         {canvasOpen ? a.label : "Open the Editor to apply"}
                       </button>
                     )}
+                  </div>
+                );
+              }
+              if (a.kind === "done" || a.kind === "switch_brand") {
+                const u = undone[key];
+                return (
+                  <div key={j} className="act">
+                    <div className="text-xs font-medium flex items-center gap-1.5" style={{ color: u === "undone" ? "var(--s-mute)" : "var(--s-ok)" }}>{u === "undone" ? <Undo2 className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />} {u === "undone" ? "Undone" : a.note}</div>
+                    <ul className="text-xs grid gap-1" style={{ color: "var(--s-soft)", textDecoration: u === "undone" ? "line-through" : undefined }}>{a.changes?.slice(0, 14).map((c, k) => <li key={k}>· {c}</li>)}</ul>
+                    <div className="flex items-center gap-2">
+                      {a.kind === "switch_brand" ? <Link href="/studio/brand" className="s-btn sm" onClick={() => { if (window.innerWidth < 1200) setOpen(false); }}>Open the Brand page</Link>
+                        : <Link href={(a.undo as { kind?: string } | undefined)?.kind === "posts" ? "/studio/library" : "/studio/brand"} className="s-btn sm" onClick={() => { if (window.innerWidth < 1200) setOpen(false); }}>{(a.undo as { kind?: string } | undefined)?.kind === "posts" ? "Open Library" : "See it"}</Link>}
+                      {!!a.undo && u !== "undone" && (
+                        <button className="s-btn ghost sm" disabled={u === "undoing"} onClick={async () => {
+                          setUndone((x) => ({ ...x, [key]: "undoing" }));
+                          const r = await fetch("/api/assistant/undo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ undo: a.undo }) }).catch(() => null);
+                          if (r?.ok) { setUndone((x) => ({ ...x, [key]: "undone" })); toast.success("Put back as it was."); }
+                          else { setUndone((x) => { const n = { ...x }; delete n[key]; return n; }); toast.error("Couldn't undo that."); }
+                        }}>{u === "undoing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} Undo</button>
+                      )}
+                    </div>
                   </div>
                 );
               }

@@ -15,10 +15,18 @@ import { describeCanvasOps, validateCanvasOps, type CanvasOp, type CanvasSummary
 import { BUILTIN_SKILLS } from "./skills";
 import { runVisualRefs } from "@/lib/visual-refs-server";
 import { runBrandResearch } from "@/lib/brand-research-server";
+import { createBrand, updateBrand, updatePosts, type AssistantUndo } from "./actions";
+import { MAX_LOOKS, SITE_LOOKS, SITE_PAGE_CREDITS } from "@/lib/sites/code";
 
 export type ScheduleItem = { id: string; at: string; label: string };
 export type AssistantAction = {
-  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas" | "apply_schedule";
+  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas" | "apply_schedule" | "done" | "switch_brand";
+  /** Run as soon as it arrives (the user asked to do it now): open the link, or apply the schedule (2026-10-17). */
+  auto?: boolean;
+  /** done only: how to put it back (posted to /api/assistant/undo). */
+  undo?: AssistantUndo;
+  /** switch_brand only: the brand just created. */
+  brand?: { id: string; brand_name: string };
   label: string;
   href?: string;
   estimatedCredits?: number;
@@ -131,13 +139,15 @@ export const ASSISTANT_TOOLS = [
   },
   {
     name: "propose_image",
-    description: "Propose an image or poster. Creates a button that opens Image Studio with the idea filled in.",
+    description: "Make or propose images and posters. With make_now (the user asked you to make it) Image Studio opens and starts at once; without, a button that opens it filled in.",
     input_schema: {
       type: "object",
       properties: {
         idea: { type: "string", maxLength: 1000 },
         engine: { type: "string", enum: Object.keys(IMAGE_ENGINE_REGISTRY) },
         count: { type: "integer", minimum: 1, maximum: 4 },
+        aspect_ratio: { type: "string", enum: [...ASPECTS] },
+        make_now: { type: "boolean", description: "true only when the user asked you to make it now (\"make me\", \"create\", \"go ahead\"): Image Studio opens and starts making it straight away, spending the credits. Otherwise a button." },
       },
       required: ["idea"],
       additionalProperties: false,
@@ -150,11 +160,12 @@ export const ASSISTANT_TOOLS = [
   },
   {
     name: "propose_schedule",
-    description: "Propose dates and times for posts. Shown to the user as a list with an Apply button; nothing changes until they press it. Times are the user's local time as YYYY-MM-DDTHH:mm, in the future. Use ids from get_schedule (ready posts, or scheduled ones to move).",
+    description: "Schedule posts, or propose dates and times for them. With apply_now they go on the calendar at once; without, a list with an Apply button. Times are the user's local time as YYYY-MM-DDTHH:mm, in the future. Use ids from get_schedule (ready posts, or scheduled ones to move).",
     input_schema: {
       type: "object",
       properties: {
         summary: { type: "string", maxLength: 300, description: "One line: the plan, e.g. 'Five posts over the next week, evenings on weekdays'." },
+        apply_now: { type: "boolean", description: "true when the user asked you to schedule them (not just to suggest a plan): they go on the calendar straight away, with an undo on the calendar." },
         posts: { type: "array", maxItems: 30, items: { type: "object", properties: { id: { type: "string" }, at: { type: "string", description: "Local time, YYYY-MM-DDTHH:mm" } }, required: ["id", "at"] } },
       },
       required: ["summary", "posts"],
@@ -178,6 +189,20 @@ export const ASSISTANT_TOOLS = [
       type: "object",
       properties: {
         brief: { type: "string", description: "What the motion is for, in one or two sentences, with the exact words, numbers and prices to use." },
+      },
+      required: ["brief"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "make_website",
+    description: `Write a website for the brand in the website studio: one complete page per look (${SITE_LOOKS.map((l) => `${l.id}: ${l.line}`).join("; ")}), ${SITE_PAGE_CREDITS} credits each, editable by sections or as code, downloadable or published at blinkspot.io/w/<name>. With start_now (the user asked you to make it) it opens and starts writing straight away.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        brief: { type: "string", maxLength: 1500, description: "What the site is for, in the brand's words" },
+        looks: { type: "array", items: { type: "string", enum: SITE_LOOKS.map((l) => l.id) }, maxItems: MAX_LOOKS },
+        start_now: { type: "boolean" },
       },
       required: ["brief"],
       additionalProperties: false,
@@ -390,11 +415,16 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
       const idea = str(input.idea, 1000);
       if (!idea) return { content: "An idea is required." };
       const engine = oneOf(input.engine, Object.keys(IMAGE_ENGINE_REGISTRY), "nb2");
-      const quote = quoteImage(engine, int(input.count, 1, 4, 1));
-      const params = new URLSearchParams({ prompt: idea, from: "ask" });
+      const count = int(input.count, 1, 4, 1);
+      const quote = quoteImage(engine, count);
+      const now = input.make_now === true;
+      const quality = engine === "nb2" ? "best" : engine === "z-image" ? "draft" : "fast";
+      const params = new URLSearchParams({ mode: "generate", prompt: idea, from: "ask", ...(now ? { auto: "1", count: String(count), quality, ...(typeof input.aspect_ratio === "string" && (ASPECTS as readonly string[]).includes(input.aspect_ratio) ? { format: input.aspect_ratio } : {}) } : {}) });
       return {
-        content: `Proposal shown to the user as a button. About ${quote.credits} credits. Nothing has been spent.`,
-        action: { kind: "open_image_studio", label: "Open Image Studio", href: `/studio/image?${params}`, estimatedCredits: quote.credits, note: `${quote.perImage} credits per image` },
+        content: now
+          ? `Image Studio is opening and making ${count} image${count === 1 ? "" : "s"} now (about ${quote.credits} credits). They land in the Library.`
+          : `Proposal shown to the user as a button. About ${quote.credits} credits. Nothing has been spent.`,
+        action: { kind: "open_image_studio", label: now ? "Making it in Image Studio" : "Open Image Studio", href: `/studio/image?${params}`, estimatedCredits: quote.credits, note: `${quote.perImage} credits per image`, ...(now ? { auto: true } : {}) },
       };
     }
     case "edit_timeline": {
@@ -463,8 +493,8 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
       if (!schedule.length) return { content: `Nothing could be proposed. ${skipped.join("; ")}` };
       schedule.sort((a, b) => a.at.localeCompare(b.at));
       return {
-        content: `Proposed ${schedule.length} post(s) as an Apply button; nothing changes until the user presses it.${skipped.length ? ` Skipped: ${skipped.join("; ")}.` : ""}`,
-        action: { kind: "apply_schedule", label: `Put ${schedule.length} post${schedule.length === 1 ? "" : "s"} on the calendar`, note: str(input.summary, 300) || "Posting plan", schedule, changes: schedule.map((s) => s.label) },
+        content: `${input.apply_now === true ? `Putting ${schedule.length} post(s) on the calendar now.` : `Proposed ${schedule.length} post(s) as an Apply button; nothing changes until the user presses it.`}${skipped.length ? ` Skipped: ${skipped.join("; ")}.` : ""}`,
+        action: { kind: "apply_schedule", label: `Put ${schedule.length} post${schedule.length === 1 ? "" : "s"} on the calendar`, note: str(input.summary, 300) || "Posting plan", schedule, changes: schedule.map((s) => s.label), ...(input.apply_now === true ? { auto: true } : {}) },
       };
     }
     case "use_skill": {
@@ -503,6 +533,43 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
     case "open_page": {
       const page = PAGES[oneOf(input.page, Object.keys(PAGES), "library")];
       return { content: "Button shown.", action: { kind: "open_page", label: page.label, href: page.href } };
+    }
+    case "update_brand": {
+      const r = await updateBrand(ctx, input);
+      if (r.error) return { content: r.error };
+      if (!r.changes.length) return { content: "Nothing new: the brand already says all of that." };
+      return { content: `Saved on the Brand page: ${r.changes.join("; ")}. The user can undo it.`, action: { kind: "done", label: "Saved to your Brand page", note: "Saved to your Brand page", changes: r.changes, ...(r.undo ? { undo: r.undo } : {}) } };
+    }
+    case "create_brand": {
+      const r = await createBrand(ctx.skillsClientId ?? ctx.clientId, input);
+      if (r.error || !r.brand) return { content: r.error ?? "Couldn't create the brand." };
+      if (r.existing) {
+        if (!r.changes.length) return { content: `${r.brand.brand_name} already has all of that.` };
+        const open = r.brand.id === ctx.brandId;
+        return {
+          content: `${r.brand.brand_name} already exists, so it was filled in (not duplicated): ${r.changes.join("; ")}. The user can undo it.`,
+          action: { kind: open ? "done" : "switch_brand", label: "Saved to your Brand page", note: "Saved to your Brand page", changes: r.changes, ...(r.undo ? { undo: r.undo } : {}), ...(open ? {} : { brand: r.brand, auto: true }) },
+        };
+      }
+      return { content: `Created and switched to ${r.brand.brand_name}: ${r.changes.join("; ")}.`, action: { kind: "switch_brand", label: `Open ${r.brand.brand_name}`, note: `New brand: ${r.brand.brand_name}`, brand: r.brand, changes: r.changes, auto: true } };
+    }
+    case "update_posts": {
+      const r = await updatePosts(ctx, input);
+      if (r.error) return { content: r.error };
+      if (!r.changes.length) return { content: "No post changed (unknown ids, already posted, or the same text)." };
+      return { content: `Saved: ${r.changes.join("; ")}. The user can undo it.`, action: { kind: "done", label: "Saved to your posts", note: `Updated ${r.changes.length} post${r.changes.length === 1 ? "" : "s"}`, changes: r.changes, ...(r.undo ? { undo: r.undo } : {}) } };
+    }
+    case "make_website": {
+      const brief = str(input.brief, 1500);
+      const looks = [...new Set((Array.isArray(input.looks) ? input.looks : []).filter((l): l is string => typeof l === "string" && SITE_LOOKS.some((x) => x.id === l)))].slice(0, MAX_LOOKS);
+      const chosen = looks.length ? looks : ["cinematic", "editorial"];
+      const now = input.start_now === true;
+      const params = new URLSearchParams({ brief, looks: chosen.join(","), ...(now ? { auto: "1" } : {}) });
+      const credits = chosen.length * SITE_PAGE_CREDITS;
+      return {
+        content: now ? `The website studio is opening and writing ${chosen.length} page(s) now (${credits} credits).` : `Button shown: it opens the website studio with the brief and looks filled in (${credits} credits to write).`,
+        action: { kind: "open_page", label: now ? "Writing it in the website studio" : "Open the website studio", href: `/studio/sites?${params}`, estimatedCredits: credits, note: `${chosen.length} look${chosen.length === 1 ? "" : "s"}: ${chosen.join(", ")}`, ...(now ? { auto: true } : {}) },
+      };
     }
     default:
       return { content: `Unknown tool: ${name}` };

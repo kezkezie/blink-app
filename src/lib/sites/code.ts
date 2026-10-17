@@ -11,7 +11,7 @@ import type { SiteContact, SiteImage, SiteProduct, SiteTheme } from "./spec";
 import { whatsappLink } from "./spec";
 
 export const SITE_PAGE_CREDITS = 30;
-export const SITE_CHANGE_CREDITS = 12;
+export const SITE_CHANGE_CREDITS = 6;
 export const MAX_LOOKS = 3;
 export const MAX_HTML = 400_000;
 
@@ -50,7 +50,8 @@ Craft:
 - The brand's colours exactly as given, used with intent; body text at least 4.5:1 contrast on its background. The brand's fonts (headings and body).
 - Copy in the brand's voice, short and specific. Use ONLY the facts given: the brief, the brand facts, the products, the links, and words printed on the brand's own pictures. Never invent prices, dates or launch days, phone numbers, addresses, opening hours, stock levels, reviews, testimonials, statistics, awards or client names; leave a thing out when it isn't given.
 - <title>, meta description, meta viewport, theme-color, Open Graph tags (og:image is the hero picture), alt text on every picture.
-- Tidy, readable code with CSS custom properties for the colours and fonts. Keep it under about 900 lines.`;
+- Editable without code: every top-level part of the page (header, hero, each section, footer) is one element with a short data-section name (data-section="hero", "menu", "story", "contact", "footer"). Pictures are <img> elements (object-fit for crops), not CSS background images, so the owner can swap them. Words sit in real text elements (h1-h3, p, li, a, button).
+- Tidy, readable code. Colours and fonts as CSS custom properties in one :root block: --color-<name> with hex values (e.g. --color-bg, --color-text, --color-primary, --color-accent) and --font-heading / --font-body. Keep it under about 900 lines.`;
 
 export const CHANGE_SYSTEM = `You are the front-end developer of this one-file landing page. Make the owner's change and nothing else; keep everything that works.
 Reply with edit blocks only, as many as needed, each exactly:

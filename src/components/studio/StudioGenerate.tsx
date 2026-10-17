@@ -35,7 +35,10 @@ async function assisted<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
-export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: string; autoIdeas?: boolean }) {
+/** autoRun: Ask BlinkSpot was asked to make it now (2026-10-17), so it starts with these settings. */
+export type GenerateAutoRun = { count: number; quality: "best" | "fast" | "draft"; format?: string };
+
+export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIdea?: string; autoIdeas?: boolean; autoRun?: GenerateAutoRun }) {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name);
@@ -60,6 +63,8 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
   const [thinking, setThinking] = useState<"research" | "ideas" | "brief" | null>(null);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<"refs" | "design" | "make" | null>(null);
+  // The server's own line while it works, e.g. "trying another image service" (2026-10-17).
+  const [progress, setProgress] = useState<string | null>(null);
   const [designNote, setDesignNote] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [results, setResults] = useState<GeneratedImage[]>([]);
@@ -142,6 +147,28 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoIdeas, activeBrand?.id, initialIdea]);
 
+  // Asked to make it now: take the settings, then start once the brand kit has loaded.
+  const pendingRun = useRef(false);
+  useEffect(() => {
+    if (!autoRun || autoRan.current || !initialIdea || initialIdea.trim().length < 8) return;
+    // The flags are set when the timer fires (a dev re-run of this effect cancels the first timer).
+    const t = setTimeout(() => {
+      autoRan.current = true;
+      pendingRun.current = true;
+      setQuality(autoRun.quality);
+      setCount(Math.min(4, Math.max(1, autoRun.count)));
+      if (autoRun.format && (FORMATS as readonly string[]).includes(autoRun.format)) setFormat(autoRun.format as (typeof FORMATS)[number]);
+      setBrief(initialIdea.trim());
+    }, 0);
+    return () => clearTimeout(t);
+  }, [autoRun, initialIdea]);
+  useEffect(() => {
+    if (!pendingRun.current || !kit || !clientId || !activeBrand || brief !== initialIdea?.trim() || busy) return;
+    const t = setTimeout(() => { if (!pendingRun.current) return; pendingRun.current = false; void generate(brief); }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kit, clientId, activeBrand?.id, brief, quality, count, format]);
+
   async function chooseConcept(c: CreativeConcept) {
     if (!activeBrand) return;
     setPicked(c.id);
@@ -220,6 +247,7 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
         references: [...(withLogo && kit.logoUrl ? [kit.logoUrl] : []), ...refs.map((r) => r.url)],
         engine, aspect: format, style: activeLook, count,
         caption: (words.trim() || text.trim().split(/[.!?]/)[0]).slice(0, 120),
+        onProgress: (line) => setProgress(line === "Making your image" ? null : line),
       });
       setResults((prev) => [...saved, ...prev]);
       setDesignNote(note);
@@ -235,7 +263,7 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
         // failed on every model; the same brief in clinical wording worked).
         ...(sensitive && softer !== text ? { action: { label: "Retry in clinical wording", onClick: () => { setBrief(softer); void generate(softer); } } } : {}),
       });
-    } finally { setBusy(false); setPhase(null); }
+    } finally { setBusy(false); setPhase(null); setProgress(null); }
   }
 
   const name = kit?.name || activeBrand?.brand_name || "your brand";
@@ -361,7 +389,7 @@ export function StudioGenerate({ initialIdea, autoIdeas }: { initialIdea?: strin
               <div className="flex gap-1.5">{[1, 2, 3, 4].map((n) => <button key={n} className="s-chip" aria-pressed={count === n} onClick={() => setCount(n)}>{n}</button>)}</div>
             </div>
             <button className="s-btn primary lg w-full mt-auto" disabled={!ready || busy || !kit} onClick={() => void generate()}>
-              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {phase === "refs" ? "Studying references…" : phase === "design" ? "Designing it…" : "Making it…"} {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
+              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {phase === "refs" ? "Studying references…" : phase === "design" ? "Designing it…" : progress ? `${progress}…` : "Making it…"} {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
             </button>
             {/* What it learned from: reference pictures from the brand's category (2026-10-16). */}
             {studying ? (

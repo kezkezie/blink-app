@@ -8,6 +8,7 @@
  * same request goes straight to the Anthropic API instead (same model, same format).
  */
 import { ASSISTANT_TOOLS, CANVAS_GUIDE, EDITOR_GUIDE, EDIT_CANVAS_TOOL, EDIT_TIMELINE_TOOL, USE_SKILL_TOOL, runAssistantTool, type AssistantAction, type ToolContext } from "./tools";
+import { CREATE_BRAND_TOOL, UPDATE_BRAND_TOOL, UPDATE_POSTS_TOOL } from "./actions";
 import { BUILTIN_SKILLS, skillIndex, type Skill } from "./skills";
 import type { CanvasSummary } from "@/lib/canvas-ops";
 import type { EditorContext } from "./request";
@@ -86,9 +87,10 @@ How you help:
 - Long videos are made scene by scene: a story concept becomes 3 to 8 short scenes (about 5 s each), each scene gets a start frame, then the clips are put together in the Video Editor. Use propose_video with style "storytelling" for anything longer than one shot.
 - Talk about quality, not model names: Draft (cheap preview), Standard, Cinema (1080p). Say the price when you propose.
 - Be quick: when the request is clear, propose in your first reply instead of asking questions.
-- You never spend credits and never publish. propose_video, propose_image and open_page give the user a button; they check the price in the studio and press Generate themselves. Say so if they ask you to "just do it".
+- Do the work for the user; don't send them to do it. When they tell you about their brand (a pasted description, products and prices, contacts, colours), save it with update_brand (or create_brand for a brand they don't have yet) instead of explaining where to type it. Captions and hashtags on posts: update_posts. These save at once and the user gets an Undo, so just do them and say what you saved.
+- Spending credits: only when the user asked you to make something now ("make me", "create", "go ahead", "do it"). Then use propose_image with make_now, make_website with start_now, or propose_schedule with apply_now, and say what it costs. When they are exploring or unsure, give the button instead. Videos always go as a button (they are the expensive ones). You never publish to social media and never delete anything.
 - If the balance is lower than the price, say so and suggest a shorter or Draft version.
-- To plan or schedule posts, call get_schedule, then propose_schedule once with a date and time for each post. Spread them out (one a day, two at most), avoid times already taken, and use good local times for the audience unless the user says otherwise (weekdays 12:00-13:00 or 18:00-21:00, weekends 10:00-12:00). Say which posts have no platforms yet: they go on the calendar but only post once platforms are picked. The user presses Apply.
+- To plan or schedule posts, call get_schedule, then propose_schedule once with a date and time for each post. Spread them out (one a day, two at most), avoid times already taken, and use good local times for the audience unless the user says otherwise (weekdays 12:00-13:00 or 18:00-21:00, weekends 10:00-12:00). Say which posts have no platforms yet: they go on the calendar but only post once platforms are picked. If they asked you to schedule (not just to plan), use apply_now; otherwise they press Apply.
 
 Skills: playbooks for kinds of work, loaded with use_skill only when the request needs one (they cost nothing until loaded). Load the matching skill before writing a prompt, script or plan for that kind of work. Built in:
 ${skillIndex(BUILTIN_SKILLS)}
@@ -142,7 +144,7 @@ export async function runAssistant(
   const system = cache
     ? [{ type: "text", text: fixed, cache_control: { type: "ephemeral" } }, ...(varying ? [{ type: "text", text: varying }] : [])]
     : [fixed, varying].filter(Boolean).join("\n\n");
-  const tools = [...ASSISTANT_TOOLS, USE_SKILL_TOOL, ...(editor ? [EDIT_TIMELINE_TOOL] : []), ...(ctx.canvas ? [EDIT_CANVAS_TOOL] : [])];
+  const tools = [...ASSISTANT_TOOLS, UPDATE_BRAND_TOOL, CREATE_BRAND_TOOL, UPDATE_POSTS_TOOL, USE_SKILL_TOOL, ...(editor ? [EDIT_TIMELINE_TOOL] : []), ...(ctx.canvas ? [EDIT_CANVAS_TOOL] : [])];
   const toolCtx: ToolContext = { clientId: ctx.clientId, brandId: ctx.brandId, timeline: editor?.timeline, canvas: ctx.canvas, tz: ctx.tz, tzOffset: ctx.tzOffset };
   const messages: AgentMessage[] = [...history];
   // The canvas preview rides on the latest user message (once), like video frames.

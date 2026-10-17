@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { StudioNav, StudioTopBar } from "@/components/studio/StudioShell";
 import { AskPanel } from "@/components/studio/AskPanel";
 import { Dictation } from "@/components/studio/Dictation";
+import { FullscreenHost } from "@/components/studio/Fullscreen";
 import { useAskStore } from "@/components/studio/ask-store";
 import { SharedBrandBar, ViewerGate } from "@/components/studio/sharing/SharedBrand";
 import { UI_COOKIE } from "@/lib/studio-routes";
@@ -80,6 +81,7 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
         </div>
         <AskPanel />
         <Dictation />
+        <FullscreenHost />
       </div>
     </TooltipProvider>
   );

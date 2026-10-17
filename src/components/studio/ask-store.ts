@@ -11,8 +11,14 @@ const readEffort = (): Effort => {
 };
 
 export type AskAction = {
-  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas" | "apply_schedule";
+  kind: "open_video_studio" | "open_image_studio" | "open_page" | "apply_edit" | "apply_canvas" | "apply_schedule" | "done" | "switch_brand";
   label: string;
+  /** Run on arrival: the user asked Ask to do it now (2026-10-17). */
+  auto?: boolean;
+  /** done: what to send to /api/assistant/undo. */
+  undo?: unknown;
+  /** switch_brand: the brand Ask just created. */
+  brand?: { id: string; brand_name: string };
   href?: string;
   /** apply_edit: the edit and what it changes, applied only when the user presses Apply. */
   ops?: EditOp[];

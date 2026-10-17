@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Check, Code2, Copy, Download, ExternalLink, Eye, Globe, Laptop, Loader2, RefreshCw, Search, Smartphone, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Check, Code2, Copy, Download, ExternalLink, Eye, Globe, LayoutList, Laptop, Loader2, Maximize2, RefreshCw, Search, Smartphone, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { MAX_LOOKS, SITE_CHANGE_CREDITS, SITE_LOOKS, SITE_PAGE_CREDITS, cleanSlug, downloadName, type SiteLook } from "@/lib/sites/code";
 import { Modal } from "../Modal";
-import { SitePreview, SiteThumb } from "./SitePreview";
+import { SiteFullscreen, SitePreview, SiteThumb } from "./SitePreview";
+import { SectionsEditor } from "./SectionsEditor";
 
 const CodeEditor = dynamic(() => import("./CodeEditor").then((m) => m.CodeEditor), {
   ssr: false, loading: () => <div className="s-skel h-full" />,
@@ -38,18 +40,25 @@ function families(pages: Page[]) {
   return [...groups.values()].map((list) => list.sort((a, b) => a.created_at.localeCompare(b.created_at)));
 }
 
-export function CodeStudio() {
+export function CodeStudio({ initialBrief, initialLooks, autoStart }: { initialBrief?: string; initialLooks?: string; autoStart?: boolean } = {}) {
   const { activeBrand } = useBrandStore();
   const brandId = activeBrand?.id;
+  const router = useRouter();
   const [pages, setPages] = useState<Page[] | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [view, setView] = useState<View>({ kind: "gallery" });
-  const [looks, setLooks] = useState<SiteLook[]>(["cinematic", "editorial"]);
-  const [brief, setBrief] = useState("");
+  // From Ask BlinkSpot (2026-10-17): the brief and looks come in the link, and "start now" writes at once.
+  const [looks, setLooks] = useState<SiteLook[]>(() => {
+    const asked = (initialLooks ?? "").split(",").filter((l): l is SiteLook => SITE_LOOKS.some((x) => x.id === l)).slice(0, MAX_LOOKS);
+    return asked.length ? asked : ["cinematic", "editorial"];
+  });
+  const [brief, setBrief] = useState(initialBrief?.slice(0, 1500) ?? "");
+  const autoStarted = useRef(false);
   const [refs, setRefs] = useState<Refs | null>(null);
   const [studying, setStudying] = useState(false);
   const [studyFirst, setStudyFirst] = useState(true);
   const [showPatterns, setShowPatterns] = useState(false);
+  const [fullPage, setFullPage] = useState<{ html: string; title: string } | null>(null);
   const codes = useRef(new Map<string, string>());
   const flushAt = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -126,6 +135,13 @@ export function CodeStudio() {
     started.forEach((j) => void runJob(j.key, j.look, text));
   }
 
+  useEffect(() => {
+    if (!autoStart || autoStarted.current || !brandId || pages === null) return;
+    const t = setTimeout(() => { autoStarted.current = true; router.replace("/studio/sites", { scroll: false }); void write(); }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, brandId, pages]);
+
   const groups = useMemo(() => families(pages ?? []).sort((a, b) => b[b.length - 1].created_at.localeCompare(a[a.length - 1].created_at)), [pages]);
 
   if (!activeBrand) return <div className="s-card p-10 text-center max-w-[560px] mx-auto mt-10"><b>Pick a brand first</b><p className="text-[13px] mt-1" style={{ color: "var(--s-soft)" }}>Use the brand menu at the top.</p></div>;
@@ -155,9 +171,10 @@ export function CodeStudio() {
   const n = looks.length;
   return (
     <div className="max-w-[1180px] mx-auto pt-2 md:pt-6 pb-10">
-      <p className="text-sm mb-1" style={{ color: "var(--s-soft)" }}>Website studio · for {activeBrand.brand_name}</p>
-      <h2 className="text-[26px] md:text-[34px] font-semibold tracking-tight leading-tight">Websites with their code on the side</h2>
-      <p className="text-[14.5px] mt-2 max-w-[680px]" style={{ color: "var(--s-soft)" }}>Pick the looks you want and BlinkSpot writes a complete page for each, from your Brand page, products and Library pictures. Read and edit the code, ask for changes, download the .html or publish it.</p>
+      {fullPage && <SiteFullscreen html={fullPage.html} title={fullPage.title} onClose={() => setFullPage(null)} />}
+      <p className="text-sm mb-1" style={{ color: "var(--s-soft)" }}>Website · for {activeBrand.brand_name}</p>
+      <h2 className="text-[26px] md:text-[34px] font-semibold tracking-tight leading-tight">Websites you can edit by sections or as code</h2>
+      <p className="text-[14.5px] mt-2 max-w-[680px]" style={{ color: "var(--s-soft)" }}>Pick the looks you want and BlinkSpot writes a complete page for each, from your Brand page, products and Library pictures. Edit it by sections (click any words or picture) or as code, ask for changes, download the .html or publish it.</p>
 
       <div className="s-card p-4 mt-6 grid gap-4">
         <label className="grid gap-1.5">
@@ -213,14 +230,18 @@ export function CodeStudio() {
             const head = family[family.length - 1];
             const live = family.find((p) => p.slug && p.published_at);
             return (
-              <button key={family[0].id} type="button" className="s-card overflow-hidden text-left" onClick={() => setView({ kind: "page", id: head.id })} title={head.name}>
-                <SiteThumb html={head.html} title={head.name} />
-                <div className="p-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--s-line)" }}>
-                  <div className="min-w-0 flex-1"><b className="text-[13.5px] block truncate">{head.name}</b>
-                    <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{lookLabel(head.notes)}{family.length > 1 ? ` · v${family.length}` : ""} · {when(head.created_at)}</span></div>
-                  {live && <span className="s-badge ok">Live</span>}
-                </div>
-              </button>
+              <div key={family[0].id} className="relative">
+                <button type="button" className="s-card overflow-hidden text-left w-full" onClick={() => setView({ kind: "page", id: head.id })} title={head.name}>
+                  <SiteThumb html={head.html} title={head.name} />
+                  <div className="p-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--s-line)" }}>
+                    <div className="min-w-0 flex-1"><b className="text-[13.5px] block truncate">{head.name}</b>
+                      <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{lookLabel(head.notes)}{family.length > 1 ? ` · v${family.length}` : ""} · {when(head.created_at)}</span></div>
+                    {live && <span className="s-badge ok">Live</span>}
+                  </div>
+                </button>
+                <button type="button" aria-label={`${head.name}, full screen`} title="Full screen" onClick={() => setFullPage({ html: head.html, title: head.name })}
+                  className="absolute top-2 right-2 grid place-items-center h-8 w-8 rounded-lg" style={{ background: "rgba(12,13,15,.72)", color: "#fff", border: "1px solid rgba(255,255,255,.18)" }}><Maximize2 className="h-4 w-4" /></button>
+              </div>
             );
           })}
         </div>
@@ -268,6 +289,7 @@ function CodeTail({ code, error }: { code: string; error?: string }) {
 
 function JobView({ job, onBack, onRetry }: { job: Job; onBack: () => void; onRetry: () => void }) {
   const [tab, setTab] = useState<"preview" | "code">("code");
+  const [full, setFull] = useState(false);
   // The half-written page, redrawn every few seconds (browsers draw unfinished HTML fine).
   const [partial, setPartial] = useState(job.code);
   const latest = useRef(job.code);
@@ -282,7 +304,9 @@ function JobView({ job, onBack, onRetry }: { job: Job; onBack: () => void; onRet
         {job.error && <button className="s-btn primary sm" onClick={onRetry}><RefreshCw className="h-3.5 w-3.5" /> Try again <span className="cost">{SITE_PAGE_CREDITS} cr</span></button>}
         <div className="flex-1" />
         <PaneTabs tab={tab} setTab={setTab} />
+        <button className="s-btn ghost sm" onClick={() => setFull(true)} disabled={!partial}><Maximize2 className="h-3.5 w-3.5" /> Full screen</button>
       </div>
+      {full && <SiteFullscreen html={partial} title={`${lookLabel(job.look)} page (still writing)`} onClose={() => setFull(false)} />}
       <div className="grid gap-3 min-h-0 lg:grid-cols-2">
         <div className={`min-h-0 ${tab === "code" ? "" : "hidden lg:block"}`}><CodeEditor value={job.code} readOnly follow label="Code being written" /></div>
         <div className={`min-h-0 rounded-2xl p-2 ${tab === "preview" ? "" : "hidden lg:block"}`} style={{ background: "var(--s-raised)" }}>{partial ? <SitePreview html={partial} title="Page so far" /> : <div className="s-skel h-full" />}</div>
@@ -294,8 +318,8 @@ function JobView({ job, onBack, onRetry }: { job: Job; onBack: () => void; onRet
 function PaneTabs({ tab, setTab }: { tab: "preview" | "code"; setTab: (t: "preview" | "code") => void }) {
   return (
     <div className="s-seg lg:hidden" role="tablist" aria-label="Show">
-      <button role="tab" aria-selected={tab === "preview"} onClick={() => setTab("preview")}><Eye className="h-3.5 w-3.5" /> Preview</button>
-      <button role="tab" aria-selected={tab === "code"} onClick={() => setTab("code")}><Code2 className="h-3.5 w-3.5" /> Code</button>
+      <button role="tab" aria-selected={tab === "preview"} aria-label="Show preview" onClick={() => setTab("preview")}><Eye className="h-3.5 w-3.5" /> Preview</button>
+      <button role="tab" aria-selected={tab === "code"} aria-label="Show code" onClick={() => setTab("code")}><Code2 className="h-3.5 w-3.5" /> Code</button>
     </div>
   );
 }
@@ -310,10 +334,14 @@ function PageWorkspace({ page, family, onBack, onOpen, onSaved, onVersion, onPub
   const [saving, setSaving] = useState<"idle" | "unsaved" | "saving" | "saved">("idle");
   const [device, setDevice] = useState<"desktop" | "phone">("desktop");
   const [tab, setTab] = useState<"preview" | "code">("preview");
+  // Sections for everyone, Code for those who want it: the same page either way (2026-10-17).
+  const [editMode, setEditMode] = useState<"sections" | "code">(() => { try { return localStorage.getItem("blink.siteEditMode") === "code" ? "code" : "sections"; } catch { return "sections"; } });
+  const pickMode = (m: "sections" | "code") => { setEditMode(m); try { localStorage.setItem("blink.siteEditMode", m); } catch { /* private mode */ } };
   const [instruction, setInstruction] = useState("");
   const [changing, setChanging] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [full, setFull] = useState(false);
   const live = family.find((p) => p.slug && p.published_at);
   const [slug, setSlug] = useState(live?.slug ?? cleanSlug(page.name).slice(0, 40));
   const pending = useRef<string | null>(null);
@@ -340,8 +368,8 @@ function PageWorkspace({ page, family, onBack, onOpen, onSaved, onVersion, onPub
 
   const edit = (v: string) => { pending.current = v; setSaving("unsaved"); setDraft(v); };
 
-  async function change() {
-    const text = instruction.trim();
+  async function change(given?: string) {
+    const text = (given ?? instruction).trim();
     if (!text) return;
     setChanging(true);
     try {
@@ -349,7 +377,7 @@ function PageWorkspace({ page, family, onBack, onOpen, onSaved, onVersion, onPub
       const r = await fetch("/api/sites/code/change", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: page.id, instruction: text }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.page) { toast.error(d.error || "Couldn't make that change."); return; }
-      setInstruction("");
+      if (given === undefined) setInstruction("");
       toast.success(`Changed. This is v${family.length + 1}; v${version} is still there.`);
       onVersion(d.page);
     } finally { setChanging(false); window.dispatchEvent(new Event("blink:credits")); }
@@ -401,20 +429,29 @@ function PageWorkspace({ page, family, onBack, onOpen, onSaved, onVersion, onPub
         {live && <span className="s-badge ok" title={live.id === page.id ? "This version is live" : `v${family.findIndex((p) => p.id === live.id) + 1} is live`}>{live.id === page.id ? "Live" : `v${family.findIndex((p) => p.id === live.id) + 1} live`}</span>}
         <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{saving === "saving" ? "Saving…" : saving === "saved" ? "Saved" : saving === "unsaved" ? "Unsaved" : ""}</span>
         <div className="flex-1" />
-        <PaneTabs tab={tab} setTab={setTab} />
+        <div className="s-seg" role="tablist" aria-label="Edit with">
+          <button role="tab" aria-selected={editMode === "sections"} onClick={() => pickMode("sections")}><LayoutList className="h-3.5 w-3.5" /> Sections</button>
+          <button role="tab" aria-selected={editMode === "code"} onClick={() => pickMode("code")}><Code2 className="h-3.5 w-3.5" /> Code</button>
+        </div>
+        {editMode === "code" && <PaneTabs tab={tab} setTab={setTab} />}
         <div className="hidden lg:flex gap-1" role="group" aria-label="Preview size">
           <button className="s-chip" aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")}><Laptop className="h-3.5 w-3.5 inline -mt-0.5" /> Desktop</button>
           <button className="s-chip" aria-pressed={device === "phone"} onClick={() => setDevice("phone")}><Smartphone className="h-3.5 w-3.5 inline -mt-0.5" /> Phone</button>
         </div>
+        <button className="s-btn ghost sm" onClick={() => setFull(true)}><Maximize2 className="h-3.5 w-3.5" /> Full screen</button>
         <button className="s-btn ghost sm" onClick={download}><Download className="h-3.5 w-3.5" /> Download .html</button>
         {liveUrl && <a href={liveUrl} target="_blank" rel="noopener" className="s-btn ghost sm"><ExternalLink className="h-3.5 w-3.5" /> Open live</a>}
         <button className="s-btn primary sm" onClick={() => setPublishing(true)}><Globe className="h-3.5 w-3.5" /> {live && live.id !== page.id ? "Publish this version" : live ? "Live settings" : "Publish"}</button>
       </div>
 
-      <div className="grid gap-3 min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
-        <div className={`min-h-0 ${tab === "code" ? "" : "hidden lg:block"}`}><CodeEditor value={draft} onChange={edit} label="Page code" /></div>
-        <div className={`min-h-0 rounded-2xl p-2 ${tab === "preview" ? "" : "hidden lg:block"}`} style={{ background: "var(--s-raised)" }}><SitePreview html={shown} device={device} /></div>
-      </div>
+      {editMode === "sections" ? (
+        <SectionsEditor html={draft} onChange={edit} device={device} onRewrite={(t) => change(t)} changing={changing} changeCost={SITE_CHANGE_CREDITS} />
+      ) : (
+        <div className="grid gap-3 min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
+          <div className={`min-h-0 ${tab === "code" ? "" : "hidden lg:block"}`}><CodeEditor value={draft} onChange={edit} label="Page code" /></div>
+          <div className={`min-h-0 rounded-2xl p-2 ${tab === "preview" ? "" : "hidden lg:block"}`} style={{ background: "var(--s-raised)" }}><SitePreview html={shown} device={device} /></div>
+        </div>
+      )}
 
       <div className="s-card p-2.5 flex flex-wrap items-end gap-2">
         <textarea className="s-input s-grow flex-1 min-w-[220px]" rows={2} style={{ ["--min-lines" as string]: 1, ["--max-lines" as string]: 5 }} value={instruction} onChange={(e) => setInstruction(e.target.value.slice(0, 1500))}
@@ -428,6 +465,7 @@ function PageWorkspace({ page, family, onBack, onOpen, onSaved, onVersion, onPub
           : <button className="s-btn ghost sm" aria-label="Delete this version" title="Delete this version" onClick={() => setConfirmDelete(true)}><Trash2 className="h-3.5 w-3.5" /></button>}
       </div>
 
+      {full && <SiteFullscreen html={shown} title={name} onClose={() => setFull(false)} />}
       <Modal open={publishing} onClose={() => setPublishing(false)} label="Publish your page" width={520} padded>
         <div className="flex items-center justify-between mb-2"><b className="text-[15px]">Publish v{version}</b><button className="s-btn ghost sm" onClick={() => setPublishing(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
         <p className="text-[13px] mb-4" style={{ color: "var(--s-soft)" }}>Anyone with the link can see it. It runs sandboxed: no forms or outside calls, just your page.{live && live.id !== page.id ? ` v${family.findIndex((p) => p.id === live.id) + 1} is live now; publishing moves the address to this version.` : ""}</p>

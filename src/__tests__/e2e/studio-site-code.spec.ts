@@ -50,7 +50,7 @@ test("website studio: research, write, edit, change, publish, download", async (
 
     // 1. Research, then one Editorial page, its code streaming into the card and the editor.
     await page.goto(`${BASE}/studio/sites`);
-    await expect(page.getByRole("heading", { name: "Websites with their code on the side" })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: "Websites you can edit by sections or as code" })).toBeVisible({ timeout: 60_000 });
     await page.getByRole("button", { name: /^Cinematic/ }).click(); // leaves Editorial
     await page.getByLabel("What the site is for").fill("A launch page for our Runner 01 sneaker with a WhatsApp order button");
     await page.getByRole("button", { name: /Write the page/ }).click();
@@ -68,14 +68,44 @@ test("website studio: research, write, edit, change, publish, download", async (
     expect(first.html).toMatch(/^<!doctype html/i);
     expect(first.html).not.toMatch(/\{\{\s*(img|logo)/);
     expect(first.html).not.toMatch(/\bfetch\(|XMLHttpRequest|localStorage|<form\b/);
-    const preview = page.frameLocator('iframe[title="Website preview"]');
-    await expect(preview.locator("body")).toContainText(/Kasi Kicks/i, { timeout: 30_000 });
-    expect(await page.locator('iframe[title="Website preview"]').getAttribute("sandbox")).toBe("allow-scripts allow-popups allow-popups-to-escape-sandbox");
-    await page.waitForTimeout(2500);
-    await page.screenshot({ path: "test-results/site-code-page.png" });
     fs.writeFileSync("test-results/site-code-v1.html", first.html);
+    expect(first.html).toMatch(/data-section=/); // marked for Sections editing
 
-    // 2. A hand edit in the code: saved, and the preview follows.
+    // 2. Sections (the default): click the headline on the page and type; swap a picture; hide a part.
+    const editable = page.frameLocator('iframe[title="Website preview (click to edit)"]');
+    await expect(editable.locator("body")).toContainText(/Kasi Kicks/i, { timeout: 30_000 });
+    expect(await page.locator('iframe[title="Website preview (click to edit)"]').getAttribute("sandbox")).toBe("allow-scripts");
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: "test-results/site-code-sections.png" });
+    await editable.locator("h1").first().click();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+    await page.keyboard.type("Fresh pairs every Friday");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible({ timeout: 30_000 });
+    const words = (html: string) => html.replace(/<(style|script)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+    await expect.poll(async () => words((await pages())[0].html), { timeout: 15_000 }).toContain("Fresh pairs every Friday");
+    expect((await pages())[0].html).not.toMatch(/data-bk-|contenteditable/);
+    if (await editable.locator("img").count()) {
+      await editable.locator("img").first().click();
+      await page.getByRole("dialog").getByTitle(/Kasi Kicks poster/).click({ timeout: 30_000 });
+      await expect.poll(async () => (await pages())[0].html, { timeout: 15_000 }).toContain("kasi-poster.jpg");
+    }
+    const list = page.getByRole("list", { name: "Sections" });
+    const hideButtons = list.getByRole("button", { name: /^Hide / });
+    await hideButtons.nth(1).click();
+    await expect.poll(async () => (await pages())[0].html, { timeout: 15_000 }).toContain("data-hidden");
+    await list.getByRole("button", { name: /^Show / }).first().click();
+    await expect.poll(async () => (await pages())[0].html, { timeout: 15_000 }).not.toContain("data-hidden=\"\"");
+
+    // Full screen preview.
+    await page.getByRole("button", { name: "Full screen", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: /full screen/ })).toBeVisible();
+    await page.getByRole("button", { name: "Close full screen" }).click();
+
+    // 3. A hand edit in the Code view: saved, and the preview follows.
+    await page.getByRole("tab", { name: "Code" }).click();
+    const preview = page.frameLocator('iframe[title="Website preview"]');
+    await expect(preview.locator("body")).toContainText("Fresh pairs every Friday", { timeout: 30_000 });
     await page.locator('[data-testid="code-editor"] .cm-content').click();
     await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowUp" : "Control+Home");
     await page.keyboard.press("ArrowDown");
@@ -87,11 +117,10 @@ test("website studio: research, write, edit, change, publish, download", async (
     await page.getByLabel("What to change").fill("Change the main hero headline to exactly: Kicks built for Nairobi streets");
     await page.getByRole("button", { name: /Change it/ }).click();
     await expect(page.getByText(/Changed\. This is v2/)).toBeVisible({ timeout: 280_000 });
-    expect(await balance()).toBe(158);
+    expect(await balance()).toBe(164);
     const [, second] = await pages();
     expect(second.parent_id).toBe(first.id);
     // Claude keeps the page's styling, so the words may be split by tags (<em>Nairobi</em>).
-    const words = (html: string) => html.replace(/<(style|script)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
     expect(words(second.html)).toContain("Kicks built for Nairobi streets");
     expect(second.html).toContain("<!-- e2e hand edit -->");
     await expect(page.getByLabel("Version", { exact: true })).toHaveValue(second.id);
@@ -138,9 +167,9 @@ test("website studio: research, write, edit, change, publish, download", async (
 
     // 8. Phone: preview and code as tabs, nothing wider than the screen.
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole("tab", { name: "Code" }).click();
+    await page.getByRole("tab", { name: "Show code" }).click();
     await expect(page.locator('[data-testid="code-editor"] .cm-content')).toBeVisible();
-    await page.getByRole("tab", { name: "Preview" }).click();
+    await page.getByRole("tab", { name: "Show preview" }).click();
     await expect(page.locator('iframe[title="Website preview"]')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     await page.screenshot({ path: "test-results/site-code-phone.png" });

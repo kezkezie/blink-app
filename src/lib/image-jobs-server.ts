@@ -1,0 +1,194 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { supabaseAdmin } from "@/lib/supabase-server";
+import { authorizeImageWorkflow, parseImageWorkflowRequest } from "@/lib/execution-security";
+import { brandArg } from "@/lib/credits-meter";
+import { isDeductionSuccessful } from "@/lib/credit-deduction";
+import { safeFetchBytes } from "@/lib/safe-fetch";
+import { renderEdit } from "@/lib/ai-edit-server";
+import {
+  FINAL_FAILURE, FIRST_TRY_MS, LOW_BALANCE_FOR_RESCUE, RESCUE_AFTER_MS, RESCUE_DEAD_MS, RESCUE_ENGINE, STATUS,
+  classifyRouter, jobSpecFrom, jobView, rescueCredits, validJobSpec, type ImageJobSpec, type JobView, type RouterOutcome,
+} from "@/lib/image-jobs";
+
+/**
+ * Image jobs, server side (lib/image-jobs.ts). startImageJobs makes the Library posts and runs the
+ * first try in the background; a failed first try calls /api/images/rescue (a fresh function, its
+ * own time budget) for the second. jobStatuses is what the browser polls; it also rescues jobs
+ * whose function died. makeImageNow does both tries inside one request for in-editor edits that
+ * don't become a post.
+ */
+type Result<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
+const fail = (status: number, error: string) => ({ ok: false as const, status, error });
+
+const n8nUrl = () => `${process.env.N8N_WEBHOOK_BASE || process.env.NEXT_PUBLIC_N8N_WEBHOOK_BASE || "https://n8n.srv1166077.hstgr.cloud/webhook"}/blink-generate-images`;
+const appUrl = () => process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+const sigKey = () => process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+export function signRescue(id: string, ts: number) {
+  return createHmac("sha256", sigKey()).update(`image-rescue.${id}.${ts}`).digest("hex");
+}
+export function checkRescueSignature(id: string, ts: number, sig: string) {
+  if (!sigKey() || !Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60_000) return false;
+  const want = Buffer.from(signRescue(id, ts));
+  const got = Buffer.from(sig);
+  return want.length === got.length && timingSafeEqual(want, got);
+}
+
+/** The browser's request, checked exactly as /api/workflows checks it (brand, references, ids). */
+export async function authorizeImageRequest(userId: string, raw: unknown): Promise<Result<Record<string, unknown>>> {
+  const body = raw && typeof raw === "object" ? { ...(raw as Record<string, unknown>) } : null;
+  if (!body) return fail(400, "Invalid request");
+  delete body.post_id;
+  const parsed = parseImageWorkflowRequest(body);
+  if (!parsed) return fail(400, "Invalid request");
+  const authorized = await authorizeImageWorkflow(userId, parsed);
+  return authorized.ok ? { ok: true, value: authorized.value } : fail(authorized.status, authorized.error);
+}
+
+async function askRouter(payload: Record<string, unknown>, postId: string | null, budgetMs = FIRST_TRY_MS): Promise<RouterOutcome> {
+  try {
+    const res = await fetch(n8nUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(process.env.N8N_WEBHOOK_SECRET ? { "x-blink-webhook-secret": process.env.N8N_WEBHOOK_SECRET } : {}) },
+      body: JSON.stringify({ ...payload, ...(postId ? { post_id: postId } : {}), is_sync: true }),
+      signal: AbortSignal.timeout(budgetMs),
+    });
+    return classifyRouter(res.status, await res.json().catch(() => null));
+  } catch (e) {
+    return classifyRouter(null, null, e instanceof Error && /timeout|abort/i.test(e.name + e.message));
+  }
+}
+
+const update = async (id: string, patch: Record<string, unknown>): Promise<void> => {
+  await supabaseAdmin.from("content").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).then(() => {}, () => {});
+};
+
+async function settleFirst(id: string, outcome: RouterOutcome) {
+  if (outcome.kind === "image") {
+    await update(id, { image_urls: outcome.urls, generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString() });
+  } else if (outcome.kind === "refused" || outcome.kind === "no_credits") {
+    await update(id, { generation_state: "failed", generation_error_code: outcome.kind, generation_status_text: outcome.message || FINAL_FAILURE(0), retry_state: "retry_available", generation_completed_at: new Date().toISOString() });
+  } else if (outcome.kind === "waiting") {
+    await update(id, { generation_status_text: STATUS.slow });
+  } else {
+    await update(id, { generation_status_text: STATUS.rescue });
+    await kickRescue(id);
+  }
+}
+
+/** Ask a fresh function to make the second try (it answers at once and works in the background). */
+export async function kickRescue(id: string) {
+  const ts = Date.now();
+  await fetch(`${appUrl()}/api/images/rescue`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ts, sig: signRescue(id, ts) }), signal: AbortSignal.timeout(15_000),
+  }).catch((e) => console.warn("image rescue kick failed", id, e instanceof Error ? e.message : e));
+}
+
+export async function startImageJobs(userId: string, raw: unknown, count: number, caption: string): Promise<Result<{ ids: string[]; work: Promise<void> }>> {
+  const auth = await authorizeImageRequest(userId, raw);
+  if (!auth.ok) return auth;
+  const payload = auth.value;
+  const spec = jobSpecFrom(payload);
+  const n = Math.min(4, Math.max(1, Math.floor(count) || 1));
+  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin.from("content").insert(Array.from({ length: n }, () => ({
+    client_id: payload.client_id, brand_id: payload.brand_id, content_type: "post_image", status: "draft",
+    caption: caption.slice(0, 300) || null, ai_model: typeof payload.kie_model === "string" ? payload.kie_model : null,
+    generation_state: "generating", generation_status_text: STATUS.making, generation_started_at: now, generation_attempt: 1, retry_state: "none",
+    creation_metadata: { operation: "generate", job: spec },
+  }))).select("id");
+  if (error || !data?.length) return fail(500, "Couldn't start the image. Nothing was charged.");
+  const ids = data.map((r) => r.id as string);
+  const work = Promise.all(ids.map(async (id) => settleFirst(id, await askRouter(payload, id)))).then(() => {});
+  return { ok: true, value: { ids, work } };
+}
+
+/** The second try: Nano Banana 2 on Kie, then on Replicate, charged like the first, refunded on failure. */
+export async function rescue(id: string): Promise<void> {
+  const { data: row } = await supabaseAdmin.from("content").select("id, client_id, brand_id, image_urls, generation_state, generation_attempt, creation_metadata").eq("id", id).maybeSingle();
+  if (!row || jobView(row).state !== "making") return;
+  const spec = validJobSpec((row.creation_metadata as { job?: unknown } | null)?.job);
+  if (!spec) { await update(id, { generation_state: "failed", generation_status_text: FINAL_FAILURE(0), generation_error_code: "no_spec" }); return; }
+  // Claim it: only one rescue per post, whoever calls first.
+  const { data: claimed } = await supabaseAdmin.from("content")
+    .update({ generation_attempt: 2, retry_state: "retrying", generation_status_text: STATUS.rescue, updated_at: new Date().toISOString() })
+    .eq("id", id).eq("generation_attempt", 1).is("generation_completed_at", null).select("id");
+  if (!claimed?.length) return;
+  const outcome = await secondTry(row.client_id as string, row.brand_id as string | null, spec, `post:${id}`, () => update(id, { billing_state: "charged" }));
+  if (outcome.ok) {
+    await update(id, {
+      image_urls: [outcome.url], generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString(),
+      retry_state: "none", billing_state: "charged", ai_model: RESCUE_ENGINE,
+      creation_metadata: { ...(row.creation_metadata as object), rescued: { engine: RESCUE_ENGINE, provider: outcome.provider, credits: outcome.credits, from: spec.engine } },
+    });
+  } else {
+    await update(id, { generation_state: "failed", generation_status_text: outcome.message, generation_error_code: outcome.code, retry_state: "retry_available", billing_state: outcome.charged ? "refunded" : "not_charged", generation_completed_at: new Date().toISOString() });
+  }
+}
+
+type SecondTry = { ok: true; url: string; provider: string; credits: number } | { ok: false; message: string; code: string; charged: boolean };
+
+async function secondTry(clientId: string, brandId: string | null, spec: ImageJobSpec, label: string, onCharged?: () => Promise<void>): Promise<SecondTry> {
+  const credits = rescueCredits(spec.engine);
+  const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", {
+    p_client_id: clientId, p_amount: credits, p_operation: "debit", p_description: `Image, second try [${label}]`, ...brandArg(brandId),
+  });
+  if (!isDeductionSuccessful(deducted, deductError)) return { ok: false, message: LOW_BALANCE_FOR_RESCUE, code: "no_credits", charged: false };
+  await onCharged?.();
+  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: `Refund: image second try failed [${label}]`, ...brandArg(brandId) }).then(() => {}, () => {});
+  const rendered = await renderEdit(RESCUE_ENGINE, spec.prompt, spec.references, spec.aspect, Date.now() + 230_000, "2K");
+  console.info("image rescue", JSON.stringify({ label, from: spec.engine, ...(rendered.ok ? { provider: rendered.provider } : { reason: rendered.reason.slice(0, 120), refused: rendered.refused }) }));
+  if (!rendered.ok) {
+    await refund();
+    return { ok: false, charged: true, code: rendered.refused ? "refused" : "rescue_failed", message: rendered.refused ? `The image service's safety filter refused this one. Your credits are back. Try different wording.` : FINAL_FAILURE(credits) };
+  }
+  // A stable copy in our storage (provider links expire).
+  const file = await safeFetchBytes(rendered.url, { maxBytes: 25_000_000, timeoutMs: 45_000 });
+  const png = file.ok && file.contentType.includes("png");
+  const path = `images/${clientId}/gen_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${png ? "png" : "jpg"}`;
+  const up = file.ok ? await supabaseAdmin.storage.from("assets").upload(path, file.bytes, { contentType: png ? "image/png" : "image/jpeg" }) : null;
+  if (!up || up.error) { await refund(); return { ok: false, charged: true, code: "save_failed", message: FINAL_FAILURE(credits) }; }
+  return { ok: true, url: supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl, provider: rendered.provider, credits };
+}
+
+/** Both tries inside this request, no post (editor edits, first frames): the picture's URL or why not. */
+export async function makeImageNow(userId: string, raw: unknown): Promise<Result<{ url: string; rescued: boolean }>> {
+  const auth = await authorizeImageRequest(userId, raw);
+  if (!auth.ok) return auth;
+  const first = await askRouter(auth.value, null, 150_000);
+  if (first.kind === "image") return { ok: true, value: { url: first.urls[0], rescued: false } };
+  if (first.kind === "refused" || first.kind === "no_credits") return fail(first.kind === "no_credits" ? 402 : 422, first.message || FINAL_FAILURE(0));
+  const spec = jobSpecFrom(auth.value);
+  const second = await secondTry(auth.value.client_id as string, (auth.value.brand_id as string) ?? null, spec, "direct");
+  return second.ok ? { ok: true, value: { url: second.url, rescued: true } } : fail(second.code === "no_credits" ? 402 : 502, second.message);
+}
+
+/**
+ * What the browser polls. A first try silent for RESCUE_AFTER_MS gets its rescue now (its function
+ * may have died); a rescue silent for RESCUE_DEAD_MS is closed and refunded.
+ */
+export async function jobStatuses(canRead: (row: { client_id: string; brand_id: string | null }) => Promise<boolean>, ids: string[]): Promise<{ jobs: JobView[]; rescues: string[] }> {
+  const { data } = await supabaseAdmin.from("content")
+    .select("id, client_id, brand_id, image_urls, generation_state, generation_status_text, generation_attempt, generation_started_at, updated_at, billing_state, creation_metadata")
+    .in("id", ids);
+  const rows = [];
+  for (const r of data ?? []) if (await canRead({ client_id: r.client_id as string, brand_id: r.brand_id as string | null })) rows.push(r);
+  const rescues: string[] = [];
+  const now = Date.now();
+  for (const r of rows) {
+    if (jobView(r).state !== "making" || r.generation_state !== "generating") continue;
+    const quiet = now - new Date((r.updated_at ?? r.generation_started_at) as string).getTime();
+    if ((r.generation_attempt ?? 1) <= 1 && quiet > RESCUE_AFTER_MS) rescues.push(r.id as string);
+    else if ((r.generation_attempt ?? 1) >= 2 && quiet > RESCUE_DEAD_MS) {
+      const spec = validJobSpec((r.creation_metadata as { job?: unknown } | null)?.job);
+      // Only what the rescue actually took comes back, once (the status flip is the guard).
+      const credits = spec && r.billing_state === "charged" ? rescueCredits(spec.engine) : 0;
+      const { data: closed } = await supabaseAdmin.from("content").update({ generation_state: "failed", generation_status_text: FINAL_FAILURE(credits), generation_error_code: "rescue_died", billing_state: credits ? "refunded" : "not_charged", retry_state: "retry_available", updated_at: new Date().toISOString() })
+        .eq("id", r.id).eq("generation_state", "generating").select("id");
+      if (closed?.length && credits) await supabaseAdmin.rpc("refund_credits", { p_client_id: r.client_id, p_amount: credits, p_operation: "refund", p_description: `Refund: image second try stopped [post:${r.id}]`, ...brandArg(r.brand_id) }).then(() => {}, () => {});
+      r.generation_state = "failed"; r.generation_status_text = FINAL_FAILURE(credits);
+    }
+  }
+  return { jobs: rows.map(jobView), rescues };
+}

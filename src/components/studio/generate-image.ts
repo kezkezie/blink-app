@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import type { BrandDna } from "@/lib/brand-dna";
 import { supabase } from "@/lib/supabase";
-import { triggerWorkflow } from "@/lib/workflows";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { assemblePrompt, selectCreativeDirection, type BrandContext } from "@/lib/creative-direction";
 import { MARKETING_STYLES } from "@/lib/marketing-styles";
@@ -98,6 +97,8 @@ export type GenerateRequest = {
    * no "keep the text" and no logo, which would fight the instruction (2026-10-13).
    */
   plain?: boolean;
+  /** The line to show while the server works ("Making your image", "trying another image service"). */
+  onProgress?: (text: string) => void;
 };
 
 const IMAGE_ASPECTS = ["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3"];
@@ -158,47 +159,37 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
   const taskId = `img-${Date.now()}`;
   addTask(taskId, "Generating Image");
   const n = Math.min(4, Math.max(1, req.count ?? 1));
-  // The Library post exists BEFORE the render and n8n writes the image onto it (post_id), so a phone
-  // that locks or a tab that closes mid-render still gets the picture it paid for (2026-10-12: a
-  // dropped connection used to lose a charged image, because only the browser saved it).
-  let rowIds: Array<string | null> = Array(n).fill(null);
-  if (req.save !== false) {
-    const { data } = await supabase
-      .from("content")
-      .insert(Array.from({ length: n }, () => ({ client_id: req.clientId, brand_id: req.brandId, content_type: "post_image", caption: req.caption.slice(0, 300), status: "draft", ai_model: payload.kie_model, generation_status_text: "Making your image" })))
-      .select("id");
-    rowIds = rowIds.map((_, i) => (data?.[i]?.id as string | undefined) ?? null);
-  }
-  /** Certain failures (refused, invalid, not connected): the placeholder goes. A timeout keeps it, the image may still land. */
-  const dropRow = (id: string | null) => { if (id) void supabase.from("content").delete().eq("id", id).then(() => {}, () => {}); };
+  const post = (url: string, body: unknown) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(async (r) => ({ ok: r.ok, status: r.status, data: (await r.json().catch(() => ({}))) as Record<string, unknown> }));
   try {
-    const settled = await Promise.allSettled(rowIds.map((id) => triggerWorkflow("blink-generate-images", { ...payload, ...(id ? { post_id: id } : {}) })));
-    const urls: string[] = [];
-    const saved: GeneratedImage[] = [];
-    let refusal: string | null = null;
-    let firstError: string | null = null;
-    for (let i = 0; i < settled.length; i++) {
-      const r = settled[i];
-      const id = rowIds[i];
-      if (r.status === "rejected") {
-        const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
-        firstError ??= msg;
-        if (/status: 504|timed out|Failed to fetch|NetworkError|network/i.test(msg)) {
-          if (id) void supabase.from("content").update({ generation_status_text: "Still making: check back in a minute" }).eq("id", id).then(() => {}, () => {});
-        } else dropRow(id);
-        continue;
-      }
-      const v = (r.value ?? {}) as { success?: boolean; message?: string; imageUrls?: string[] | string };
-      if (v.success === false) { refusal = v.message || refusal; dropRow(id); continue; }
-      const got = Array.isArray(v.imageUrls) ? v.imageUrls : v.imageUrls ? [v.imageUrls] : [];
-      if (!got.length) { dropRow(id); continue; }
-      urls.push(...got);
-      if (id) {
-        await supabase.from("content").update({ image_urls: got, generation_status_text: null }).eq("id", id);
-        saved.push({ id, url: got[0] });
-      } else saved.push(...got.map((url) => ({ id: null, url })));
+    // In-between editor steps: both tries inside one request, no Library post.
+    if (req.save === false) {
+      const made = await Promise.all(Array.from({ length: n }, () => post("/api/images/now", { request: payload })));
+      const urls = made.filter((m) => m.ok && typeof m.data.url === "string").map((m) => m.data.url as string);
+      if (!urls.length) throw new Error(String(made[0]?.data.error || "The image could not be made."));
+      return urls.map((url) => ({ id: null, url }));
     }
-    if (!urls.length) throw new Error(refusal || firstError || "No image came back. If credits were taken they are refunded.");
+    // The server owns the job (2026-10-17, lib/image-jobs.ts): it makes the Library posts, tries
+    // the router, and tries another service by itself if that fails. Leaving the page doesn't stop
+    // it; the picture lands in the Library. Here we only watch.
+    const started = await post("/api/images", { request: payload, count: n, caption: req.caption });
+    if (!started.ok || !Array.isArray(started.data.ids)) {
+      throw new Error(String(started.data.error || (started.status === 402 ? "Not enough credits for this. Get more in Billing." : "Couldn't start the image. Nothing was charged.")));
+    }
+    const ids = started.data.ids as string[];
+    let last: Array<{ id: string; state: string; text: string | null; url: string | null }> = [];
+    for (let quiet = 0; ; ) {
+      await new Promise((r) => setTimeout(r, quiet < 20 ? 3000 : 6000));
+      const res = await fetch(`/api/images?ids=${ids.join(",")}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { jobs?: typeof last } | null;
+      quiet++;
+      if (!res?.jobs?.length) continue; // offline for a moment: keep watching
+      last = res.jobs;
+      const making = last.find((j) => j.state === "making");
+      if (making) { req.onProgress?.(making.text ?? "Making your image"); continue; }
+      break;
+    }
+    const saved = last.filter((j) => j.state === "done" && j.url).map((j) => ({ id: j.id, url: j.url! }));
+    if (!saved.length) throw new Error(last.find((j) => j.text)?.text || "The image could not be made.");
     return saved;
   } finally {
     removeTask(taskId);

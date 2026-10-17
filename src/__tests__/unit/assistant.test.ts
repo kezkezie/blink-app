@@ -159,7 +159,7 @@ describe("Ask BlinkSpot agent loop", () => {
     const out = await runAssistant([{ role: "user", content: "poster please" }], { ...ctx, brief: "Active brand: KYRA", pageHint: "/studio" }, fetchImpl as unknown as typeof fetch);
     expect(out.reply).toBe("The button opens Image Studio. About 18 credits.");
     expect(out.actions).toHaveLength(1);
-    expect(out.actions[0].href).toMatch(/^\/studio\/image\?prompt=launch\+poster/);
+    expect(out.actions[0].href).toMatch(/^\/studio\/image\?mode=generate&prompt=launch\+poster/);
     expect(out.usage).toEqual({ input: 250, output: 50, cacheRead: 0, cacheWrite: 0 });
 
     const [url, init] = fetchImpl.mock.calls[0];

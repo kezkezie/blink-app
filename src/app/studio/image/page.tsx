@@ -8,7 +8,7 @@ import { LayoutTemplate, Sparkles, Wand2, ArrowLeft, Shuffle, GalleryHorizontal 
 import { CarouselStudio } from "@/components/carousel/CarouselStudio";
 import { slidesOf } from "@/lib/carousel";
 import { InspoRemix } from "@/components/studio/InspoRemix";
-import { StudioGenerate } from "@/components/studio/StudioGenerate";
+import { StudioGenerate, type GenerateAutoRun } from "@/components/studio/StudioGenerate";
 import { supabase } from "@/lib/supabase";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import ClassicImageStudio from "@/app/dashboard/generate/page";
@@ -63,6 +63,12 @@ function ImageStudioInner() {
   // A recipe from an example is adapted to this brand (its brand rules and name taken out; QA-018).
   const [recipe] = useState(() => adaptRecipePrompt(params.get("prompt") ?? "", activeBrand?.brand_name));
   const initialIdea = recipe.text;
+  // Ask BlinkSpot asked to make it now: count, quality and shape come with the idea (2026-10-17).
+  const [autoRun] = useState<GenerateAutoRun | undefined>(() => {
+    if (params.get("auto") !== "1" || !params.get("prompt")) return undefined;
+    const q = params.get("quality");
+    return { count: Number(params.get("count")) || 1, quality: q === "fast" || q === "draft" ? q : "best", format: params.get("format") ?? undefined };
+  });
   useEffect(() => {
     if (recipe.from) toast.info(`This recipe was made for ${recipe.from}. We've put your brand in; change the product and the words to yours.`, { duration: 9000 });
   }, [recipe.from]);
@@ -126,7 +132,7 @@ function ImageStudioInner() {
 
       {mode === "remix" && <InspoRemix />}
 
-      {mode === "generate" && <StudioGenerate initialIdea={initialIdea} autoIdeas={!!initialIdea} />}
+      {mode === "generate" && <StudioGenerate initialIdea={initialIdea} autoIdeas={!!initialIdea && !autoRun} autoRun={autoRun} />}
 
       {mode === "carousel" && <CarouselStudio initialTopic={initialIdea} />}
 

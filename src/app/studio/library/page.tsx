@@ -92,6 +92,29 @@ export default function LibraryPage() {
     return () => { cancelled = true; };
   }, [clientId, activeBrand, fetchPage, key, reloads]);
 
+  // Images still being made (2026-10-17): watch them here, so a picture that lands later (or is
+  // rescued by a second image service) shows up without a reload. Polling also rescues stuck ones.
+  const pendingIds = (result?.rows ?? []).filter((r) => r.generation_state === "generating" && !resolveMedia(r).url).map((r) => r.id).slice(0, 24).join(",");
+  useEffect(() => {
+    if (!pendingIds) return;
+    const t = setInterval(() => {
+      void fetch(`/api/images?ids=${pendingIds}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d: { jobs?: Array<{ id: string; state: string; text: string | null; url: string | null }> } | null) => {
+        const jobs = new Map((d?.jobs ?? []).map((j) => [j.id, j]));
+        if (!jobs.size) return;
+        setResult((cur) => cur && {
+          ...cur,
+          rows: cur.rows.map((row) => {
+            const j = jobs.get(row.id);
+            if (!j) return row;
+            if (j.state === "done" && j.url) return { ...row, image_urls: [j.url], generation_state: "succeeded", generation_status_text: null } as Content;
+            return { ...row, generation_state: j.state === "failed" ? "failed" : row.generation_state, generation_status_text: j.text } as Content;
+          }),
+        });
+      }).catch(() => {});
+    }, 6000);
+    return () => clearInterval(t);
+  }, [pendingIds]);
+
   const current = result?.key === key ? result : null;
   const rows = useMemo(() => current?.rows ?? [], [current]);
   const more = current?.more ?? false;
