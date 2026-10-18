@@ -116,9 +116,7 @@ export function useVideoStudio() {
             setProgressText(payload.new.generation_status_text);
           }
 
-          if (payload.new.status === "failed") {
-            setGenerationError(payload.new.error_message || "The AI engine failed to process this request.");
-          }
+          // A failure is decided by the poll below: the server may be making a second try (2026-10-18).
           const done = finishedVideoUrl(payload.new);
           if (done) setGeneratedVideoUrl(done);
         }
@@ -138,7 +136,11 @@ export function useVideoStudio() {
       }
 
       if (data?.status === "failed") {
-        setGenerationError(data.error_message || "The AI engine failed to process this request.");
+        // Ask the server first: a failed first try gets a second one on another service.
+        const job = await fetch(`/api/video-jobs?id=${generatingPostId}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { status?: { generationState?: string; message?: string | null } } | null;
+        const state = job?.status?.generationState;
+        if (state && !["failed", "timed_out"].includes(state)) { setProgressText(job?.status?.message || "Trying another video service"); return; }
+        setGenerationError(job?.status?.message || data.error_message || "The AI engine failed to process this request.");
         clearInterval(pollInterval);
       } else if (!error && data && finishedVideoUrl(data)) {
         setGeneratedVideoUrl(finishedVideoUrl(data));

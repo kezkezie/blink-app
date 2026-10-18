@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
 import {
   createVideoJobPlaceholder,
@@ -7,6 +7,8 @@ import {
   parseVideoJobRequest,
 } from "@/lib/video-job";
 import { sceneSpecFromCreationMetadata } from "@/lib/scene-spec-adapters";
+import { rescueOnCheck } from "@/lib/video-rescue-server";
+import { RESCUE_STATUS } from "@/lib/video-rescue";
 
 /**
  * GET /api/video-jobs?id=<contentId> — restore one owned video job's durable
@@ -74,16 +76,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Videos that arrive (2026-10-18): a failed first try gets a second one on another service,
+    // and the scene keeps "making" instead of showing the failure (lib/video-rescue.ts).
+    let attempt = typeof row.generation_attempt === "number" ? row.generation_attempt : 1;
+    const rescue = await rescueOnCheck({ ...row, generation_state: row.generation_state }).catch(() => ({ claimed: false, work: null }));
+    if (rescue.work) after(rescue.work.catch((e) => console.error("video rescue", row.id, e instanceof Error ? e.message : e)));
+    if (rescue.claimed) { generationState = "generating"; message = RESCUE_STATUS; errorCode = null; attempt = 2; }
+
     return NextResponse.json(
       {
         id: row.id,
         status: {
           generationState,
-          billingState: typeof row.billing_state === "string" ? row.billing_state : "not_charged",
-          retryState: typeof row.retry_state === "string" ? row.retry_state : "none",
+          billingState: rescue.claimed ? "not_charged" : typeof row.billing_state === "string" ? row.billing_state : "not_charged",
+          retryState: rescue.claimed ? "retrying" : typeof row.retry_state === "string" ? row.retry_state : "none",
           message,
           errorCode,
-          attempt: typeof row.generation_attempt === "number" ? row.generation_attempt : 1,
+          attempt,
         },
         video_urls: videoUrls,
         scene_spec: sceneSpecFromCreationMetadata(row.creation_metadata),

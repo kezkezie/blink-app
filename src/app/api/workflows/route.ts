@@ -9,6 +9,7 @@ import {
 import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
 import { parseVideoWorkflowRequest } from "@/lib/video-execution";
 import { loadOwnedBrandCreativeContext, toVideoWorkflowFields } from "@/lib/brand-creative-context";
+import { specFromShot } from "@/lib/video-rescue";
 
 const ALLOWED_PATHS = new Set([
   "blink-generate-images",
@@ -127,6 +128,15 @@ export async function POST(req: NextRequest) {
           // No brand in scope: never forward browser-authored brand identity.
           delete payload.brand_name;
           delete payload.brand_info;
+        }
+        // Single shots get second tries too (2026-10-18): keep what it needs, send readable frames.
+        if (typeof payload.post_id === "string" && typeof payload.client_id === "string") {
+          const spec = specFromShot(payload);
+          if (spec) {
+            const { rememberVideoJob } = await import("@/lib/video-rescue-server");
+            const ready = await rememberVideoJob(payload.post_id, payload.client_id, spec).catch(() => spec);
+            payload = { ...payload, primary_image_url: ready.start ?? payload.primary_image_url, secondary_image_url: ready.end ?? payload.secondary_image_url };
+          }
         }
       } else {
         const authorized = await authorizeGenericExecutionPayload(authenticated.value, body);

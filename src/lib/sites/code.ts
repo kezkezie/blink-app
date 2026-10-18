@@ -181,9 +181,31 @@ export const PAGE_CSP = [
 ].join("; ");
 export const PUBLISHED_CSP = `sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; ${PAGE_CSP}`;
 
-/** The page for the in-app preview: the same CSP as a meta tag (the iframe adds the sandbox). */
+/**
+ * Links in the in-app preview (Kezie, 2026-10-17: "clicking buttons on the website takes us back to
+ * BlinkSpot sign in"). The preview is an about:srcdoc page whose links resolve against the studio's
+ * own address, so "#menu" loaded blinkspot.io inside the frame (signed out there, so: sign in).
+ * Here: #links scroll on the page, outside links (and WhatsApp, phone, email) open in a new tab,
+ * other paths do nothing (it's one page), forms don't post. Storage works in memory (a sandboxed
+ * page can't use the real one, and a script that tries would stop).
+ */
+export const PREVIEW_SCRIPT = `(function(){
+try{window.localStorage.getItem("x")}catch(e){var m={},st={getItem:function(k){return Object.prototype.hasOwnProperty.call(m,k)?m[k]:null},setItem:function(k,v){m[k]=String(v)},removeItem:function(k){delete m[k]},clear:function(){m={}},key:function(i){return Object.keys(m)[i]||null},get length(){return Object.keys(m).length}};try{Object.defineProperty(window,"localStorage",{configurable:true,value:st});Object.defineProperty(window,"sessionStorage",{configurable:true,value:st})}catch(_){}}
+document.addEventListener("click",function(e){
+if(e.defaultPrevented)return;
+var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;
+var h=(a.getAttribute("href")||"").trim();
+if(h.charAt(0)==="#"){e.preventDefault();var id=decodeURIComponent(h.slice(1));var el=id?(document.getElementById(id)||document.querySelector('[name="'+id.replace(/"/g,"")+'"]')):null;
+if(location.hash!==h){try{location.hash=h}catch(_){}}
+if(el)el.scrollIntoView({behavior:"smooth",block:"start"});else if(!id)window.scrollTo({top:0,behavior:"smooth"});return}
+if(/^(https?:|mailto:|tel:|sms:)/i.test(h)){e.preventDefault();window.open(h,"_blank","noopener");return}
+e.preventDefault()},false);
+document.addEventListener("submit",function(e){e.preventDefault()},true);
+})();`;
+
+/** The page for the in-app preview: the same CSP as a meta tag (the iframe adds the sandbox), and links kept on the page. */
 export function previewDoc(html: string) {
-  const meta = `<meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}">`;
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}"><script>${PREVIEW_SCRIPT}</script>`;
   if (/<head(\s[^>]*)?>/i.test(html)) return html.replace(/<head(\s[^>]*)?>/i, (m) => `${m}${meta}`);
   if (/<html(\s[^>]*)?>/i.test(html)) return html.replace(/<html(\s[^>]*)?>/i, (m) => `${m}<head>${meta}</head>`);
   return `${meta}${html}`;

@@ -40,6 +40,8 @@ import {
 import { queueForEditor } from "@/components/studio/queue-clips";
 import "./storyboard.css";
 import { conformFrame } from "@/lib/video/conform-frame";
+import { SensitiveGuide } from "@/components/studio/SensitiveGuide";
+import { sensitiveKind } from "@/lib/sensitive-subjects";
 import { INSPO_HANDOFF_KEY, type InspoPlan } from "@/lib/video-inspo/plan";
 import { AspectRatioSelect, DurationField, promptImpliesAudio } from "./VideoOutputControls";
 import {
@@ -2834,6 +2836,8 @@ export function StorytellingSetup({
               <button type="button" className="s-btn ghost sm" onClick={handleNewStoryboard}><Plus className="h-3.5 w-3.5" /> New story</button>
             </div>
             <textarea className="s-input s-grow" rows={3} style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 7 }} value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder={'e.g. 20 seconds: a busy Nairobi morning, a runner grabs our mango juice at the kiosk, takes a sip and smiles. She says "Fresh, every morning." End on the bottle and our logo.'} aria-label="Your story" />
+            {/* Medical, intimate and lingerie brands (2026-10-18): what the video services will make. */}
+            {(() => { const kind = sensitiveKind(bRollConcept, activeBrand?.brand_name); return kind ? <SensitiveGuide kind={kind} video onIdea={(b) => setBRollConcept(`15 seconds: ${b}`)} /> : null; })()}
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" className="s-btn ai" onClick={handleWriteScript} disabled={isWritingScript || !bRollConcept.trim()}>{isWritingScript ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScrollText className="h-4 w-4" />} Write the scenes</button>
               <button type="button" className="s-btn" onClick={handleGenerateAllImages} disabled={isGeneratingAllImages || generatingSlot !== null || !bRollConcept.trim()}>{isGeneratingAllImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <Images className="h-4 w-4" />} Make all frames <span className="cost">{filledImageSlots}/{totalImageSlots}</span></button>

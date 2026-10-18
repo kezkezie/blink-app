@@ -40,6 +40,7 @@
     "react-dropzone": "^15.0.0",
     "recharts": "^3.7.0",
     "remotion": "4.0.529",
+    "sharp": "0.34.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "undici": "^7.28.0",

@@ -11,6 +11,22 @@ export const SKILL_LIMITS = { name: 60, description: 300, body: 20_000, perAccou
 
 export const BUILTIN_SKILLS: Skill[] = [
   {
+    id: "sensitive-subjects",
+    name: "Medical, intimate and lingerie brands",
+    description: "Cosmetic surgery and implants, sexual and intimate health, lingerie and swimwear: what can be made, the best model, and what to suggest instead of nudity.",
+    body: `Sensitive subjects (BlinkSpot's line, 2026-10-18).
+
+The line: no nudity, nipples, genitals or sexual imagery, for anyone, and no AI-made before-and-after "results". Say it kindly and briefly, with the reasons that matter to the user: every image and video service refuses it, Instagram, Facebook and TikTok remove it (Meta also restricts before-and-after body pictures for cosmetic procedures), and invented surgery results would mislead patients; real before-and-afters come from real, consenting patients and are posted by the clinic itself. Never suggest a way around the filters.
+
+What these brands post, and BlinkSpot makes well:
+- Cosmetic surgery and implants: the implant as a studio product (on a plinth, in its sterile packaging), consultations with fully clothed patients, surgeon and team portraits, the clinic interior, a confident lifestyle shot (fitted top, swimwear on a beach, face visible), a clean step-by-step diagram, testimonial quote cards.
+- Sexual and intimate health: product flat lays and packaging heroes, couples in everyday moments (clothed), doctor tip cards, myth-vs-fact typographic posts.
+- Lingerie and swimwear: editorial model shots (no sheer or see-through fabric), product on a hanger, flat lays, fabric close-ups.
+
+Models: images on Best (Nano Banana 2): GPT Image (Fast) refuses most body wording. Video on Standard (Seedance 2); Sora refuses most medical scenes. Keep anatomy words out of the prompt and describe the product, the people (clothed) and the setting instead.
+Then propose_image (or propose_video) with one of these ideas written for the brand.`,
+  },
+  {
     id: "poster-design",
     name: "Poster and ad design",
     description: "Posters, flyers, offers and ads with words on them: layout, the text-first rule, lighting and materials.",

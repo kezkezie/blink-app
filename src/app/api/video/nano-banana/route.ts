@@ -11,6 +11,8 @@ import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
 import { validateNanoVideoPayload } from "@/lib/video-execution";
 import { loadOwnedBrandCreativeContext, toVideoWorkflowFields } from "@/lib/brand-creative-context";
 import { n8nWebhookUrl } from "@/lib/n8n-config";
+import { after } from "next/server";
+import { specFromScene } from "@/lib/video-rescue";
 import { CLINICAL_DIRECTION, REFUSAL, SENSITIVE, softenForAi } from "@/lib/ai-safe-text";
 
 export const maxDuration = 300;
@@ -112,14 +114,42 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Scene videos (2026-10-18): what a second try needs is kept on the post, and the frames go as
+    // pictures the providers can read (an SVG or WebP frame failed with "Image fetch failed").
+    const sceneSpec = payload.mode === "scene_video_generator" && payload.video_mode !== "xray_image" && payload.video_mode !== "json_image_edit" ? specFromScene(payload) : null;
+    const scenePost = sceneSpec && typeof payload.post_id === "string" && typeof payload.client_id === "string" ? { id: payload.post_id, client: payload.client_id } : null;
+    if (scenePost && sceneSpec) {
+      const { rememberVideoJob } = await import("@/lib/video-rescue-server");
+      const ready = await rememberVideoJob(scenePost.id, scenePost.client, sceneSpec).catch(() => sceneSpec);
+      const d = (payload.scene_data && typeof payload.scene_data === "object" ? payload.scene_data : {}) as Record<string, unknown>;
+      payload = { ...payload, scene_data: { ...d, frames: { ...((d.frames as object) ?? {}), start_frame: ready.start, end_frame: ready.end } } };
+    }
+    /** n8n couldn't take the scene at all (down, 502): nothing ran or was charged, so the second try starts now. */
+    const rescueNow = async () => {
+      if (!scenePost) return false;
+      try {
+        const [{ supabaseAdmin }, { claimVideoRescue, startVideoRescue }] = await Promise.all([import("@/lib/supabase-server"), import("@/lib/video-rescue-server")]);
+        await supabaseAdmin.from("content").update({ generation_state: "failed", generation_error_code: "provider_failure", billing_state: "not_charged", updated_at: new Date().toISOString() }).eq("id", scenePost.id).eq("client_id", scenePost.client).in("generation_state", ["queued", "preparing", "generating"]);
+        const { data: row } = await supabaseAdmin.from("content").select("id, generation_state, generation_error_code, billing_state, generation_attempt, creation_metadata").eq("id", scenePost.id).maybeSingle();
+        if (!row || !(await claimVideoRescue(row))) return false;
+        after(startVideoRescue(scenePost.id).catch(() => {}));
+        return true;
+      } catch { return false; }
+    };
+
     const n8nRes = await undiciFetch(resolveNanoBananaTarget(payload), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       dispatcher: n8nAgent,
-    });
+    }).catch(() => null);
+    if (!n8nRes) {
+      if (await rescueNow()) return NextResponse.json({ success: true, rescued: true });
+      return NextResponse.json({ error: "Generation service unavailable" }, { status: 502 });
+    }
     const rawText = await n8nRes.text();
     if (!n8nRes.ok) {
+      if (n8nRes.status >= 500 && (await rescueNow())) return NextResponse.json({ success: true, rescued: true });
       return NextResponse.json({ error: "Generation service request failed" }, { status: 502 });
     }
     try {

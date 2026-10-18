@@ -108,7 +108,7 @@ export function isValidContentId(value: unknown): value is string {
  *  publishing no tables, Storyboard scenes never showed as finished (2026-10-13:
  *  Chelsea's Seedance scene was ready in 6 minutes; the app said it failed). */
 const JOB_STATUS_SELECT =
-  "id, video_urls, status, generation_state, billing_state, retry_state, generation_status_text, generation_error_code, generation_attempt, creation_metadata";
+  "id, client_id, brand_id, credit_cost, updated_at, video_urls, status, generation_state, billing_state, retry_state, generation_status_text, generation_error_code, generation_attempt, creation_metadata";
 
 /** The caller's workspace, or the owner's for a brand (or post) shared with them as an editor. */
 async function loadClientId(userId: string, scope: { brandId?: string; contentId?: string } = {}): Promise<VideoJobResult<string>> {

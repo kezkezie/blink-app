@@ -5,6 +5,7 @@ import { brandArg } from "@/lib/credits-meter";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { renderEdit } from "@/lib/ai-edit-server";
+import { readableRequest } from "@/lib/image-refs";
 import {
   FINAL_FAILURE, FIRST_TRY_MS, LOW_BALANCE_FOR_RESCUE, RESCUE_AFTER_MS, RESCUE_DEAD_MS, RESCUE_ENGINE, STATUS,
   classifyRouter, jobSpecFrom, jobView, rescueCredits, validJobSpec, type ImageJobSpec, type JobView, type RouterOutcome,
@@ -42,7 +43,9 @@ export async function authorizeImageRequest(userId: string, raw: unknown): Promi
   const parsed = parseImageWorkflowRequest(body);
   if (!parsed) return fail(400, "Invalid request");
   const authorized = await authorizeImageWorkflow(userId, parsed);
-  return authorized.ok ? { ok: true, value: authorized.value } : fail(authorized.status, authorized.error);
+  if (!authorized.ok) return fail(authorized.status, authorized.error);
+  // SVG logos and WebP/GIF pictures go as PNG copies (the services refuse them: "File type not supported").
+  return { ok: true, value: await readableRequest(String(authorized.value.client_id), authorized.value) };
 }
 
 async function askRouter(payload: Record<string, unknown>, postId: string | null, budgetMs = FIRST_TRY_MS): Promise<RouterOutcome> {

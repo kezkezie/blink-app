@@ -97,6 +97,19 @@ test("website studio: research, write, edit, change, publish, download", async (
     await list.getByRole("button", { name: /^Show / }).first().click();
     await expect.poll(async () => (await pages())[0].html, { timeout: 15_000 }).not.toContain("data-hidden=\"\"");
 
+    // Try it: the page's own links work in the app (they used to open BlinkSpot's sign-in inside the frame).
+    await page.getByRole("tab", { name: "Try it" }).click();
+    const tryIt = page.frameLocator('iframe[title="Website preview (try it)"]');
+    await expect(tryIt.locator("body")).toContainText("Fresh pairs every Friday", { timeout: 30_000 });
+    const anchor = tryIt.locator('a[href^="#"]').first();
+    if (await anchor.count()) {
+      await anchor.click();
+      await page.waitForTimeout(800);
+      await expect(tryIt.locator("body")).toContainText("Fresh pairs every Friday");
+      await expect(tryIt.locator("body")).not.toContainText(/sign in|log in|password/i);
+    }
+    await page.getByRole("tab", { name: "Edit" }).click();
+
     // Full screen preview.
     await page.getByRole("button", { name: "Full screen", exact: true }).click();
     await expect(page.getByRole("dialog", { name: /full screen/ })).toBeVisible();

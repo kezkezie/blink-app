@@ -16,6 +16,8 @@ import type { BrandResearch } from "@/lib/brand-research";
 import type { VisualRefs } from "@/lib/visual-refs";
 import { thumbUrl } from "./media";
 import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage, type ImageEngine } from "./generate-image";
+import { SensitiveGuide } from "./SensitiveGuide";
+import { sensitiveKind } from "@/lib/sensitive-subjects";
 
 /**
  * Generate, simple by default: say what you want → (optionally) three ideas → pick one → check the
@@ -344,6 +346,8 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
           <div>
             <span className="s-label">Your brief</span>
             <textarea className="s-input s-grow" rows={6} style={{ ["--min-lines" as string]: 5, ["--max-lines" as string]: 12 }} value={brief} onChange={(e) => setBrief(e.target.value)} aria-label="Your brief" />
+            {/* Medical, intimate and lingerie brands (2026-10-18): what works, before credits are spent. */}
+            {(() => { const kind = sensitiveKind(kit?.description, kit?.industry, brief); return kind ? <div className="mt-3"><SensitiveGuide kind={kind} onIdea={(b) => setBrief(b)} showBest={quality !== "best"} onBest={() => setQuality("best")} /></div> : null; })()}
             <span className="s-label mt-3">Look</span>
             <div className="flex flex-wrap gap-1.5">{GENERATE_LOOKS.map((l) => <button key={l.id} className="s-chip" aria-pressed={activeLook === l.id} title={l.line} onClick={() => setLook(l.id)}>{l.label}</button>)}</div>
             <p className="text-[11.5px] mt-1.5" style={{ color: "var(--s-mute)" }}>

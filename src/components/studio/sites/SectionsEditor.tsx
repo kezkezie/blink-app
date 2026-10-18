@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Eye, EyeOff, Link2, Loader2, MousePointerClick, Trash2, Undo2, Wand2, X } from "lucide-react";
 import { previewDoc } from "@/lib/sites/code";
+import { SitePreview } from "./SitePreview";
 import { clean, deleteSection, duplicateSection, editorDoc, linkOf, moveSection, prepare, sectionsOf, setImage, setLink, setText, setTheme, themeOf, toggleSection } from "@/lib/sites/sections";
 import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
 import { Modal } from "../Modal";
@@ -29,6 +30,8 @@ export function SectionsEditor({ html, onChange, device, onRewrite, changing, ch
   const [history, setHistory] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const showAfterLoad = useRef<string | null>(null);
+  // Edit (click words and pictures) or Try it (the page as visitors use it: links, tabs, menus).
+  const [trying, setTrying] = useState(false);
 
   // Something outside changed the page (the Code tab, an AI change, another version): start from it.
   useEffect(() => {
@@ -147,10 +150,14 @@ export function SectionsEditor({ html, onChange, device, onRewrite, changing, ch
         )}
       </aside>
 
-      <div className="min-h-[420px] lg:min-h-0 rounded-2xl p-2 order-1 lg:order-2" style={{ background: "var(--s-raised)" }}>
-        <iframe ref={frameRef} title="Website preview (click to edit)" srcDoc={frame} sandbox="allow-scripts" referrerPolicy="no-referrer"
+      <div className="min-h-[420px] lg:min-h-0 rounded-2xl p-2 order-1 lg:order-2 flex flex-col gap-2" style={{ background: "var(--s-raised)" }}>
+        <div className="s-seg w-fit self-center" role="tablist" aria-label="Preview">
+          <button role="tab" aria-selected={!trying} onClick={() => setTrying(false)}>Edit</button>
+          <button role="tab" aria-selected={trying} onClick={() => setTrying(true)}>Try it</button>
+        </div>
+        {trying ? <div className="flex-1 min-h-[400px]"><SitePreview html={clean(work)} device={device} title="Website preview (try it)" /></div> : <iframe ref={frameRef} title="Website preview (click to edit)" srcDoc={frame} sandbox="allow-scripts" referrerPolicy="no-referrer"
           onLoad={() => { if (showAfterLoad.current) { post({ t: "show", id: showAfterLoad.current }); showAfterLoad.current = null; } }}
-          className="block mx-auto bg-white transition-[width] duration-300" style={{ width: device === "phone" ? 390 : "100%", maxWidth: "100%", height: "100%", minHeight: 400, border: 0, borderRadius: device === "phone" ? 28 : 12 }} />
+          className="block mx-auto bg-white transition-[width] duration-300 flex-1" style={{ width: device === "phone" ? 390 : "100%", maxWidth: "100%", height: "100%", minHeight: 400, border: 0, borderRadius: device === "phone" ? 28 : 12 }} />}
       </div>
 
       <Modal open={!!picking} onClose={() => setPicking(null)} label="Pick a picture" width={760} padded>
