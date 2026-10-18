@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Clapperboard, Globe, ImageIcon, PenTool, Shuffle, Sparkles } from "lucide-react";
+import { Clapperboard, Globe, ImageIcon, PenTool, Scissors, Shuffle, Sparkles } from "lucide-react";
 import { ExamplesGallery } from "@/components/studio/examples/ExamplesGallery";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -130,12 +130,14 @@ export default function CreatePage() {
 
       <section className="mt-10">
         <h3 className="s-section-h">Or start from</h3>
-        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {[
             { href: "/studio/image?mode=remix", icon: Shuffle, title: "Inspo Remix", line: "Drop a post you love from Pinterest or anywhere. Get it in your brand.", need: "an inspo picture", tint: "#C6F432", badge: "FASTEST" },
             { href: "/studio/video", icon: Clapperboard, title: "Video", line: "Ads, product shots, creators, try-ons and lip-sync.", need: "an idea or a photo", tint: "#5EC8FF" },
             { href: "/studio/image?mode=generate", icon: ImageIcon, title: "Image", line: "Say what you want; get three ideas, then the image.", need: "an idea", tint: "#E68BFF" },
-            { href: "/studio/image?mode=design", icon: PenTool, title: "Editor", line: "Layers, text, shapes, logos and AI edits on a canvas.", need: "nothing", tint: "#FF8A5C" },
+            { href: "/studio/image?mode=design", icon: PenTool, title: "Image editor", line: "Layers, text, shapes, logos and AI edits on a canvas.", need: "nothing", tint: "#FF8A5C" },
+            // Kezie, 2026-10-18: the video editor was only reachable from inside Video Studio.
+            { href: "/studio/video?tab=editor", icon: Scissors, title: "Video editor", line: "Cut clips, captions, music, voiceover, motion graphics and AI edits on a timeline.", need: "clips (or nothing)", tint: "#7CF2C4" },
           ].map((w) => (
             <Link key={w.title} href={w.href} className="s-pick">
               <div className="s-pick-media" style={{ aspectRatio: "16 / 8", background: `radial-gradient(120% 90% at 20% 10%, color-mix(in oklab, ${w.tint} 28%, transparent), transparent 60%), linear-gradient(160deg, #15171b, #0c0d0f)` }}>

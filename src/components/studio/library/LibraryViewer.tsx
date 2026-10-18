@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Clapperboard, Download, ExternalLink, Film, LayoutTemplate, Loader2, Trash2, Wand2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Clapperboard, Download, ExternalLink, Film, LayoutTemplate, Loader2, Scissors, Trash2, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { Content } from "@/types/database";
 import { cleanCaption, resolveMedia, thumbUrl } from "@/components/studio/media";
+import { queueForEditor } from "@/components/studio/queue-clips";
 
 /**
  * The Library viewer (Kezie, 2026-10-16: "tap on any of the images and it displaying on a modal").
@@ -24,6 +26,8 @@ export function LibraryViewer({ items, index, onIndex, onClose, onDelete, hasMor
   const [slideAt, setSlideAt] = useState<{ id: string; n: number }>({ id: "", n: 0 });
   const slide = item && slideAt.id === item.id ? slideAt.n : 0;
   const [downloading, setDownloading] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const router = useRouter();
   const [loadingMore, setLoadingMore] = useState(false);
   const swipe = useRef<number | null>(null);
   const atEnd = index >= items.length - 1;
@@ -120,6 +124,11 @@ export function LibraryViewer({ items, index, onIndex, onClose, onDelete, hasMor
         {image && <Link href={`/studio/image?mode=design&content=${item.id}${slides ? `&slide=${slide}` : ""}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> {slides ? `Edit slide ${slide + 1}` : "Editor"}</Link>}
         {image && <Link href={`/studio/video?tab=editor&rail=motion&motionPicture=${item.id}&motion=${encodeURIComponent(`Animate this picture${title ? `: ${title.slice(0, 120)}` : ""}`)}`} className="s-btn sm"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>}
         {image && <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>}
+        {media.isVideo && media.url && (
+          <button className="s-btn sm" disabled={opening} onClick={async () => { setOpening(true); try { await queueForEditor([item]); router.push("/studio/video?tab=editor"); } finally { setOpening(false); } }}>
+            {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scissors className="h-3.5 w-3.5" />} Edit in the video editor
+          </button>
+        )}
         <button className="s-btn sm" disabled={!media.url || downloading} onClick={download}>{downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download</button>
         <button className="s-btn sm" style={{ color: "var(--s-danger)" }} onClick={async () => { if (await onDelete(item.id)) { toast.message("Deleted"); if (items.length <= 1) onClose(); else if (index >= items.length - 1) onIndex(index - 1); } }}><Trash2 className="h-3.5 w-3.5" /> Delete</button>
       </div>

@@ -524,7 +524,11 @@ function VideoStudioInner() {
         {v.activeTab === "editor" ? (
           <button className="s-btn ai sm" onClick={() => ask("")}>Edit with AI</button>
         ) : (
-          <button className="s-btn ai sm" onClick={() => ask(story ? "Help me plan the scenes for my video" : "Help me write a better prompt for this shot")}>Ask for help</button>
+          <>
+            {/* The editor from any step (2026-10-18: it was only in the last step and under the ways). */}
+            <button className="s-btn sm" onClick={() => v.setActiveTab("editor")}><Scissors className="h-3.5 w-3.5" /> Video editor</button>
+            <button className="s-btn ai sm" onClick={() => ask(story ? "Help me plan the scenes for my video" : "Help me write a better prompt for this shot")}>Ask for help</button>
+          </>
         )}
       </div>
 
