@@ -2,6 +2,7 @@
 
 import { supabase } from "@/lib/supabase";
 import type { Content } from "@/types/database";
+import { track } from "@/lib/analytics";
 
 /**
  * Putting posts on the calendar, one way for the studio's calendar, the post page and Ask
@@ -52,6 +53,7 @@ export type PlaceResult = { ok: boolean; queued: boolean; error?: string };
 /** Put a post on the calendar at `iso` (and queue it if it has platforms). */
 export async function placeOnCalendar(clientId: string, item: SchedulablePost, iso: string, opts: { captionChoice?: "long" | "short" } = {}): Promise<PlaceResult> {
   const platforms = enabledPlatforms(item.target_platforms);
+  track("post_scheduled", { platforms: platforms.length });
   if (!platforms.length && item.postforme_tracking_id) {
     // Queued earlier but its platforms were removed: cancel that one first.
     const off = await post("/api/social-posts/unschedule", { contentId: item.id });

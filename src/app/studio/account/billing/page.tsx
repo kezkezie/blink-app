@@ -10,6 +10,7 @@ import { CREDIT_PACKS, PLANS, TOP_UP_NEEDS_PLAN, canTopUp, planOf, type PlanTier
 import { formatCredits } from "@/components/studio/hooks";
 import { creditsByBrand, type LedgerLine } from "@/lib/credits-by-brand";
 import { FormSkeleton } from "@/components/studio/Skeletons";
+import { track } from "@/lib/analytics";
 
 /**
  * Billing & credits in the studio look (2026-10-11; the classic page stays at /dashboard/billing).
@@ -92,6 +93,7 @@ function BillingPage() {
   }, [returned, clientId, router]);
 
   const checkout = useCallback(async (item: string, fallbackSubject: string) => {
+    track("checkout_started", { item });
     // Never fall back to email just because the status hasn't arrived yet.
     if (!pay.loaded) { toast.info("One moment, opening payments…"); return; }
     if (!pay.online) { window.location.href = mail(fallbackSubject); return; }

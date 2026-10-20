@@ -10,6 +10,7 @@ import { isSharedBrand, useBrandStore } from "@/app/store/useBrandStore";
 import { Modal } from "@/components/studio/Modal";
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { FormSkeleton } from "@/components/studio/Skeletons";
+import { track } from "@/lib/analytics";
 
 /**
  * Settings & social accounts in the studio look (2026-10-11; classic stays at /dashboard/settings).
@@ -88,6 +89,7 @@ function SettingsPage() {
 
   async function connect(platform: string) {
     if (!clientId || !activeBrand) return;
+    track("account_connect_started", { platform });
     setConnecting(platform);
     try {
       const res = await fetch("/api/social-accounts/auth-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform, clientId, brandId: activeBrand.id }) });

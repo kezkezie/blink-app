@@ -50,6 +50,7 @@ import {
   readActiveSceneJobs,
   type PersistedSceneJob,
 } from "@/lib/durable-video-jobs";
+import { track } from "@/lib/analytics";
 
 /** How long one scene may be observed before it is presented as stale. The job
  *  is NOT cancelled — observation continues and a later durable terminal state
@@ -1252,6 +1253,7 @@ export function StorytellingSetup({
 
   const callN8n = async (mode: 'director' | 'generator' | 'manual' | 'scene_video_generator', body: any) => {
     const endpoint = "/api/video/nano-banana";
+    if (mode === "scene_video_generator") track("video_started", { model: String(body?.ai_model_override ?? "auto"), kind: "scene" });
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

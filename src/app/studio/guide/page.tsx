@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { track } from "@/lib/analytics";
 import Link from "next/link";
 import { ArrowRight, Compass, Search } from "lucide-react";
 import { GUIDE, WHERE_DO_I, searchGuide } from "@/lib/guide";
@@ -9,6 +10,12 @@ import { useAskStore } from "@/components/studio/ask-store";
 /** The Guide (2026-10-20): every place and button, what it does, what you need and what it costs. */
 export default function GuidePage() {
   const [q, setQ] = useState("");
+  // What people look for in the Guide (the words aren't sent, only how many results).
+  useEffect(() => {
+    if (q.trim().length < 3) return;
+    const t = setTimeout(() => track("guide_searched", { length: q.trim().length, results: searchGuide(q).reduce((n, s) => n + s.items.length, 0) }), 1200);
+    return () => clearTimeout(t);
+  }, [q]);
   const sections = useMemo(() => searchGuide(q), [q]);
   const { ask } = useAskStore();
   const faq = q.trim() ? WHERE_DO_I.filter((f) => q.toLowerCase().split(/\s+/).filter((w) => w.length > 1).every((w) => `${f.q} ${f.a}`.toLowerCase().includes(w))) : WHERE_DO_I;

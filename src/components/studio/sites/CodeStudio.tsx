@@ -10,6 +10,7 @@ import { MAX_LOOKS, SITE_CHANGE_CREDITS, SITE_LOOKS, SITE_PAGE_CREDITS, cleanSlu
 import { Modal } from "../Modal";
 import { SiteFullscreen, SitePreview, SiteThumb } from "./SitePreview";
 import { SectionsEditor } from "./SectionsEditor";
+import { track } from "@/lib/analytics";
 
 const CodeEditor = dynamic(() => import("./CodeEditor").then((m) => m.CodeEditor), {
   ssr: false, loading: () => <div className="s-skel h-full" />,
@@ -96,6 +97,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart }: { initialB
     codes.current.set(key, "");
     const fail = (error: string) => setJobs((list) => list.map((j) => (j.key === key ? { ...j, error } : j)));
     try {
+      track("site_page_started", { look });
       const res = await fetch("/api/sites/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, look, brief: text }) });
       if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); fail(d.error || "Couldn't write the page."); return; }
       const reader = res.body.getReader();

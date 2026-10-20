@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { TOUR_KEY, TOUR_STEPS } from "@/lib/guide";
+import { track } from "@/lib/analytics";
 
 /**
  * The first-visit tour (2026-10-20): on Create, once per person (this device, and their account so
@@ -26,7 +27,8 @@ export function Tour() {
   const [step, setStep] = useState<number | null>(null);
   const [measured, setRect] = useState<DOMRect | null>(null);
 
-  const finish = useCallback(() => {
+  const finish = useCallback((how: "finished" | "skipped" = "skipped") => {
+    track(how === "finished" ? "tour_finished" : "tour_skipped", {});
     setStep(null);
     try { localStorage.setItem(TOUR_KEY, "done"); } catch { /* private window */ }
     void supabase.auth.updateUser({ data: { tour_done: true } }).then(() => {}, () => {});
@@ -99,17 +101,17 @@ export function Tour() {
         <div className="flex items-center gap-2">
           <span className="mono text-[11px]" style={{ color: "var(--s-mute)" }}>{step + 1} / {TOUR_STEPS.length}</span>
           <div className="flex-1" />
-          <button className="s-btn ghost sm" onClick={finish} aria-label="Close the tour"><X className="h-3.5 w-3.5" /></button>
+          <button className="s-btn ghost sm" onClick={() => finish()} aria-label="Close the tour"><X className="h-3.5 w-3.5" /></button>
         </div>
         <b className="text-[16px]">{s.title}</b>
         <p className="text-[13.5px] leading-relaxed" style={{ color: "var(--s-soft)" }}>{s.body}</p>
         <div className="flex items-center gap-2 mt-1">
-          {step === 0 ? <button className="s-btn ghost sm" onClick={finish}>Skip</button> : <button className="s-btn ghost sm" onClick={() => setStep(step - 1)}>Back</button>}
+          {step === 0 ? <button className="s-btn ghost sm" onClick={() => finish()}>Skip</button> : <button className="s-btn ghost sm" onClick={() => setStep(step - 1)}>Back</button>}
           <div className="flex-1" />
           {last ? (
             <>
-              <button className="s-btn sm" onClick={() => { finish(); router.push("/studio/guide"); }}>Open the Guide</button>
-              <button className="s-btn primary sm" onClick={() => { finish(); router.push("/studio/image?mode=remix"); }}>Try Inspo Remix</button>
+              <button className="s-btn sm" onClick={() => { finish("finished"); router.push("/studio/guide"); }}>Open the Guide</button>
+              <button className="s-btn primary sm" onClick={() => { finish("finished"); router.push("/studio/image?mode=remix"); }}>Try Inspo Remix</button>
             </>
           ) : (
             <button className="s-btn primary sm" onClick={() => setStep(step + 1)} autoFocus>{step === 0 ? "Show me" : "Next"}</button>

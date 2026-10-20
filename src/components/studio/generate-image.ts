@@ -9,6 +9,7 @@ import { MARKETING_STYLES } from "@/lib/marketing-styles";
 import { contactRule } from "@/lib/inspo";
 import { validateResearch, type BrandResearch } from "@/lib/brand-research";
 import { softenForAi } from "@/lib/ai-safe-text";
+import { track } from "@/lib/analytics";
 
 /**
  * The studio's one way to make images (Generate and Inspo Remix): the same workflow, billing,
@@ -114,6 +115,7 @@ export type GeneratedImage = { id: string | null; url: string };
 
 export async function generateBrandImages(req: GenerateRequest): Promise<GeneratedImage[]> {
   const refs = req.references ?? [];
+  track("image_started", { engine: req.engine, mode: req.mode ?? "generate", references: refs.length });
   const styleObj = MARKETING_STYLES.find((s) => s.id === req.style);
   const constraint = brandConstraintFor(req.kit);
   let assembled = req.plain ? (req.assembledPrompt ?? req.prompt) : req.assembledPrompt ? `${req.assembledPrompt}\n\n${constraint}` : "";

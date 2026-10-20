@@ -38,6 +38,7 @@ import {
 } from "./photo-marks";
 
 import { Overlay } from "../Modal";
+import { track } from "@/lib/analytics";
 /**
  * The image Editor: Photoshop/Pixlr-style layers on a canvas. Shapes, pen, brush and eraser, real
  * text, photos, and AI on the canvas (remove background, swap a face, edit with words, turn a photo
@@ -1005,6 +1006,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       void runAiErase();
       return;
     }
+    track("outline_used", { action: mode });
     setAiBusy(mode === "copy" ? "Cutting it out…" : "Erasing…");
     try {
       const { blob, box } = await cutWithOutline(img, pts, mode);
@@ -1108,6 +1110,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         const map = validRegionMap(d);
         if (!map) throw new Error("Couldn't read the map. Nothing was charged.");
         s.m.map = map;
+        track("photo_mapped", { regions: map.regions.length });
         setEraseUi((u) => u && { ...u, mapping: false, mapped: map.regions.length });
         toast.success(`Found ${map.regions.length} things · ${MAP_CREDITS} credits. Hover to see them, click the ones to remove.`);
         return;
@@ -1138,6 +1141,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       await replaceImageSrc(img, data.url);
       // The photo changed: a fresh, empty set of marks on it (the old map no longer fits).
       if (toolRef.current === "aierase") startMarks(img);
+      track("ai_erase_used", { mapped: !!s.m.map });
       toast.success(`Erased · ${AI_ERASE_CREDITS} credits. Mark more, or press Esc when you're done.`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't erase that."); }
     finally { setAiBusy(null); }

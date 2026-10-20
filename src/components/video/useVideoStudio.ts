@@ -11,6 +11,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import type { BRollScene } from "@/components/video/types";
 import { VIDEO_MODES } from "@/components/video/video-modes";
+import { track } from "@/lib/analytics";
 
 /**
  * Video Studio state and actions (upload, AI suggest, storyboard, scenes, generate, live progress).
@@ -504,7 +505,7 @@ export function useVideoStudio() {
         video_mode: selectedMode,
         primary_image_url: fittedPrimary,
         secondary_image_url: fittedSecondary,
-        user_prompt: prompt,
+        user_prompt: (track("video_started", { model: targetModel, duration: Number(duration) || 5, kind: "shot" }), prompt),
         is_sequence: false,
         ai_model_override: targetModel,
         strict_brand_alignment: strictBrandAlignment,

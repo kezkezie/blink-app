@@ -6,6 +6,7 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ASK_TRIED_KEY, START_HIDDEN_KEY, START_STEPS, type StartStep } from "@/lib/guide";
 import type { BrandProfile } from "@/app/store/useBrandStore";
+import { track } from "@/lib/analytics";
 
 /**
  * Getting started on Create (2026-10-20): five first steps that tick themselves off from what the
@@ -68,7 +69,7 @@ export function GettingStarted({ clientId, brand }: { clientId: string | null; b
         <ol className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-5">
           {START_STEPS.map((s) => (
             <li key={s.id}>
-              <Link href={s.href} className="flex items-start gap-2 rounded-lg p-2.5 h-full" style={{ background: done[s.id] ? "transparent" : "var(--s-raised)", border: "1px solid var(--s-line)", opacity: done[s.id] ? 0.6 : 1 }} aria-label={`${s.title}${done[s.id] ? " (done)" : ""}`}>
+              <Link href={s.href} onClick={() => track("getting_started_clicked", { step: s.id, done: done[s.id] })} className="flex items-start gap-2 rounded-lg p-2.5 h-full" style={{ background: done[s.id] ? "transparent" : "var(--s-raised)", border: "1px solid var(--s-line)", opacity: done[s.id] ? 0.6 : 1 }} aria-label={`${s.title}${done[s.id] ? " (done)" : ""}`}>
                 <span className="h-5 w-5 rounded-full grid place-items-center shrink-0 mt-0.5" style={{ background: done[s.id] ? "var(--s-accent)" : "transparent", border: done[s.id] ? "none" : "1.5px solid var(--s-line-2)", color: "var(--s-accent-ink)" }}>
                   {done[s.id] && <Check className="h-3 w-3" strokeWidth={3} />}
                 </span>

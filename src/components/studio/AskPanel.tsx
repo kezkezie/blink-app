@@ -16,6 +16,7 @@ import { useCanvasBridge } from "./editor/canvas-bridge";
 import { summarizeTimeline } from "@/lib/editor-ops";
 import { useAskStore, type AskAction, type AskMessage } from "./ask-store";
 import { captureTimelineFrames } from "./capture-frames";
+import { track } from "@/lib/analytics";
 
 const EDITOR_STARTERS = [
   "Cut these clips into a 15 second Instagram reel with a hook and a call to action",
@@ -133,6 +134,7 @@ export function AskPanel() {
 
   async function send(text: string) {
     const t = text.trim();
+    track("ask_sent", { pictures: pics.length, files: docs.length });
     const images = pics;
     const files = docs;
     if ((!t && !images.length && !files.length) || busy || uploading) return;

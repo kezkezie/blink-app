@@ -13,6 +13,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { useBrandKit } from "@/components/studio/generate-image";
 import { MOTION_CREDITS, type MotionShape, type MotionSpec } from "@/lib/motion/spec";
 import type { AddedMotion, MotionPlace } from "./MotionStudio";
+import { track } from "@/lib/analytics";
 
 // The Player and the renderer load only when the studio opens.
 const MotionStudio = dynamic(() => import("./MotionStudio").then((m) => m.MotionStudio), { ssr: false });
@@ -120,6 +121,7 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded, 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't plan the motion.");
       setSpec(data.spec); setPictures(data.pictures ?? []); setOpen(true);
+      track("motion_planned", { screens: screens.length, style: !!style });
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't plan the motion."); }
     finally { setBusy(false); }
   }

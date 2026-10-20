@@ -11,6 +11,7 @@ import {
   MOTION_FPS, MOTION_TEMPLATES, motionTitle, paletteFor, sizeFor, totalFrames, totalSeconds, validateMotionSpec,
   type MotionScene, type MotionSpec,
 } from "@/lib/motion/spec";
+import { track } from "@/lib/analytics";
 
 /**
  * The motion studio (2026-10-15): the live preview (Remotion Player), every word, number, colour
@@ -112,6 +113,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
         creation_metadata: { operation: "motion", kind: checked.kind, seconds: totalSeconds(checked), spec: checked },
       }).select("id").single();
       onAdded({ url, name, seconds: totalSeconds(checked), kind: checked.kind, contentId: (row?.id as string | undefined) ?? null }, where);
+      track("motion_made", { seconds: Math.round(totalSeconds(checked)), scenes: checked.scenes.length, walkthrough: checked.scenes.some((x) => x.template === "screen") });
       toast.success(where === "library" ? `${name.replace("Motion · ", "")}: saved to your Library` : `${name.replace("Motion · ", "")}: on the timeline and in your Library`);
       onClose();
     } catch (e) {
