@@ -52,18 +52,18 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name ?? undefined);
   const name = activeBrand?.brand_name || "your brand";
   // Kept on this device per brand (2026-10-20): the topic, the outline (it cost credits), the pictures.
-  const keep = `carousel:${activeBrand?.id ?? "none"}`;
-  const [way, setWay] = useKept<Way>(`${keep}:way`, "topic");
-  const [shape, setShape] = useKept<SlideShape>(`${keep}:shape`, "4:5");
-  const [topic, setTopic] = useKept(`${keep}:topic`, initialTopic ?? "", !!initialTopic);
-  const [count, setCount] = useKept(`${keep}:count`, 6);
-  const [plan, setPlan] = useKept<TopicCarousel | null>(`${keep}:plan`, null, !!initialTopic);
+  const keep = activeBrand ? `carousel:${activeBrand.id}` : null;
+  const [way, setWay] = useKept<Way>(keep && `${keep}:way`, "topic");
+  const [shape, setShape] = useKept<SlideShape>(keep && `${keep}:shape`, "4:5");
+  const [topic, setTopic] = useKept(keep && `${keep}:topic`, initialTopic ?? "", !!initialTopic);
+  const [count, setCount] = useKept(keep && `${keep}:count`, 6);
+  const [plan, setPlan] = useKept<TopicCarousel | null>(keep && `${keep}:plan`, null, !!initialTopic);
   const [handle, setHandle] = useState<string | null>(null);
   const [slidePics, setSlidePics] = useState<Array<{ url: string; title: string }>>([]);
   const [paletteEdit, setPaletteEdit] = useState<Palette | null>(null);
-  const [brief, setBrief] = useKept(`${keep}:brief`, initialTopic ?? "", !!initialTopic);
-  const [panels, setPanels] = useKept(`${keep}:panels`, 3);
-  const [pics, setPics] = useKept<Array<{ url: string; title: string }>>(`${keep}:pics`, []);
+  const [brief, setBrief] = useKept(keep && `${keep}:brief`, initialTopic ?? "", !!initialTopic);
+  const [panels, setPanels] = useKept(keep && `${keep}:panels`, 3);
+  const [pics, setPics] = useKept<Array<{ url: string; title: string }>>(keep && `${keep}:pics`, []);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [made, setMade] = useState<{ id: string; slides: string[] } | null>(null);

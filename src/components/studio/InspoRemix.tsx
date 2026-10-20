@@ -37,7 +37,7 @@ export function InspoRemix() {
   const [importing, setImporting] = useState(false);
   const [picking, setPicking] = useState(false);
   // Kept on this device per brand (2026-10-20).
-  const [purpose, setPurpose] = useKept(`remix:${activeBrand?.id ?? "none"}:purpose`, "");
+  const [purpose, setPurpose] = useKept(activeBrand ? `remix:${activeBrand.id}:purpose` : null, "");
   const [format, setFormat] = useState<(typeof FORMATS)[number]>("4:5");
   const [engine, setEngine] = useState<(typeof ENGINES)[number]["id"]>("nb2");
   const [busy, setBusy] = useState(false);

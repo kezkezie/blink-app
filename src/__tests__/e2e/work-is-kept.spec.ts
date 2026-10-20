@@ -71,6 +71,21 @@ test("the Image Editor, Generate and the video editor keep work across pages", a
     await page.goto(`${BASE}/studio/video?tab=editor`);
     await expect(page.locator(".ve-clip.video")).toHaveCount(1, { timeout: 20_000 });
     await expect(page.getByText(/Picked up your edit/)).toBeVisible();
+
+    // 4. Typed before the brand has loaded (a first visit on a slow line, 2026-10-20): the brief stays,
+    //    and is kept under the brand once it arrives.
+    await page.evaluate(() => localStorage.removeItem("blink-active-brand"));
+    await page.route("**/rest/v1/brand_profiles*", async (route) => { await new Promise((r) => setTimeout(r, 3500)); await route.continue().catch(() => {}); });
+    await page.goto(`${BASE}/studio/motion`);
+    const motionBrief = page.getByLabel("What the motion is for");
+    await motionBrief.fill("A 5 second intro typed before the brand loaded");
+    await expect(page.getByText(/for Kasi Kicks/).first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(800);
+    await expect(motionBrief).toHaveValue("A 5 second intro typed before the brand loaded");
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await page.goto(`${BASE}/studio`);
+    await page.goto(`${BASE}/studio/motion`);
+    await expect(page.getByLabel("What the motion is for")).toHaveValue("A 5 second intro typed before the brand loaded", { timeout: 15_000 });
   } finally {
     if (clientId) {
       await sb.from("content").delete().eq("client_id", clientId);

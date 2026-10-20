@@ -72,27 +72,45 @@ export function draftAge(at: number) {
 /**
  * A few fields of a screen kept on this device (the brief, the chosen look, a plan that cost
  * credits), per key. Like useState, restored right after the page shows; skipped while `skip`
- * (e.g. a deep link brought its own idea).
+ * (e.g. a deep link brought its own idea). The key is null until it's known (the brand is still
+ * loading): what's typed meanwhile is kept and saved under the key once it arrives (2026-10-20: a
+ * brief typed in the first second was wiped when the brand's empty saved brief loaded over it).
  */
-export function useKept<T>(key: string, initial: T, skip = false): [T, (v: T | ((p: T) => T)) => void] {
+export function useKept<T>(key: string | null, initial: T, skip = false): [T, (v: T | ((p: T) => T)) => void] {
   const [value, setValue] = useState<T>(initial);
   const loaded = useRef<string | null>(null);
+  const typed = useRef(false);
+  const latest = useRef(initial);
   const first = useRef(initial);
   useEffect(() => {
-    if (loaded.current === key || skip) return;
+    if (!key || loaded.current === key || skip) return;
     let saved: Saved<T> | null = null;
     try { const raw = localStorage.getItem(`kept:${key}`); saved = raw ? (JSON.parse(raw) as Saved<T>) : null; } catch { saved = null; }
     const fresh = saved && Date.now() - saved.at < DRAFT_DAYS * 86_400_000 ? saved : null;
     // Marked loaded when the timer fires (a dev re-run of this effect cancels the first timer).
-    const t = setTimeout(() => { loaded.current = key; setValue(fresh ? fresh.value : first.current); }, 0);
+    const t = setTimeout(() => {
+      const firstLoad = loaded.current === null;
+      loaded.current = key;
+      if (firstLoad && typed.current) { keep(key, latest.current); typed.current = false; return; }
+      typed.current = false;
+      const v = fresh ? fresh.value : first.current;
+      latest.current = v;
+      setValue(v);
+    }, 0);
     return () => clearTimeout(t);
   }, [key, skip]);
   const set = useCallback((v: T | ((p: T) => T)) => {
+    typed.current = true;
     setValue((prev) => {
       const next = typeof v === "function" ? (v as (p: T) => T)(prev) : v;
-      try { localStorage.setItem(`kept:${key}`, JSON.stringify({ at: Date.now(), value: next })); } catch { /* full or private */ }
+      latest.current = next;
+      if (key) keep(key, next);
       return next;
     });
   }, [key]);
   return [value, set];
+}
+
+function keep<T>(key: string, value: T) {
+  try { localStorage.setItem(`kept:${key}`, JSON.stringify({ at: Date.now(), value })); } catch { /* full or private */ }
 }
