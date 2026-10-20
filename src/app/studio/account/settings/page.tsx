@@ -11,6 +11,7 @@ import { Modal } from "@/components/studio/Modal";
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { FormSkeleton } from "@/components/studio/Skeletons";
 import { track } from "@/lib/analytics";
+import { AiConnections } from "@/components/studio/settings/AiConnections";
 
 /**
  * Settings & social accounts in the studio look (2026-10-11; classic stays at /dashboard/settings).
@@ -168,6 +169,8 @@ function SettingsPage() {
           })}
         </div>
       </section>
+
+      <AiConnections />
 
       <section className="s-card p-5 grid gap-4 max-w-[640px]">
         <div>
