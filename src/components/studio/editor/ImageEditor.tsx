@@ -12,6 +12,7 @@ import {
   Undo2, Redo2, Download, Save, Trash2, Copy, Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown, Loader2,
   Scissors, Wand2, Shapes, ZoomIn, Upload as UploadIcon, LayoutTemplate, ZoomOut, Maximize, Layers as LayersIcon, Ungroup, X, UserRound, Film,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  LassoSelect, WandSparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -29,6 +30,12 @@ import { AI_NEEDS_CREDITS } from "@/lib/plans";
 import { useCanvasBridge } from "./canvas-bridge";
 import { clearDraft, draftAge, loadDraft, saveDraft } from "@/lib/drafts";
 import { canvasSafe, loadImage, originalUrl, paletteOf, penPath, shrinkToBlob, starPoints, type PenAnchor } from "./util";
+import { LiveWire, edgeCost, fastenAt, simplify, snapToEdge } from "@/lib/editor/livewire";
+import { AI_ERASE_CREDITS, MAP_CREDITS, validRegionMap } from "@/lib/editor/regions";
+import {
+  clearMarks, cutWithOutline, fillOutline, hasMarks, labelAt, maskBlob, naturalSize, newMarks, overlayFor, paintStroke, photoToScene, repaint,
+  sceneToPhoto, toWork, togglePicked, workingPixels, type Marks,
+} from "./photo-marks";
 
 import { Overlay } from "../Modal";
 /**
@@ -46,7 +53,7 @@ FabricObject.ownDefaults.originY = "top";
 type FObj = FabricObject & { id?: string; name?: string; srcUrl?: string; anchors?: PenAnchor[]; closed?: boolean; /** The font a split design really used (2026-10-13). */ wantedFont?: string };
 type Handle = FabricCircle & { penIndex?: number; penKind?: "anchor" | "handle" };
 
-type Tool = "select" | "hand" | "text" | "rect" | "ellipse" | "line" | "star" | "polygon" | "pen" | "brush" | "eraser";
+type Tool = "select" | "hand" | "text" | "rect" | "ellipse" | "line" | "star" | "polygon" | "pen" | "brush" | "eraser" | "outline" | "aierase";
 const SHAPES: Tool[] = ["rect", "ellipse", "line", "star", "polygon"];
 const TOOL_INFO: Record<Tool, { label: string; key: string; tip: string; icon: typeof Square }> = {
   select: { label: "Move & select", key: "V", tip: "Click a layer to select it. Drag to move, pull the corners to resize, the top dot to rotate.", icon: MousePointer2 },
@@ -60,6 +67,8 @@ const TOOL_INFO: Record<Tool, { label: string; key: string; tip: string; icon: t
   pen: { label: "Pen", key: "P", tip: "Click to add points, drag to curve. Click the first point to close the shape; Enter to finish.", icon: PenTool },
   brush: { label: "Brush", key: "B", tip: "Draw freehand.", icon: Brush },
   eraser: { label: "Eraser", key: "E", tip: "Rub out parts of any layer, including photos.", icon: Eraser },
+  outline: { label: "Magic outline", key: "M", tip: "Click the edge of something in a photo and move along it: the line snaps to the edges. Click to pin a point, click the start (or double-click) to close. Then cut it out, erase it, or keep only it.", icon: LassoSelect },
+  aierase: { label: "AI eraser", key: "A", tip: "Brush over what to remove, or map the photo and click things. AI fills in what was behind.", icon: WandSparkles },
 };
 const SIZES = [
   { id: "post", label: "Post 4:5", w: 1080, h: 1350 },
@@ -380,6 +389,33 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     }
   }
 
+  // ---------- magic outline + AI eraser sessions (2026-10-20): helpers on the canvas, never saved
+  type OutlineSession = {
+    img: FabricImage & FObj; cost: Float32Array; cw: number; ch: number; wire: LiveWire;
+    fixed: Array<[number, number]>; anchors: number[]; live: Array<[number, number]>; preview: Path | null;
+    /** The closed outline in the photo's natural pixels. */
+    closed: Array<{ x: number; y: number }> | null;
+  };
+  const outline = useRef<OutlineSession | null>(null);
+  const [outlineUi, setOutlineUi] = useState<null | "drawing" | "closed">(null);
+  const marks = useRef<{ img: FabricImage & FObj; m: Marks; overlay: FabricImage; painting: { last: { x: number; y: number }; at: { x: number; y: number }; moved: boolean } | null } | null>(null);
+  const [eraseUi, setEraseUi] = useState<null | { marked: boolean; mapping: boolean; mapped: number | null }>(null);
+  const quietly = useCallback((fn: () => void) => { history.current.restoring = true; try { fn(); } finally { history.current.restoring = false; } }, []);
+  const endOutline = useCallback(() => {
+    const c = cv.current, o = outline.current;
+    if (c && o?.preview) quietly(() => c.remove(o.preview!));
+    outline.current = null;
+    setOutlineUi(null);
+    c?.requestRenderAll();
+  }, [quietly]);
+  const endMarks = useCallback(() => {
+    const c = cv.current, s = marks.current;
+    if (c && s) quietly(() => c.remove(s.overlay));
+    marks.current = null;
+    setEraseUi(null);
+    c?.requestRenderAll();
+  }, [quietly]);
+
   // ---------- tools
   const setToolSafe = useCallback((t: Tool) => {
     const c = cv.current;
@@ -389,6 +425,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     setShapeMenu(false);
     if (!c) return;
     if (pen.current && t !== "pen") { if (pen.current.preview) c.remove(pen.current.preview); pen.current = null; }
+    if (t !== "outline") endOutline();
+    if (t !== "aierase") endMarks();
     c.isDrawingMode = t === "brush" || t === "eraser";
     c.selection = t === "select";
     c.skipTargetFind = t !== "select";
@@ -402,7 +440,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     }
     if (t !== "select") c.discardActiveObject();
     c.requestRenderAll();
-  }, [paint, brushSize, record, bump]);
+  }, [paint, brushSize, record, bump, endOutline, endMarks]);
 
   useEffect(() => {
     const c = cv.current;
@@ -548,6 +586,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         drawing.current = { obj: o, x: pt.x, y: pt.y };
         return;
       }
+      if (t === "outline") { live.current.outlineDown(pt.x, pt.y); return; }
+      if (t === "aierase") { live.current.marksDown(pt.x, pt.y); return; }
       if (t === "pen") {
         const p = (pen.current ??= { anchors: [], preview: null, dragging: false });
         const first = p.anchors[0];
@@ -558,6 +598,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     };
     const move = (opt: TPointerEventInfo<TPointerEvent>) => {
       const pt = c.getScenePoint(opt.e);
+      if (toolRef.current === "outline") { live.current.outlineMove(pt.x, pt.y); return; }
+      if (toolRef.current === "aierase") { live.current.marksMove(pt.x, pt.y); return; }
       const d = drawing.current;
       if (d) {
         const shift = (opt.e as MouseEvent).shiftKey;
@@ -587,6 +629,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       }
     };
     const up = () => {
+      if (toolRef.current === "aierase") { live.current.marksUp(); return; }
       const d = drawing.current;
       if (d) {
         drawing.current = null;
@@ -605,7 +648,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       }
       if (pen.current) pen.current.dragging = false;
     };
-    const dbl = () => { if (toolRef.current === "pen") finishPen(false); };
+    const dbl = () => { if (toolRef.current === "pen") finishPen(false); if (toolRef.current === "outline") live.current.closeOutline(); };
     c.on("mouse:down", down);
     c.on("mouse:move", move);
     c.on("mouse:up", up);
@@ -623,6 +666,11 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (typing) return;
       if (pen.current && e.key === "Enter") { finishPen(false); return; }
+      if (outline.current && !outline.current.closed) {
+        if (e.key === "Enter") { live.current.closeOutline(); return; }
+        if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); live.current.outlineBack(); return; }
+      }
+      if (e.key === "Escape" && outline.current) { endOutline(); return; }
       if (e.key === "Escape" && pointEdit.current) { finishPointEdit(); return; }
       if (e.key === "Escape") {
         if (pen.current) { if (pen.current.preview) canvas().remove(pen.current.preview); pen.current = null; }
@@ -632,7 +680,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         return;
       }
       if ((e.key === "Delete" || e.key === "Backspace") && cv.current?.getActiveObject()) { e.preventDefault(); removeActive(); return; }
-      const map: Record<string, Tool> = { v: "select", h: "hand", t: "text", r: "rect", o: "ellipse", l: "line", s: "star", g: "polygon", p: "pen", b: "brush", e: "eraser" };
+      const map: Record<string, Tool> = { v: "select", h: "hand", t: "text", r: "rect", o: "ellipse", l: "line", s: "star", g: "polygon", p: "pen", b: "brush", e: "eraser", m: "outline", a: "aierase" };
       const next = map[e.key.toLowerCase()];
       if (next && !e.metaKey && !e.ctrlKey) setToolSafe(next);
     };
@@ -844,6 +892,260 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     } catch (e) { toast.error(generationErrorMessage(e), { duration: 9000 }); }
     finally { setAiBusy(null); }
   }
+  // ---------- magic outline (2026-10-20): a live wire that snaps to edges as the pointer moves
+  const photoAt = (x: number, y: number) => [...canvas().getObjects()].reverse().find((o) => o instanceof FabricImage && !(o as FObj).excludeFromExport && o.visible !== false && o.containsPoint(new Point(x, y))) as (FabricImage & FObj) | undefined;
+  function drawOutline() {
+    const c = cv.current, o = outline.current;
+    if (!c || !o) return;
+    const { nw, nh } = naturalSize(o.img);
+    const pts = o.closed ? o.closed.map((p) => photoToScene(o.img, p.x, p.y)) : [...o.fixed, ...o.live.slice(1)].map(([x, y]) => photoToScene(o.img, (x * nw) / o.cw, (y * nh) / o.ch));
+    if (!pts.length) return;
+    const d = pts.map((p, i) => `${i ? "L" : "M"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ") + (o.closed ? " Z" : "");
+    quietly(() => {
+      if (o.preview) c.remove(o.preview);
+      o.preview = new Path(d, { fill: o.closed ? "rgba(198,244,50,0.14)" : "", stroke: "#C6F432", strokeWidth: 2 / zoom, strokeDashArray: o.closed ? [6 / zoom, 4 / zoom] : undefined, selectable: false, evented: false, excludeFromExport: true, objectCaching: false });
+      c.add(o.preview);
+    });
+    c.requestRenderAll();
+  }
+  function outlinePoint(o: OutlineSession, x: number, y: number) {
+    const p = sceneToPhoto(o.img, x, y);
+    const { nw, nh } = naturalSize(o.img);
+    return { x: Math.max(0, Math.min(o.cw - 1, (p.x * o.cw) / nw)), y: Math.max(0, Math.min(o.ch - 1, (p.y * o.ch) / nh)) };
+  }
+  function outlineDown(x: number, y: number) {
+    const o = outline.current;
+    if (!o || o.closed) {
+      const img = photoAt(x, y);
+      if (!img) { toast.info("Click the edge of something in a photo to start the outline."); return; }
+      endOutline();
+      const px = workingPixels(img, 1024);
+      const cost = edgeCost(px.data, px.w, px.h);
+      const fresh: OutlineSession = { img, cost, cw: px.w, ch: px.h, wire: new LiveWire(cost, px.w, px.h), fixed: [], anchors: [0], live: [], preview: null, closed: null };
+      const q = outlinePoint(fresh, x, y);
+      const start = snapToEdge(cost, px.w, px.h, q.x, q.y, 4);
+      fresh.fixed = [start];
+      fresh.wire.setSeed(start[0], start[1]);
+      outline.current = fresh;
+      setOutlineUi("drawing");
+      drawOutline();
+      return;
+    }
+    // Back at the start: close it.
+    const startScene = photoToScene(o.img, (o.fixed[0][0] * naturalSize(o.img).nw) / o.cw, (o.fixed[0][1] * naturalSize(o.img).nh) / o.ch);
+    if (o.fixed.length > 8 && Math.hypot(startScene.x - x, startScene.y - y) < 12 / zoom) { closeOutline(); return; }
+    if (o.live.length > 1) o.fixed.push(...o.live.slice(1));
+    o.anchors.push(o.fixed.length - 1);
+    const last = o.fixed[o.fixed.length - 1];
+    o.wire.setSeed(last[0], last[1]);
+    o.live = [];
+    drawOutline();
+  }
+  function outlineMove(x: number, y: number) {
+    const o = outline.current;
+    if (!o || o.closed) return;
+    const q = outlinePoint(o, x, y);
+    // Past the searched window (a fast move): pin where the line got to and search on from there.
+    if (!o.wire.covers(q.x, q.y) && o.live.length > 1) {
+      o.fixed.push(...o.live.slice(1)); o.anchors.push(o.fixed.length - 1);
+      const last = o.fixed[o.fixed.length - 1];
+      o.wire.setSeed(last[0], last[1]);
+    }
+    o.live = o.wire.pathTo(q.x, q.y);
+    // Points drop by themselves along the way, like Photoshop's magnetic lasso.
+    const at = fastenAt(o.live, 40);
+    if (at !== null) {
+      o.fixed.push(...o.live.slice(1, at + 1)); o.anchors.push(o.fixed.length - 1);
+      o.wire.setSeed(o.live[at][0], o.live[at][1]);
+      o.live = o.wire.pathTo(q.x, q.y);
+    }
+    drawOutline();
+  }
+  function closeOutline() {
+    const o = outline.current;
+    if (!o || o.closed) return;
+    if (o.live.length > 1) {
+      o.fixed.push(...o.live.slice(1));
+      const last = o.fixed[o.fixed.length - 1];
+      o.wire.setSeed(last[0], last[1]);
+    }
+    const [sx, sy] = o.fixed[0];
+    const tail = o.wire.covers(sx, sy) ? o.wire.pathTo(sx, sy) : [[sx, sy] as [number, number]];
+    o.fixed.push(...tail.slice(1));
+    if (o.fixed.length < 6) { toast.info("Go around the thing you want, then click the first point."); return; }
+    const { nw, nh } = naturalSize(o.img);
+    o.closed = simplify(o.fixed, 0.7).map(([x, y]) => ({ x: (x * nw) / o.cw, y: (y * nh) / o.ch }));
+    o.live = [];
+    setOutlineUi("closed");
+    drawOutline();
+  }
+  function outlineBack() {
+    const o = outline.current;
+    if (!o || o.closed) return;
+    if (o.anchors.length <= 1) { endOutline(); return; }
+    o.anchors.pop();
+    o.fixed.length = o.anchors[o.anchors.length - 1] + 1;
+    const last = o.fixed[o.fixed.length - 1];
+    o.wire.setSeed(last[0], last[1]);
+    o.live = [];
+    drawOutline();
+  }
+  async function applyOutline(mode: "copy" | "erase" | "keep" | "ai") {
+    const o = outline.current;
+    if (!o?.closed) return;
+    const img = o.img, pts = o.closed;
+    if (mode === "ai") {
+      endOutline();
+      setToolSafe("aierase");
+      startMarks(img);
+      const s = marks.current;
+      if (!s) return;
+      fillOutline(s.m, pts.map((p) => toWork(s.m, p.x, p.y)));
+      refreshMarks();
+      void runAiErase();
+      return;
+    }
+    setAiBusy(mode === "copy" ? "Cutting it out…" : "Erasing…");
+    try {
+      const { blob, box } = await cutWithOutline(img, pts, mode);
+      const url = await uploadBlob(blob, mode === "copy" ? "cutout" : "outlined");
+      if (mode === "copy") {
+        const layer = (await FabricImage.fromURL(canvasSafe(url), { crossOrigin: "anonymous" })) as FabricImage & FObj;
+        const at = photoToScene(img, box.x, box.y);
+        layer.set({ left: at.x, top: at.y, angle: img.angle, scaleX: img.scaleX, scaleY: img.scaleY, srcUrl: url } as Partial<FObj>);
+        endOutline();
+        add(layer, `${img.name ?? "Photo"} cut-out`);
+        toast.success("Cut out to a new layer, right over the original. Hide the photo to see it alone.");
+      } else {
+        endOutline();
+        await replaceImageSrc(img, url);
+        toast.success(mode === "erase" ? "Erased what you outlined." : "Kept only what you outlined.");
+      }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't do that."); }
+    finally { setAiBusy(null); }
+  }
+
+  // ---------- AI eraser (2026-10-20): brush, or map the photo and click things; Bria fills it in
+  function startMarks(img: FabricImage & FObj) {
+    if (marks.current?.img === img) return;
+    endMarks();
+    const m = newMarks(img);
+    const overlay = overlayFor(img, m);
+    quietly(() => canvas().add(overlay));
+    marks.current = { img, m, overlay, painting: null };
+    setEraseUi({ marked: false, mapping: false, mapped: null });
+    canvas().requestRenderAll();
+  }
+  const marksFrame = useRef(0);
+  function refreshMarks() {
+    const s = marks.current;
+    if (!s) return;
+    cancelAnimationFrame(marksFrame.current);
+    marksFrame.current = requestAnimationFrame(() => {
+      repaint(s.m);
+      s.overlay.set({ dirty: true });
+      cv.current?.requestRenderAll();
+      setEraseUi((u) => (u && u.marked !== hasMarks(s.m) ? { ...u, marked: hasMarks(s.m) } : u));
+    });
+  }
+  const brushRadius = (s: NonNullable<typeof marks.current>) => Math.max(2, (brushSize * s.m.w) / s.m.nw / (s.img.scaleX || 1));
+  function marksDown(x: number, y: number) {
+    const img = photoAt(x, y);
+    if (!img) { toast.info("Click on a photo to erase something in it."); return; }
+    startMarks(img);
+    const s = marks.current!;
+    const p = sceneToPhoto(img, x, y);
+    s.painting = { last: toWork(s.m, p.x, p.y), at: { x, y }, moved: false };
+  }
+  function marksMove(x: number, y: number) {
+    const s = marks.current;
+    if (!s) return;
+    const p = sceneToPhoto(s.img, x, y);
+    const w = toWork(s.m, p.x, p.y);
+    if (s.painting) {
+      if (!s.painting.moved && Math.hypot(x - s.painting.at.x, y - s.painting.at.y) < 4 / zoom) return;
+      s.painting.moved = true;
+      paintStroke(s.m, s.painting.last, w, brushRadius(s));
+      s.painting.last = w;
+      refreshMarks();
+      return;
+    }
+    if (s.m.map) {
+      const id = labelAt(s.m, w.x, w.y);
+      if (id !== s.m.hover) { s.m.hover = id; refreshMarks(); }
+    }
+  }
+  function marksUp() {
+    const s = marks.current;
+    if (!s?.painting) return;
+    const { moved, last } = s.painting;
+    s.painting = null;
+    if (moved) return;
+    const id = s.m.map ? labelAt(s.m, last.x, last.y) : 0;
+    if (id) togglePicked(s.m, id); else paintStroke(s.m, last, last, brushRadius(s));
+    refreshMarks();
+  }
+  async function mapPhoto() {
+    const s = marks.current;
+    if (!s || !activeBrand) return;
+    if (aiLocked) { toast.info(AI_NEEDS_CREDITS); return; }
+    setEraseUi((u) => u && { ...u, mapping: true });
+    try {
+      const px = workingPixels(s.img, 1024);
+      const blob = await new Promise<Blob>((res, rej) => px.canvas.toBlob((b) => (b ? res(b) : rej(new Error("export failed"))), "image/jpeg", 0.9));
+      const url = await uploadBlob(blob, "editor_map");
+      const res = await fetch("/api/editor/segment", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, brandId: activeBrand.id }) });
+      const job = await res.json().catch(() => ({}));
+      if (!res.ok || !job.id) throw new Error(job.error || "Couldn't map the photo.");
+      const until = Date.now() + 180_000;
+      while (Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 2500));
+        if (marks.current?.img !== s.img) return; // left the eraser or picked another photo
+        const r = await fetch(`/api/editor/segment?id=${encodeURIComponent(job.id)}&token=${encodeURIComponent(job.token)}&brandId=${encodeURIComponent(activeBrand.id)}`).catch(() => null);
+        const d = await r?.json().catch(() => null);
+        if (!d || d.state === "running") continue;
+        if (d.state === "failed") throw new Error(d.error || "Couldn't map the photo.");
+        const map = validRegionMap(d);
+        if (!map) throw new Error("Couldn't read the map. Nothing was charged.");
+        s.m.map = map;
+        setEraseUi((u) => u && { ...u, mapping: false, mapped: map.regions.length });
+        toast.success(`Found ${map.regions.length} things · ${MAP_CREDITS} credits. Hover to see them, click the ones to remove.`);
+        return;
+      }
+      throw new Error("Mapping is taking too long. Nothing was charged. Brush over what to remove instead.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't map the photo.");
+      setEraseUi((u) => u && { ...u, mapping: false });
+    }
+  }
+  async function runAiErase() {
+    const s = marks.current;
+    if (!s || !activeBrand) return;
+    if (!hasMarks(s.m)) { toast.info("Brush over what to remove first, or map the photo and click things."); return; }
+    if (aiLocked) { toast.info(AI_NEEDS_CREDITS); return; }
+    setAiBusy("Erasing with AI…");
+    try {
+      const pic = await shrinkToBlob(canvasSafe(s.img.srcUrl || (s.img.getSrc() as string)), 2048);
+      const bmp = await createImageBitmap(pic);
+      const mask = await maskBlob(s.m, bmp.width, bmp.height);
+      bmp.close();
+      const [url, maskUrl] = await Promise.all([uploadBlob(pic, "editor_ai"), uploadBlob(mask, "editor_mask")]);
+      const res = await fetch("/api/editor/erase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, mask: maskUrl, brandId: activeBrand.id }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error || "Couldn't erase that.");
+      const img = s.img;
+      endMarks();
+      await replaceImageSrc(img, data.url);
+      // The photo changed: a fresh, empty set of marks on it (the old map no longer fits).
+      if (toolRef.current === "aierase") startMarks(img);
+      toast.success(`Erased · ${AI_ERASE_CREDITS} credits. Mark more, or press Esc when you're done.`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't erase that."); }
+    finally { setAiBusy(null); }
+  }
+  // The canvas listeners are set up once per size and zoom; they call the current versions.
+  const live = useRef({ outlineDown, outlineMove, closeOutline, outlineBack, marksDown, marksMove, marksUp });
+  useEffect(() => { live.current = { outlineDown, outlineMove, closeOutline, outlineBack, marksDown, marksMove, marksUp }; });
+
   // Any font that finishes loading re-measures and re-draws the text that uses it.
   useEffect(() => {
     const onFonts = () => {
@@ -1041,11 +1343,18 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   };
 
   // ---------- export / save
+  /** Canvas helpers (outlines, eraser marks, point handles) hidden while something is rendered to keep. */
+  function withoutHelpers<T>(fn: () => T): T {
+    const c = canvas();
+    const hidden = c.getObjects().filter((o) => (o as FObj).excludeFromExport && o.visible !== false);
+    hidden.forEach((o) => o.set({ visible: false }));
+    try { return fn(); } finally { hidden.forEach((o) => o.set({ visible: true })); c.requestRenderAll(); }
+  }
   async function render(format: "png" | "jpeg") {
     const c = canvas();
     c.discardActiveObject();
     c.requestRenderAll();
-    return c.toDataURL({ format, quality: 0.95, multiplier: 1 / zoom });
+    return withoutHelpers(() => c.toDataURL({ format, quality: 0.95, multiplier: 1 / zoom }));
   }
   async function exportFile(kind: "png" | "jpeg" | "svg") {
     try {
@@ -1106,7 +1415,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         try {
           const active = c.getActiveObject();
           c.discardActiveObject();
-          preview = c.toDataURL({ format: "jpeg", quality: 0.7, multiplier: 640 / Math.max(size.w, size.h) / zoom }).split(",")[1];
+          preview = withoutHelpers(() => c.toDataURL({ format: "jpeg", quality: 0.7, multiplier: 640 / Math.max(size.w, size.h) / zoom })).split(",")[1];
           if (active) c.setActiveObject(active);
         } catch { /* a cross-origin photo can block the preview; the layers still go */ }
         return {
@@ -1257,6 +1566,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         {toolButton("pen")}
         {toolButton("brush")}
         {toolButton("eraser")}
+        {toolButton("outline")}
+        {toolButton("aierase")}
         <span className="s-tool-sep" />
         <button className="s-tool group relative" onClick={() => setPicking("photo")} aria-label="Add a photo">
           <ImagePlus className="h-[18px] w-[18px]" />
@@ -1283,10 +1594,10 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
             <button className="s-btn ghost sm mono" onClick={fit} title="Fit to screen"><Maximize className="h-3.5 w-3.5" /> {Math.round(zoom * 100)}%</button>
             <button className="s-btn ghost sm" onClick={() => setZoom((z) => Math.min(4, z * 1.25))} aria-label="Zoom in"><ZoomIn className="h-3.5 w-3.5" /></button>
           </span>
-          {(tool === "brush" || tool === "eraser" || tool === "pen" || SHAPES.includes(tool) || tool === "text") && (
+          {(tool === "brush" || tool === "eraser" || tool === "pen" || SHAPES.includes(tool) || tool === "text" || tool === "aierase" || tool === "outline") && (
             <span className="flex items-center gap-2 text-xs px-2 min-w-0 shrink" style={{ color: "var(--s-soft)" }}>
-              {tool !== "eraser" && <label className="flex items-center gap-1.5">Colour <input type="color" value={paint} onChange={(e) => setPaint(e.target.value.toUpperCase())} className="h-6 w-8 rounded cursor-pointer" style={{ background: "none", border: "1px solid var(--s-line-2)" }} /></label>}
-              {(tool === "brush" || tool === "eraser" || tool === "pen" || tool === "line") && <label className="flex items-center gap-1.5">Size <input type="range" min={1} max={120} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} style={{ accentColor: "var(--s-accent)" }} /> <span className="mono w-6">{brushSize}</span></label>}
+              {tool !== "eraser" && tool !== "aierase" && tool !== "outline" && <label className="flex items-center gap-1.5">Colour <input type="color" value={paint} onChange={(e) => setPaint(e.target.value.toUpperCase())} className="h-6 w-8 rounded cursor-pointer" style={{ background: "none", border: "1px solid var(--s-line-2)" }} /></label>}
+              {(tool === "brush" || tool === "eraser" || tool === "pen" || tool === "line" || tool === "aierase") && <label className="flex items-center gap-1.5">Size <input type="range" min={1} max={120} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} style={{ accentColor: "var(--s-accent)" }} /> <span className="mono w-6">{brushSize}</span></label>}
               <span className="truncate hidden 2xl:inline max-w-[340px]" style={{ color: "var(--s-mute)" }}>{TOOL_INFO[tool].tip}</span>
             </span>
           )}
@@ -1339,6 +1650,48 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       <aside className="flex flex-col min-h-0 min-w-0" style={{ background: "var(--s-panel)", borderLeft: "1px solid var(--s-line)" }}>
         <input ref={fontInput} type="file" accept=".ttf,.otf,.woff,.woff2" className="hidden" aria-label="Font file" onChange={(e) => { void uploadFont(e.target.files?.[0]); e.target.value = ""; }} />
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+          {tool === "outline" && (
+            <div className="m-3 rounded-lg p-3 grid gap-2 text-[12px] min-w-0" role="region" aria-label="Magic outline" style={{ background: "color-mix(in oklab, var(--s-accent) 8%, transparent)", border: "1px solid color-mix(in oklab, var(--s-accent) 35%, var(--s-line))", color: "var(--s-soft)" }}>
+              <b className="text-[13px] flex items-center gap-1.5" style={{ color: "var(--s-text)" }}><LassoSelect className="h-3.5 w-3.5" /> Magic outline</b>
+              {outlineUi === "closed" ? (
+                <>
+                  <span>Outlined. What should happen to it?</span>
+                  <button className="s-btn sm justify-start" onClick={() => void applyOutline("copy")} disabled={!!aiBusy}><Copy className="h-3.5 w-3.5" /> Cut out to a new layer</button>
+                  <button className="s-btn sm justify-start" onClick={() => void applyOutline("erase")} disabled={!!aiBusy}><Eraser className="h-3.5 w-3.5" /> Erase it (see-through)</button>
+                  <button className="s-btn sm justify-start" onClick={() => void applyOutline("keep")} disabled={!!aiBusy}><Scissors className="h-3.5 w-3.5" /> Keep only this</button>
+                  {aiLocked ? <CreditsNote /> : <button className="s-btn ai sm justify-between" onClick={() => void applyOutline("ai")} disabled={!!aiBusy}><span className="flex items-center gap-1.5"><WandSparkles className="h-3.5 w-3.5" /> Remove it with AI</span><span className="cost">{AI_ERASE_CREDITS} cr</span></button>}
+                  <button className="s-btn ghost sm justify-start" onClick={endOutline}>Start again</button>
+                </>
+              ) : outlineUi === "drawing" ? (
+                <span>Move along the edge: the line snaps to it and pins points by itself. Click to pin one yourself, Backspace takes the last one back. Click the first point, double-click or press Enter to close. Esc cancels.</span>
+              ) : (
+                <span>Click the edge of something in a photo, then move along it. Free, and nothing changes until you choose what to do with it.</span>
+              )}
+            </div>
+          )}
+          {tool === "aierase" && (
+            <div className="m-3 rounded-lg p-3 grid gap-2 text-[12px] min-w-0" role="region" aria-label="AI eraser" style={{ background: "color-mix(in oklab, var(--s-ai) 10%, transparent)", border: "1px solid color-mix(in oklab, var(--s-ai) 30%, var(--s-line))", color: "var(--s-soft)" }}>
+              <b className="text-[13px] flex items-center gap-1.5" style={{ color: "var(--s-text)" }}><WandSparkles className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} /> AI eraser</b>
+              {!eraseUi ? (
+                <span>Click on a photo, then brush over what should go. AI fills in what was behind it.</span>
+              ) : (
+                <>
+                  <span>{eraseUi.mapped !== null ? `Mapped: ${eraseUi.mapped} things. Hover to see them, click to pick (click again to drop). You can still brush too.` : "Brush over what should go (red). Or map the photo and click things instead."}</span>
+                  {eraseUi.mapped === null && (aiLocked ? <CreditsNote /> : (
+                    <button className="s-btn sm justify-between" onClick={() => void mapPhoto()} disabled={eraseUi.mapping || !!aiBusy} title="BlinkSpot finds every thing in the photo so you can click it">
+                      <span className="flex items-center gap-1.5">{eraseUi.mapping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} {eraseUi.mapping ? "Mapping the photo…" : "Map the photo"}</span><span className="cost">{MAP_CREDITS} cr</span>
+                    </button>
+                  ))}
+                  {eraseUi.mapping && <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>Usually 15 to 30 seconds, up to a minute the first time. Keep brushing meanwhile if you like. Charged only if it works.</span>}
+                  <div className="flex gap-1.5">
+                    <button className="s-btn ghost sm" onClick={() => { const x = marks.current; if (x) { clearMarks(x.m); refreshMarks(); } }} disabled={!eraseUi.marked}>Clear</button>
+                    {!aiLocked && <button className="s-btn ai sm flex-1 justify-between" onClick={() => void runAiErase()} disabled={!eraseUi.marked || !!aiBusy}><span>Erase it</span><span className="cost">{AI_ERASE_CREDITS} cr</span></button>}
+                  </div>
+                  <button className="s-btn ghost sm justify-start" onClick={() => setToolSafe("select")}>Done</button>
+                </>
+              )}
+            </div>
+          )}
           {fontAsk.length > 0 && (
             <div className="m-3 rounded-lg p-3 grid gap-2 text-[12px] min-w-0 break-words" style={{ background: "color-mix(in oklab, var(--s-ai) 10%, transparent)", border: "1px solid color-mix(in oklab, var(--s-ai) 30%, var(--s-line))", color: "var(--s-soft)" }}>
               <b className="text-[12.5px]" style={{ color: "var(--s-text)" }}>Fonts in this design</b>
@@ -1455,6 +1808,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                     <>
                       <button className="s-btn ai justify-between" onClick={removeBackground} disabled={!!aiBusy}><span className="flex items-center gap-2"><Scissors className="h-4 w-4" /> Remove background</span><span className="cost">1 cr</span></button>
                       <button className="s-btn ai justify-between" onClick={() => setPicking("face")} disabled={!!aiBusy}><span className="flex items-center gap-2"><UserRound className="h-4 w-4" /> Swap the face</span><span className="cost">3 cr</span></button>
+                      <button className="s-btn ai justify-between" onClick={() => { const img = activeImage; setToolSafe("aierase"); startMarks(img); }} disabled={!!aiBusy} title="Brush over something, or map the photo and click things: AI removes them and fills in what was behind"><span className="flex items-center gap-2"><WandSparkles className="h-4 w-4" /> AI eraser</span><span className="cost">{AI_ERASE_CREDITS} cr</span></button>
                       <div className="flex gap-1.5">
                         <input className="s-input" style={{ height: 34 }} value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Change it: e.g. make the sky sunset orange" aria-label="Describe an edit" onKeyDown={(e) => { if (e.key === "Enter" && editPrompt.trim()) void aiEdit(editPrompt.trim()); }} />
                         <button className="s-btn ai" onClick={() => editPrompt.trim() && aiEdit(editPrompt.trim())} disabled={!!aiBusy || !editPrompt.trim()} title="18 credits"><Wand2 className="h-4 w-4" /></button>

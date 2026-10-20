@@ -217,7 +217,7 @@ function BillingPage() {
           <div className="s-card divide-y" style={{ borderColor: "var(--s-line)" }}>
             {(allTxns ? txns : txns.slice(0, 8)).map((t) => (
               <div key={t.id} className="flex items-center gap-3 px-4 py-2.5" style={{ borderColor: "var(--s-line)" }}>
-                <span className="text-[13px] flex-1 min-w-0 truncate" style={{ color: "var(--s-soft)" }}>{(t.description || t.operation).replace(/\s*\[vid:[^\]]*\]/, "")}{t.brand_id && brandNames[t.brand_id] && <span style={{ color: "var(--s-mute)" }}> · {brandNames[t.brand_id]}</span>}</span>
+                <span className="text-[13px] flex-1 min-w-0 truncate" style={{ color: "var(--s-soft)" }}>{(t.description || t.operation).replace(/\s*\[[a-z]+:[^\]]*\]/g, "")}{t.brand_id && brandNames[t.brand_id] && <span style={{ color: "var(--s-mute)" }}> · {brandNames[t.brand_id]}</span>}</span>
                 <span className="text-[11.5px] shrink-0" style={{ color: "var(--s-mute)" }}>{new Date(t.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
                 <b className="mono text-[13px] w-16 text-right shrink-0" style={{ color: t.amount > 0 ? "var(--s-ok)" : "var(--s-text)" }}>{t.amount > 0 ? "+" : ""}{t.amount}</b>
               </div>
