@@ -9,6 +9,7 @@ import { StudioNav, StudioTopBar } from "@/components/studio/StudioShell";
 import { AskPanel } from "@/components/studio/AskPanel";
 import { Dictation } from "@/components/studio/Dictation";
 import { FullscreenHost } from "@/components/studio/Fullscreen";
+import { Tour } from "@/components/studio/Tour";
 import { useAskStore } from "@/components/studio/ask-store";
 import { SharedBrandBar, ViewerGate } from "@/components/studio/sharing/SharedBrand";
 import { UI_COOKIE } from "@/lib/studio-routes";
@@ -51,6 +52,16 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  // ?ask=1 (from the Guide and Getting started) opens the assistant on arrival.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("ask") !== "1") return;
+    p.delete("ask");
+    window.history.replaceState(null, "", `${window.location.pathname}${p.size ? `?${p}` : ""}`);
+    setOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   // Cmd/Ctrl+K opens the assistant from anywhere in the studio.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -82,6 +93,7 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
         <AskPanel />
         <Dictation />
         <FullscreenHost />
+        <Tour />
       </div>
     </TooltipProvider>
   );

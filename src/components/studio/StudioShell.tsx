@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen, Users } from "lucide-react";
+import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen, Users, Compass, CircleHelp } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -49,7 +49,7 @@ export function StudioNav() {
   const section = studioSectionFor(pathname);
   const { setOpen } = useAskStore();
   const links = PLACES.map((p) => (
-    <Link key={p.id} href={p.href} className="s-navbtn" aria-current={section === p.id ? "page" : undefined}>
+    <Link key={p.id} href={p.href} className="s-navbtn" aria-current={section === p.id ? "page" : undefined} data-tour={p.id}>
       <NavInner icon={p.icon} label={p.label} />
     </Link>
   ));
@@ -62,14 +62,14 @@ export function StudioNav() {
         </Link>
         {links}
         <div className="flex-1" />
-        <button className="s-navbtn ask" onClick={() => setOpen(true)} title="Ask BlinkSpot (⌘K)">
+        <button className="s-navbtn ask" onClick={() => setOpen(true)} title="Ask BlinkSpot (⌘K)" data-tour="ask">
           <MessageCircle strokeWidth={1.8} />
           Ask
         </button>
       </nav>
       <nav className="s-tabbar" aria-label="Main">
         {links}
-        <button className="s-navbtn ask" onClick={() => setOpen(true)}>
+        <button className="s-navbtn ask" onClick={() => setOpen(true)} data-tour="ask">
           <MessageCircle strokeWidth={1.8} />
           Ask
         </button>
@@ -211,6 +211,7 @@ function AccountMenu({ profile }: { profile: { name: string; email: string } | n
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/account/billing"><CreditCard className="h-4 w-4" /> Billing &amp; credits</Link></DropdownMenuItem>
         <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/account/settings"><Settings className="h-4 w-4" /> Settings &amp; accounts</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/guide"><Compass className="h-4 w-4" /> Guide</Link></DropdownMenuItem>
         <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/account/skills"><BookOpen className="h-4 w-4" /> Ask skills</Link></DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -252,7 +253,8 @@ export function StudioTopBar() {
       {activeBrand && <span className="s-crumb hidden sm:inline">· {activeBrand.brand_name}</span>}
       <div className="flex-1" />
       <ActivityChip />
-      <Link href="/studio/account/billing" className="s-pill hidden sm:inline-flex" title="Credit balance">
+      <Link href="/studio/guide" className="s-btn ghost sm hidden sm:inline-flex" title="Guide: where everything is and what it costs" aria-label="Guide"><CircleHelp className="h-4 w-4" /></Link>
+      <Link href="/studio/account/billing" className="s-pill hidden sm:inline-flex" title="Credit balance" data-tour="credits">
         <b>{formatCredits(balance)}</b> credits
       </Link>
       <button className="s-btn ai hidden md:inline-flex" onClick={() => setOpen(true)}>

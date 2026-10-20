@@ -48,12 +48,15 @@ type AskState = {
   setEffort: (e: Effort) => void;
 };
 
+/** For Getting started on Create (2026-10-20): has this person opened Ask yet. */
+const markAskTried = () => { try { localStorage.setItem("blink.askTried", "1"); } catch { /* private window */ } };
+
 export const useAskStore = create<AskState>((set) => ({
   open: false,
   draft: "",
   messages: [],
-  setOpen: (open) => set({ open }),
-  ask: (draft) => set((s) => ({ open: true, draft: draft ?? s.draft })),
+  setOpen: (open) => { if (open) markAskTried(); set({ open }); },
+  ask: (draft) => { markAskTried(); set((s) => ({ open: true, draft: draft ?? s.draft })); },
   setDraft: (draft) => set({ draft }),
   push: (m) => set((s) => ({ messages: [...s.messages, m].slice(-40) })),
   reset: () => set({ messages: [], draft: "" }),

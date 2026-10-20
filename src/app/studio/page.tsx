@@ -15,6 +15,7 @@ import { MediaCard, NOT_STORYBOARD_FRAME, PART_TYPES } from "@/components/studio
 import { useStudioBrands } from "@/components/studio/hooks";
 import { useAskStore } from "@/components/studio/ask-store";
 import { toast } from "sonner";
+import { GettingStarted } from "@/components/studio/GettingStarted";
 
 type Kind = "video" | "image" | "carousel";
 const KIND_LABEL: Record<Kind, string> = { video: "Video", image: "Image", carousel: "Carousel" };
@@ -127,6 +128,8 @@ export default function CreatePage() {
           </button>
         </div>
       </div>
+
+      <GettingStarted clientId={clientId} brand={activeBrand} />
 
       <section className="mt-10">
         <h3 className="s-section-h">Or start from</h3>
