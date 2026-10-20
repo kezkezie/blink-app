@@ -16,7 +16,7 @@ import { SYSTEM_PROMPT } from "@/lib/assistant/agent";
 
 describe("Ask skills (2026-10-12)", () => {
   it("ships the built-in playbooks, each listed in one line in the system prompt", () => {
-    expect(BUILTIN_SKILLS.map((s) => s.id)).toEqual(["sensitive-subjects", "poster-design", "motion-graphics", "landing-pages", "reels-hooks", "product-shots", "ugc-ads", "campaign-plan"]);
+    expect(BUILTIN_SKILLS.map((s) => s.id)).toEqual(["app-guide", "sensitive-subjects", "poster-design", "motion-graphics", "landing-pages", "reels-hooks", "product-shots", "ugc-ads", "campaign-plan"]);
     for (const s of BUILTIN_SKILLS) {
       expect(SYSTEM_PROMPT).toContain(`- ${s.id}: ${s.name}.`);
       expect(SYSTEM_PROMPT).not.toContain(s.body.slice(40, 120)); // the body loads only on demand

@@ -5,11 +5,27 @@
  * the use_skill tool returns the full text. Built-in skills live here; accounts can add their own
  * (table assistant_skills, Settings > Ask skills), pasted or imported from a SKILL.md link.
  */
+
+import { GUIDE, WHERE_DO_I } from "@/lib/guide";
+
 export type Skill = { id: string; name: string; description: string; body: string; builtin?: boolean };
 
 export const SKILL_LIMITS = { name: 60, description: 300, body: 20_000, perAccount: 25 } as const;
 
+/** Where everything is and what it costs, from the Guide's own data (2026-10-20), so the two never disagree. */
+function appGuideBody() {
+  const parts = GUIDE.map((s) => [`${s.title}: ${s.line}`, ...s.items.map((i) => `- ${i.title}: ${i.what}${i.need ? ` You need ${i.need}.` : ""}${i.cost ? ` Cost: ${i.cost}.` : ""} (${i.href})`)].join("\n"));
+  const faq = WHERE_DO_I.map((f) => `- ${f.q} ${f.a} (${f.href})`).join("\n");
+  return `How BlinkSpot is laid out (the same as the Guide page at /studio/guide, which also restarts the tour).\n\n${parts.join("\n\n")}\n\nWhere do I...?\n${faq}\n\nWhen you answer "how do I" or "where is", name the place and the button exactly as above, and offer open_page when there is one.`;
+}
+
 export const BUILTIN_SKILLS: Skill[] = [
+  {
+    id: "app-guide",
+    name: "Where everything is in BlinkSpot",
+    description: "Every place, maker and editor tool (magic outline, AI eraser, motion walkthroughs...), what each needs and costs, and where to find things. Load for any how-do-I, where-is or what-does-this-do question.",
+    body: appGuideBody(),
+  },
   {
     id: "sensitive-subjects",
     name: "Medical, intimate and lingerie brands",
