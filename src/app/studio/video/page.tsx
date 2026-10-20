@@ -251,8 +251,11 @@ function Inspector({ v, total, effectiveModel, onRender, frame, setFrame }: { v:
             </label>
             <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Only what the chosen quality can render is offered. 9:16 for Reels and TikTok, 16:9 for YouTube.</p>
           </div>)}
-        {row("brand", "Brand lock", "On",
-          <p className="text-xs" style={{ color: "var(--s-soft)" }}>Your brand&apos;s colours, look and voice are applied to every shot{v.activeBrand ? ` (${v.activeBrand.brand_name})` : ""}.</p>)}
+        {row("brand", "Keep it on brand", v.onBrand ? "On" : "Off",
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={v.onBrand} onChange={(e) => v.setOnBrand(e.target.checked)} style={{ accentColor: "var(--s-accent)" }} aria-label="Keep it on brand" />
+            <span className="text-xs" style={{ color: "var(--s-soft)" }}>The shot stays in {v.activeBrand ? v.activeBrand.brand_name : "your brand"}&apos;s world: its products, places and people, in its colours and voice. Off: anything goes.</span>
+          </label>)}
         {pro && row("enhance", "Prompt enhance", v.aiEnhance ? "On" : "Off",
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={v.aiEnhance} onChange={(e) => v.setAiEnhance(e.target.checked)} style={{ accentColor: "var(--s-accent)" }} />

@@ -773,6 +773,12 @@ export function StorytellingSetup({
 }: StorytellingSetupProps) {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
+  // "Keep it on brand" (Kezie, 2026-10-18): every scene stays in the brand's world. On by default, per brand.
+  const [onBrand, setOnBrandState] = useState(true);
+  useEffect(() => {
+    try { const v = localStorage.getItem(`blink.onBrand.${activeBrand?.id ?? "x"}`); const t = setTimeout(() => setOnBrandState(v !== "0"), 0); return () => clearTimeout(t); } catch { return; }
+  }, [activeBrand?.id]);
+  const setOnBrand = (v: boolean) => { setOnBrandState(v); try { localStorage.setItem(`blink.onBrand.${activeBrand?.id ?? "x"}`, v ? "1" : "0"); } catch { /* private mode */ } };
   const router = useRouter();
   // Studio look: which scene is open, which panel tab, and the "put them together" spinner.
   const [selIdx, setSelIdx] = useState(0);
@@ -2147,6 +2153,7 @@ export function StorytellingSetup({
         ai_model_override: scene.aiModel || "auto",
         aspect_ratio: scene.aspectRatio || "16:9",
         video_resolution: scene.videoResolution || "720p",
+        strict_brand_alignment: onBrand,
         ...(scene.seed !== null && scene.seed !== undefined ? { seed: scene.seed } : {}),
         referenceVideoUrl: finalReferenceVideoUrl,
         scene_data: {
@@ -2838,6 +2845,10 @@ export function StorytellingSetup({
             <textarea className="s-input s-grow" rows={3} style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 7 }} value={bRollConcept} onChange={(e) => setBRollConcept(e.target.value)} placeholder={'e.g. 20 seconds: a busy Nairobi morning, a runner grabs our mango juice at the kiosk, takes a sip and smiles. She says "Fresh, every morning." End on the bottle and our logo.'} aria-label="Your story" />
             {/* Medical, intimate and lingerie brands (2026-10-18): what the video services will make. */}
             {(() => { const kind = sensitiveKind(bRollConcept, activeBrand?.brand_name); return kind ? <SensitiveGuide kind={kind} video onIdea={(b) => setBRollConcept(`15 seconds: ${b}`)} /> : null; })()}
+            <label className="flex items-center gap-2 text-[12.5px] cursor-pointer w-fit" title="Every scene stays in what your brand does: its products, places and people. Turn off for anything goes.">
+              <input type="checkbox" checked={onBrand} onChange={(e) => setOnBrand(e.target.checked)} aria-label="Keep it on brand" />
+              <span><b>Keep it on brand</b> <span style={{ color: "var(--s-mute)" }}>· scenes stay in {activeBrand?.brand_name ?? "your brand"}&apos;s world (its products, places, people)</span></span>
+            </label>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" className="s-btn ai" onClick={handleWriteScript} disabled={isWritingScript || !bRollConcept.trim()}>{isWritingScript ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScrollText className="h-4 w-4" />} Write the scenes</button>
               <button type="button" className="s-btn" onClick={handleGenerateAllImages} disabled={isGeneratingAllImages || generatingSlot !== null || !bRollConcept.trim()}>{isGeneratingAllImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <Images className="h-4 w-4" />} Make all frames <span className="cost">{filledImageSlots}/{totalImageSlots}</span></button>

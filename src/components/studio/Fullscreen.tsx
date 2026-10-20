@@ -139,11 +139,13 @@ function Viewer({ items, index, onIndex, onClose }: { items: Item[]; index: numb
         <button type="button" className="s-btn ghost sm" style={{ color: "#fff" }} onClick={toggleNative} aria-label={native ? "Exit full screen" : "Fill the screen"}>{native ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</button>
         <button type="button" className="s-btn ghost sm" style={{ color: "#fff" }} onClick={onClose} aria-label="Close"><X className="h-5 w-5" /></button>
       </div>
-      <div className="relative flex-1 min-h-0 grid place-items-center px-2 pb-3">
+      {/* The picture always fits whole (2026-10-20: a tall one ran past the bottom: max-height
+          in a grid cell had no fixed height to measure against). */}
+      <div className="relative flex-1 min-h-0 flex items-center justify-center px-2 pb-3 overflow-hidden">
         {item.kind === "video"
-          ? <video key={item.url} src={item.url} controls autoPlay playsInline className="max-h-full max-w-full" />
+          ? <video key={item.url} src={item.url} controls autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "calc(100dvh - 76px)" }} />
           // eslint-disable-next-line @next/next/no-img-element
-          : <img key={item.url} src={item.url} alt="" className="max-h-full max-w-full object-contain select-none" draggable={false} data-no-fullscreen />}
+          : <img key={item.url} src={item.url} alt="" className="object-contain select-none" style={{ maxWidth: "100%", maxHeight: "calc(100dvh - 76px)", width: "auto", height: "auto" }} draggable={false} data-no-fullscreen />}
         {items.length > 1 && (
           <>
             <button type="button" aria-label="Previous" onClick={() => go(-1)} className="absolute left-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full grid place-items-center" style={{ background: "rgba(255,255,255,.1)", color: "#fff" }}><ChevronLeft className="h-6 w-6" /></button>

@@ -59,6 +59,8 @@ export function useVideoStudio() {
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [duration, setDuration] = useState("5");
   const [aiEnhance, setAiEnhance] = useState(true);
+  // "Keep it on brand" (2026-10-18): the shot stays in the brand's world; off = anything goes.
+  const [onBrand, setOnBrand] = useState(true);
 
   const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
@@ -312,7 +314,7 @@ export function useVideoStudio() {
     setGenerationError(null);
     setProgressText("Uploading assets and queuing task...");
 
-    const strictBrandAlignment = true; // Active brand is explicitly set
+    const strictBrandAlignment = onBrand;
 
     const { addTask, removeTask } = useWorkflowStore.getState();
     const taskId = `vid-gen-${Date.now()}`;
@@ -560,6 +562,8 @@ export function useVideoStudio() {
     setDuration,
     aiEnhance,
     setAiEnhance,
+    onBrand,
+    setOnBrand,
     generatingPostId,
     setGeneratingPostId,
     generatedVideoUrl,

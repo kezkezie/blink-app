@@ -124,6 +124,18 @@ export async function POST(req: NextRequest) {
           const brandContext = await loadOwnedBrandCreativeContext(authenticated.value, canonicalBrandId);
           if (!brandContext.ok) return securityResponse({ status: brandContext.status, error: brandContext.error });
           payload = { ...payload, ...toVideoWorkflowFields(brandContext.context) };
+          // The shot's video prompt, written here inside the brand's world; n8n's rewrite step off (lib/video-prompt.ts).
+          if (typeof payload.user_prompt === "string" && payload.user_prompt.trim()) {
+            const onBrand = payload.strict_brand_alignment !== false;
+            const { writeVideoPrompt } = await import("@/lib/video-prompt-server");
+            const { fallbackVideoPrompt } = await import("@/lib/video-prompt");
+            // "Prompt enhance" off: the words go as typed (with the brand named when on brand).
+            const written = payload.ai_enhance === false ? { prompt: fallbackVideoPrompt(payload.user_prompt, brandContext.context.name, brandContext.context.industry, onBrand) } : await writeVideoPrompt({
+              scene: payload.user_prompt, context: brandContext.context, onBrand, seconds: Number(payload.duration) || 5,
+              startFrame: typeof payload.primary_image_url === "string" ? payload.primary_image_url : null, aspect: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : null,
+            });
+            payload = { ...payload, user_prompt: written.prompt, ai_enhance: false };
+          }
         } else {
           // No brand in scope: never forward browser-authored brand identity.
           delete payload.brand_name;

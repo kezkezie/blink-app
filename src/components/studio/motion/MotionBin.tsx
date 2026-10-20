@@ -64,10 +64,11 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded }
   }
 
   async function write(text = prompt) {
-    if (!activeBrand || text.trim().length < 3) return;
+    if (!activeBrand || (text.trim().length < 3 && !style)) { toast.info("Say what it's for first, e.g. a 6 second intro for our launch."); return; }
     setBusy(true);
     try {
-      const brief = style ? `${text}\n${styleLine(style)}` : text;
+      const said = text.trim().length >= 3 ? text : `${style!.title} for ${kit?.name || activeBrand.brand_name}`;
+      const brief = style ? `${said}\n${styleLine(style)}` : said;
       const res = await fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, prompt: brief.slice(0, 600), shape, ...(picture ? { pictureId: picture } : {}) }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't plan the motion.");
@@ -115,12 +116,17 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded }
                     <ExternalLink className="h-3 w-3 self-end" style={{ color: "var(--s-mute)" }} />
                   </div>
                 )}
-                <button className="s-btn sm justify-start" onClick={() => { setStyle(idea); setIdeas(null); }}>Use this style</button>
+                <button className="s-btn sm justify-start" onClick={() => {
+                  // 2026-10-20: the style was kept but the brief stayed empty, and "Write it" did nothing.
+                  setStyle(idea); setIdeas(null);
+                  if (prompt.trim().length < 3) setPrompt(`${idea.title} for ${kit?.name || activeBrand?.brand_name || "our brand"}: ${idea.why || "a short brand intro"}`.slice(0, 300));
+                  toast.success("Style added. Change the words above if you like, then Write it.");
+                }}>Use this style</button>
               </div>
             ))}
           </div>
         )}
-        <button className="s-btn ai justify-between" disabled={busy || !activeBrand || prompt.trim().length < 3} onClick={() => write()}>
+        <button className="s-btn ai justify-between" disabled={busy || !activeBrand || (prompt.trim().length < 3 && !style)} onClick={() => write()}>
           <span className="flex items-center gap-2">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {busy ? "Planning it…" : "Write it"}</span><span className="cost">{MOTION_CREDITS} cr</span>
         </button>
         <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Shape follows the editor ({shape}). The preview and any changes after that are free.</span>

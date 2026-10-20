@@ -9,7 +9,7 @@ import {
 } from "@/lib/execution-security";
 import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
 import { validateNanoVideoPayload } from "@/lib/video-execution";
-import { loadOwnedBrandCreativeContext, toVideoWorkflowFields } from "@/lib/brand-creative-context";
+import { loadOwnedBrandCreativeContext, toVideoWorkflowFields, type BrandCreativeContext } from "@/lib/brand-creative-context";
 import { n8nWebhookUrl } from "@/lib/n8n-config";
 import { after } from "next/server";
 import { specFromScene } from "@/lib/video-rescue";
@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
     const raw = body as Record<string, unknown>;
 
     let payload: Record<string, unknown>;
+    let brandCtx: BrandCreativeContext | null = null;
     if (raw.video_mode === "xray_image" || raw.video_mode === "json_image_edit") {
       // Image-semantic path (unchanged — governed by the Image Studio slices).
       const parsed = parseSemanticImageRequest(raw);
@@ -96,12 +97,20 @@ export async function POST(req: NextRequest) {
       if (!authorized.ok) return securityResponse(authorized);
       payload = authorized.value;
 
+      // Scenes came without a brand id, so n8n got "A Premium Brand" and no description
+      // (2026-10-18, LADI APP): the brand is the one the scene's post belongs to.
+      if (payload.mode === "scene_video_generator" && typeof payload.brand_id !== "string" && typeof payload.post_id === "string" && typeof payload.client_id === "string") {
+        const { supabaseAdmin } = await import("@/lib/supabase-server");
+        const { data: post } = await supabaseAdmin.from("content").select("brand_id").eq("id", payload.post_id).eq("client_id", payload.client_id).maybeSingle();
+        if (typeof post?.brand_id === "string") payload = { ...payload, brand_id: post.brand_id };
+      }
       // V6: the Director and scene-video paths receive SERVER-OWNED brand
       // identity. Any browser-supplied brand_name/brand_info is discarded.
       const canonicalBrandId = typeof payload.brand_id === "string" ? payload.brand_id : null;
       if (canonicalBrandId) {
         const brandContext = await loadOwnedBrandCreativeContext(authenticated.value, canonicalBrandId);
         if (!brandContext.ok) return securityResponse({ status: brandContext.status, error: brandContext.error });
+        brandCtx = brandContext.context;
         payload = { ...payload, ...toVideoWorkflowFields(brandContext.context) };
       } else {
         delete payload.brand_name;
@@ -111,6 +120,23 @@ export async function POST(req: NextRequest) {
       // it plans clinical, product-first scenes instead (lib/ai-safe-text.ts).
       if (payload.mode === "director" && typeof payload.prompt === "string" && SENSITIVE.test(payload.prompt)) {
         payload = { ...payload, prompt: `${CLINICAL_DIRECTION}\n\n${softenForAi(payload.prompt)}` };
+      }
+      // The scene's video prompt, written here inside the brand's world; n8n's own rewrite step
+      // (which passed a GPT-4o refusal on as the prompt) is switched off (lib/video-prompt.ts).
+      if (payload.mode === "scene_video_generator" && payload.scene_data && typeof payload.scene_data === "object") {
+        const d = payload.scene_data as Record<string, unknown>;
+        const frames = (d.frames && typeof d.frames === "object" ? d.frames : {}) as Record<string, unknown>;
+        if (typeof d.visual_prompt === "string" && d.visual_prompt.trim()) {
+          const onBrand = payload.strict_brand_alignment !== false;
+          const { writeVideoPrompt } = await import("@/lib/video-prompt-server");
+          const { fallbackVideoPrompt } = await import("@/lib/video-prompt");
+          // "Prompt enhance" off: the words go as typed (with the brand named when on brand).
+          const written = d.ai_enhance === false || payload.ai_enhance === false ? { prompt: fallbackVideoPrompt(d.visual_prompt, brandCtx?.name, brandCtx?.industry, onBrand) } : await writeVideoPrompt({
+            scene: d.visual_prompt, context: brandCtx, onBrand, seconds: Number(d.duration) || 5,
+            startFrame: typeof frames.start_frame === "string" ? frames.start_frame : null, aspect: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : null,
+          });
+          payload = { ...payload, ai_enhance: false, strict_brand_alignment: onBrand, scene_data: { ...d, visual_prompt: written.prompt, ai_enhance: false } };
+        }
       }
     }
 
