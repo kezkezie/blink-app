@@ -18,7 +18,7 @@ import {
  * renderer), saved to the Library and placed on the timeline. A lower third renders see-through.
  */
 export type AddedMotion = { url: string; name: string; seconds: number; kind: MotionSpec["kind"]; contentId: string | null };
-export type MotionPlace = "start" | "end" | "playhead";
+export type MotionPlace = "start" | "end" | "playhead" | "library";
 
 const fontsLoaded = new Map<string, Promise<void>>();
 /** The brand font, from Google Fonts or one this account uploaded, loaded before preview and render. */
@@ -49,10 +49,12 @@ export function ensureMotionFont(family: string | null | undefined, clientId: st
   return p;
 }
 
-export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, clientId, brandId, onAdded, onRewrite, rewriting }: {
+export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, clientId, brandId, onAdded, onRewrite, rewriting, standalone = false }: {
   open: boolean; onClose: () => void; spec: MotionSpec; onSpec: (s: MotionSpec) => void; brand: MotionBrand & { primary?: string | null; secondary?: string | null };
   pictures: Array<{ url: string; title: string }>; clientId: string | null; brandId: string | null;
   onAdded: (m: AddedMotion, where: MotionPlace) => void; onRewrite: () => void; rewriting: boolean;
+  /** Motion graphics on their own (Create → Motion graphics, 2026-10-20): saved to the Library, no timeline. */
+  standalone?: boolean;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -110,7 +112,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
         creation_metadata: { operation: "motion", kind: checked.kind, seconds: totalSeconds(checked), spec: checked },
       }).select("id").single();
       onAdded({ url, name, seconds: totalSeconds(checked), kind: checked.kind, contentId: (row?.id as string | undefined) ?? null }, where);
-      toast.success(`${name.replace("Motion · ", "")}: on the timeline and in your Library`);
+      toast.success(where === "library" ? `${name.replace("Motion · ", "")}: saved to your Library` : `${name.replace("Motion · ", "")}: on the timeline and in your Library`);
       onClose();
     } catch (e) {
       console.error("motion render failed", e);
@@ -226,7 +228,9 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
           ))}
         </div>
           <div className="grid gap-2 pt-1 shrink-0" style={{ borderTop: "1px solid var(--s-line)" }}>
-            {spec.kind === "overlay" ? (
+            {standalone ? (
+              <button className="s-btn primary justify-between" disabled={!!busy || !clientId} onClick={() => add("library")}><span className="flex items-center gap-2"><Plus className="h-4 w-4" /> {spec.kind === "overlay" ? "Make the see-through clip" : "Make it"}</span><span className="cost">free</span></button>
+            ) : spec.kind === "overlay" ? (
               <button className="s-btn primary justify-between" disabled={!!busy || !clientId} onClick={() => add("playhead")}><span className="flex items-center gap-2"><Plus className="h-4 w-4" /> Add over the video at the playhead</span><span className="cost">free</span></button>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -234,7 +238,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                 <button className="s-btn" disabled={!!busy || !clientId} onClick={() => add("end")}><Plus className="h-4 w-4" /> Add at the end</button>
               </div>
             )}
-            <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Renders on this computer in a few seconds, then lands on the timeline and in your Library.</span>
+            <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{standalone ? "Renders on this computer in a few seconds and goes to your Library, to download or put in the video editor." : "Renders on this computer in a few seconds, then lands on the timeline and in your Library."}</span>
           </div>
         </div>
       </div>

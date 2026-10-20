@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { Clapperboard, Compass, ExternalLink, Loader2, Sparkles, X } from "lucide-react";
 import { styleLine, type MotionStyleIdea } from "@/lib/motion/inspo";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+import { queueForEditor } from "@/components/studio/queue-clips";
 import { useKept } from "@/lib/drafts";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useBrandKit } from "@/components/studio/generate-image";
@@ -27,11 +29,14 @@ const STARTS: Array<{ label: string; prompt: string }> = [
  * The Motion panel in the video editor's rail (2026-10-15): say what it's for (or tap a start),
  * Claude plans it (4 credits), the studio opens with the live preview.
  */
-export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded }: {
+export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded, standalone = false }: {
   clientId: string | null; shape: MotionShape; initialPrompt?: string | null; pictureId?: string | null;
   onAdded: (m: AddedMotion, where: MotionPlace) => void;
+  /** On its own page (Create → Motion graphics): saves to the Library instead of the timeline. */
+  standalone?: boolean;
 }) {
   const { activeBrand } = useBrandStore();
+  const router = useRouter();
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name ?? undefined);
   // Kept on this device per brand (2026-10-20): the brief and the plan (it cost credits).
   const keep = `motion:${activeBrand?.id ?? "none"}`;
@@ -132,19 +137,25 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded }
         <button className="s-btn ai justify-between" disabled={busy || !activeBrand || (prompt.trim().length < 3 && !style)} onClick={() => write()}>
           <span className="flex items-center gap-2">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {busy ? "Planning it…" : "Write it"}</span><span className="cost">{MOTION_CREDITS} cr</span>
         </button>
-        <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Shape follows the editor ({shape}). The preview and any changes after that are free.</span>
+        <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{standalone ? `Shape: ${shape}.` : `Shape follows the editor (${shape}).`} The preview and any changes after that are free.</span>
         {spec && !open && <button className="s-btn sm justify-start" onClick={() => setOpen(true)}><Clapperboard className="h-3.5 w-3.5" /> Back to your motion</button>}
         {made.length > 0 && (
           <div className="grid gap-1 pt-1">
-            <span className="s-label" style={{ margin: 0 }}>Added</span>
-            {made.map((m, i) => <span key={i} className="text-[12px] truncate" style={{ color: "var(--s-soft)" }}>{m.name.replace("Motion · ", "")} · {m.seconds.toFixed(1)} s</span>)}
+            <span className="s-label" style={{ margin: 0 }}>{standalone ? "Made" : "Added"}</span>
+            {made.map((m, i) => standalone ? (
+              <div key={i} className="flex flex-wrap items-center gap-1.5 text-[12px]" style={{ color: "var(--s-soft)" }}>
+                <span className="truncate flex-1 min-w-[120px]">{m.name.replace("Motion · ", "")} · {m.seconds.toFixed(1)} s</span>
+                <a className="s-btn ghost sm" href={m.url} download target="_blank" rel="noreferrer">Download</a>
+                <button className="s-btn ghost sm" onClick={async () => { await queueForEditor([{ caption: m.name, image_urls: [], video_urls: [m.url], reference_image_url: null }]); router.push("/studio/video?tab=editor"); }}>Open in the video editor</button>
+              </div>
+            ) : <span key={i} className="text-[12px] truncate" style={{ color: "var(--s-soft)" }}>{m.name.replace("Motion · ", "")} · {m.seconds.toFixed(1)} s</span>)}
           </div>
         )}
       </div>
       {spec && (
         <MotionStudio
           open={open} onClose={() => setOpen(false)} spec={spec} onSpec={setSpec} brand={brand} pictures={pictures}
-          clientId={clientId} brandId={activeBrand?.id ?? null} rewriting={busy} onRewrite={() => write()}
+          clientId={clientId} brandId={activeBrand?.id ?? null} rewriting={busy} onRewrite={() => write()} standalone={standalone}
           onAdded={(m, where) => { setMade((x) => [m, ...x]); onAdded(m, where); }}
         />
       )}
