@@ -25,3 +25,17 @@ describe("video prompts", () => {
     expect(videoPromptUser({ scene: "x", brand: "Name: LADI", onBrand: false, seconds: 5, hasStartFrame: true })).toContain("No brand rules");
   });
 });
+
+describe("scenes without words (2026-10-20)", () => {
+  it("writes a usable scene for a lip-sync, a product, an outfit or a photo", async () => {
+    const { sceneWithoutWords, IMAGE_MODES, validVideoPrompt } = await import("@/lib/video-prompt");
+    for (const [mode, frame, audio, want] of [["audio_to_video", true, true, /speaks/], ["showcase", true, false, /product/], ["clothing", true, false, /outfit/], ["standard", true, false, /start frame/], [undefined, false, false, /brand/]] as const) {
+      const scene = sceneWithoutWords(mode, frame, audio);
+      expect(scene).toMatch(want);
+      expect(validVideoPrompt(scene, "x").written).toBe(true);
+    }
+    expect(IMAGE_MODES.has("xray_image")).toBe(true);
+    expect(IMAGE_MODES.has("showcase")).toBe(false);
+  });
+});
+

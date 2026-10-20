@@ -58,6 +58,33 @@ export async function readablePicture(clientId: string, url: string): Promise<st
   }
 }
 
+/**
+ * A picture as a JPEG for posting (2026-10-20): Instagram's API only takes JPEG photos, and most of
+ * our pictures are now PNG or WebP in Supabase (only Cloudinary links were being converted). A
+ * JPEG passes as is; anything else is flattened on white and copied once (kept by the link's hash).
+ * Videos and pictures we can't read are left alone.
+ */
+export async function jpegForPosting(clientId: string, url: string): Promise<string> {
+  if (/\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url) || /\.jpe?g(\?|#|$)/i.test(url)) return url;
+  const path = `images/${clientId}/post_${createHash("sha1").update(url).digest("hex").slice(0, 20)}.jpg`;
+  const copy = supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl;
+  if (await exists(copy)) return copy;
+  const got = await safeFetchBytes(url, { maxBytes: MAX_IN, timeoutMs: 20_000 }).catch(() => null);
+  if (!got?.ok) return url;
+  const kind = pictureKind(got.bytes);
+  if (kind === "jpeg" || kind === "other") return url;
+  try {
+    const { default: sharp } = await import("sharp");
+    const jpg = await sharp(Buffer.from(got.bytes), { density: kind === "svg" ? 300 : undefined, animated: false, limitInputPixels: 80_000_000 })
+      .rotate().flatten({ background: "#ffffff" }).resize({ width: 4096, height: 4096, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+    const up = await supabaseAdmin.storage.from("assets").upload(path, jpg, { contentType: "image/jpeg", upsert: true });
+    return up.error ? url : copy;
+  } catch (e) {
+    console.warn("jpeg for posting failed", kind, e instanceof Error ? e.message : e);
+    return url;
+  }
+}
+
 /** The request's pictures (references, inputs, logo) swapped for readable copies; unreadable ones dropped. */
 export async function readableRequest<T extends Record<string, unknown>>(clientId: string, payload: T): Promise<T> {
   const lists = ["reference_image_urls", "input_urls"] as const;

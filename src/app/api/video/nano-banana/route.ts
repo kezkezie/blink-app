@@ -123,20 +123,27 @@ export async function POST(req: NextRequest) {
       }
       // The scene's video prompt, written here inside the brand's world; n8n's own rewrite step
       // (which passed a GPT-4o refusal on as the prompt) is switched off (lib/video-prompt.ts).
-      if (payload.mode === "scene_video_generator" && payload.scene_data && typeof payload.scene_data === "object") {
-        const d = payload.scene_data as Record<string, unknown>;
+      // Every video request (2026-10-20): a lip-sync or a photo with no words also gets a written
+      // prompt, so n8n's step never runs (it defaults to on when the flag is missing).
+      const { IMAGE_MODES, sceneWithoutWords, fallbackVideoPrompt } = await import("@/lib/video-prompt");
+      const sceneMode = payload.scene_data && typeof payload.scene_data === "object" ? (payload.scene_data as Record<string, unknown>).video_mode : undefined;
+      if (payload.mode === "scene_video_generator" && !IMAGE_MODES.has(String(payload.video_mode ?? sceneMode ?? ""))) {
+        const d = (payload.scene_data && typeof payload.scene_data === "object" ? payload.scene_data : {}) as Record<string, unknown>;
         const frames = (d.frames && typeof d.frames === "object" ? d.frames : {}) as Record<string, unknown>;
-        if (typeof d.visual_prompt === "string" && d.visual_prompt.trim()) {
-          const onBrand = payload.strict_brand_alignment !== false;
-          const { writeVideoPrompt } = await import("@/lib/video-prompt-server");
-          const { fallbackVideoPrompt } = await import("@/lib/video-prompt");
-          // "Prompt enhance" off: the words go as typed (with the brand named when on brand).
-          const written = d.ai_enhance === false || payload.ai_enhance === false ? { prompt: fallbackVideoPrompt(d.visual_prompt, brandCtx?.name, brandCtx?.industry, onBrand) } : await writeVideoPrompt({
-            scene: d.visual_prompt, context: brandCtx, onBrand, seconds: Number(d.duration) || 5,
-            startFrame: typeof frames.start_frame === "string" ? frames.start_frame : null, aspect: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : null,
-          });
-          payload = { ...payload, ai_enhance: false, strict_brand_alignment: onBrand, scene_data: { ...d, visual_prompt: written.prompt, ai_enhance: false } };
+        const audio = (d.audio && typeof d.audio === "object" ? d.audio : {}) as Record<string, unknown>;
+        const startFrame = typeof frames.start_frame === "string" ? frames.start_frame : null;
+        const typed = typeof d.visual_prompt === "string" && d.visual_prompt.trim() ? d.visual_prompt : null;
+        const scene = typed ?? sceneWithoutWords(payload.video_mode ?? sceneMode, !!startFrame, typeof audio.audio_url === "string" || typeof audio.script === "string");
+        const onBrand = payload.strict_brand_alignment !== false;
+        // "Prompt enhance" off: the words go as typed (with the brand named when on brand).
+        let prompt = fallbackVideoPrompt(scene, brandCtx?.name, brandCtx?.industry, onBrand);
+        if (!(typed && (d.ai_enhance === false || payload.ai_enhance === false))) {
+          try {
+            const { writeVideoPrompt } = await import("@/lib/video-prompt-server");
+            prompt = (await writeVideoPrompt({ scene, context: brandCtx, onBrand, seconds: Number(d.duration) || 5, startFrame, aspect: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : null })).prompt;
+          } catch { /* the scene goes as written */ }
         }
+        payload = { ...payload, ai_enhance: false, strict_brand_alignment: onBrand, scene_data: { ...d, visual_prompt: prompt, ai_enhance: false } };
       }
     }
 

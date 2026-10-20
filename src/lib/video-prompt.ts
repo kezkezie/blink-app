@@ -38,6 +38,23 @@ export function validVideoPrompt(raw: string | null | undefined, fallback: strin
   return { prompt: text, written: true };
 }
 
+/** Modes that use the video workflow to make a still picture (Edit with AI): no video prompt. */
+export const IMAGE_MODES = new Set(["xray_image", "json_image_edit"]);
+
+/**
+ * A scene to write when the request brought no words (a lip-sync, a photo to animate). Without one,
+ * n8n's GPT-4o step used to invent it, and 7 of 17 saved runs (10-12 to 10-18) came back "I'm sorry,
+ * I can't..." and were rendered as the video. Now no request reaches that step.
+ */
+export function sceneWithoutWords(mode: unknown, hasStartFrame: boolean, hasAudio: boolean): string {
+  const m = typeof mode === "string" ? mode : "";
+  if (hasAudio || /audio|lip|talk/i.test(m)) return "The person in the start frame speaks naturally to the camera with lifelike lip movement, small head movements and natural blinking. The setting stays as it is. Steady medium close-up, soft natural light.";
+  if (m === "showcase") return "The product in the start frame turns slowly on its surface while the camera glides around it, soft studio light sweeping across it. Everything stays the same product and setting.";
+  if (m === "clothing") return "The model in the start frame turns gently and walks a few steps, the outfit moving naturally. Fashion-film camera, steady and smooth, same person and setting.";
+  if (hasStartFrame) return "Bring the start frame to life with subtle, natural motion: a slow camera push-in and gentle movement in the light and background. The subject and setting stay exactly as they are.";
+  return "A short, polished brand moment: the brand's product in a clean, well-lit setting, with a slow cinematic camera move.";
+}
+
 /** Without Claude: the scene as written, with the brand's world named so the model has the subject. */
 export function fallbackVideoPrompt(scene: string, brandName?: string | null, industry?: string | null, onBrand = true) {
   const base = scene.replace(/\s+/g, " ").trim();

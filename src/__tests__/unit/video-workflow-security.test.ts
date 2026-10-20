@@ -231,6 +231,18 @@ describe("V6: brand identity is server-owned on the video path", () => {
     expect("brand_name" in forwarded).toBe(false);
     expect("brand_info" in forwarded).toBe(false);
   });
+
+  // 2026-10-20: n8n's GPT-4o step defaults to on and refused 7 of 17 saved runs; its refusal became the video.
+  it("never lets n8n rewrite the prompt, and always sends one (even without a brand or words)", async () => {
+    mocks.authorizeGeneric.mockResolvedValue({ ok: true, value: { client_id: "canonical-client", post_id: POST_ID, user_prompt: "", ai_enhance: true } });
+    const res = await workflowsPost(request(url, VIDEO_WORKFLOW_BODY));
+    expect(res.status).toBe(200);
+    const forwarded = JSON.parse(String(mocks.providerFetch.mock.calls[0][1]?.body));
+    expect(forwarded.ai_enhance).toBe(false);
+    expect(typeof forwarded.user_prompt).toBe("string");
+    expect(forwarded.user_prompt.split(/\s+/).length).toBeGreaterThan(12);
+    expect(forwarded.user_prompt).not.toMatch(/sorry|can't|cannot/i);
+  });
 });
 
 describe("BILLING INTEGRITY: per-model options are enforced before any n8n/billing work", () => {

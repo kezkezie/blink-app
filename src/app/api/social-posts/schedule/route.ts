@@ -174,10 +174,13 @@ export async function POST(req: NextRequest) {
       return url.replace("/image/upload/", "/image/upload/f_jpg,q_auto:best/");
     };
 
+    // Our own storage holds PNG and WebP: those get a JPEG copy (lib/image-refs.ts).
+    const { jpegForPosting } = await import("@/lib/image-refs");
+    const postMedia = await Promise.all(mediaUrls.map(async (url) => (url.includes("res.cloudinary.com") ? ensureJpeg(url) : await jpegForPosting(workspaceId, url))));
     const postPayload: Record<string, unknown> = {
       social_accounts: accountIds,
       caption: finalCaption,
-      media: mediaUrls.map((url) => ({ url: ensureJpeg(url) })),
+      media: postMedia.map((url) => ({ url })),
     };
 
     // Validate and attach scheduled_at

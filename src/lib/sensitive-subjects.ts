@@ -12,6 +12,20 @@
  */
 export type SensitiveKind = "medical" | "intimate" | "lingerie";
 
+/**
+ * Which video quality for what (Kezie, 2026-10-20: "tell them, if you want this kind of video, use
+ * this model"). Measured on our own runs: Seedance 2 makes clinics, consultations, products and
+ * clothed people; Sora refuses most medical and body scenes; no service we use makes nudity.
+ */
+export const VIDEO_MODEL_GUIDE: Array<{ quality: string; best: string; avoid?: string }> = [
+  { quality: "Auto", best: "Picks the best model for the style you chose. Start here." },
+  { quality: "Draft", best: "Cheap previews of an idea: everyday scenes, simple motion, checking timing.", avoid: "Faces and fine detail are rougher." },
+  { quality: "Standard", best: "Most ads: people, products, food, places. Also clinics, consultations, surgeons and clothed lifestyle shots for medical and cosmetic brands." },
+  { quality: "Cinema", best: "The same as Standard at 1080p and up to 30 s, for the hero video." },
+  { quality: "Sora 2 (Pro)", best: "Very lifelike people talking to camera.", avoid: "Refuses most medical, body and many brand scenes: use Standard for those." },
+];
+export const VIDEO_LINE = "Nothing in BlinkSpot makes nudity or sexual scenes, for any brand: every video service refuses them, Instagram, Facebook and TikTok take them down, and Paystack's rules don't allow sexually explicit material. Medical topics are fine when they're shown the way clinics post them: consultations, the team, the product, diagrams.";
+
 const MEDICAL = /\b(implants?|mastectomy|reconstruction|cosmetic surgery|plastic surgery|aesthetic (?:clinic|medicine)|breast (?:augmentation|lift|reduction|surgery)|liposuction|tummy tuck|bbl|botox|fillers?)\b/i;
 const INTIMATE = /\b(sexual (?:health|wellness)|intimate (?:health|wellness)|fertility|menstrual|period care|condoms?|sex toys?|libido|vagina[sl]?|penis|erectile)\b/i;
 const LINGERIE = /\b(lingerie|underwear|bras?|panties|swimwear|bikinis?|shapewear)\b/i;

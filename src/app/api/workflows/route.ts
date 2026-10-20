@@ -10,6 +10,7 @@ import { consumeExecutionRateLimit } from "@/lib/execution-rate-limit";
 import { parseVideoWorkflowRequest } from "@/lib/video-execution";
 import { loadOwnedBrandCreativeContext, toVideoWorkflowFields } from "@/lib/brand-creative-context";
 import { specFromShot } from "@/lib/video-rescue";
+import type { BrandCreativeContext } from "@/lib/brand-creative-context";
 
 const ALLOWED_PATHS = new Set([
   "blink-generate-images",
@@ -120,33 +121,41 @@ export async function POST(req: NextRequest) {
         // Creative Context v1 for the ownership-verified brand, so no surface can
         // send a brand's name or description on its behalf.
         const canonicalBrandId = typeof payload.brand_id === "string" ? payload.brand_id : null;
+        let shotBrand: BrandCreativeContext | null = null;
         if (canonicalBrandId) {
           const brandContext = await loadOwnedBrandCreativeContext(authenticated.value, canonicalBrandId);
           if (!brandContext.ok) return securityResponse({ status: brandContext.status, error: brandContext.error });
           payload = { ...payload, ...toVideoWorkflowFields(brandContext.context) };
-          // The shot's video prompt, written here inside the brand's world; n8n's rewrite step off (lib/video-prompt.ts).
-          if (typeof payload.user_prompt === "string" && payload.user_prompt.trim()) {
-            const onBrand = payload.strict_brand_alignment !== false;
-            const { writeVideoPrompt } = await import("@/lib/video-prompt-server");
-            const { fallbackVideoPrompt } = await import("@/lib/video-prompt");
-            // "Prompt enhance" off: the words go as typed (with the brand named when on brand).
-            const written = payload.ai_enhance === false ? { prompt: fallbackVideoPrompt(payload.user_prompt, brandContext.context.name, brandContext.context.industry, onBrand) } : await writeVideoPrompt({
-              scene: payload.user_prompt, context: brandContext.context, onBrand, seconds: Number(payload.duration) || 5,
-              startFrame: typeof payload.primary_image_url === "string" ? payload.primary_image_url : null, aspect: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : null,
-            });
-            payload = { ...payload, user_prompt: written.prompt, ai_enhance: false };
-          }
+          shotBrand = brandContext.context;
         } else {
           // No brand in scope: never forward browser-authored brand identity.
           delete payload.brand_name;
           delete payload.brand_info;
         }
+        // The shot's video prompt, written here (inside the brand's world when there is one), with or
+        // without words from the user; n8n's rewrite step is always off (lib/video-prompt.ts).
+        {
+          const { sceneWithoutWords, fallbackVideoPrompt } = await import("@/lib/video-prompt");
+          const typed = typeof payload.user_prompt === "string" && payload.user_prompt.trim() ? payload.user_prompt : null;
+          const startFrame = typeof payload.primary_image_url === "string" ? payload.primary_image_url : null;
+          const onBrand = !!shotBrand && payload.strict_brand_alignment !== false;
+          const scene = typed ?? sceneWithoutWords(payload.video_mode, !!startFrame, false);
+          const plain = fallbackVideoPrompt(scene, shotBrand?.name, shotBrand?.industry, onBrand);
+          let prompt = plain;
+          if (!(typed && payload.ai_enhance === false)) {
+            try {
+              const { writeVideoPrompt } = await import("@/lib/video-prompt-server");
+              prompt = (await writeVideoPrompt({ scene, context: shotBrand, onBrand, seconds: Number(payload.duration) || 5, startFrame, aspect: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : null })).prompt;
+            } catch { /* the scene goes as written */ }
+          }
+          payload = { ...payload, user_prompt: prompt, ai_enhance: false };
+        }
         // Single shots get second tries too (2026-10-18): keep what it needs, send readable frames.
         if (typeof payload.post_id === "string" && typeof payload.client_id === "string") {
           const spec = specFromShot(payload);
           if (spec) {
-            const { rememberVideoJob } = await import("@/lib/video-rescue-server");
-            const ready = await rememberVideoJob(payload.post_id, payload.client_id, spec).catch(() => spec);
+            // Never in the way of the video: without the record it just has no second try.
+            const ready = await import("@/lib/video-rescue-server").then(({ rememberVideoJob }) => rememberVideoJob(payload.post_id as string, payload.client_id as string, spec)).catch(() => spec);
             payload = { ...payload, primary_image_url: ready.start ?? payload.primary_image_url, secondary_image_url: ready.end ?? payload.secondary_image_url };
           }
         }
@@ -178,7 +187,8 @@ export async function POST(req: NextRequest) {
     }
     const data = await response.json().catch(() => ({ success: true }));
     return NextResponse.json(data);
-  } catch {
+  } catch (e) {
+    console.error("workflows: failed", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

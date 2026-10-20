@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import type { Content } from "@/types/database";
 import { INSPO_HANDOFF_KEY, type InspoPlan } from "@/lib/video-inspo/plan";
 import { useAskStore } from "@/components/studio/ask-store";
+import { VIDEO_LINE, VIDEO_MODEL_GUIDE } from "@/lib/sensitive-subjects";
 
 /**
  * Video Studio, v2 layout over the same engine as the classic page (useVideoStudio).
@@ -191,6 +192,15 @@ function EnginePicker({ v, pro }: { v: VideoStudio; pro: boolean }) {
           <span className="text-[11.5px] col-span-2" style={{ color: "var(--s-mute)" }}>{q.hint} · {v.duration || 5} s</span>
         </button>
       ))}
+      <details className="text-[12px] mt-1" style={{ color: "var(--s-soft)" }}>
+        <summary className="cursor-pointer select-none" style={{ color: "var(--s-accent)" }}>Which one for my video?</summary>
+        <div className="grid gap-1.5 mt-2">
+          {VIDEO_MODEL_GUIDE.map((g) => (
+            <span key={g.quality}><b style={{ color: "var(--s-text)" }}>{g.quality}:</b> {g.best}{g.avoid ? <span style={{ color: "var(--s-mute)" }}> {g.avoid}</span> : null}</span>
+          ))}
+          <span className="text-[11.5px] mt-1" style={{ color: "var(--s-mute)" }}>{VIDEO_LINE}</span>
+        </div>
+      </details>
       {pro && (
         <>
           <span className="s-label mt-3">Exact model</span>
