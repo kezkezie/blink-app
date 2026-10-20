@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Clapperboard, Compass, ExternalLink, Loader2, Sparkles, X } from "lucide-react";
+import { Clapperboard, Compass, ExternalLink, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { styleLine, type MotionStyleIdea } from "@/lib/motion/inspo";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -23,7 +24,23 @@ const STARTS: Array<{ label: string; prompt: string }> = [
   { label: "Logo sting", prompt: "A short logo sting with our tagline" },
   { label: "Lower third", prompt: "A lower third with a name and title, over my video" },
   { label: "End card", prompt: "An end card with a call to action, our handle and website" },
+  { label: "App walkthrough", prompt: "A walkthrough of our app: one step per screenshot, pointing at the button and saying what it does" },
 ];
+
+const MAX_SCREENS = 6;
+
+/** A screenshot at most 1568 px on its long side (what Claude sees, so its pixel boxes land), as WebP. */
+async function shrinkScreen(file: File): Promise<Blob> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const s = Math.min(1, 1568 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("export failed"))), "image/webp", 0.92));
+  } finally { URL.revokeObjectURL(url); }
+}
 
 /**
  * The Motion panel in the video editor's rail (2026-10-15): say what it's for (or tap a start),
@@ -44,6 +61,28 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded, 
   const [busy, setBusy] = useState(false);
   const [spec, setSpec] = useKept<MotionSpec | null>(`${keep}:spec`, null, !!initialPrompt);
   const [pictures, setPictures] = useKept<Array<{ url: string; title: string }>>(`${keep}:pictures`, [], !!initialPrompt);
+  // Screenshots for an app walkthrough (2026-10-20: "motion graphics tutorials on what buttons do what").
+  const [screens, setScreens] = useKept<string[]>(`${keep}:screens`, [], !!initialPrompt);
+  const [uploading, setUploading] = useState(false);
+  async function addScreens(files: File[]) {
+    if (!files.length || !clientId || !activeBrand) return;
+    const list = files.filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type)).slice(0, MAX_SCREENS - screens.length);
+    if (!list.length) { toast.error(screens.length >= MAX_SCREENS ? `Up to ${MAX_SCREENS} screenshots.` : "Use PNG, JPG or WebP screenshots."); return; }
+    setUploading(true);
+    const added: string[] = [];
+    for (const f of list) {
+      try {
+        const blob = await shrinkScreen(f);
+        const path = `images/${clientId}/screen_${Date.now()}_${added.length}.webp`;
+        const { error } = await supabase.storage.from("assets").upload(path, blob, { contentType: "image/webp" });
+        if (error) throw error;
+        added.push(supabase.storage.from("assets").getPublicUrl(path).data.publicUrl);
+      } catch { toast.error(`Couldn't upload ${f.name}.`); }
+    }
+    setScreens((x) => [...x, ...added].slice(0, MAX_SCREENS));
+    setUploading(false);
+    if (added.length && prompt.trim().length < 3) setPrompt(STARTS.find((x) => x.label === "App walkthrough")!.prompt);
+  }
   const [open, setOpen] = useState(false);
   const [made, setMade] = useState<AddedMotion[]>([]);
   const [picture, setPicture] = useState<string | null>(pictureId ?? null);
@@ -77,7 +116,7 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded, 
     try {
       const said = text.trim().length >= 3 ? text : `${style!.title} for ${kit?.name || activeBrand.brand_name}`;
       const brief = style ? `${said}\n${styleLine(style)}` : said;
-      const res = await fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, prompt: brief.slice(0, 600), shape, ...(picture ? { pictureId: picture } : {}) }) });
+      const res = await fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, prompt: brief.slice(0, 600), shape, ...(picture ? { pictureId: picture } : {}), ...(screens.length ? { screens } : {}) }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't plan the motion.");
       setSpec(data.spec); setPictures(data.pictures ?? []); setOpen(true);
@@ -94,6 +133,27 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded, 
         <p className="text-[12px]" style={{ color: "var(--s-soft)" }}>Animated titles, numbers, product reveals and end cards in your brand&apos;s font and colours. Every letter comes out exact.</p>
         <textarea className="s-input s-grow" rows={3} style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 7 }} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What's it for? e.g. a 6 second intro for our USDT launch" aria-label="What the motion is for" />
         <div className="flex flex-wrap gap-1">{STARTS.map((s) => <button key={s.label} className="s-chip" aria-pressed={prompt === s.prompt} onClick={() => setPrompt(s.prompt)}>{s.label}</button>)}</div>
+        <div className="grid gap-1.5">
+          {!!screens.length && (
+            <div className="flex flex-wrap gap-1.5" aria-label="Screenshots">
+              {screens.map((u, i) => (
+                <span key={u} className="relative block h-14 w-14 rounded-md overflow-hidden" style={{ border: "1px solid var(--s-line)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={u} alt={`Screenshot ${i + 1}`} className="h-full w-full object-cover object-top" />
+                  <button className="absolute top-0.5 right-0.5 rounded-full p-0.5" style={{ background: "rgba(0,0,0,.6)", color: "#fff" }} onClick={() => setScreens((x) => x.filter((y) => y !== u))} aria-label={`Remove screenshot ${i + 1}`}><X className="h-3 w-3" /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          {screens.length < MAX_SCREENS && (
+            <label className="s-btn ghost sm justify-start cursor-pointer" aria-disabled={uploading || !clientId || !activeBrand}>
+              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+              {uploading ? "Adding screenshots…" : screens.length ? "Add more screenshots" : "Add app screenshots (for a walkthrough)"}
+              <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="sr-only" disabled={uploading || !clientId || !activeBrand} aria-label="Add app screenshots" onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ""; void addScreens(files); }} />
+            </label>
+          )}
+          {!!screens.length && <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>One step per screenshot, in this order. Claude finds the button and says what it does.</span>}
+        </div>
         {picture && <span className="text-[11.5px] flex items-center gap-1" style={{ color: "var(--s-soft)" }}>Using the picture you picked <button className="underline" onClick={() => setPicture(null)}>(clear)</button></span>}
         {style ? (
           <span className="text-[11.5px] flex items-center gap-1.5" style={{ color: "var(--s-soft)" }}><Compass className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} /> Style: {style.title} <button className="underline" onClick={() => setStyle(null)}>(clear)</button></span>

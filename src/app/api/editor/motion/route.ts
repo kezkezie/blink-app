@@ -7,7 +7,10 @@ import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { brandArg } from "@/lib/credits-meter";
 import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { jsonFrom, validateResearch } from "@/lib/brand-research";
-import { MOTION_CREDITS, MOTION_SYSTEM, motionUserPrompt, validateMotionSpec, type MotionShape } from "@/lib/motion/spec";
+import { MOTION_CREDITS, MOTION_SYSTEM, motionUserPrompt, placeScreens, validateMotionSpec, type MotionShape } from "@/lib/motion/spec";
+import { safeFetchBytes } from "@/lib/safe-fetch";
+import { imageSize } from "@/lib/upscale";
+import { pictureKind } from "@/lib/image-refs";
 
 /**
  * POST { brandId, prompt, shape, pictureId? }: Claude plans a motion graphic from the brand's kit
@@ -23,10 +26,10 @@ const urlsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is 
 const isVideo = (u: string) => /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u) || u.includes("/video/upload/");
 
 export async function POST(request: NextRequest) {
-  if (!isExecutionBodySizeAllowed(request, 6_000)) return NextResponse.json({ error: "Request too large" }, { status: 413 });
+  if (!isExecutionBodySizeAllowed(request, 12_000)) return NextResponse.json({ error: "Request too large" }, { status: 413 });
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  let body: { brandId?: unknown; prompt?: unknown; shape?: unknown; pictureId?: unknown };
+  let body: { brandId?: unknown; prompt?: unknown; shape?: unknown; pictureId?: unknown; screens?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const brandId = typeof body.brandId === "string" && UUID.test(body.brandId) ? body.brandId : null;
   const prompt = typeof body.prompt === "string" ? body.prompt.replace(/\s+/g, " ").trim().slice(0, 600) : "";
@@ -57,6 +60,18 @@ export async function POST(request: NextRequest) {
     if (url) pictures.push({ ref: `img${pictures.length + 1}`, url, title: String(c.caption ?? "Picture").replace(/\s+/g, " ").slice(0, 60) });
   }
   const productRefs = (products ?? []).map((p, i) => ({ ref: `img${i + 1}`, name: String(p.name ?? ""), price: p.price != null ? `${p.currency ? `${p.currency} ` : ""}${p.price}` : null }));
+  // Screenshots for an app walkthrough (2026-10-20): the user's own uploads only, up to 6, sized here
+  // so Claude can give pixel boxes (they land more precisely than fractions; see the X-ray scans).
+  const storage = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/images/${ws.clientId}/`;
+  const screenUrls = (Array.isArray(body.screens) ? body.screens : []).filter((u): u is string => typeof u === "string" && u.startsWith(storage) && !u.includes("..")).slice(0, 6);
+  const screens = (await Promise.all(screenUrls.map(async (url, i) => {
+    const got = await safeFetchBytes(url, { maxBytes: 8_000_000, timeoutMs: 15_000 }).catch(() => null);
+    if (!got?.ok) return null;
+    const kind = pictureKind(got.bytes);
+    const size = imageSize(got.bytes);
+    if (!size || (kind !== "png" && kind !== "jpeg" && kind !== "webp")) return null;
+    return { ref: `S${i + 1}`, url, width: size.width, height: size.height, media: kind === "png" ? "image/png" : kind === "jpeg" ? "image/jpeg" : "image/webp", data: Buffer.from(got.bytes).toString("base64") };
+  }))).filter((x): x is NonNullable<typeof x> => !!x);
   const handle = typeof brand.social_urls === "string" ? brand.social_urls.match(/instagram\.com\/([A-Za-z0-9_.]{2,30})/i)?.[1] : undefined;
   const research = validateResearch(brand.research);
   const colours = [brand.primary_color, brand.secondary_color].filter((c): c is string => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c));
@@ -78,26 +93,29 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify({
       model, max_tokens: 4000,
       system: [{ type: "text", text: MOTION_SYSTEM, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: motionUserPrompt({
+      messages: [{ role: "user", content: [...screens.flatMap((x) => [{ type: "text", text: `Screenshot ${x.ref} (${x.width} x ${x.height} px):` }, { type: "image", source: { type: "base64", media_type: x.media, data: x.data } }]), { type: "text", text: motionUserPrompt({
         brandName: brand.brand_name || brand.company_name || "the brand", industry: brand.industry, prompt, shape, colours,
         font: brand.primary_font, hasLogo: !!brand.logo_url, products: productRefs,
         pictures: pictures.slice(productRefs.length).map((p) => ({ ref: p.ref, title: p.title })),
         look: research?.visualLanguage?.slice(0, 300) ?? null,
         website: typeof brand.website_url === "string" ? brand.website_url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null,
         handle: handle ? `@${handle}` : null,
-      }) }],
+        screens: screens.map(({ ref, width, height }) => ({ ref, width, height })),
+      }) }] }],
     }),
     signal: AbortSignal.timeout(70_000),
   }).catch(() => null);
   if (!res?.ok) return refund("Couldn't plan the motion just now. Try again in a minute.");
   const data = await res.json().catch(() => null);
   const text = ((data?.content ?? []) as Array<{ type: string; text?: string }>).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
-  const spec = validateMotionSpec(jsonFrom(text), { shape, brand: { primary: brand.primary_color, secondary: brand.secondary_color }, images: pictures.map((p) => p.ref) });
+  // Screen steps: the screenshot ref becomes our URL, the pixel box fractions of that screenshot.
+  const raw = placeScreens(jsonFrom(text), screens);
+  const spec = validateMotionSpec(raw, { shape, brand: { primary: brand.primary_color, secondary: brand.secondary_color }, images: [...pictures.map((p) => p.ref), ...screens.map((x) => x.url)] });
   const usd = data ? estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0, cacheRead: data.usage?.cache_read_input_tokens ?? 0, cacheWrite: data.usage?.cache_creation_input_tokens ?? 0 }) : null;
   console.info("motion usage", JSON.stringify({ brand: brandId, model, ok: !!spec, usd: usd === null ? null : Number(usd.toFixed(4)) }));
   if (!spec) return refund("The motion plan came back unclear. Try saying it another way.");
   // Picture refs become our URLs.
   const byRef = new Map(pictures.map((p) => [p.ref, p.url]));
   for (const s of spec.scenes) if (s.template === "product-reveal" && s.image) s.image = byRef.get(s.image);
-  return NextResponse.json({ spec, pictures: pictures.map(({ url, title }) => ({ url, title })), credits: MOTION_CREDITS });
+  return NextResponse.json({ spec, pictures: [...pictures.map(({ url, title }) => ({ url, title })), ...screens.map((x) => ({ url: x.url, title: `Screenshot ${x.ref}` }))], credits: MOTION_CREDITS });
 }

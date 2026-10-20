@@ -19,7 +19,13 @@ export type ProductReveal = { template: "product-reveal"; seconds: number; image
 export type LogoSting = { template: "logo-sting"; seconds: number; tagline?: string };
 export type LowerThird = { template: "lower-third"; seconds: number; title: string; subtitle?: string };
 export type EndCard = { template: "end-card"; seconds: number; cta: string; handle?: string; website?: string; logo: boolean };
-export type MotionScene = KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard;
+/**
+ * One step of an app walkthrough (Kezie, 2026-10-20: "motion graphics tutorials on what buttons do
+ * what"): a screenshot in a phone or laptop frame, the camera easing in to one area (box, as
+ * fractions of the screenshot), a tap there and a label saying what it does.
+ */
+export type ScreenStep = { template: "screen"; seconds: number; image: string; aspect: number; box: [number, number, number, number]; label: string; sub?: string; device: "phone" | "laptop" | "none" };
+export type MotionScene = KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep;
 export type MotionTemplate = MotionScene["template"];
 
 /** "full": scenes fill the frame (intros, stats, end cards). "overlay": a see-through lower third over footage. */
@@ -32,6 +38,7 @@ export const MOTION_TEMPLATES: Array<{ id: MotionTemplate; label: string; line: 
   { id: "logo-sting", label: "Logo sting", line: "Your logo builds on", seconds: [2, 4] },
   { id: "lower-third", label: "Lower third", line: "A name or caption bar over footage", seconds: [3, 8] },
   { id: "end-card", label: "End card", line: "Call to action, handle, website", seconds: [3, 5] },
+  { id: "screen", label: "App walkthrough step", line: "Your screenshot zooms to a button: a tap and a label", seconds: [3, 7] },
 ];
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -105,6 +112,18 @@ function scene(raw: unknown, images: Set<string>): MotionScene | null {
       if (!cta) return null;
       return { template: t.id, seconds, cta, handle: opt(r.handle, 40), website: opt(r.website, 60), logo: r.logo !== false };
     }
+    case "screen": {
+      const image = typeof r.image === "string" && images.has(r.image) ? r.image : null;
+      const label = words(text(r.label, 70), 10);
+      const b = Array.isArray(r.box) ? r.box.map(Number) : [];
+      const aspect = Number(r.aspect);
+      if (!image || !label || b.length !== 4 || b.some((n) => !Number.isFinite(n)) || !Number.isFinite(aspect) || aspect <= 0) return null;
+      // A box as fractions of the screenshot, kept inside it and not vanishingly small.
+      const x = clamp(b[0], 0, 0.98), y = clamp(b[1], 0, 0.98);
+      const box: [number, number, number, number] = [x, y, clamp(b[2], 0.02, 1 - x), clamp(b[3], 0.02, 1 - y)];
+      const device = r.device === "laptop" || r.device === "none" ? r.device : r.device === "phone" ? "phone" : aspect > 1.2 ? "laptop" : "phone";
+      return { template: t.id, seconds, image, aspect: clamp(aspect, 0.3, 3), box, label, sub: opt(r.sub, 70), device };
+    }
   }
 }
 
@@ -131,6 +150,25 @@ export function validateMotionSpec(raw: unknown, ctx: { shape: MotionShape; bran
   return { kind: overlay ? "overlay" : "full", shape: ctx.shape, palette: paletteFor(r.palette, ctx.brand), scenes: overlay ? kept.slice(0, 1) : kept };
 }
 
+/**
+ * Claude's screen steps point at a screenshot ref (S1...) with a box in that screenshot's pixels;
+ * here the ref becomes our URL and the box fractions of the picture. A step whose ref isn't one of
+ * ours loses its picture (and is dropped by validateMotionSpec).
+ */
+export function placeScreens(raw: unknown, screens: Array<{ ref: string; url: string; width: number; height: number }>): unknown {
+  if (!raw || typeof raw !== "object" || !Array.isArray((raw as { scenes?: unknown }).scenes)) return raw;
+  const byRef = new Map(screens.map((x) => [x.ref, x]));
+  const scenes = ((raw as { scenes: unknown[] }).scenes).map((sc) => {
+    if (!sc || typeof sc !== "object" || (sc as { template?: unknown }).template !== "screen") return sc;
+    const r = sc as Record<string, unknown>;
+    const x = byRef.get(String(r.image));
+    const b = Array.isArray(r.box) ? r.box.map(Number) : [];
+    if (!x || b.length !== 4 || !x.width || !x.height) return { ...r, image: null };
+    return { ...r, image: x.url, aspect: x.width / x.height, box: [b[0] / x.width, b[1] / x.height, b[2] / x.width, b[3] / x.height] };
+  });
+  return { ...(raw as object), scenes };
+}
+
 export const sceneFrames = (s: MotionScene) => Math.round(s.seconds * MOTION_FPS);
 export const totalFrames = (spec: MotionSpec) => spec.scenes.reduce((n, s) => n + sceneFrames(s), 0);
 export const totalSeconds = (spec: MotionSpec) => totalFrames(spec) / MOTION_FPS;
@@ -142,7 +180,7 @@ export function sizeFor(shape: MotionShape) {
 /** A short name for the Library and the timeline. */
 export function motionTitle(spec: MotionSpec) {
   const s = spec.scenes[0];
-  const words = s.template === "kinetic-headline" ? s.words : s.template === "stat" ? s.label : s.template === "product-reveal" ? s.name : s.template === "lower-third" ? s.title : s.template === "end-card" ? s.cta : s.tagline || "Logo";
+  const words = s.template === "kinetic-headline" ? s.words : s.template === "stat" ? s.label : s.template === "product-reveal" ? s.name : s.template === "lower-third" ? s.title : s.template === "end-card" ? s.cta : s.template === "screen" ? s.label : s.tagline || "Logo";
   return `Motion · ${words}`.slice(0, 80);
 }
 
@@ -152,6 +190,8 @@ export type MotionBrief = {
   products: Array<{ ref: string; name: string; price?: string | null }>;
   pictures: Array<{ ref: string; title: string }>;
   look?: string | null; website?: string | null; handle?: string | null;
+  /** Screenshots for an app walkthrough, attached to the message in this order. */
+  screens?: Array<{ ref: string; width: number; height: number }>;
 };
 
 export const MOTION_SYSTEM = `You are BlinkSpot's motion designer. You plan short brand motion graphics from a fixed kit of animated templates. You never write code: reply with JSON only, matching this shape:
@@ -163,12 +203,14 @@ Templates (each scene is one of these; "seconds" within the range):
 - {"template":"logo-sting","seconds":2-4,"tagline":"optional, up to 6 words"}
 - {"template":"lower-third","seconds":3-8,"title":"name or caption, up to 7 words","subtitle":"optional"}
 - {"template":"end-card","seconds":3-5,"cta":"call to action, up to 6 words","handle":"optional @handle","website":"optional","logo":true}
+- {"template":"screen","seconds":3-7,"image":"a screenshot ref (S1...)","box":[x, y, width, height],"label":"what to do or see there, up to 10 words","sub":"optional, up to 10 words","device":"phone" | "laptop" | "none"}
 Rules:
 - "overlay" is only for a lower third shown over the user's footage: then exactly one lower-third scene and nothing else. Everything else is "full" and never uses lower-third.
 - 1 to 5 scenes, 6 to 20 seconds in all unless asked otherwise. Open with a hook; a promo ends with an end-card.
 - Short, punchy, exact words. Spell names, prices and numbers exactly as given. No emoji, no hashtags, no quotes around words.
 - Use the brand's colours: one dominant background, high-contrast text, the accent for one thing that matters. Never light text on a light background.
-- Only use picture refs, product names, prices, websites and handles you were given; never invent facts or numbers. If a number isn't given, don't use a stat.`;
+- Only use picture refs, product names, prices, websites and handles you were given; never invent facts or numbers. If a number isn't given, don't use a stat.
+- Screenshots given (an app or website walkthrough, a tutorial, "how it works", "what this button does"): one "screen" scene per step, in the order of the steps, using up to 6 scenes plus an optional opening kinetic-headline and a closing end-card (up to 8 scenes, 30 s). "box" is the rectangle around the exact button, field or area that step is about, in PIXELS of that screenshot (its size is given): look at it carefully and make the box fit the element snugly. The label is an instruction or the benefit, e.g. "Tap Generate to make your poster". "phone" for tall screenshots, "laptop" for wide ones.`;
 
 export function motionUserPrompt(b: MotionBrief) {
   return [
@@ -180,6 +222,7 @@ export function motionUserPrompt(b: MotionBrief) {
     b.look ? `How this industry's best posts look: ${b.look}` : "",
     b.products.length ? `Products (picture ref: name · price): ${b.products.map((p) => `${p.ref}: ${p.name}${p.price ? ` · ${p.price}` : ""}`).join("; ")}` : "",
     b.pictures.length ? `Other pictures (ref: title): ${b.pictures.map((p) => `${p.ref}: ${p.title}`).join("; ")}` : "",
+    b.screens?.length ? `Screenshots, attached above in this order (ref: width x height px): ${b.screens.map((x) => `${x.ref}: ${x.width} x ${x.height}`).join("; ")}` : "",
     `What they want: ${b.prompt}`,
   ].filter(Boolean).join("\n");
 }

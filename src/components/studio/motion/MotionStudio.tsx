@@ -220,6 +220,29 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
               </>)}
               {s.template === "logo-sting" && field("Tagline", s.tagline, (v) => setScene(i, { tagline: v || undefined }), { placeholder: "Optional" })}
               {s.template === "lower-third" && (<>{field("Title", s.title, (v) => setScene(i, { title: v }))}{field("Smaller line", s.subtitle, (v) => setScene(i, { subtitle: v || undefined }), { placeholder: "Optional" })}</>)}
+              {s.template === "screen" && (<>
+                {field("Label", s.label, (v) => setScene(i, { label: v }))}
+                {field("Smaller line", s.sub, (v) => setScene(i, { sub: v || undefined }), { placeholder: "Optional" })}
+                <div className="flex gap-1" role="group" aria-label="Device">
+                  {(["phone", "laptop", "none"] as const).map((d) => <button key={d} type="button" className="s-chip" aria-pressed={s.device === d} onClick={() => setScene(i, { device: d })}>{d === "none" ? "No frame" : d === "phone" ? "Phone" : "Laptop"}</button>)}
+                </div>
+                <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>Click the screenshot where it should point.</span>
+                <div className="relative w-full overflow-hidden rounded-lg cursor-crosshair" style={{ aspectRatio: String(s.aspect), maxHeight: 260 }}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const cx = (e.clientX - r.left) / r.width, cy = (e.clientY - r.top) / r.height;
+                    const [, , w, h] = s.box;
+                    setScene(i, { box: [Math.min(1 - w, Math.max(0, cx - w / 2)), Math.min(1 - h, Math.max(0, cy - h / 2)), w, h] });
+                  }} role="button" aria-label="Where this step points">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={s.image} alt="" className="w-full h-full object-cover" />
+                  <span className="absolute pointer-events-none rounded" style={{ left: `${s.box[0] * 100}%`, top: `${s.box[1] * 100}%`, width: `${s.box[2] * 100}%`, height: `${s.box[3] * 100}%`, border: "2px solid var(--s-accent)" }} />
+                </div>
+                <div className="flex gap-1">
+                  <button type="button" className="s-btn ghost sm" onClick={() => { const [x, y, w, h] = s.box; const nw = Math.min(1 - x, w * 1.25), nh = Math.min(1 - y, h * 1.25); setScene(i, { box: [x, y, nw, nh] }); }}>Bigger</button>
+                  <button type="button" className="s-btn ghost sm" onClick={() => { const [x, y, w, h] = s.box; setScene(i, { box: [x, y, Math.max(0.03, w * 0.8), Math.max(0.03, h * 0.8)] }); }}>Smaller</button>
+                </div>
+              </>)}
               {s.template === "end-card" && (<>
                 {field("Call to action", s.cta, (v) => setScene(i, { cta: v }))}
                 <div className="grid grid-cols-2 gap-2">{field("Handle", s.handle, (v) => setScene(i, { handle: v || undefined }), { placeholder: "@yourbrand" })}{field("Website", s.website, (v) => setScene(i, { website: v || undefined }), { placeholder: "Optional" })}</div>

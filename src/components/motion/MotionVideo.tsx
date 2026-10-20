@@ -5,7 +5,7 @@ import { AbsoluteFill, Easing, Img, Series, interpolate, spring, useCurrentFrame
 import { MOTION_FPS, contrast, sceneFrames, type MotionScene, type MotionSpec, type Palette } from "@/lib/motion/spec";
 
 /**
- * BlinkSpot's motion kit (2026-10-15): six Remotion templates drawn from a spec Claude writes
+ * BlinkSpot's motion kit (2026-10-15; the walkthrough step 2026-10-20): Remotion templates drawn from a spec Claude writes
  * (lib/motion/spec.ts). Only what the browser renderer draws: flex, transforms, opacity, linear
  * gradients, border-radius, clip-path, text-shadow; no z-index (later elements draw on top).
  * Everything is a function of the frame, so the preview and the rendered clip are identical.
@@ -211,6 +211,68 @@ function EndCard({ scene, palette, brand, frames }: { scene: Extract<MotionScene
   );
 }
 
+/**
+ * One app walkthrough step (2026-10-20): the screenshot in a device, the camera easing in to the box,
+ * a tap with a ripple, a ring around the spot and the label beside it. All in the device's own
+ * coordinates, so the ring and the tap ride the zoom.
+ */
+function Screen({ scene, palette, brand, frames }: { scene: Extract<MotionScene, { template: "screen" }>; palette: Palette; brand: MotionBrand; frames: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { u, width, height, tall } = useUnit();
+  const exit = useExit(frames);
+  const [bx, by, bw, bh] = scene.box;
+  // The device: the screenshot's shape, as large as the frame allows (room left for the label).
+  const bezel = scene.device === "none" ? 0 : u * (scene.device === "phone" ? 1.8 : 1.2);
+  const maxW = width * (scene.device === "laptop" ? 0.8 : 0.86), maxH = height * (tall ? 0.7 : 0.74);
+  let devW = Math.min(maxW, maxH * scene.aspect);
+  let devH = devW / scene.aspect;
+  if (devH > maxH) { devH = maxH; devW = devH * scene.aspect; }
+  const cy = height * (tall ? 0.42 : 0.46);
+  // The zoom: the box grows to about 40% of the device, centred.
+  const zoom = Math.min(2.4, Math.max(1.25, 0.4 / Math.max(bw, bh)));
+  const z = interpolate(frame, [14, 42], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.cubic) });
+  const s = 1 + (zoom - 1) * z;
+  // translate(t) scale(s) about the device's centre puts a point p at t + s·p: at full zoom the box centre sits where the device centre was,
+  // unless that would pull the device's edge into the frame (a button in a corner left half the frame empty): then the edge stops at the frame's.
+  const outW = (devW + bezel * 2) * s, outH = (devH + bezel * 2) * s;
+  const range = (a: number, b: number, v: number) => Math.min(Math.max(a, b), Math.max(Math.min(a, b), v));
+  const tx = range(-Math.abs(outW - width) / 2, Math.abs(outW - width) / 2, (0.5 - (bx + bw / 2)) * devW * s * z);
+  const ty = range(height - cy - outH / 2, outH / 2 - cy, (0.5 - (by + bh / 2)) * devH * s * z);
+  const enter = pop(frame, fps, 0, 15);
+  // Where the box is on screen now (for the label).
+  const boxBottom = cy + ((by + bh) - 0.5) * devH * s + ty;
+  const boxTop = cy + (by - 0.5) * devH * s + ty;
+  const below = boxBottom + u * 26 < height * 0.95;
+  const labelY = below ? boxBottom + u * 4 : boxTop - u * 4;
+  // The tap: arrives, presses, ripples; the ring pulses once.
+  const tap = interpolate(frame, [30, 46], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  const press = interpolate(frame, [46, 50, 56], [1, 0.82, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const ripple = interpolate(frame, [48, 66], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  const ring = interpolate(frame, [40, 52], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  const label = pop(frame, fps, 52, 13);
+  const dot = u * 7 / s;
+  return (
+    <AbsoluteFill style={{ opacity: (1 - exit) * Math.min(1, enter * 1.4) }}>
+      <div style={{ position: "absolute", left: width / 2 - devW / 2 - bezel, top: cy - devH / 2 - bezel, width: devW + bezel * 2, height: devH + bezel * 2, transform: `translate(${tx}px, ${ty}px) scale(${s * interpolate(enter, [0, 1], [0.94, 1])})`, transformOrigin: "50% 50%" }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: scene.device === "phone" ? u * 7 : scene.device === "laptop" ? u * 2 : u * 2.5, background: scene.device === "none" ? "transparent" : "#0B0C0F", boxShadow: `0 ${u * 3}px ${u * 8}px rgba(0,0,0,0.35)` }} />
+        <div style={{ position: "absolute", left: bezel, top: bezel, width: devW, height: devH, borderRadius: scene.device === "phone" ? u * 5.4 : u * 1.2, overflow: "hidden", background: "#FFFFFF" }}>
+          <Img src={scene.image} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </div>
+        <div style={{ position: "absolute", left: bezel + bx * devW - u * 0.8 / s, top: bezel + by * devH - u * 0.8 / s, width: bw * devW + u * 1.6 / s, height: bh * devH + u * 1.6 / s, borderRadius: u * 1.4 / s, border: `${u * 0.6 / s}px solid ${palette.accent}`, opacity: ring * (1 - ripple * 0.35), transform: `scale(${interpolate(ring, [0, 1], [1.15, 1])})` }} />
+        <div style={{ position: "absolute", left: bezel + (bx + bw / 2) * devW - dot * 1.5 * ripple, top: bezel + (by + bh / 2) * devH - dot * 1.5 * ripple, width: dot * 3 * ripple, height: dot * 3 * ripple, borderRadius: "50%", border: `${u * 0.5 / s}px solid ${palette.accent}`, opacity: ripple > 0 ? 1 - ripple : 0 }} />
+        <div style={{ position: "absolute", left: bezel + (bx + bw / 2) * devW - dot / 2 + (1 - tap) * devW * 0.35, top: bezel + (by + bh / 2) * devH - dot / 2 + (1 - tap) * devH * 0.35, width: dot, height: dot, borderRadius: "50%", background: "rgba(255,255,255,0.92)", border: `${u * 0.45 / s}px solid #111111`, opacity: tap, transform: `scale(${press})`, boxShadow: `0 ${u * 0.6 / s}px ${u * 2 / s}px rgba(0,0,0,0.35)` }} />
+      </div>
+      <div style={{ position: "absolute", left: width * 0.08, right: width * 0.08, top: below ? labelY : undefined, bottom: below ? undefined : height - labelY, display: "flex", justifyContent: "center", opacity: Math.min(1, label * 1.4), transform: `translateY(${(1 - label) * u * (below ? 3 : -3)}px)` }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: u * 0.8, padding: `${u * 2.4}px ${u * 4.4}px`, borderRadius: u * 3, background: palette.background, border: `${u * 0.4}px solid ${palette.accent}`, maxWidth: "100%", boxShadow: `0 ${u * 1.5}px ${u * 4}px rgba(0,0,0,0.3)` }}>
+          <div style={{ fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 5.6, lineHeight: 1.2, paddingBottom: u * 0.3, color: palette.text, textAlign: "center" }}>{scene.label}</div>
+          {scene.sub && <div style={{ fontFamily: fontStack(brand.font), fontWeight: 500, fontSize: u * 3.8, lineHeight: 1.3, paddingBottom: u * 0.3, color: palette.text, opacity: 0.85, textAlign: "center" }}>{scene.sub}</div>}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+}
+
 function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette; brand: MotionBrand }) {
   const frames = sceneFrames(scene);
   switch (scene.template) {
@@ -220,6 +282,7 @@ function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette
     case "logo-sting": return <LogoSting scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "lower-third": return <LowerThird scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "end-card": return <EndCard scene={scene} palette={palette} brand={brand} frames={frames} />;
+    case "screen": return <Screen scene={scene} palette={palette} brand={brand} frames={frames} />;
   }
 }
 
