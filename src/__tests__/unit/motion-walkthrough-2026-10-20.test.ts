@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/supabase-server", () => ({ supabaseAdmin: { from: vi.fn() } }));
 import { MOTION_SYSTEM, motionTitle, motionUserPrompt, placeScreens, validateMotionSpec } from "@/lib/motion/spec";
 
 /** App walkthroughs (2026-10-20): screenshot steps that zoom to a button, a tap and a label. */
@@ -61,5 +63,22 @@ describe("app walkthrough steps", () => {
     expect(MOTION_SYSTEM).toMatch(/PIXELS of that screenshot/);
     const text = motionUserPrompt({ brandName: "BlinkSpot", prompt: "how to make a poster", shape: "9:16", colours: [], hasLogo: false, products: [], pictures: [], screens: [{ ref: "S1", width: 724, height: 1568 }] });
     expect(text).toContain("S1: 724 x 1568");
+  });
+});
+
+describe("Ask BlinkSpot makes walkthroughs from attached screenshots", () => {
+  it("opens Motion with the screenshots, the steps and the shape", async () => {
+    const { runAssistantTool } = await import("@/lib/assistant/tools");
+    const pics = ["https://x.supabase.co/storage/v1/object/public/assets/images/c1/ask_1.png", "https://x.supabase.co/storage/v1/object/public/assets/images/c1/ask_2.png"];
+    const out = await runAssistantTool("make_motion", { brief: "1. Tap Generate. 2. Click Schedule post.", walkthrough_from_attached_screenshots: true, shape: "16:9" }, { clientId: "c1", brandId: "b1", pictures: pics });
+    expect(out.action?.label).toBe("Make this walkthrough");
+    const href = new URL(out.action!.href!, "https://www.blinkspot.io");
+    expect(href.pathname).toBe("/studio/motion");
+    expect(href.searchParams.get("shape")).toBe("16:9");
+    expect(href.searchParams.get("brief")).toContain("Schedule post");
+    expect(JSON.parse(href.searchParams.get("screens")!)).toEqual(pics);
+    const none = await runAssistantTool("make_motion", { brief: "A tutorial", walkthrough_from_attached_screenshots: true }, { clientId: "c1", brandId: "b1", pictures: [] });
+    expect(none.action).toBeUndefined();
+    expect(none.content).toMatch(/attach/i);
   });
 });

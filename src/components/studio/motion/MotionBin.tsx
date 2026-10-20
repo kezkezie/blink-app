@@ -47,8 +47,10 @@ async function shrinkScreen(file: File): Promise<Blob> {
  * The Motion panel in the video editor's rail (2026-10-15): say what it's for (or tap a start),
  * Claude plans it (4 credits), the studio opens with the live preview.
  */
-export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded, standalone = false }: {
+export function MotionBin({ clientId, shape, initialPrompt, initialScreens, pictureId, onAdded, standalone = false }: {
   clientId: string | null; shape: MotionShape; initialPrompt?: string | null; pictureId?: string | null;
+  /** Screenshots for a walkthrough, from Ask BlinkSpot's link (2026-10-20). */
+  initialScreens?: string[] | null;
   onAdded: (m: AddedMotion, where: MotionPlace) => void;
   /** On its own page (Create → Motion graphics): saves to the Library instead of the timeline. */
   standalone?: boolean;
@@ -63,7 +65,7 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded, 
   const [spec, setSpec] = useKept<MotionSpec | null>(keep && `${keep}:spec`, null, !!initialPrompt);
   const [pictures, setPictures] = useKept<Array<{ url: string; title: string }>>(keep && `${keep}:pictures`, [], !!initialPrompt);
   // Screenshots for an app walkthrough (2026-10-20: "motion graphics tutorials on what buttons do what").
-  const [screens, setScreens] = useKept<string[]>(keep && `${keep}:screens`, [], !!initialPrompt);
+  const [screens, setScreens] = useKept<string[]>(keep && `${keep}:screens`, initialScreens ?? [], !!initialPrompt);
   const [uploading, setUploading] = useState(false);
   async function addScreens(files: File[]) {
     if (!files.length || !clientId || !activeBrand) return;

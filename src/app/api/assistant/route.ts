@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
   try {
     // Skills are the user's own, even while working in a brand someone shared with them.
     const skillsClientId = client.ownClientId ?? client.id;
-    const ctx = { clientId: client.id, brandId, skillsClientId, tz: parsed.tz, tzOffset: parsed.tzOffset };
+    const ownPictures = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/images/${client.id}/`;
+    const ctx = { clientId: client.id, brandId, skillsClientId, tz: parsed.tz, tzOffset: parsed.tzOffset, pictures: ([...parsed.pictures].reverse().find((p) => p.length) ?? []).filter((u) => u.startsWith(ownPictures) && !u.includes("..")) };
     // The account's own skills, listed for Ask in one line each (a failure here never blocks a reply).
     const loadSkills = async () => {
       try {

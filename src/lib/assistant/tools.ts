@@ -41,7 +41,7 @@ export type AssistantAction = {
 };
 
 /** clientId is the brand's workspace (the owner's, in a shared brand); skillsClientId the user's own account. */
-export type ToolContext = { clientId: string; brandId: string | null; skillsClientId?: string; timeline?: TimelineSummary; canvas?: CanvasSummary; tz?: string; tzOffset?: number };
+export type ToolContext = { clientId: string; brandId: string | null; skillsClientId?: string; timeline?: TimelineSummary; canvas?: CanvasSummary; tz?: string; tzOffset?: number; /** Pictures attached to this message (own storage). */ pictures?: string[] };
 export type ToolResult = { content: string; action?: AssistantAction };
 
 const VIDEO_STYLES = ["storytelling", "showcase", "logo_reveal", "ugc", "clothing"] as const;
@@ -188,7 +188,9 @@ export const ASSISTANT_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        brief: { type: "string", description: "What the motion is for, in one or two sentences, with the exact words, numbers and prices to use." },
+        brief: { type: "string", description: "What the motion is for, in one or two sentences, with the exact words, numbers and prices to use. For a walkthrough: the steps in order, naming the button or field each step is about (\"1. Tap Generate poster to make it. 2. Click Schedule post.\")." },
+        walkthrough_from_attached_screenshots: { type: "boolean", description: "True when the user attached screenshots of their app or website and wants a tutorial or walkthrough of what to tap or click: they go to Motion as one step per screenshot, in order." },
+        shape: { type: "string", enum: ["9:16", "1:1", "16:9"], description: "9:16 for Reels and TikTok (default), 16:9 for YouTube and websites." },
       },
       required: ["brief"],
       additionalProperties: false,
@@ -528,6 +530,13 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
     case "make_motion": {
       const brief = typeof input.brief === "string" ? input.brief.replace(/\s+/g, " ").trim().slice(0, 600) : "";
       if (brief.length < 3) return { content: "Say what the motion is for." };
+      // App or website walkthroughs (2026-10-20): the attached screenshots go to Motion, which finds each button.
+      const screens = (ctx.pictures ?? []).slice(0, 6);
+      if (input.walkthrough_from_attached_screenshots === true) {
+        if (!screens.length) return { content: "No screenshots are attached to this message. Ask the user to attach their app or website screenshots (paperclip), one per step, in order." };
+        const shape = oneOf(input.shape, ["9:16", "1:1", "16:9"] as const, "9:16");
+        return { content: `Button shown: it opens Motion with ${screens.length} screenshot${screens.length === 1 ? "" : "s"} and these steps; planning it there costs 4 credits.`, action: { kind: "open_page", label: "Make this walkthrough", href: `/studio/motion?shape=${encodeURIComponent(shape)}&brief=${encodeURIComponent(brief)}&screens=${encodeURIComponent(JSON.stringify(screens))}` } };
+      }
       return { content: "Button shown: it opens the Motion panel with this brief.", action: { kind: "open_page", label: "Make this motion", href: `/studio/video?tab=editor&rail=motion&motion=${encodeURIComponent(brief)}` } };
     }
     case "open_page": {

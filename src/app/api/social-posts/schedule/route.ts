@@ -5,8 +5,9 @@ import { accountsForPost, cancelPendingPost, pfmApiKey } from "@/lib/social-sche
 import { clientIdMatches, workspaceFor } from "@/lib/brand-access";
 
 // FORMAT_TO_POST_TYPE maps user-selected format → PostForMe post type.
-// All formats currently resolve to "media" — Quickstart Projects block placement routing.
-// TODO: Uncomment format placement routing once we upgrade from PostForMe Quickstart API tier.
+// MVP (Kezie, 2026-10-20): plain posts only, every format goes as "media". Reels, Stories, Shorts and
+// placement are the next feature (Post For Me's platform_configurations.<platform>.placement; earlier
+// tries on our Quickstart project were refused, so test it on its own before switching it on).
 const FORMAT_TO_POST_TYPE: Record<string, string> = {
   post:     "media",
   feed:     "media",
