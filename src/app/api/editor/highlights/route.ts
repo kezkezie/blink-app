@@ -9,6 +9,7 @@ import { AssistantUnavailableError, assistantModelFor, assistantProvider, estima
 import { transcribeCredits, transcriptForModel, validateHighlights, type Segment } from "@/lib/editor/highlights";
 import { requestWorkspace } from "@/lib/brand-access";
 import { brandArg } from "@/lib/credits-meter";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Editor AI (2026-10-11): captions for a video, or the best short moments of a long one.
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
     const out = (await res?.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } } | undefined;
     const usd = estimateUsd(model, { input: out?.usage?.input_tokens ?? 0, output: out?.usage?.output_tokens ?? 0 });
     console.info("highlights usage", JSON.stringify({ client: client.id, seconds, credits, model, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+    logAiUsage({ feature: "clip_ai", provider: provider.name, model, clientId: client.id, userId: auth.value, usage: { input: out?.usage?.input_tokens, output: out?.usage?.output_tokens }, usd, credits, meta: { seconds } });
     const text = (out?.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
     let raw: unknown = [];
     try { raw = (JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)) as { highlights?: unknown }).highlights; } catch { /* handled below */ }

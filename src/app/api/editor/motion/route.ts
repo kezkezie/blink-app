@@ -11,6 +11,7 @@ import { MOTION_CREDITS, MOTION_SYSTEM, motionUserPrompt, placeScreens, validate
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { imageSize } from "@/lib/upscale";
 import { pictureKind } from "@/lib/image-refs";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * POST { brandId, prompt, shape, pictureId? }: Claude plans a motion graphic from the brand's kit
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
   const spec = validateMotionSpec(raw, { shape, brand: { primary: brand.primary_color, secondary: brand.secondary_color }, images: [...pictures.map((p) => p.ref), ...screens.map((x) => x.url)] });
   const usd = data ? estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0, cacheRead: data.usage?.cache_read_input_tokens ?? 0, cacheWrite: data.usage?.cache_creation_input_tokens ?? 0 }) : null;
   console.info("motion usage", JSON.stringify({ brand: brandId, model, ok: !!spec, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "motion", provider: provider.name, model, clientId: ws.clientId, userId: auth.value, brandId, usage: data ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens, cacheRead: data.usage?.cache_read_input_tokens, cacheWrite: data.usage?.cache_creation_input_tokens } : null, usd, credits: spec ? MOTION_CREDITS : 0, ok: !!spec, meta: { screens: screens.length } });
   if (!spec) return refund("The motion plan came back unclear. Try saying it another way.");
   // Picture refs become our URLs.
   const byRef = new Map(pictures.map((p) => [p.ref, p.url]));

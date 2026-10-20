@@ -3,6 +3,7 @@ import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assista
 import { softenForAi } from "@/lib/ai-safe-text";
 import type { BrandCreativeContext } from "@/lib/brand-creative-context";
 import { VIDEO_PROMPT_SYSTEM, fallbackVideoPrompt, validVideoPrompt, videoPromptUser } from "@/lib/video-prompt";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Writes a scene's video prompt (lib/video-prompt.ts) with the brand's world as the guardrail.
@@ -41,6 +42,7 @@ export async function writeVideoPrompt(i: {
     const d = await res.json().catch(() => null) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } } | null;
     const usd = estimateUsd(model, { input: d?.usage?.input_tokens ?? 0, output: d?.usage?.output_tokens ?? 0 });
     console.info("video prompt", JSON.stringify({ brand: i.context?.brandId ?? null, onBrand: i.onBrand, frame: withFrame, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+    logAiUsage({ feature: "video_prompt", provider: provider.name, model, clientId: i.context?.clientId, brandId: i.context?.brandId, usage: { input: d?.usage?.input_tokens, output: d?.usage?.output_tokens }, usd, meta: { onBrand: i.onBrand, frame: withFrame } });
     return { status: 200, text: (d?.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("") };
   };
   // A start frame Claude can't open fails the call; then words only.

@@ -8,6 +8,7 @@ import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assista
 import { jsonFrom } from "@/lib/brand-research";
 import { imageTypeOf } from "@/lib/visual-refs";
 import { STYLE_SYSTEM, WHATSHIPS, pickShips, posterOf, shipItems, stylePrompt, validateStyleIdeas, type ShipItem } from "@/lib/motion/inspo";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * POST { brandId, brief }: three motion styles from whatships.com's public launch films, after the
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest) {
   const ideas = validateStyleIdeas(jsonFrom(text), stills.map((x) => x.s));
   const usd = data ? estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 }) : null;
   console.info("motion inspo usage", JSON.stringify({ brand: brandId, stills: stills.length, ideas: ideas.length, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "motion_inspo", provider: provider.name, model, clientId: ws?.clientId, userId: auth.value, brandId, usage: data ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens } : null, usd });
   if (!ideas.length) return NextResponse.json({ error: "Couldn't put ideas together this time. Try again." }, { status: 502 });
   return NextResponse.json({ ideas, source: WHATSHIPS });
 }

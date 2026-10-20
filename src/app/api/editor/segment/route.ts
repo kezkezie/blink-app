@@ -8,6 +8,7 @@ import { safeFetchBytes } from "@/lib/safe-fetch";
 import { requestWorkspace } from "@/lib/brand-access";
 import { chargeCredits } from "@/lib/credits-meter";
 import { MAP_CREDITS, composeLabels, packLabels } from "@/lib/editor/regions";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * The AI eraser's map (2026-10-20). POST { url, brandId }: SAM 2 on Replicate starts finding every
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   if (!ID.test(id) || !signed(client.id, id, token)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const r = await fetch(`${REPLICATE}/predictions/${id}`, { headers: headers(), signal: AbortSignal.timeout(15_000) }).catch(() => null);
-  const p = (await r?.json().catch(() => null)) as { status?: string; output?: { individual_masks?: unknown }; error?: unknown } | null;
+  const p = (await r?.json().catch(() => null)) as { status?: string; output?: { individual_masks?: unknown }; error?: unknown; metrics?: { predict_time?: number } } | null;
   if (!r?.ok || !p) return NextResponse.json({ state: "running" });
   if (p.status === "failed" || p.status === "canceled") return NextResponse.json({ state: "failed", error: "Couldn't map this picture. Nothing was charged. Brush over what to remove instead." });
   if (p.status !== "succeeded") return NextResponse.json({ state: "running" });
@@ -95,5 +96,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ state: "failed", error: "Not enough credits to map it. Get more in Billing." }, { status: 402 });
   }
   console.info("segment done", JSON.stringify({ client: client.id, masks: masks.length, regions: map.regions.length, w, h }));
+  // SAM 2 runs on an L40S at $0.000975 a second.
+  if (!prior?.length) logAiUsage({ feature: "photo_map", provider: "replicate", model: "meta/sam-2", clientId: client.id, userId: auth.value, brandId, usd: (Number(p.metrics?.predict_time) || 20) * 0.000975, credits: MAP_CREDITS, meta: { regions: map.regions.length } });
   return NextResponse.json({ state: "done", w, h, labels: packLabels(map.labels), regions: map.regions.length, credits: prior?.length ? 0 : MAP_CREDITS });
 }

@@ -5,6 +5,7 @@ import { chargeCredits, creditBalance } from "@/lib/credits-meter";
 import { estimateVideoCredits } from "@/lib/video-model-registry";
 import { readablePicture } from "@/lib/image-refs";
 import { RESCUE_STATUS, VIDEO_FINAL_FAILURE, VIDEO_LOW_BALANCE, needsRescue, rescuePlan, validVideoSpec, type VideoJobSpec } from "@/lib/video-rescue";
+import { logAiUsage, USD_PER_CREDIT } from "@/lib/ai-usage";
 
 /**
  * Videos that arrive, server side (lib/video-rescue.ts). rememberVideoJob keeps what a second try
@@ -115,6 +116,7 @@ export async function finishVideoRescue(id: string): Promise<void> {
     creation_metadata: { ...meta, video_rescue: { ...r, state: "done", charged } },
   })).eq("id", id);
   console.info("video rescue done", JSON.stringify({ post: id, model: r.model, charged, cost: r.cost }));
+  logAiUsage({ feature: "video_second_try", provider: "replicate", model: r.model, clientId: row.client_id as string, brandId: row.brand_id as string | null, usd: (Number(r.cost) || 0) * USD_PER_CREDIT, credits: charged ? Number(r.cost) || 0 : 0, meta: { post: id } });
 }
 
 /** The status check's part: claim a failed first try, or look in on a second try whose webhook is late. */

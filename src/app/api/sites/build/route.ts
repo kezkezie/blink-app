@@ -10,6 +10,7 @@ import { extractInspiration, inspirationBrief } from "@/lib/sites/inspiration";
 import { normaliseWebsite } from "@/lib/brand-autofill";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { requestWorkspace } from "@/lib/brand-access";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Landing-page builder: the AI plans the page from the Brand Brain (sections, copy, which of the
@@ -134,6 +135,7 @@ export async function POST(request: NextRequest) {
   const data = (await res.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
   const usd = estimateUsd(ASSISTANT_MODEL, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 });
   console.info("site build usage", JSON.stringify({ user: auth.value, mode, ...data.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "site_build", provider: provider.name, model: ASSISTANT_MODEL, clientId: client?.id, userId: auth.value, brandId, usage: { input: data.usage?.input_tokens, output: data.usage?.output_tokens }, usd, meta: { mode } });
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
   let out: Record<string, unknown>;
   try { out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch { return NextResponse.json({ error: "Couldn't put the page together. Try again." }, { status: 502 }); }

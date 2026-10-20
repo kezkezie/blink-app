@@ -7,6 +7,7 @@ import { safeFetchBytes } from "@/lib/safe-fetch";
 import { extractSite, instagramHandle, normaliseWebsite, verifiedContact, type SiteFacts } from "@/lib/brand-autofill";
 import { brandBrief, cleanDna, CTAS, INDUSTRIES, LANGUAGES, PERSONALITY, PHOTO_VIBES } from "@/lib/brand-dna";
 import { requestWorkspace } from "@/lib/brand-access";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Fill a brand in for the user (2026-10-11).
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
   const data = (await res.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
   const usd = estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 });
   console.info("brand autofill usage", JSON.stringify({ user: auth.value, mode, model, ...data.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "brand_fill", provider: provider.name, model, clientId: client?.id, userId: auth.value, usage: { input: data.usage?.input_tokens, output: data.usage?.output_tokens }, usd, meta: { mode } });
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
   let out: Record<string, unknown>;
   try { out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch { return NextResponse.json({ error: "Couldn't read enough to fill it in. Try again or fill it in by hand." }, { status: 502 }); }

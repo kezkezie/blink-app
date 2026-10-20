@@ -9,6 +9,7 @@ import {
   EDIT_CREDITS, EDIT_ENGINES, MAX_SWAPS, SCAN_CREDITS, aspectFor, boxesToThousandths, buildEditPrompt, changeCount, keptScan,
   normalizeChanges, scanAfterEdit, scanSystem, validateScan, type EditEngine, type Scan, type StoredScan,
 } from "@/lib/ai-edit";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Edit with AI, server side (2026-10-15; see lib/ai-edit.ts). The scan is Claude looking at the
@@ -94,6 +95,7 @@ export async function scanPost(clientId: string, contentId: string, refresh = fa
   const scan = validateScan(boxesToThousandths(jsonFrom(text), size.width, size.height));
   const usd = data ? estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 }) : null;
   console.info("ai edit scan", JSON.stringify({ post: contentId, model, ok: !!scan, status: res?.status ?? null, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "xray_scan", provider: provider.name, model, usage: data ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens } : null, usd, credits: scan ? SCAN_CREDITS : 0, ok: !!scan, meta: { post: contentId } });
   if (!scan) {
     await refund(clientId, SCAN_CREDITS, "Refund: Edit with AI scan failed", post.brand_id);
     return fail(502, `The scan didn't work this time. Your ${SCAN_CREDITS} credits were refunded. Try again.`);

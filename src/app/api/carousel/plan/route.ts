@@ -8,6 +8,7 @@ import { brandArg } from "@/lib/credits-meter";
 import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { jsonFrom, validateResearch } from "@/lib/brand-research";
 import { MAX_SLIDES, PLAN_CREDITS, TOPIC_SYSTEM, topicPrompt, validateTopicCarousel } from "@/lib/carousel";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * POST { brandId, topic, slides }: Claude writes a topic carousel's outline (2026-10-16, like
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
   for (const sl of carousel?.slides ?? []) if ("image" in sl && sl.image) sl.image = byRef.get(sl.image);
   const usd = data ? estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 }) : null;
   console.info("carousel plan usage", JSON.stringify({ brand: brandId, model, ok: !!carousel, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "carousel_plan", provider: provider.name, model, clientId: ws?.clientId, userId: auth.value, brandId, usage: data ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens } : null, usd, credits: carousel ? PLAN_CREDITS : 0, ok: !!carousel });
   if (!carousel) return refund("The outline came back unclear. Try saying it another way.");
   return NextResponse.json({ carousel, pictures: pictures.map(({ url, title }) => ({ url, title })), handle: handle ? `@${handle}` : null, credits: PLAN_CREDITS });
 }

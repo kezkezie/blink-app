@@ -10,6 +10,8 @@ import {
   FINAL_FAILURE, FIRST_TRY_MS, LOW_BALANCE_FOR_RESCUE, RESCUE_AFTER_MS, RESCUE_DEAD_MS, RESCUE_ENGINE, STATUS,
   classifyRouter, jobSpecFrom, jobView, rescueCredits, validJobSpec, type ImageJobSpec, type JobView, type RouterOutcome,
 } from "@/lib/image-jobs";
+import { logAiUsage, USD_PER_CREDIT } from "@/lib/ai-usage";
+import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 
 /**
  * Image jobs, server side (lib/image-jobs.ts). startImageJobs makes the Library posts and runs the
@@ -103,6 +105,9 @@ export async function startImageJobs(userId: string, raw: unknown, count: number
   }))).select("id");
   if (error || !data?.length) return fail(500, "Couldn't start the image. Nothing was charged.");
   const ids = data.map((r) => r.id as string);
+  // Cost log (2026-10-20): every first try, so second tries per engine can be counted against them.
+  const perImage = IMAGE_ENGINE_REGISTRY[spec.engine === "nano-banana-2" ? "nb2" : spec.engine]?.creditCost ?? 8;
+  for (const id of ids) logAiUsage({ feature: "image", provider: "n8n", model: spec.engine, clientId: payload.client_id as string, userId, brandId: payload.brand_id as string | null, usd: perImage * USD_PER_CREDIT, credits: perImage, meta: { post: id } });
   const work = Promise.all(ids.map(async (id) => settleFirst(id, await askRouter(payload, id)))).then(() => {});
   return { ok: true, value: { ids, work } };
 }
@@ -142,6 +147,8 @@ async function secondTry(clientId: string, brandId: string | null, spec: ImageJo
   const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: `Refund: image second try failed [${label}]`, ...brandArg(brandId) }).then(() => {}, () => {});
   const rendered = await renderEdit(RESCUE_ENGINE, spec.prompt, spec.references, spec.aspect, Date.now() + 230_000, "2K");
   console.info("image rescue", JSON.stringify({ label, from: spec.engine, ...(rendered.ok ? { provider: rendered.provider } : { reason: rendered.reason.slice(0, 120), refused: rendered.refused }) }));
+  // Replicate's Nano Banana 2 at 2K is $0.101; Kie's is about 18 of its credits. A Fast first try charges 6 for it.
+  logAiUsage({ feature: "image_second_try", provider: rendered.ok ? (rendered.provider === "replicate" ? "replicate" : "kie") : "replicate", model: RESCUE_ENGINE, clientId, brandId, usd: rendered.ok ? (rendered.provider === "replicate" ? 0.101 : 18 * USD_PER_CREDIT) : 0, credits: rendered.ok ? credits : 0, ok: rendered.ok, meta: { from: spec.engine, label } });
   if (!rendered.ok) {
     await refund();
     return { ok: false, charged: true, code: rendered.refused ? "refused" : "rescue_failed", message: rendered.refused ? `The image service's safety filter refused this one. Your credits are back. Try different wording.` : FINAL_FAILURE(credits) };

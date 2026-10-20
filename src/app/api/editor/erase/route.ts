@@ -8,6 +8,7 @@ import { safeFetchBytes } from "@/lib/safe-fetch";
 import { requestWorkspace } from "@/lib/brand-access";
 import { brandArg } from "@/lib/credits-meter";
 import { AI_ERASE_CREDITS, blendInto } from "@/lib/editor/regions";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Editor → AI eraser (2026-10-20). POST { url, mask, brandId }: both the user's own uploads; white
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
     if (p?.status !== "succeeded" || typeof out !== "string") {
       const why = String(p?.error ?? p?.status ?? "no answer");
       console.info("ai erase failed", JSON.stringify({ client: client.id, why: why.slice(0, 160) }));
+      logAiUsage({ feature: "ai_erase", provider: "replicate", model: "bria/eraser", clientId: client.id, userId: auth.value, usd: p?.status === "succeeded" ? 0.04 : 0, ok: false, meta: { why: why.slice(0, 80) } });
       return refund(REFUSED.test(why) ? "This picture can't go through the AI eraser (its safety check refused it)." : "The AI eraser couldn't finish this time. Try again in a minute.");
     }
     const [orig, fresh, marks] = await Promise.all([
@@ -74,6 +76,7 @@ export async function POST(request: NextRequest) {
     const { error } = await supabaseAdmin.storage.from("assets").upload(path, png, { contentType: "image/png" });
     if (error) return refund("Couldn't save the result.", 500);
     console.info("ai erase done", JSON.stringify({ client: client.id, w, h }));
+    logAiUsage({ feature: "ai_erase", provider: "replicate", model: "bria/eraser", clientId: client.id, userId: auth.value, brandId: typeof body.brandId === "string" ? body.brandId : null, usd: 0.04, credits: AI_ERASE_CREDITS });
     return NextResponse.json({ url: supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl, credits: AI_ERASE_CREDITS });
   } catch (e) {
     console.error("ai erase", e);

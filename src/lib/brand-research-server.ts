@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { RESEARCH_SYSTEM, jsonFrom, researchPrompt, validateResearch, type BrandResearch } from "@/lib/brand-research";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Industry research for a brand, server side (2026-10-14): used by POST /api/brand/research
@@ -51,6 +52,7 @@ export async function runBrandResearch(brandId: string, clientId: string, refres
   const usd = estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 });
   const searches = data.usage?.server_tool_use?.web_search_requests ?? 0;
   console.info("brand research usage", JSON.stringify({ brand: brandId, model, searches, ...data.usage, usd: usd === null ? null : Number((usd + searches * 0.01).toFixed(4)) }));
+  logAiUsage({ feature: "brand_research", provider: provider.name, model, brandId, usage: { input: data.usage?.input_tokens, output: data.usage?.output_tokens }, usd: (usd ?? 0) + searches * 0.01, ok: !!research, meta: { searches } });
   if (!research) {
     console.warn("brand research unusable", JSON.stringify({ brand: brandId, stop: data.stop_reason, start: text.slice(0, 300), end: text.slice(-300) }));
     return { ok: false, status: 502, error: "The research came back unclear. Try again." };

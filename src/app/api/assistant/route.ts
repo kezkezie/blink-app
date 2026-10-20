@@ -6,11 +6,12 @@ import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { loadAccountBrief } from "@/lib/assistant/tools";
 import { parseAssistantRequest, withPictures } from "@/lib/assistant/request";
 import { withFiles } from "@/lib/assistant/files";
-import { isPaidPlan } from "@/lib/plans";
+import { isPaidPlan, askIncludedPerMonth } from "@/lib/plans";
 import { EFFORT_INFO, allowedEfforts, creditCapFor, effortFor, planFor } from "@/lib/assistant/effort";
 import { chargeCredits, creditBalance, meteredCredits } from "@/lib/credits-meter";
 import { aiLimitFor } from "@/lib/ai-rate-limit";
 import { requestWorkspace } from "@/lib/brand-access";
+import { askUnitsThisMonth, logAiUsage, nextMonthStart } from "@/lib/ai-usage";
 
 // A reply can take several model turns; Kie alone has measured 70-80 s per turn.
 export const maxDuration = 300;
@@ -37,19 +38,28 @@ export async function POST(request: NextRequest) {
   const burst = await consumeAiLimits(auth.value, ["assistant_hour"], client.plan_tier);
   if (!burst.allowed) return NextResponse.json({ error: burst.message }, { status: burst.status, headers: burst.retryAfterSeconds ? { "Retry-After": String(burst.retryAfterSeconds) } : undefined });
   let included = false;
-  let why: "day" | "level" | "editing" = "level";
+  let why: "day" | "month" | "level" | "editing" = "level";
+  const weight = EFFORT_INFO[effort].weight;
+  const monthCap = askIncludedPerMonth(client.plan_tier);
   if (editing && !paidPlan) why = "editing";
   else if (allowedEfforts(client.plan_tier).includes(effort)) {
-    const day = await consumeAiLimits(auth.value, Array<"assistant_day">(EFFORT_INFO[effort].weight).fill("assistant_day"), client.plan_tier);
-    if (day.allowed) included = true;
-    else if (day.status === 503) return NextResponse.json({ error: day.message }, { status: 503 });
-    else why = "day";
+    // The month first (counted from ai_usage), then the day (2026-10-20).
+    const used = await askUnitsThisMonth(auth.value);
+    if (used !== null && used + weight > monthCap) why = "month";
+    else {
+      const day = await consumeAiLimits(auth.value, Array<"assistant_day">(weight).fill("assistant_day"), client.plan_tier);
+      if (day.allowed) included = true;
+      else if (day.status === 503) return NextResponse.json({ error: day.message }, { status: 503 });
+      else why = "day";
+    }
   }
   const cap = creditCapFor(effort, editing);
   if (!included) {
     const balance = await creditBalance(client.id);
     if (balance < cap) {
-      const reason = why === "day"
+      const reason = why === "month"
+        ? `You've used this month's ${monthCap.toLocaleString("en-US")} included Ask messages (they come back on ${nextMonthStart()}).`
+        : why === "day"
         ? `You've used today's ${aiLimitFor("assistant_day", client.plan_tier).limit} included Ask messages.`
         : why === "editing"
           ? "Editing with Ask on the Free plan uses credits."
@@ -94,6 +104,7 @@ export async function POST(request: NextRequest) {
       if (!charged) console.error("assistant: charge failed after reply", client.id, credits);
     }
     console.info("assistant usage", JSON.stringify({ client: client.id, model: result.model, effort, included, credits, ...result.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+    logAiUsage({ feature: "ask", provider: result.provider, model: result.model, clientId: client.id, userId: auth.value, brandId, usage: result.usage, usd, credits, included, units: included ? weight : 0, meta: { effort, editing, ...(included ? {} : { why }) } });
     return NextResponse.json({ ...result, credits });
   } catch (err) {
     if (err instanceof AssistantUnavailableError) return NextResponse.json({ error: err.message }, { status: 503 });

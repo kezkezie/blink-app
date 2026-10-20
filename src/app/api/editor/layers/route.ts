@@ -6,6 +6,7 @@ import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from
 import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
 import { validateLayers } from "@/lib/editor/layers";
 import { requestWorkspace } from "@/lib/brand-access";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Split a flat design into layers (2026-10-13): Claude reads where every piece of text is, how
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
   try { raw = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch { /* checked below */ }
   const layers = validateLayers(raw, FREE);
   console.info("editor layers usage", JSON.stringify({ client: client.id, model, ok: !!layers, texts: layers?.texts.length ?? 0, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "split_layers", provider: provider.name, model, clientId: client.id, userId: auth.value, usage: { input: out?.usage?.input_tokens, output: out?.usage?.output_tokens }, usd, credits: res?.ok && layers ? meteredCredits(usd, CAP, 2) : 0, ok: !!layers });
   if (!res?.ok || !layers) return NextResponse.json({ error: "Couldn't find text or a logo in this image. Nothing was charged." }, { status: 422 });
   const credits = meteredCredits(usd, CAP, 2);
   if (!(await chargeCredits(client.id, credits, "Editor: split a design into layers", body.brandId as string | undefined))) console.error("layers: charge failed", client.id, credits);

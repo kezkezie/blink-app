@@ -7,6 +7,7 @@ import {
   DIRECTION_SYSTEM, REF_SEARCH_SYSTEM, directionPrompt, imageTypeOf, previewImageFrom, refSearchPrompt, validateDirection, validatePages, validateVisualRefs,
   type VisualRef, type VisualRefs,
 } from "@/lib/visual-refs";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Visual references, server side (2026-10-16; lib/visual-refs.ts). Two Claude calls: web search
@@ -91,6 +92,7 @@ export async function runVisualRefs(brandId: string, clientId: string, refresh =
   spend(looked);
   const checked = validateDirection(jsonFrom(textOf(looked)), pictures.map((p) => p.ref));
   console.info("visual refs usage", JSON.stringify({ brand: brandId, model, pages: pages.length, pictures: pictures.length, ok: !!checked, usd: Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "visual_refs", provider: provider.name, model, brandId, usd, ok: !!checked, meta: { pages: pages.length, pictures: pictures.length } });
   if (!checked) return { ok: false, status: 502, error: "Couldn't read the references this time. Try again." };
   const value: VisualRefs = { ...checked, at: new Date().toISOString() };
   await supabaseAdmin.from("brand_profiles").update({ visual_refs: value, visual_refs_at: value.at }).eq("id", brandId).eq("client_id", clientId);

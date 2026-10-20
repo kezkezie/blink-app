@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
 import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { requestWorkspace } from "@/lib/brand-access";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Editor → "Make a vector": Claude draws clean, editable SVG (shapes, icons, badges, simple logos)
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
   console.info("vector usage", JSON.stringify({ user: auth.value, ...data.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
   const svg = text.match(/<svg[\s\S]*<\/svg>/i)?.[0];
+  logAiUsage({ feature: "vector", provider: provider.name, model: ASSISTANT_MODEL, userId: auth.value, clientId: payer, usage: { input: data.usage?.input_tokens, output: data.usage?.output_tokens }, usd, credits: res.ok && svg && payer ? meteredCredits(usd, VECTOR_CAP, 2) : 0, ok: res.ok && !!svg });
   if (!res.ok || !svg) return NextResponse.json({ error: "Couldn't draw that. Try describing it differently." }, { status: 502 });
   // Charged only for a drawing that came back.
   let credits = 0;

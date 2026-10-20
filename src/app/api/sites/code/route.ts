@@ -9,6 +9,7 @@ import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
 import { runSiteRefs } from "@/lib/sites/site-refs-server";
 import { CODE_SYSTEM, SITE_LOOKS, SITE_PAGE_CREDITS, checkHtml, codeUserPrompt, extractHtml, fillImages, lookOf, pageTitle } from "@/lib/sites/code";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * POST { brandId, look, brief? }: Claude writes one landing page as a single HTML file (lib/sites/
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest) {
 
     const usd = estimateUsd(model, { input: usage.input_tokens ?? 0, output: usage.output_tokens ?? 0 });
     console.info("site code usage", JSON.stringify({ user: auth.value, brand: brandId, look, model, ...usage, stop, failed: failed || null, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+    logAiUsage({ feature: "site_page", provider: provider.name, model, clientId: client.id, userId: auth.value, brandId, usage: { input: usage.input_tokens, output: usage.output_tokens }, usd, credits: failed ? 0 : SITE_PAGE_CREDITS, ok: !failed, meta: { look } });
     const raw = failed ? null : extractHtml(out);
     const checked = raw ? checkHtml(fillImages(raw, images, brain.logoUrl)) : null;
     if (!checked?.ok) {

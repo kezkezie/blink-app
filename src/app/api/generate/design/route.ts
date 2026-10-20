@@ -6,6 +6,7 @@ import { workspaceFor } from "@/lib/brand-access";
 import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { DESIGN_SYSTEM, designUserPrompt, validateDesign } from "@/lib/design-pass";
 import { jsonFrom } from "@/lib/brand-research";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * POST { brandId, look, requirements }: the design pass before Generate renders on Best or Fast
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
   const design = validateDesign(jsonFrom(text));
   const usd = estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0, cacheRead: data.usage?.cache_read_input_tokens ?? 0, cacheWrite: data.usage?.cache_creation_input_tokens ?? 0 });
   console.info("design pass usage", JSON.stringify({ brand: brandId, look, model, ...data.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "design_pass", provider: provider.name, model, clientId: ws?.clientId, userId: auth.value, brandId, usage: { input: data.usage?.input_tokens, output: data.usage?.output_tokens, cacheRead: data.usage?.cache_read_input_tokens, cacheWrite: data.usage?.cache_creation_input_tokens }, usd, meta: { look } });
   if (!design) return NextResponse.json({ error: "Design came back unclear." }, { status: 502 });
   return NextResponse.json(design);
 }

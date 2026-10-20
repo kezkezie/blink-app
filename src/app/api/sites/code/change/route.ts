@@ -8,6 +8,7 @@ import { brandArg } from "@/lib/credits-meter";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
 import { CHANGE_SYSTEM, SITE_CHANGE_CREDITS, applyEdits, changeUserPrompt, checkHtml, extractHtml, fillImages } from "@/lib/sites/code";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * POST { id, instruction }: the owner's change to a page, made by Claude as edit blocks (cheap and
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
     if (again) { next = again; how = "whole-retry"; }
   }
   console.info("site change usage", JSON.stringify({ user: auth.value, page: id, model, how, usd: Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "site_change", provider: provider.name, model, clientId: client?.id, userId: auth.value, brandId: page?.brand_id, usd, credits: SITE_CHANGE_CREDITS, meta: { how } });
   if (!next) return fail(502, "Couldn't make that change this time. Try saying it another way.");
   const checked = checkHtml(fillImages(next, images, brain?.logoUrl ?? null));
   if (!checked.ok) return fail(502, checked.error);

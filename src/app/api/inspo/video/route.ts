@@ -7,6 +7,7 @@ import { runAssistantTool } from "@/lib/assistant/tools";
 import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
 import { validatePlan, validateRecipe } from "@/lib/video-inspo/plan";
 import { requestWorkspace } from "@/lib/brand-access";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Video Inspo (Kezie, 2026-10-12: "steal" a video's style for your own brand). Claude can't watch
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
   try { raw = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch { /* checked below */ }
   const result = mode === "edit" ? validateRecipe(raw, duration) : validatePlan(raw, shots.length);
   console.info("video inspo usage", JSON.stringify({ client: client.id, mode, shots: shots.length, model, ok: !!result, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "video_inspo", provider: provider.name, model, clientId: client.id, userId: auth.value, brandId, usage: { input: out?.usage?.input_tokens, output: out?.usage?.output_tokens }, usd, credits: res?.ok && result ? meteredCredits(usd, cap, mode === "edit" ? 2 : 3) : 0, ok: !!result, meta: { mode, shots: shots.length } });
   if (!res?.ok || !result) return NextResponse.json({ error: "Couldn't read that video this time. Nothing was charged; try again." }, { status: 502 });
 
   const credits = meteredCredits(usd, cap, mode === "edit" ? 2 : 3);

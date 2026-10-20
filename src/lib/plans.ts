@@ -16,6 +16,14 @@
 export type PlanTier = "free" | "starter" | "pro" | "agency";
 
 export const SIGNUP_CREDITS = 100;
+
+/**
+ * Ask BlinkSpot messages included each month (Kezie, 2026-10-20): at about $0.02 a message, the
+ * daily allowances alone let a heavy user cost more than the plan. Each plan's worst case now stays
+ * under about a quarter of its price. The daily limits still apply; past either, messages use credits.
+ */
+export const ASK_INCLUDED_PER_MONTH: Record<PlanTier, number> = { free: 30, starter: 300, pro: 600, agency: 1500 };
+export const askIncludedPerMonth = (plan: unknown) => ASK_INCLUDED_PER_MONTH[planOf(plan)];
 /** Credit packs, from Starter up. $0.01 a credit (about 50% margin), a little off on the big ones. */
 export const CREDIT_PACKS = [
   { id: "pack_300", credits: 300, usd: 3 },
@@ -72,24 +80,24 @@ export const PLANS: PlanCard[] = [
     id: "free", name: "Free", price: { monthly: 0, weekly: 0 }, brands: 1,
     credits: { monthly: `${SIGNUP_CREDITS} credits to start`, weekly: `${SIGNUP_CREDITS} credits to start` },
     note: "One brand, try everything",
-    features: ["1 brand", `${SIGNUP_CREDITS} credits once to try every AI feature`, "Image and video editors, publish and schedule", "Ask BlinkSpot, 10 messages a day included", `Share your brand with ${SHARE_SEATS.free} people`],
+    features: ["1 brand", `${SIGNUP_CREDITS} credits once to try every AI feature`, "Image and video editors, publish and schedule", `Ask BlinkSpot, ${ASK_INCLUDED_PER_MONTH.free} messages a month included`, `Share your brand with ${SHARE_SEATS.free} people`],
   },
   {
     id: "starter", name: "Starter", price: { monthly: 25, weekly: 7 }, brands: 3,
     credits: { monthly: "1,500 credits a month", weekly: "350 credits a week" },
     note: "A few brands, posting weekly",
-    features: ["3 brands", "Top up credits any time, from $3", "Ask BlinkSpot, 80 messages a day, up to Thorough", "Editing with Ask included", `Share each brand with ${SHARE_SEATS.starter} people`],
+    features: ["3 brands", "Top up credits any time, from $3", `Ask BlinkSpot, ${ASK_INCLUDED_PER_MONTH.starter} messages a month, up to Thorough`, "Editing with Ask included", `Share each brand with ${SHARE_SEATS.starter} people`],
   },
   {
     id: "pro", name: "Pro", price: { monthly: 49, weekly: 14 }, brands: 6, popular: true,
     credits: { monthly: "3,000 credits a month", weekly: "750 credits a week" },
     note: "Growing teams, approvals",
-    features: ["6 brands", "Everything in Starter", "Send posts for approval", "Ask BlinkSpot, 250 messages a day, up to Extra high", `Share each brand with ${SHARE_SEATS.pro} people`],
+    features: ["6 brands", "Everything in Starter", "Send posts for approval", `Ask BlinkSpot, ${ASK_INCLUDED_PER_MONTH.pro} messages a month, up to Extra high`, `Share each brand with ${SHARE_SEATS.pro} people`],
   },
   {
     id: "agency", name: "Agency", price: { monthly: 99, weekly: 29 }, brands: 10,
     credits: { monthly: "6,000 credits a month", weekly: "1,500 credits a week" },
     note: "Client work at volume",
-    features: ["10 brands, archive and swap clients", "Everything in Pro", "Ask BlinkSpot, 600 messages a day, every level", `Share each brand with ${SHARE_SEATS.agency} people`, "Priority support"],
+    features: ["10 brands, archive and swap clients", "Everything in Pro", `Ask BlinkSpot, ${ASK_INCLUDED_PER_MONTH.agency.toLocaleString("en-US")} messages a month, every level`, `Share each brand with ${SHARE_SEATS.agency} people`, "Priority support"],
   },
 ];

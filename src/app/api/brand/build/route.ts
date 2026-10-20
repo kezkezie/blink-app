@@ -3,6 +3,7 @@ import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
 import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Brand builder: from a few lines about a business, propose a complete starter identity (name ideas,
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
   const data = (await res.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
   const usd = estimateUsd(ASSISTANT_MODEL, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 });
   console.info("brand build usage", JSON.stringify({ user: auth.value, ...data.usage, usd: usd === null ? null : Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "brand_build", provider: provider.name, model: ASSISTANT_MODEL, userId: auth.value, usage: { input: data.usage?.input_tokens, output: data.usage?.output_tokens }, usd });
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
   let out: Record<string, unknown>;
   try { out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch { return NextResponse.json({ error: "Couldn't put the brand together. Try again." }, { status: 502 }); }

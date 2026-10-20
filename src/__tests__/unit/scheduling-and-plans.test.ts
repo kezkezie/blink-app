@@ -71,7 +71,9 @@ describe("plans (Kezie, 2026-10-11)", () => {
   it("free gets credits once, not every month; the top-up keeps a margin over the $0.005 credit cost", () => {
     const free = PLANS.find((p) => p.id === "free")!;
     expect(free.credits.monthly).toBe(`${SIGNUP_CREDITS} credits to start`);
-    expect(free.features.join(" ")).not.toMatch(/a month/);
+    // Credits are never monthly on Free (Ask's included messages are, since 2026-10-20).
+    expect(free.features.filter((f) => /credit/i.test(f)).join(" ")).not.toMatch(/a month|monthly/);
+    expect(free.features.join(" ")).toMatch(/Ask BlinkSpot, 30 messages a month/);
     expect(TOP_UP.usd / (TOP_UP.credits * 0.005)).toBeGreaterThanOrEqual(1.5);
   });
 });

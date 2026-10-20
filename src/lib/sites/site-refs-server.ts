@@ -4,6 +4,7 @@ import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assista
 import { jsonFrom, validateResearch } from "@/lib/brand-research";
 import { extractInspiration } from "./inspiration";
 import { PATTERNS_SYSTEM, SITE_SEARCH_SYSTEM, patternsPrompt, siteSearchPrompt, validatePatterns, validateSiteRefs, validateSites, type SiteRefs } from "./site-refs";
+import { logAiUsage } from "@/lib/ai-usage";
 
 /**
  * Website research, server side (lib/sites/site-refs.ts). Two Claude calls (web search, then the
@@ -59,6 +60,7 @@ export async function runSiteRefs(brandId: string, clientId: string, opts: { ref
   // 3. The patterns to follow.
   const patterns = validatePatterns(jsonFrom(await call({ model, max_tokens: 1500, system: PATTERNS_SYSTEM, messages: [{ role: "user", content: patternsPrompt(name, industry, shapes) }] }, 60_000)));
   console.info("site refs usage", JSON.stringify({ brand: brandId, model, found: sites.length, opened: shapes.length, ok: !!patterns, usd: Number(usd.toFixed(4)) }));
+  logAiUsage({ feature: "site_refs", provider: provider.name, model, brandId, usd, ok: !!patterns, meta: { found: sites.length } });
   if (!patterns) return { ok: false, status: 502, error: "Couldn't read the websites this time. Try again." };
   const value: SiteRefs = {
     sites: shapes.map(({ ref, shape }) => ({ ...ref, host: new URL(ref.url).hostname.replace(/^www\./, ""), dark: shape.dark, fonts: shape.fonts })),

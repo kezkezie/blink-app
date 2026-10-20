@@ -1,4 +1,5 @@
 import { LLM_TASKS, type LlmTask, type LlmTaskConfig } from "./models";
+import { logAiUsage, openAiUsd } from "@/lib/ai-usage";
 
 /**
  * Provider-neutral completion for every AI helper route.
@@ -87,6 +88,8 @@ async function callOpenAi(opts: CompleteOptions, cfg: LlmTaskConfig): Promise<st
     }
     if (response.ok) {
       const data = await response.json();
+      const input = Number(data?.usage?.prompt_tokens) || 0, output = Number(data?.usage?.completion_tokens) || 0;
+      logAiUsage({ feature: opts.task, provider: "openai", model: cfg.model, usage: { input, output }, usd: openAiUsd(cfg.model, input, output) });
       const content = data?.choices?.[0]?.message?.content;
       if (typeof content !== "string") throw new LlmError("AI service returned no content", response.status);
       return content;
