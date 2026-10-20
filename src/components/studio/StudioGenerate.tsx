@@ -17,6 +17,7 @@ import type { VisualRefs } from "@/lib/visual-refs";
 import { thumbUrl } from "./media";
 import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage, type ImageEngine } from "./generate-image";
 import { SensitiveGuide } from "./SensitiveGuide";
+import { useKept } from "@/lib/drafts";
 import { sensitiveKind } from "@/lib/sensitive-subjects";
 
 /**
@@ -44,12 +45,14 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name);
-  const [idea, setIdea] = useState(initialIdea ?? "");
+  // Kept on this device per brand (2026-10-20), unless a link brought its own idea.
+  const keep = `generate:${activeBrand?.id ?? "none"}`;
+  const [idea, setIdea] = useKept(`${keep}:idea`, initialIdea ?? "", !!initialIdea);
   const [concepts, setConcepts] = useState<CreativeConcept[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
-  const [brief, setBrief] = useState("");
-  const [look, setLook] = useState<GenerateLook | null>(null);
-  const [words, setWords] = useState("");
+  const [brief, setBrief] = useKept(`${keep}:brief`, "", !!initialIdea);
+  const [look, setLook] = useKept<GenerateLook | null>(`${keep}:look`, null);
+  const [words, setWords] = useKept(`${keep}:words`, "", !!initialIdea);
   const [logoOn, setLogoOn] = useState<boolean | null>(null);
   const [basedOn, setBasedOn] = useState<string | null>(null);
   const [research, setResearch] = useState<BrandResearch | null | undefined>(undefined);
@@ -58,9 +61,9 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
   const [visualFor, setVisualFor] = useState<string | null>(null);
   const [studying, setStudying] = useState(false);
   const [showRefs, setShowRefs] = useState(false);
-  const [format, setFormat] = useState<(typeof FORMATS)[number]>("4:5");
-  const [quality, setQuality] = useState<Quality>("best");
-  const [count, setCount] = useState(1);
+  const [format, setFormat] = useKept<(typeof FORMATS)[number]>(`${keep}:format`, "4:5");
+  const [quality, setQuality] = useKept<Quality>(`${keep}:quality`, "best");
+  const [count, setCount] = useKept(`${keep}:count`, 1);
   const [refs, setRefs] = useState<Array<{ url: string; preview: string }>>([]);
   const [thinking, setThinking] = useState<"research" | "ideas" | "brief" | null>(null);
   const [busy, setBusy] = useState(false);

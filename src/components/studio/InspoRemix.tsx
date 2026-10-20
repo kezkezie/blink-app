@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Film, ImagePlus, LayoutTemplate, Link2, Loader2, RotateCcw, Sparkles, Upload, X } from "lucide-react";
 import { toast } from "sonner";
+import { useKept } from "@/lib/drafts";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
@@ -35,7 +36,8 @@ export function InspoRemix() {
   const [link, setLink] = useState("");
   const [importing, setImporting] = useState(false);
   const [picking, setPicking] = useState(false);
-  const [purpose, setPurpose] = useState("");
+  // Kept on this device per brand (2026-10-20).
+  const [purpose, setPurpose] = useKept(`remix:${activeBrand?.id ?? "none"}:purpose`, "");
   const [format, setFormat] = useState<(typeof FORMATS)[number]>("4:5");
   const [engine, setEngine] = useState<(typeof ENGINES)[number]["id"]>("nb2");
   const [busy, setBusy] = useState(false);

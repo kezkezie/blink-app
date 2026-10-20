@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { Clapperboard, Compass, ExternalLink, Loader2, Sparkles, X } from "lucide-react";
 import { styleLine, type MotionStyleIdea } from "@/lib/motion/inspo";
 import { toast } from "sonner";
+import { useKept } from "@/lib/drafts";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useBrandKit } from "@/components/studio/generate-image";
 import { MOTION_CREDITS, type MotionShape, type MotionSpec } from "@/lib/motion/spec";
@@ -32,10 +33,12 @@ export function MotionBin({ clientId, shape, initialPrompt, pictureId, onAdded }
 }) {
   const { activeBrand } = useBrandStore();
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name ?? undefined);
-  const [prompt, setPrompt] = useState(initialPrompt ?? "");
+  // Kept on this device per brand (2026-10-20): the brief and the plan (it cost credits).
+  const keep = `motion:${activeBrand?.id ?? "none"}`;
+  const [prompt, setPrompt] = useKept(`${keep}:prompt`, initialPrompt ?? "", !!initialPrompt);
   const [busy, setBusy] = useState(false);
-  const [spec, setSpec] = useState<MotionSpec | null>(null);
-  const [pictures, setPictures] = useState<Array<{ url: string; title: string }>>([]);
+  const [spec, setSpec] = useKept<MotionSpec | null>(`${keep}:spec`, null, !!initialPrompt);
+  const [pictures, setPictures] = useKept<Array<{ url: string; title: string }>>(`${keep}:pictures`, [], !!initialPrompt);
   const [open, setOpen] = useState(false);
   const [made, setMade] = useState<AddedMotion[]>([]);
   const [picture, setPicture] = useState<string | null>(pictureId ?? null);

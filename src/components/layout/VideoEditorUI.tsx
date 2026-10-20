@@ -26,6 +26,7 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { useBrandStore } from "@/app/store/useBrandStore"; // ✨ Added to isolate libraries by brand
 import { useEditorBridge } from "@/components/video/editor-bridge";
+import { clearDraft, draftAge, loadDraft, saveDraft } from "@/lib/drafts";
 import { applyEditOps, type EditorState } from "@/lib/editor-ops";
 import { MotionBin } from "@/components/studio/motion/MotionBin";
 import type { AddedMotion, MotionPlace } from "@/components/studio/motion/MotionStudio";
@@ -167,9 +168,53 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   }, []);
 
   // A queued stack (rendered scenes, or clips picked in the Library) lands on the main track in order.
+  // The timeline is kept on this device (2026-10-20: leaving the editor lost the edit). Files from
+  // the computer are kept too, so their clips come back. Restored before any queued clips land.
+  type VideoDraft = { assets: MediaAsset[]; videoClips: TrackClip[]; audioClips: TrackClip[]; textLayers: TextLayer[]; canvasAspect: CanvasAspect; fitMode: FitMode };
+  const draftKey = `videoEditor:${activeBrand?.id ?? "none"}`;
+  const [draftReady, setDraftReady] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const d = await loadDraft<VideoDraft>(draftKey);
+      if (!alive) return;
+      const empty = !liveTimeline.current.videoClips.length && !liveTimeline.current.audioClips.length && !liveTimeline.current.textLayers.length;
+      if (d && empty && (d.value.videoClips.length || d.value.audioClips.length || d.value.textLayers.length)) {
+        const relinked = new Map<string, string>();
+        for (const a of d.value.assets) {
+          if (!a.url.startsWith("blob:")) continue;
+          const file = await loadDraft<Blob>(`videoFile:${a.id}`);
+          if (file) relinked.set(a.url, URL.createObjectURL(file.value));
+        }
+        if (!alive) return;
+        const fix = (u: string) => relinked.get(u) ?? u;
+        const usable = (u: string) => !u.startsWith("blob:") || relinked.has(u);
+        setAssets(d.value.assets.filter((a) => usable(a.url)).map((a) => ({ ...a, url: fix(a.url), thumb: fix(a.thumb) })));
+        setVideoClips(d.value.videoClips.filter((c) => usable(c.url)).map((c) => ({ ...c, url: fix(c.url) })));
+        setAudioClips(d.value.audioClips.filter((c) => usable(c.url)).map((c) => ({ ...c, url: fix(c.url) })));
+        setTextLayers(d.value.textLayers);
+        setCanvasAspect(d.value.canvasAspect);
+        setFitMode(d.value.fitMode);
+        toast(`Picked up your edit from ${draftAge(d.at)}.`, { duration: 9000, action: { label: "Start fresh", onClick: () => {
+          setVideoClips([]); setAudioClips([]); setTextLayers([]);
+          void clearDraft(draftKey);
+          d.value.assets.forEach((a) => { if (a.url.startsWith("blob:")) void clearDraft(`videoFile:${a.id}`); });
+        } } });
+      }
+      setDraftReady(true);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+  useEffect(() => {
+    if (!draftReady) return;
+    const t = setTimeout(() => { void saveDraft<VideoDraft>(draftKey, { assets, videoClips, audioClips, textLayers, canvasAspect, fitMode }); }, 1000);
+    return () => clearTimeout(t);
+  }, [draftReady, draftKey, assets, videoClips, audioClips, textLayers, canvasAspect, fitMode]);
+
   const queued = useEditorBridge((b) => b.queue);
   useEffect(() => {
-    if (!queued.length) return;
+    if (!queued.length || !draftReady) return;
     useEditorBridge.setState({ queue: [] });
     const newAssets: MediaAsset[] = [];
     const newClips: TrackClip[] = [];
@@ -183,7 +228,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     }
     setAssets((prev) => [...newAssets, ...prev]);
     setVideoClips((prev) => [...prev, ...newClips]);
-  }, [queued]);
+  }, [queued, draftReady]);
   const [hoveredTrackInfo, setHoveredTrackInfo] = useState<{ type: string, row: number } | null>(null);
 
   const videoTrackCount = Math.max(1, ...videoClips.map(c => (c.trackRow || 0) + 1));
@@ -660,6 +705,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   function processDroppedFile(file: File, trackType: "video" | "audio" | "image", dropTime: number, row: number) {
     const url = URL.createObjectURL(file);
     const newAsset: MediaAsset = { id: crypto.randomUUID(), type: trackType, url, thumb: url, name: file.name, duration: 10 };
+    void saveDraft(`videoFile:${newAsset.id}`, file);
     setAssets((prev) => [newAsset, ...prev]);
     addClipToTimeline(newAsset, trackType === "audio" ? "audio" : "video", dropTime, row);
   }

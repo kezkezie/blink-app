@@ -27,6 +27,7 @@ import { useAskStore } from "../ask-store";
 import { useCredits } from "../hooks";
 import { AI_NEEDS_CREDITS } from "@/lib/plans";
 import { useCanvasBridge } from "./canvas-bridge";
+import { clearDraft, draftAge, loadDraft, saveDraft } from "@/lib/drafts";
 import { canvasSafe, loadImage, originalUrl, paletteOf, penPath, shrinkToBlob, starPoints, type PenAnchor } from "./util";
 
 import { Overlay } from "../Modal";
@@ -202,6 +203,22 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const [brushSize, setBrushSize] = useState(12);
   const [, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
+  // Work kept on this device (2026-10-20: leaving the Editor lost everything). One draft per brand.
+  type EditorDraft = { json: string; sizeId: string; bg: string; from: string | null };
+  const draftKey = `imageEditor:${activeBrand?.id ?? "none"}`;
+  const [draft, setDraft] = useState<{ at: number; value: EditorDraft } | null>(null);
+  const pendingDraft = useRef<string | null>(null);
+  const draftKeyRef = useRef(draftKey);
+  const sizeRef = useRef<string>(SIZES[0].id);
+  const bgRef = useRef("#FFFFFF");
+  const fromRef = useRef<string | null>(initial?.contentId ?? null);
+  useEffect(() => { draftKeyRef.current = draftKey; sizeRef.current = size.id; bgRef.current = bg; }, [draftKey, size, bg]);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void loadDraft<EditorDraft>(draftKey).then((d) => { if (alive) setDraft(d); });
+    return () => { alive = false; };
+  }, [draftKey]);
   const [started, setStarted] = useState(!!initial);
   const pendingPhoto = useRef<PickedImage | null>(initial ?? null);
   // The carousel slide this design came from, if any (kept after the photo is placed).
@@ -231,6 +248,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       h.stack = [...h.stack.slice(0, h.index + 1), snap].slice(-60);
       h.index = h.stack.length - 1;
       bump();
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => { void saveDraft<EditorDraft>(draftKeyRef.current, { json: snap, sizeId: sizeRef.current, bg: bgRef.current, from: fromRef.current }); }, 700);
     }, 120);
   }, [snapshot, bump]);
   const restore = useCallback(async (to: number) => {
@@ -647,6 +666,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     if (kind === "transparent") setBg("transparent");
     if (kind === "blank") setBg("#FFFFFF");
     if (photo) pendingPhoto.current = photo;
+    fromRef.current = photo?.contentId ?? null;
     setStarted(true);
   }
   useEffect(() => {
@@ -655,6 +675,39 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     pendingPhoto.current = null;
     void addImage(p.url, "Photo", true).catch(() => toast.error("Couldn't load that photo."));
   }, [started, addImage]);
+  useEffect(() => {
+    const json = pendingDraft.current;
+    const c = cv.current;
+    if (!started || !json || !c) return;
+    pendingDraft.current = null;
+    history.current.restoring = true;
+    void c.loadFromJSON(json).then(() => { c.requestRenderAll(); history.current.restoring = false; record(); bump(); toast.success("Picked up where you left off."); })
+      .catch(() => { history.current.restoring = false; toast.error("Couldn't restore that draft."); });
+  }, [started, record, bump]);
+  function continueDraft() {
+    if (!draft) return;
+    const s = SIZES.find((x) => x.id === draft.value.sizeId) ?? SIZES[0];
+    setSize(s); setBg(draft.value.bg);
+    fromRef.current = draft.value.from;
+    pendingDraft.current = draft.value.json;
+    setStarted(true);
+  }
+  function discardDraft() { void clearDraft(draftKey); setDraft(null); }
+  // Back on the same post with edits that weren't saved: offer them back.
+  const offered = useRef(false);
+  useEffect(() => {
+    if (offered.current || !draft || !started || !initial?.contentId || draft.value.from !== initial.contentId) return;
+    offered.current = true;
+    toast(`You have unsaved edits to this picture from ${draftAge(draft.at)}.`, {
+      duration: 12000,
+      action: { label: "Restore", onClick: () => {
+        const c = cv.current;
+        if (!c) return;
+        history.current.restoring = true;
+        void c.loadFromJSON(draft.value.json).then(() => { c.requestRenderAll(); history.current.restoring = false; record(); bump(); });
+      } },
+    });
+  }, [draft, started, initial?.contentId, record, bump]);
 
   // ---------- selection actions
   function removeActive() {
@@ -1124,6 +1177,13 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       <div className="max-w-[1000px] mx-auto p-4 md:p-8">
         <h2 className="text-2xl font-semibold tracking-tight mb-1">Editor</h2>
         <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Layers, shapes, pen and brush, real text, and AI right on the canvas: remove a background, swap a face, turn a photo into vectors, or ask for a logo.</p>
+        {draft && (
+          <div className="s-card p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: "var(--s-accent)" }}>
+            <div className="flex-1 min-w-[200px]"><b className="text-sm">Pick up where you left off</b><p className="text-xs" style={{ color: "var(--s-mute)" }}>Your design from {draftAge(draft.at)}, kept on this device.</p></div>
+            <button className="s-btn primary sm" onClick={continueDraft}>Continue</button>
+            <button className="s-btn ghost sm" onClick={discardDraft}>Discard</button>
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-3 mb-8">
           <button className="s-card p-5 text-left flex flex-col gap-2" onClick={() => setPicking("photo")}><ImagePlus className="h-5 w-5" style={{ color: "var(--s-accent)" }} /><b className="text-sm">Start from a photo</b><span className="text-xs" style={{ color: "var(--s-mute)" }}>From your Library or your device</span></button>
           <div className="s-card p-5 text-left flex flex-col gap-2">
