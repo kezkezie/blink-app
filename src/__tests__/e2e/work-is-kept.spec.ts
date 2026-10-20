@@ -32,6 +32,7 @@ test("the Image Editor, Generate and the video editor keep work across pages", a
     const { data: c } = await sb.from("clients").insert({ user_id: u.user!.id, company_name: "Kept Tester", contact_name: "Kept Tester", contact_email: email, plan_tier: "starter", onboarding_status: "active" }).select("id").single();
     clientId = c!.id;
     const { data: b } = await sb.from("brand_profiles").insert({ client_id: clientId, brand_name: "Kasi Kicks", is_active: true }).select("id").single();
+    await sb.from("brand_profiles").insert({ client_id: clientId, brand_name: "Second Shop", is_active: true });
     await sb.from("content").insert({ client_id: clientId, brand_id: b!.id, content_type: "video", status: "draft", caption: "E2E clip", video_urls: [`${EX}/kasi-reveal.mp4`] });
     await signIn(page, email, password);
 
@@ -44,12 +45,40 @@ test("the Image Editor, Generate and the video editor keep work across pages", a
     const box = (await cv.boundingBox())!;
     await page.getByRole("button", { name: /^Pen \(P\)/ }).click();
     for (const [x, y] of [[0.3, 0.3], [0.7, 0.3], [0.5, 0.6], [0.3, 0.3]] as const) { await page.mouse.click(box.x + box.width * x, box.y + box.height * y); await page.waitForTimeout(150); }
-    await page.waitForTimeout(1500); // saved a moment after the change
-    await page.goto(`${BASE}/studio/library`);
+    // Leave at once by the rail (no waiting for the save): the work is written as the editor closes,
+    // and it opens by itself on the way back (2026-10-20: no Continue button).
+    const objects = () => page.evaluate(() => (window as unknown as Win).__blinkEditorCanvas?.getObjects().length ?? 0);
+    await page.getByRole("link", { name: "Library" }).first().click();
+    await page.waitForURL(/\/studio\/library/);
+    await page.getByRole("link", { name: "Create" }).first().click();
     await page.goto(`${BASE}/studio/image?mode=design`);
-    await expect(page.getByText("Pick up where you left off")).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Continue" }).click();
-    await expect.poll(() => page.evaluate(() => (window as unknown as Win).__blinkEditorCanvas?.getObjects().length ?? 0), { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect.poll(objects, { timeout: 15_000 }).toBe(1);
+    await expect(page.getByText(/Picked up where you left off/)).toBeVisible();
+    // Another Image Studio tab and back: still there.
+    await page.getByRole("tab", { name: "Generate" }).click();
+    await page.getByRole("tab", { name: "Editor" }).click();
+    await expect.poll(objects, { timeout: 15_000 }).toBe(1);
+    // Another brand has its own canvas; coming back brings this brand's triangle back.
+    await page.getByRole("button", { name: "Switch brand" }).click();
+    await page.getByRole("menuitem", { name: /Second Shop/ }).click();
+    await expect(page.getByRole("button", { name: "Blank canvas, white" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Blank canvas, white" }).click();
+    await page.waitForTimeout(1000);
+    await page.getByRole("button", { name: /^Rectangle|^Shapes/ }).first().click();
+    const b2 = (await page.locator("canvas.upper-canvas").boundingBox())!;
+    await page.mouse.click(b2.x + b2.width * 0.5, b2.y + b2.height * 0.5);
+    await page.mouse.click(b2.x + b2.width * 0.2, b2.y + b2.height * 0.2);
+    await expect.poll(objects, { timeout: 10_000 }).toBeGreaterThan(0);
+    const second = await objects();
+    await page.getByRole("button", { name: "Switch brand" }).click();
+    await page.getByRole("menuitem", { name: /Kasi Kicks/ }).click();
+    await expect.poll(objects, { timeout: 15_000 }).toBe(1);
+    await page.getByRole("button", { name: "Switch brand" }).click();
+    await page.getByRole("menuitem", { name: /Second Shop/ }).click();
+    await expect.poll(objects, { timeout: 15_000 }).toBe(second);
+    await page.getByRole("button", { name: "Switch brand" }).click();
+    await page.getByRole("menuitem", { name: /Kasi Kicks/ }).click();
+    await expect.poll(objects, { timeout: 15_000 }).toBe(1);
 
     // 2. Generate: the brief comes back.
     await page.goto(`${BASE}/studio/image?mode=generate`);

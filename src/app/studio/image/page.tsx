@@ -98,6 +98,7 @@ function ImageStudioInner() {
   // NUF FARMS poster edited while "mama njeri kitchen" was active got Mama Njeri's name painted on).
   // Once per post: switching brand by hand afterwards is left alone.
   const availableBrands = useBrandStore((s) => s.availableBrands);
+  const activeBrandId = useBrandStore((s) => s.activeBrand?.id ?? null);
   const switchedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!pickedBrand || switchedFor.current === pickedBrand) return;
@@ -161,7 +162,11 @@ function ImageStudioInner() {
         )
       )}
 
-      {mode === "design" && (loadingPick ? <div className="p-6"><div className="s-skel h-80" /></div> : <ImageEditor key={designKey} initial={picked} />)}
+      {/* One editor per brand (2026-10-20): switching brand saves this brand's design and opens that brand's last one.
+          A Library picture opens in its own brand; after a manual switch the other brand's work shows instead. */}
+      {mode === "design" && (loadingPick ? <div className="p-6"><div className="s-skel h-80" /></div> : (
+        <ImageEditor key={`${designKey}:${activeBrandId ?? "none"}`} initial={picked && (!pickedBrand || pickedBrand === activeBrandId) ? picked : null} />
+      ))}
     </div>
   );
 }

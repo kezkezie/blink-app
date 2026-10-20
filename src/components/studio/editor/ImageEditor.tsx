@@ -7,12 +7,13 @@ import {
   FabricObject, Group, filters, Circle as FabricCircle, Point, cache as fabricCache, type TPointerEventInfo, type TPointerEvent,
 } from "fabric";
 import { EraserBrush } from "@erase2d/fabric";
+import { Reorder, useDragControls } from "framer-motion";
 import {
   MousePointer2, Hand, Type, Square, Circle, Minus, Star, Hexagon, PenTool, Brush, Eraser, ImagePlus, Sparkles,
   Undo2, Redo2, Download, Save, Trash2, Copy, Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown, Loader2,
   Scissors, Wand2, Shapes, ZoomIn, Upload as UploadIcon, LayoutTemplate, ZoomOut, Maximize, Layers as LayersIcon, Ungroup, X, UserRound, Film,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
-  LassoSelect, WandSparkles,
+  LassoSelect, WandSparkles, GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -213,22 +214,24 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const [brushSize, setBrushSize] = useState(12);
   const [, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
-  // Work kept on this device (2026-10-20: leaving the Editor lost everything). One draft per brand.
+  // Work kept on this device, reopened by itself (2026-10-20, Kezie: "when we go to other tabs and
+  // come back ... it will still be there; when we switch brands, these things should switch"). One
+  // draft per brand and picture (`imageEditor:<brand>:<post | canvas>`); each brand remembers its last.
+  // The editor remounts per brand (image page), so a brand switch saves this one and opens that one.
   type EditorDraft = { json: string; sizeId: string; bg: string; from: string | null };
-  const draftKey = `imageEditor:${activeBrand?.id ?? "none"}`;
-  const [draft, setDraft] = useState<{ at: number; value: EditorDraft } | null>(null);
+  const brandBase = `imageEditor:${activeBrand?.id ?? "none"}`;
+  const keyFor = (from: string | null) => `${brandBase}:${from ?? "canvas"}`;
+  const lastPointer = `editor:last:${brandBase}`;
   const pendingDraft = useRef<string | null>(null);
-  const draftKeyRef = useRef(draftKey);
   const sizeRef = useRef<string>(SIZES[0].id);
   const bgRef = useRef("#FFFFFF");
   const fromRef = useRef<string | null>(initial?.contentId ?? null);
-  useEffect(() => { draftKeyRef.current = draftKey; sizeRef.current = size.id; bgRef.current = bg; }, [draftKey, size, bg]);
+  useEffect(() => { sizeRef.current = size.id; bgRef.current = bg; }, [size, bg]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    let alive = true;
-    void loadDraft<EditorDraft>(draftKey).then((d) => { if (alive) setDraft(d); });
-    return () => { alive = false; };
-  }, [draftKey]);
+  const pendingSave = useRef<(() => void) | null>(null);
+  // Looking for this brand's (or this picture's) draft before anything is drawn.
+  const [restoring, setRestoring] = useState(true);
+  const [reopened, setReopened] = useState<{ at: number; key: string } | null>(null);
   const [started, setStarted] = useState(!!initial);
   const pendingPhoto = useRef<PickedImage | null>(initial ?? null);
   // The carousel slide this design came from, if any (kept after the photo is placed).
@@ -259,9 +262,25 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       h.index = h.stack.length - 1;
       bump();
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => { void saveDraft<EditorDraft>(draftKeyRef.current, { json: snap, sizeId: sizeRef.current, bg: bgRef.current, from: fromRef.current }); }, 700);
+      const key = keyFor(fromRef.current);
+      const value: EditorDraft = { json: snap, sizeId: sizeRef.current, bg: bgRef.current, from: fromRef.current };
+      pendingSave.current = () => {
+        pendingSave.current = null;
+        void saveDraft<EditorDraft>(key, value);
+        try { localStorage.setItem(lastPointer, key); } catch { /* private window */ }
+      };
+      saveTimer.current = setTimeout(() => pendingSave.current?.(), 700);
     }, 120);
-  }, [snapshot, bump]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot, bump, brandBase]);
+  // Unsaved changes are written at once when the page goes away (tab switch, another page, a brand switch).
+  useEffect(() => {
+    const flush = () => { if (saveTimer.current) clearTimeout(saveTimer.current); pendingSave.current?.(); };
+    const onHide = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flush);
+    return () => { document.removeEventListener("visibilitychange", onHide); window.removeEventListener("pagehide", flush); flush(); };
+  }, []);
   const restore = useCallback(async (to: number) => {
     const h = history.current;
     if (to < 0 || to >= h.stack.length || !cv.current) return;
@@ -718,45 +737,76 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     fromRef.current = photo?.contentId ?? null;
     setStarted(true);
   }
+  // The draft first: this picture's (opened from the Library), else this brand's last design. Found,
+  // it opens by itself; the original or a fresh start is one tap away.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      let key: string | null = initial?.contentId ? keyFor(initial.contentId) : null;
+      if (!key && !initial) { try { key = localStorage.getItem(lastPointer); } catch { key = null; } }
+      let d = key ? await loadDraft<EditorDraft>(key) : null;
+      if (!d && !initial) { d = await loadDraft<EditorDraft>(brandBase); if (d) key = brandBase; } // the one-per-brand draft of 10-20
+      if (!alive) return;
+      if (d && key) {
+        setSize(SIZES.find((x) => x.id === d.value.sizeId) ?? SIZES[0]); setBg(d.value.bg);
+        fromRef.current = d.value.from;
+        pendingDraft.current = d.value.json;
+        pendingPhoto.current = null;
+        setReopened({ at: d.at, key });
+        setStarted(true);
+      }
+      setRestoring(false);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brandBase]);
   useEffect(() => {
     const p = pendingPhoto.current;
-    if (!started || !p || !cv.current) return;
+    if (!started || restoring || !p || !cv.current) return;
     pendingPhoto.current = null;
     void addImage(p.url, "Photo", true).catch(() => toast.error("Couldn't load that photo."));
-  }, [started, addImage]);
+  }, [started, restoring, addImage]);
   useEffect(() => {
     const json = pendingDraft.current;
     const c = cv.current;
     if (!started || !json || !c) return;
     pendingDraft.current = null;
     history.current.restoring = true;
-    void c.loadFromJSON(json).then(() => { c.requestRenderAll(); history.current.restoring = false; record(); bump(); toast.success("Picked up where you left off."); })
-      .catch(() => { history.current.restoring = false; toast.error("Couldn't restore that draft."); });
+    void c.loadFromJSON(json).then(() => {
+      c.requestRenderAll(); history.current.restoring = false; record(); bump();
+      const r = reopened;
+      if (!r) return;
+      toast.success(initial ? `Your edits to this picture are back (${draftAge(r.at)}).` : `Picked up where you left off (${draftAge(r.at)}).`, {
+        duration: 8000,
+        action: initial ? { label: "Use the original", onClick: () => void loadOriginal(r.key) } : { label: "Start fresh", onClick: () => startFresh(r.key) },
+      });
+    }).catch(() => { history.current.restoring = false; toast.error("Couldn't reopen your last design."); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, record, bump]);
-  function continueDraft() {
-    if (!draft) return;
-    const s = SIZES.find((x) => x.id === draft.value.sizeId) ?? SIZES[0];
-    setSize(s); setBg(draft.value.bg);
-    fromRef.current = draft.value.from;
-    pendingDraft.current = draft.value.json;
-    setStarted(true);
+  function forget(key: string) {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    pendingSave.current = null;
+    void clearDraft(key);
+    try { if (localStorage.getItem(lastPointer) === key) localStorage.removeItem(lastPointer); } catch { /* private window */ }
   }
-  function discardDraft() { void clearDraft(draftKey); setDraft(null); }
-  // Back on the same post with edits that weren't saved: offer them back.
-  const offered = useRef(false);
-  useEffect(() => {
-    if (offered.current || !draft || !started || !initial?.contentId || draft.value.from !== initial.contentId) return;
-    offered.current = true;
-    toast(`You have unsaved edits to this picture from ${draftAge(draft.at)}.`, {
-      duration: 12000,
-      action: { label: "Restore", onClick: () => {
-        const c = cv.current;
-        if (!c) return;
-        history.current.restoring = true;
-        void c.loadFromJSON(draft.value.json).then(() => { c.requestRenderAll(); history.current.restoring = false; record(); bump(); });
-      } },
-    });
-  }, [draft, started, initial?.contentId, record, bump]);
+  /** Back to the blank start screen; the draft is dropped. */
+  function startFresh(key: string) {
+    forget(key);
+    cv.current?.clear();
+    history.current = { stack: [], index: -1, restoring: false };
+    fromRef.current = null;
+    setSize(SIZES[0]); setBg("#FFFFFF"); setStarted(false); setReopened(null);
+  }
+  /** The picture as it is in the Library, without the kept edits. */
+  async function loadOriginal(key: string) {
+    if (!initial) return;
+    forget(key);
+    const c = cv.current;
+    if (!c) return;
+    history.current.restoring = true; c.clear(); history.current.restoring = false;
+    fromRef.current = initial.contentId ?? null;
+    await addImage(initial.url, "Photo", true).catch(() => toast.error("Couldn't load that photo."));
+  }
 
   // ---------- selection actions
   function removeActive() {
@@ -772,6 +822,17 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     const copy = (await o.clone(["id", "name", "erasable", "srcUrl", "anchors", "closed"])) as FObj;
     copy.set({ left: (o.left ?? 0) + 24, top: (o.top ?? 0) + 24, id: uid(), name: `${o.name ?? "Layer"} copy` } as Partial<FObj>);
     add(copy, copy.name ?? "Layer");
+  }
+  /** The layers list is top first, the canvas bottom first; helpers (outlines, marks) stay on top. One undo step, on drop. */
+  function reorderLayers(topFirst: string[]) {
+    const c = canvas();
+    const all = c.getObjects() as FObj[];
+    const ordered = [...topFirst].reverse().map((id) => all.find((o) => o.id === id && !o.excludeFromExport)).filter((o): o is FObj => !!o);
+    history.current.restoring = true;
+    ordered.forEach((o, i) => c.moveObjectTo(o, i));
+    history.current.restoring = false;
+    c.requestRenderAll();
+    bump();
   }
   function arrange(o: FObj, to: "front" | "back" | "forward" | "backward") {
     const c = canvas();
@@ -1485,18 +1546,12 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   }, [started, size, bg, brandColors, paint, zoom, kit?.primaryFont]);
 
   // ---------- start screen
+  if (!started && restoring) return <div className="p-6"><div className="s-skel h-80" aria-label="Opening your last design" /></div>;
   if (!started) {
     return (
       <div className="max-w-[1000px] mx-auto p-4 md:p-8">
         <h2 className="text-2xl font-semibold tracking-tight mb-1">Editor</h2>
         <p className="text-sm mb-6" style={{ color: "var(--s-soft)" }}>Layers, shapes, pen and brush, real text, and AI right on the canvas: remove a background, swap a face, turn a photo into vectors, or ask for a logo.</p>
-        {draft && (
-          <div className="s-card p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: "var(--s-accent)" }}>
-            <div className="flex-1 min-w-[200px]"><b className="text-sm">Pick up where you left off</b><p className="text-xs" style={{ color: "var(--s-mute)" }}>Your design from {draftAge(draft.at)}, kept on this device.</p></div>
-            <button className="s-btn primary sm" onClick={continueDraft}>Continue</button>
-            <button className="s-btn ghost sm" onClick={discardDraft}>Discard</button>
-          </div>
-        )}
         <div className="grid gap-3 sm:grid-cols-3 mb-8">
           <button className="s-card p-5 text-left flex flex-col gap-2" onClick={() => setPicking("photo")}><ImagePlus className="h-5 w-5" style={{ color: "var(--s-accent)" }} /><b className="text-sm">Start from a photo</b><span className="text-xs" style={{ color: "var(--s-mute)" }}>From your Library or your device</span></button>
           <div className="s-card p-5 text-left flex flex-col gap-2">
@@ -1845,25 +1900,26 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
           <div className="flex items-center gap-2 px-3.5 py-2 sticky top-0" style={{ background: "var(--s-panel)" }}>
             <LayersIcon className="h-3.5 w-3.5" style={{ color: "var(--s-mute)" }} /><b className="text-[12px]">Layers</b>
           </div>
-          <div className="px-2 pb-2 grid gap-0.5 grid-cols-[minmax(0,1fr)]">
-            {layers.length === 0 && <p className="text-xs px-2 py-2" style={{ color: "var(--s-mute)" }}>Nothing yet. Add text, a shape or a photo.</p>}
+          {layers.length === 0 && <p className="text-xs px-4 py-2" style={{ color: "var(--s-mute)" }}>Nothing yet. Add text, a shape or a photo.</p>}
+          {/* Drag a layer by its grip to move it up or down the stack (2026-10-20); the arrows still nudge one step. */}
+          <Reorder.Group as="div" axis="y" values={layers.map((o) => o.id ?? "")} onReorder={reorderLayers} className="px-2 pb-2 grid gap-0.5 grid-cols-[minmax(0,1fr)]" aria-label="Layer order">
             {layers.map((o) => {
               const sel = cv.current?.getActiveObjects().includes(o);
               const locked = o.selectable === false;
               return (
-                <div key={o.id} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[12.5px] cursor-pointer"
-                  style={{ background: sel ? "var(--s-raised)" : "transparent", boxShadow: sel ? "inset 2px 0 0 var(--s-accent)" : "none", color: sel ? "var(--s-text)" : "var(--s-soft)", opacity: o.visible === false ? 0.5 : 1 }}
+                <LayerRow key={o.id} id={o.id ?? ""} onDragEnd={() => { record(); bump(); }} className="flex items-center gap-1.5 px-1 py-1.5 rounded-lg text-[12.5px] cursor-pointer"
+                  style={{ background: sel ? "var(--s-raised)" : "var(--s-panel)", boxShadow: sel ? "inset 2px 0 0 var(--s-accent)" : "none", color: sel ? "var(--s-text)" : "var(--s-soft)", opacity: o.visible === false ? 0.5 : 1 }}
                   onClick={() => { if (locked) return; setToolSafe("select"); canvas().setActiveObject(o); canvas().requestRenderAll(); bump(); }}>
-                  <span className="text-[10px] mono w-14 shrink-0" style={{ color: "var(--s-mute)" }}>{typeLabel(o)}</span>
+                  <span className="text-[10px] mono w-12 shrink-0" style={{ color: "var(--s-mute)" }}>{typeLabel(o)}</span>
                   <input data-no-mic className="bg-transparent outline-none flex-1 min-w-0 w-0 truncate" value={o.name ?? ""} onChange={(e) => { o.set({ name: e.target.value } as Partial<FObj>); bump(); record(); }} onBlur={() => record()} aria-label="Layer name" />
                   <button onClick={(e) => { e.stopPropagation(); setProp(o, { visible: o.visible === false }); }} aria-label={o.visible === false ? "Show layer" : "Hide layer"} className="p-0.5">{o.visible === false ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
                   <button onClick={(e) => { e.stopPropagation(); setProp(o, { selectable: locked, evented: locked }); if (!locked) canvas().discardActiveObject(); }} aria-label={locked ? "Unlock layer" : "Lock layer"} className="p-0.5">{locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5 opacity-40" />}</button>
                   <button onClick={(e) => { e.stopPropagation(); arrange(o, "forward"); }} aria-label="Move up" className="p-0.5"><ChevronUp className="h-3.5 w-3.5" /></button>
                   <button onClick={(e) => { e.stopPropagation(); arrange(o, "backward"); }} aria-label="Move down" className="p-0.5"><ChevronDown className="h-3.5 w-3.5" /></button>
-                </div>
+                </LayerRow>
               );
             })}
-          </div>
+          </Reorder.Group>
         </div>
       </aside>
 
@@ -1893,6 +1949,21 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
       )}
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml,.svg" className="hidden" onChange={(e) => { setPicking(null); void onFile(e.target.files?.[0]); e.target.value = ""; }} />
     </div>
+  );
+}
+
+/** A layer row that drags by its grip: the cursor grabs, the row lifts, the others slide out of the way. */
+function LayerRow({ id, onDragEnd, children, className, style, onClick }: { id: string; onDragEnd: () => void; children: React.ReactNode; className: string; style: React.CSSProperties; onClick: () => void }) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item as="div" value={id} dragListener={false} dragControls={controls} onDragEnd={onDragEnd} className={className} style={{ ...style, position: "relative" }} onClick={onClick}
+      whileDrag={{ scale: 1.03, boxShadow: "0 10px 24px rgba(0,0,0,.45)", zIndex: 5, cursor: "grabbing" }} transition={{ type: "spring", stiffness: 520, damping: 38 }}>
+      <span role="button" tabIndex={-1} aria-label="Drag to reorder" title="Drag up or down" className="p-0.5 shrink-0 cursor-grab active:cursor-grabbing touch-none" style={{ color: "var(--s-mute)" }}
+        onPointerDown={(e) => { e.stopPropagation(); controls.start(e); }} onClick={(e) => e.stopPropagation()}>
+        <GripVertical className="h-3.5 w-3.5" />
+      </span>
+      {children}
+    </Reorder.Item>
   );
 }
 

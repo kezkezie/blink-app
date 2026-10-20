@@ -76,3 +76,46 @@ test("editor: transparent start, pen, edit points, eraser, undo", async ({ page 
   expect(await pixels(page)).toBe(edited);
   expect(errors).toEqual([]);
 });
+
+test("editor: drag a layer by its grip to the top of the stack, one undo puts it back", async ({ page }) => {
+  test.skip(!email || !password, "E2E_TEST_EMAIL/PASSWORD not set");
+  test.setTimeout(180_000);
+  await page.goto(`${BASE}/login`);
+  await page.fill('input[type="email"]', email!);
+  await page.fill('input[type="password"]', password!);
+  await page.click('button[type="submit"]');
+  await page.waitForURL(/\/(dashboard|studio)/, { timeout: 120_000 });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${BASE}/studio/image?mode=design`);
+  // A design kept from an earlier run opens by itself: start fresh.
+  const fresh = page.getByRole("button", { name: "Start fresh" });
+  if (await fresh.isVisible({ timeout: 4000 }).catch(() => false)) await fresh.click();
+  await page.getByRole("button", { name: "Blank canvas, transparent" }).click();
+  const cv = page.locator("canvas.upper-canvas");
+  await expect(cv).toBeVisible();
+  await page.waitForTimeout(800);
+  const b = (await cv.boundingBox())!;
+  for (const fx of [0.25, 0.5, 0.75]) {
+    await page.getByRole("button", { name: "Shapes" }).click();
+    await page.mouse.click(b.x + b.width * fx, b.y + b.height * 0.5);
+    await page.waitForTimeout(200);
+  }
+  type W = { __blinkEditorCanvas: { getObjects(): Array<{ id?: string; excludeFromExport?: boolean }> } };
+  const order = () => page.evaluate(() => (window as unknown as W).__blinkEditorCanvas.getObjects().filter((o) => !o.excludeFromExport).map((o) => o.id));
+  const before = await order();
+  expect(before).toHaveLength(3);
+  const grips = page.getByRole("button", { name: "Drag to reorder" });
+  await expect(grips).toHaveCount(3);
+  // The list is top first: the last row is the bottom layer. Drag it above the first row.
+  const from = (await grips.nth(2).boundingBox())!, to = (await grips.nth(0).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, to.y - 6, { steps: 20 });
+  await page.mouse.up();
+  await page.waitForTimeout(800);
+  const after = await order();
+  expect(after[after.length - 1]).toBe(before[0]); // the bottom layer is now on top
+  expect(new Set(after)).toEqual(new Set(before));
+  await page.keyboard.press("Meta+z"); await page.waitForTimeout(1000);
+  expect(await order()).toEqual(before);
+});
