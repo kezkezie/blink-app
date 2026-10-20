@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowUp, CalendarCheck, Check, ChevronUp, Coins, ImagePlus, Loader2, MessageCircle, RotateCcw, Undo2, X } from "lucide-react";
+import { ArrowUp, CalendarCheck, Check, ChevronUp, Coins, FileText, Loader2, MessageCircle, Paperclip, RotateCcw, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useClient } from "@/hooks/useClient";
 import { EFFORTS, EFFORT_INFO, allowedEfforts, creditCapFor, type Effort } from "@/lib/assistant/effort";
@@ -46,6 +46,33 @@ export function AskPanel() {
   const [pics, setPics] = useState<string[]>([]);
   const [uploading, setUploading] = useState(0);
   const picInput = useRef<HTMLInputElement>(null);
+  // Files to read (2026-10-20): PDF, Word, text, CSV, JSON, up to 3.
+  const [docs, setDocs] = useState<Array<{ url: string; name: string }>>([]);
+  const DOC_TYPES = /\.(pdf|docx|txt|md|csv|tsv|json)$/i;
+  async function addDocs(files: File[]) {
+    const ok = files.filter((f) => DOC_TYPES.test(f.name)).slice(0, 3 - docs.length);
+    if (!ok.length || !clientId) return;
+    for (const f of ok) {
+      if (f.size > (f.name.toLowerCase().endsWith(".pdf") ? 15 : 8) * 1024 * 1024) { toast.error(`${f.name} is too big (PDFs up to 15 MB, other files 8 MB).`); continue; }
+      setUploading((n) => n + 1);
+      try {
+        const ext = f.name.split(".").pop()!.toLowerCase();
+        const path = `images/${clientId}/askdoc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+        const { error } = await supabase.storage.from("assets").upload(path, f, { contentType: f.type || "application/octet-stream" });
+        if (error) throw error;
+        setDocs((d) => [...d, { url: supabase.storage.from("assets").getPublicUrl(path).data.publicUrl, name: f.name.slice(0, 80) }].slice(0, 3));
+      } catch { toast.error(`Couldn't add ${f.name}.`); }
+      finally { setUploading((n) => n - 1); }
+    }
+  }
+  function addAttachments(files: File[]) {
+    const pictures = files.filter((f) => /^image\//.test(f.type));
+    const rest = files.filter((f) => !/^image\//.test(f.type));
+    const odd = rest.filter((f) => !DOC_TYPES.test(f.name));
+    if (odd.length) toast.error("Add pictures, or a PDF, Word, text, CSV or JSON file.");
+    if (pictures.length) void addPictures(pictures);
+    if (rest.length) void addDocs(rest);
+  }
   async function addPictures(files: File[]) {
     const ok = files.filter((f) => /^image\/(jpeg|png|webp|gif)$/.test(f.type)).slice(0, 4 - pics.length);
     if (!ok.length) { if (files.length) toast.error("Add a JPG, PNG, WebP or GIF picture (up to 4)."); return; }
@@ -107,15 +134,17 @@ export function AskPanel() {
   async function send(text: string) {
     const t = text.trim();
     const images = pics;
-    if ((!t && !images.length) || busy || uploading) return;
-    const mine: AskMessage = { role: "user", text: t || "What do you think of this?", ...(images.length ? { images } : {}) };
+    const files = docs;
+    if ((!t && !images.length && !files.length) || busy || uploading) return;
+    const mine: AskMessage = { role: "user", text: t || (files.length ? "Please read this." : "What do you think of this?"), ...(images.length ? { images } : {}), ...(files.length ? { files } : {}) };
     push(mine);
     setDraft("");
     setPics([]);
+    setDocs([]);
     setBusy(true);
     setError(null);
     try {
-      const history = [...useAskStore.getState().messages].slice(-20).map((m) => ({ role: m.role, text: m.text, ...(m.images?.length ? { images: m.images } : {}) }));
+      const history = [...useAskStore.getState().messages].slice(-20).map((m) => ({ role: m.role, text: m.text, ...(m.images?.length ? { images: m.images } : {}), ...(m.files?.length ? { files: m.files } : {}) }));
       // In the Video Editor, send the timeline (and a few frames per clip) so the AI can edit it.
       const bridge = useEditorBridge.getState();
       let editor: { timeline: ReturnType<typeof summarizeTimeline>; frames: Awaited<ReturnType<typeof captureTimelineFrames>> } | undefined;
@@ -229,6 +258,11 @@ export function AskPanel() {
                 {m.images.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="Attached" className="h-20 w-20 rounded-lg object-cover" style={{ border: "1px solid var(--s-line)" }} /></a>)}
               </div>
             )}
+            {!!m.files?.length && (
+              <div className="flex flex-wrap gap-1.5 justify-end">
+                {m.files.map((f) => <a key={f.url} href={f.url} target="_blank" rel="noreferrer" className="text-[11.5px] rounded-lg px-2 py-1 flex items-center gap-1.5" style={{ border: "1px solid var(--s-line)" }}><FileText className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} />{f.name}</a>)}
+              </div>
+            )}
             <div className={`msg ${m.role === "user" ? "me" : "ai"}`}>{m.text}</div>
             {m.role === "assistant" && !!m.credits && <span className="text-[10.5px] mono flex items-center gap-1 -mt-1 px-1" style={{ color: "var(--s-mute)" }}><Coins className="h-3 w-3" /> {m.credits} credit{m.credits === 1 ? "" : "s"}</span>}
             {m.actions?.map((a, j) => {
@@ -334,8 +368,14 @@ export function AskPanel() {
         style={{ borderTop: "1px solid var(--s-line)" }}
         onSubmit={(e) => { e.preventDefault(); void send(draft); }}
       >
-        {(pics.length > 0 || uploading > 0) && (
+        {(pics.length > 0 || docs.length > 0 || uploading > 0) && (
           <div className="flex flex-wrap gap-1.5 mb-2">
+            {docs.map((d) => (
+              <span key={d.url} className="relative h-14 max-w-[160px] rounded-lg px-2.5 flex items-center gap-1.5 text-[11.5px]" style={{ border: "1px solid var(--s-line)", background: "var(--s-bg)" }} title={d.name}>
+                <FileText className="h-4 w-4 shrink-0" style={{ color: "var(--s-ai)" }} /><span className="truncate">{d.name}</span>
+                <button type="button" className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full grid place-items-center" style={{ background: "var(--s-raised)", border: "1px solid var(--s-line-2)" }} onClick={() => setDocs((p) => p.filter((x) => x.url !== d.url))} aria-label={`Remove ${d.name}`}><X className="h-3 w-3" /></button>
+              </span>
+            ))}
             {pics.map((u) => (
               <span key={u} className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -347,8 +387,8 @@ export function AskPanel() {
           </div>
         )}
         <div className="flex items-end gap-2 rounded-xl p-2" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line-2)" }}>
-          <button type="button" className="s-btn ghost" style={{ width: 34, padding: 0 }} onClick={() => picInput.current?.click()} disabled={pics.length >= 4 || !clientId} aria-label="Add a picture" title="Add a picture (or paste one)"><ImagePlus className="h-4 w-4" /></button>
-          <input ref={picInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden" onChange={(e) => { void addPictures([...(e.target.files ?? [])]); e.target.value = ""; }} />
+          <button type="button" className="s-btn ghost" style={{ width: 34, padding: 0 }} onClick={() => picInput.current?.click()} disabled={(pics.length >= 4 && docs.length >= 3) || !clientId} aria-label="Add a picture or file" title="Add a picture or a file to read: PDF, Word, text, CSV (or paste a picture)"><Paperclip className="h-4 w-4" /></button>
+          <input ref={picInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.docx,.txt,.md,.csv,.tsv,.json,application/pdf" multiple className="hidden" onChange={(e) => { addAttachments([...(e.target.files ?? [])]); e.target.value = ""; }} />
           <textarea
             ref={inputRef}
             value={draft}
@@ -362,7 +402,7 @@ export function AskPanel() {
             aria-label="Message"
             className="s-grow flex-1 bg-transparent outline-none resize-none text-sm px-1"
           />
-          <button type="submit" className="s-btn primary" style={{ width: 34, padding: 0 }} disabled={busy || uploading > 0 || (!draft.trim() && !pics.length)} aria-label="Send">
+          <button type="submit" className="s-btn primary" style={{ width: 34, padding: 0 }} disabled={busy || uploading > 0 || (!draft.trim() && !pics.length && !docs.length)} aria-label="Send">
             <ArrowUp className="h-4 w-4" />
           </button>
         </div>

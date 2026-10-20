@@ -78,6 +78,28 @@ function pictureUrls(v: unknown): string[] {
   }).slice(0, MAX_PICTURES);
 }
 
+/** Files a user attached in Ask (2026-10-20: "upload a file for it to read"): PDF, Word, text, CSV, JSON, up to 3. */
+export type AskFile = { url: string; name: string; kind: "pdf" | "docx" | "text" };
+const MAX_FILES = 3;
+export function fileRefs(v: unknown): AskFile[] {
+  if (!Array.isArray(v)) return [];
+  const origin = (() => { try { return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").origin; } catch { return ""; } })();
+  return v.flatMap((f): AskFile[] => {
+    if (!f || typeof f !== "object") return [];
+    const r = f as Record<string, unknown>;
+    if (typeof r.url !== "string" || r.url.length > 600) return [];
+    try {
+      const url = new URL(r.url);
+      if (url.protocol !== "https:" || url.origin !== origin || !url.pathname.startsWith("/storage/v1/object/public/assets/images/") || url.pathname.includes("..")) return [];
+      const ext = url.pathname.split(".").pop()?.toLowerCase() ?? "";
+      const kind = ext === "pdf" ? "pdf" : ext === "docx" ? "docx" : ["txt", "md", "csv", "json", "tsv"].includes(ext) ? "text" : null;
+      if (!kind) return [];
+      const name = typeof r.name === "string" && r.name.trim() ? r.name.replace(/[^\w .()\-]+/g, "").slice(0, 80) : `file.${ext}`;
+      return [{ url: url.toString(), name, kind }];
+    } catch { return []; }
+  }).slice(0, MAX_FILES);
+}
+
 /**
  * The pictures become images Claude can see, for the most recent messages that have them (older
  * ones are noted in words, so long chats don't resend every picture). Only pictures in this
@@ -102,25 +124,28 @@ export function withPictures(messages: AgentMessage[], pictures: string[][], cli
 }
 
 /** Only plain user/assistant text (and a user's own pictures) is accepted from the browser; tool traffic is rebuilt server side. */
-export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; pictures: string[][]; brandId: string | null; page?: string; editor?: EditorContext; canvas?: CanvasSummary; tz?: string; tzOffset?: number; effort?: string } | null {
+export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]; pictures: string[][]; files: AskFile[][]; brandId: string | null; page?: string; editor?: EditorContext; canvas?: CanvasSummary; tz?: string; tzOffset?: number; effort?: string } | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
   if (!Array.isArray(b.messages) || b.messages.length === 0 || b.messages.length > MAX_MESSAGES) return null;
   const messages: AgentMessage[] = [];
   const pictures: string[][] = [];
+  const files: AskFile[][] = [];
   for (const m of b.messages) {
     if (!m || typeof m !== "object") return null;
-    const { role, text, images } = m as Record<string, unknown>;
+    const { role, text, images, files: attached } = m as Record<string, unknown>;
     if ((role !== "user" && role !== "assistant") || typeof text !== "string") return null;
     const pics = role === "user" ? pictureUrls(images) : [];
-    const t = text.trim() || (pics.length ? "What do you think of this?" : "");
+    const docs = role === "user" ? fileRefs(attached) : [];
+    const t = text.trim() || (docs.length ? "Please read this." : pics.length ? "What do you think of this?" : "");
     if (!t || t.length > MAX_TEXT) return null;
     messages.push({ role, content: t });
     pictures.push(pics);
+    files.push(docs);
   }
   if (messages[messages.length - 1].role !== "user") return null;
   // The Messages API needs the conversation to start with the user.
-  while (messages.length && messages[0].role !== "user") { messages.shift(); pictures.shift(); }
+  while (messages.length && messages[0].role !== "user") { messages.shift(); pictures.shift(); files.shift(); }
   const brandId = typeof b.brandId === "string" && UUID.test(b.brandId) ? b.brandId : null;
   const page = typeof b.page === "string" && /^\/studio[\w/-]{0,80}$/.test(b.page) ? b.page : undefined;
   const editor = parseEditorContext(b.editor) ?? undefined;
@@ -130,5 +155,5 @@ export function parseAssistantRequest(body: unknown): { messages: AgentMessage[]
   const tzOffset = typeof b.tzOffset === "number" && Number.isInteger(b.tzOffset) && Math.abs(b.tzOffset) <= 840 ? b.tzOffset : undefined;
   // The effort dial; the route clamps it to the plan.
   const effort = typeof b.effort === "string" && /^(low|medium|high|xhigh|max)$/.test(b.effort) ? b.effort : undefined;
-  return { messages, pictures, brandId, page, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}), ...(tz ? { tz } : {}), ...(tzOffset !== undefined ? { tzOffset } : {}), ...(effort ? { effort } : {}) };
+  return { messages, pictures, files, brandId, page, ...(editor ? { editor } : {}), ...(canvas ? { canvas } : {}), ...(tz ? { tz } : {}), ...(tzOffset !== undefined ? { tzOffset } : {}), ...(effort ? { effort } : {}) };
 }
