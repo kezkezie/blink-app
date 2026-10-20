@@ -43,6 +43,7 @@ function LoginForm() {
     <form onSubmit={handleLogin} className="grid gap-4">
       <AuthField label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@business.com" autoComplete="email" />
       <AuthField label="Password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" />
+      <Link href="/forgot-password" className="text-[13px] justify-self-end -mt-2 underline" style={{ color: "var(--s-soft)" }}>Forgot your password?</Link>
       {error && <p role="alert" className="text-[13px] rounded-lg px-3 py-2" style={{ background: "color-mix(in oklab, var(--s-danger) 12%, transparent)", color: "var(--s-danger)" }}>{error}</p>}
       <button type="submit" className="s-btn primary justify-center mt-2" style={{ height: 46, fontSize: 15 }} disabled={loading}>
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Sign in <ArrowRight className="h-4 w-4" />
