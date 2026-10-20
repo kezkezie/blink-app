@@ -155,7 +155,7 @@ describe("PostForMe authorized behavior", () => {
 
     expect(response.status).toBe(200);
     const [, init] = vi.mocked(fetch).mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toMatchObject({ external_id: CLIENT_ID });
+    expect(JSON.parse(String(init?.body))).toMatchObject({ external_id: `${CLIENT_ID}:${BRAND_ID}` });
   });
 
   it("filters provider list results to the verified client", async () => {

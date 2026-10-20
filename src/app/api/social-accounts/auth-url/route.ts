@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeSocialScope, hasOnlyKeys } from "@/lib/postforme-route-auth";
+import { brandTag } from "@/lib/social-brand";
 
 const ALLOWED_PLATFORMS = new Set([
   "instagram", "facebook", "linkedin", "tiktok", "youtube", "pinterest", "threads", "bluesky", "x",
@@ -51,9 +52,11 @@ export async function POST(req: NextRequest) {
     }
 
     // redirect_url is set statically in the PostForMe dashboard (Quickstart Projects block runtime overrides)
+    // The connection belongs to this brand, not just the account (lib/social-brand.ts).
+    if (!authorization.scope.brandId) return NextResponse.json({ error: "Pick a brand first." }, { status: 400 });
     const requestBody: Record<string, unknown> = {
       platform: platform,
-      external_id: authorization.scope.clientId,
+      external_id: brandTag(authorization.scope.clientId, authorization.scope.brandId),
       permissions: ["posts", "feeds"],
     };
 

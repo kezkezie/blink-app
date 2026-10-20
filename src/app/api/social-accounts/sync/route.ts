@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { authorizeSocialScope, hasOnlyKeys } from "@/lib/postforme-route-auth";
-
-type ProviderAccount = {
-    id: string;
-    external_id?: string;
-    status?: string;
-    platform?: string;
-    provider?: string;
-    username?: string;
-    name?: string;
-};
+import { accountsForBrand, type ProviderAccount } from "@/lib/social-brand";
 
 export async function POST(req: NextRequest) {
     try {
@@ -45,21 +36,24 @@ export async function POST(req: NextRequest) {
             ? pfmAccounts.data
             : (Array.isArray(pfmAccounts) ? pfmAccounts : []);
 
-        // 2. Keep only accounts owned by this client AND genuinely connected
-        // Disconnected accounts must be excluded — PostForMe rejects them with "not owned by user"
-        const connectedAccounts = allAccounts.filter((acc: ProviderAccount) =>
-            acc.external_id === verifiedClientId &&
-            acc.status !== "disconnected" &&
-            acc.status !== "revoked"
-        );
-
-        // 3. Fetch existing Supabase rows for this brand (using admin client — bypasses RLS)
+        // 2. Existing rows for this brand (admin client), and how many brands the account has.
         const query = supabaseAdmin
             .from("social_accounts")
             .select("id, platform, postforme_account_id, brand_id")
             .eq("client_id", verifiedClientId)
             .eq("brand_id", verifiedBrandId);
-        const { data: existingRows } = await query;
+        const [{ data: existingRows }, { count: brandCount }] = await Promise.all([
+            query,
+            supabaseAdmin.from("brand_profiles").select("id", { count: "exact", head: true }).eq("client_id", verifiedClientId).eq("is_active", true),
+        ]);
+
+        // 3. Only THIS brand's connected accounts (2026-10-20: every account used to be copied into
+        // whichever brand was open). Disconnected ones are excluded: PostForMe rejects them.
+        const connectedAccounts = accountsForBrand(allAccounts, {
+            clientId: verifiedClientId, brandId: verifiedBrandId,
+            knownIds: (existingRows ?? []).map((r) => r.postforme_account_id).filter((x): x is string => typeof x === "string"),
+            onlyBrand: (brandCount ?? 0) <= 1,
+        });
 
         const connectedPlatforms = connectedAccounts.map((account: ProviderAccount) =>
             (account.platform || account.provider || "").toLowerCase()

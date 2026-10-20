@@ -21,7 +21,8 @@ export async function GET(req: NextRequest) {
 
     // Fetch the live list of connected accounts for this specific client
     const response = await fetch(
-      `https://api.postforme.dev/v1/social-accounts?external_id=${encodeURIComponent(authorization.scope.clientId)}`,
+      // Brand-tagged connections are "<client>:<brand>" (lib/social-brand.ts), so filter here, not by exact id.
+      `https://api.postforme.dev/v1/social-accounts`,
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     // Return the array of accounts
     const accounts = Array.isArray(data.data)
-      ? data.data.filter((account: { external_id?: unknown }) => account.external_id === authorization.scope.clientId)
+      ? data.data.filter((account: { external_id?: unknown }) => account.external_id === authorization.scope.clientId || (typeof account.external_id === "string" && account.external_id.startsWith(`${authorization.scope.clientId}:`)))
       : [];
 
     return NextResponse.json({ accounts });

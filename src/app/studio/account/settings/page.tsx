@@ -127,7 +127,7 @@ function SettingsPage() {
 
   return (
     <div className="grid gap-8 s-reading max-w-[1000px]">
-      <section>
+      <section id="socials" className="scroll-mt-24">
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <div>
             <h2 className="text-[18px] font-semibold">Social accounts</h2>

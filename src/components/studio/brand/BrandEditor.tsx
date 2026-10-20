@@ -6,7 +6,8 @@ import { Check, ImagePlus, Loader2, Package, Plus, Sparkles, Upload, Users, X } 
 import { toast } from "sonner";
 import { deleteProduct, loadBrandDna, saveBrandDna, saveProduct } from "@/app/actions/brand";
 import { SharePanel } from "../sharing/SharePanel";
-import { useBrandStore } from "@/app/store/useBrandStore";
+import { BrandSocials } from "./BrandSocials";
+import { isSharedBrand, useBrandStore } from "@/app/store/useBrandStore";
 import { useClient } from "@/hooks/useClient";
 import { supabase } from "@/lib/supabase";
 import { GOOGLE_FONTS_REGISTRY, injectGoogleFont } from "@/lib/fonts";
@@ -528,6 +529,8 @@ export function BrandEditor() {
             <input className="s-input" value={form.vocabulary_notes} onChange={(e) => set("vocabulary_notes", e.target.value)} placeholder='e.g. say "home food", never "cheap"' aria-label="Words to use or avoid" />
           </Field>
         </Section>
+
+        {brandId && activeBrand && <BrandSocials brandId={brandId} brandName={activeBrand.brand_name} shared={isSharedBrand(activeBrand)} />}
 
         <Section id="contact" title="Contact & call to action" hint="The only contact details BlinkSpot will ever put on your content. Nothing here is made up.">
           <div className="grid gap-5 md:grid-cols-3">
