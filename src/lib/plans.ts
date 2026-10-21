@@ -16,6 +16,8 @@
 export type PlanTier = "free" | "starter" | "pro" | "agency";
 
 export const SIGNUP_CREDITS = 100;
+/** Starter's monthly price (Kezie, 2026-10-21: $27 from $25, "I don't want to be greedy"; about $16 a paying account after every cost). */
+export const STARTER_MONTHLY_USD = 27;
 
 /**
  * Ask BlinkSpot messages included each month (Kezie, 2026-10-20): at about $0.02 a message, the
@@ -54,7 +56,7 @@ export function isPaidPlan(v: unknown): boolean {
 
 /** Credit packs can be bought on Starter and up (Kezie, 2026-10-13). */
 export const canTopUp = (plan: unknown) => isPaidPlan(plan);
-export const TOP_UP_NEEDS_PLAN = "Top-ups come with Starter ($25 a month) and up. Free gives you 100 credits to try everything; Starter adds 1,500 credits every month and top-ups any time.";
+export const TOP_UP_NEEDS_PLAN = `Top-ups come with Starter ($${STARTER_MONTHLY_USD} a month) and up. Free gives you 100 credits to try everything; Starter adds 1,500 credits every month and top-ups any time.`;
 
 /** People a brand can be shared with (open invites count), by the owner's plan. */
 export const SHARE_SEATS: Record<PlanTier, number> = { free: 3, starter: 5, pro: 10, agency: 20 };
@@ -83,7 +85,7 @@ export const PLANS: PlanCard[] = [
     features: ["1 brand", `${SIGNUP_CREDITS} credits once to try every AI feature`, "Image and video editors, publish and schedule", `Ask BlinkSpot, ${ASK_INCLUDED_PER_MONTH.free} messages a month included`, `Share your brand with ${SHARE_SEATS.free} people`],
   },
   {
-    id: "starter", name: "Starter", price: { monthly: 25, weekly: 7 }, brands: 3,
+    id: "starter", name: "Starter", price: { monthly: STARTER_MONTHLY_USD, weekly: 7 }, brands: 3,
     credits: { monthly: "1,500 credits a month", weekly: "350 credits a week" },
     note: "A few brands, posting weekly",
     features: ["3 brands", "Top up credits any time, from $3", `Ask BlinkSpot, ${ASK_INCLUDED_PER_MONTH.starter} messages a month, up to Thorough`, "Editing with Ask included", `Share each brand with ${SHARE_SEATS.starter} people`],

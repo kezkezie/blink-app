@@ -53,7 +53,7 @@ describe("what can be bought", () => {
   it("credit packs and plans, priced from the one plan list", () => {
     expect(itemFor("pack_300")).toMatchObject({ kind: "credit_pack", credits: 300, usd: 3 });
     expect(itemFor("pack_5000")).toMatchObject({ credits: 5000, usd: 40 });
-    expect(itemFor("plan:starter:monthly")).toMatchObject({ kind: "plan", tier: "starter", credits: 1500, usd: 25, label: "BlinkSpot Starter (monthly)" });
+    expect(itemFor("plan:starter:monthly")).toMatchObject({ kind: "plan", tier: "starter", credits: 1500, usd: 27, label: "BlinkSpot Starter (monthly)" });
     expect(itemFor("plan:agency:weekly")).toMatchObject({ credits: 1500, usd: 29 });
     expect(itemFor("plan:free:monthly")).toBeNull();
     expect(itemFor("pack_1")).toBeNull();
@@ -104,8 +104,8 @@ describe("settling charges", () => {
 
   it("a renewal (a reference Paystack made) is matched by customer code and gets its own row", async () => {
     db.clients.set("c1", { id: "c1", billing_customer_code: "CUS_9" });
-    await settleCharge(charge({ reference: "T_renew_1", amountMinor: 2500, customerCode: "CUS_9", planName: "BlinkSpot Starter (monthly)" }));
-    expect(db.upserts[0]).toMatchObject({ client_id: "c1", kind: "plan", plan_tier: "starter", billing_cycle: "monthly", credits: 1500, amount_minor: 2500, reference: "T_renew_1" });
+    await settleCharge(charge({ reference: "T_renew_1", amountMinor: 2700, customerCode: "CUS_9", planName: "BlinkSpot Starter (monthly)" }));
+    expect(db.upserts[0]).toMatchObject({ client_id: "c1", kind: "plan", plan_tier: "starter", billing_cycle: "monthly", credits: 1500, amount_minor: 2700, reference: "T_renew_1" });
     expect(db.rpc).toHaveBeenCalledWith("fulfill_payment", expect.objectContaining({ p_reference: "T_renew_1" }));
   });
 
