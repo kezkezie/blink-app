@@ -101,6 +101,8 @@ test("captions, removing a sent post, the editor's Export and logo, and Motion a
     await expect(menu).toHaveCount(0);
     const layers = () => page.evaluate(() => (window as unknown as { __blinkEditorCanvas?: { getObjects(): unknown[] } }).__blinkEditorCanvas?.getObjects().length ?? 0);
     const before = await layers();
+    // Let the editor settle after the menu closes (a click in the same instant can be lost on a slow page).
+    await page.waitForTimeout(1500);
     await page.getByRole("button", { name: "Add your logo" }).first().click();
     // A cold image proxy on production can take a while the first time.
     await expect.poll(layers, { timeout: 45_000 }).toBe(before + 1);
