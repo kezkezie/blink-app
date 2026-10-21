@@ -9,7 +9,7 @@ import posthog from "posthog-js";
  */
 export type BlinkEvent =
   | "brand_created" | "image_started" | "video_started" | "motion_planned" | "motion_made" | "site_page_started"
-  | "ask_sent" | "ai_erase_used" | "photo_mapped" | "outline_used" | "post_scheduled" | "account_connect_started"
+  | "ask_sent" | "ai_erase_used" | "photo_mapped" | "outline_used" | "post_scheduled" | "account_connect_started" | "account_connect_result"
   | "checkout_started" | "tour_finished" | "tour_skipped" | "guide_searched" | "getting_started_clicked";
 
 export function track(event: BlinkEvent, props: Record<string, string | number | boolean | null | undefined> = {}) {

@@ -57,7 +57,8 @@ export async function middleware(request: NextRequest) {
   // 4. If logged OUT and trying to access the app (classic or studio) -> Kick to login
   if (!user && !isPublicPath && isAppPath) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
+    // The whole address, so a return like ?success=account_connected survives signing in (2026-10-21).
+    loginUrl.searchParams.set("redirect", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 

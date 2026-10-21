@@ -9,7 +9,7 @@ const ALLOWED_PLATFORMS = new Set([
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    if (!hasOnlyKeys(body, ["platform", "clientId", "brandId"])) {
+    if (!hasOnlyKeys(body, ["platform", "clientId", "brandId", "method"])) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     let { platform } = body;
@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
     // platform_data is required by PostForMe for Instagram, Facebook, and LinkedIn
     const platformData: Record<string, Record<string, string>> = {};
     if (platform === "instagram") {
-      platformData.instagram = { connection_type: "facebook" };
+      // Direct Instagram login by default (2026-10-21): any professional account, no Facebook Page.
+      // "facebook" keeps the old way, for an Instagram linked to a Page.
+      platformData.instagram = { connection_type: body.method === "facebook" ? "facebook" : "instagram" };
     } else if (platform === "facebook") {
       platformData.facebook = { connection_type: "page" };
     } else if (platform === "linkedin") {

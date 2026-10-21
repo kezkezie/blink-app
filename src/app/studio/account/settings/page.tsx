@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Copy, ExternalLink, Loader2, RefreshCw, Unplug, X } from "lucide-react";
 import { toast } from "sonner";
@@ -22,16 +22,20 @@ import { AiConnections } from "@/components/studio/settings/AiConnections";
  */
 type Social = { id: string; platform: string; account_name: string | null; is_active: boolean; connected_at: string; postforme_account_id: string | null };
 
-const PLATFORMS: Array<{ id: string; label: string; note?: string }> = [
-  { id: "instagram", label: "Instagram", note: "Business or creator account" },
-  { id: "tiktok", label: "TikTok" },
-  { id: "youtube", label: "YouTube" },
-  { id: "facebook", label: "Facebook", note: "A Page you manage" },
-  { id: "linkedin", label: "LinkedIn" },
-  { id: "twitter", label: "X (Twitter)" },
-  { id: "pinterest", label: "Pinterest" },
-  { id: "threads", label: "Threads" },
-  { id: "bluesky", label: "Bluesky" },
+/**
+ * What each platform needs before connecting (2026-10-21, NUF FARMS: Instagram and Facebook "not
+ * working" were Meta refusing accounts that can't be posted to by any app).
+ */
+const PLATFORMS: Array<{ id: string; label: string; note?: string; needs: string }> = [
+  { id: "instagram", label: "Instagram", note: "Business or creator account", needs: "A professional Instagram account (Business or Creator). Personal accounts can't be posted to by any app. To switch, free: Instagram > Settings > Account type and tools > Switch to professional account. No Facebook Page needed." },
+  { id: "tiktok", label: "TikTok", needs: "Sign in with the TikTok account that should post. TikTok only takes videos." },
+  { id: "youtube", label: "YouTube", needs: "The Google account that owns the YouTube channel. When Google asks, pick the channel and allow every permission. YouTube only takes videos." },
+  { id: "facebook", label: "Facebook", note: "A Page you manage", needs: "A Facebook Page you manage (apps can't post to personal profiles). While signing in, choose Edit settings or Opt in to current Pages, tick the Page, and allow every permission asked." },
+  { id: "linkedin", label: "LinkedIn", note: "A Page you admin", needs: "A LinkedIn company Page you're an admin of; you'll pick it while signing in." },
+  { id: "twitter", label: "X (Twitter)", needs: "Sign in with the X account that should post." },
+  { id: "pinterest", label: "Pinterest", needs: "A Pinterest business account with at least one board." },
+  { id: "threads", label: "Threads", needs: "Sign in with the Threads account that should post." },
+  { id: "bluesky", label: "Bluesky", needs: "Sign in with the Bluesky account that should post." },
 ];
 const norm = (p: string) => (p === "x" ? "twitter" : p.toLowerCase());
 
@@ -43,7 +47,7 @@ function SettingsPage() {
   const [socials, setSocials] = useState<Social[] | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
-  const [auth, setAuth] = useState<{ platform: string; url: string } | null>(null);
+  const [auth, setAuth] = useState<{ platform: string; url: string; method?: string } | null>(null);
   const [removing, setRemoving] = useState<Social | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [profile, setProfile] = useState({ contact_name: "", contact_email: "", contact_phone: "" });
@@ -79,24 +83,42 @@ function SettingsPage() {
     finally { setSyncing(false); }
   }, [clientId, activeBrand, load]);
 
+  // Check with Post For Me by itself (2026-10-21): when the page opens and when you come back to it,
+  // so a connection finished on a phone, or a return that lost ?success=, still shows up.
+  const lastSync = useRef(0);
+  useEffect(() => {
+    if (!clientId || !activeBrand || isSharedBrand(activeBrand)) return;
+    const quietSync = () => { if (Date.now() - lastSync.current < 15_000) return; lastSync.current = Date.now(); void sync(true); };
+    quietSync();
+    const onFocus = () => { if (document.visibilityState === "visible") quietSync(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
+  }, [clientId, activeBrand, sync]);
+
   // Back from PostForMe's connect screen.
   useEffect(() => {
     if (!clientId || !activeBrand || search.get("success") !== "account_connected") return;
     const failed = search.get("isSuccess") === "false" || search.get("error");
-    if (failed) toast.error(`${search.get("provider") || "The"} connection didn't finish${search.get("error") ? `: ${decodeURIComponent(search.get("error")!).replace(/\+/g, " ")}` : "."}`);
-    else void sync();
+    const provider = search.get("provider") || "";
+    track("account_connect_result", { platform: provider || null, ok: !failed });
+    if (failed) {
+      const why = search.get("error") ? decodeURIComponent(search.get("error")!).replace(/\+/g, " ") : "";
+      const needs = PLATFORMS.find((p) => p.id === norm(provider))?.needs;
+      toast.error(`${provider || "The"} connection didn't finish${why ? `: ${why}` : "."}`, { description: needs, duration: 15_000 });
+    } else void sync();
     router.replace("/studio/account/settings", { scroll: false });
   }, [clientId, activeBrand, search, sync, router]);
 
-  async function connect(platform: string) {
+  async function connect(platform: string, method?: string) {
     if (!clientId || !activeBrand) return;
-    track("account_connect_started", { platform });
+    track("account_connect_started", { platform, method: method ?? null });
     setConnecting(platform);
     try {
-      const res = await fetch("/api/social-accounts/auth-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform, clientId, brandId: activeBrand.id }) });
+      const res = await fetch("/api/social-accounts/auth-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform, clientId, brandId: activeBrand.id, ...(method ? { method } : {}) }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) throw new Error(data.error || "Couldn't start the connection.");
-      setAuth({ platform, url: data.url });
+      setAuth({ platform, url: data.url, method });
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't start the connection."); }
     finally { setConnecting(null); }
   }
@@ -187,12 +209,18 @@ function SettingsPage() {
         {auth && (
           <>
             <div className="flex items-center justify-between mb-2"><b className="text-[15px] flex items-center gap-2"><PlatformGlyph platform={auth.platform} size={16} /> Connect {PLATFORMS.find((p) => p.id === auth.platform)?.label}</b><button className="s-btn ghost sm" onClick={() => setAuth(null)} aria-label="Close"><X className="h-4 w-4" /></button></div>
-            <p className="text-[13px] mb-4" style={{ color: "var(--s-soft)" }}>You&apos;ll sign in on {PLATFORMS.find((p) => p.id === auth.platform)?.label} and allow BlinkSpot to post for {activeBrand?.brand_name}. You come back here when it&apos;s done.</p>
+            <p className="text-[13px] mb-3" style={{ color: "var(--s-soft)" }}>You&apos;ll sign in on {PLATFORMS.find((p) => p.id === auth.platform)?.label} and allow BlinkSpot to post for {activeBrand?.brand_name}. You come back here when it&apos;s done.</p>
+            <div className="rounded-lg p-3 mb-4 text-[12.5px]" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line)", color: "var(--s-soft)" }} role="note" aria-label="Before you connect">
+              <b style={{ color: "var(--s-text)" }}>Before you connect: </b>{PLATFORMS.find((p) => p.id === norm(auth.platform))?.needs}
+              {auth.platform === "instagram" && (auth.method === "facebook"
+                ? <> Using Facebook login: the Instagram account must be linked to a Facebook Page you manage.</>
+                : <> <button className="underline" onClick={() => void connect("instagram", "facebook")}>Connect through Facebook instead</button> (if your Instagram is linked to a Facebook Page).</>)}
+            </div>
             <div className="grid gap-2">
               <button className="s-btn primary" onClick={() => { window.location.href = auth.url; }}><ExternalLink className="h-4 w-4" /> Continue</button>
               <button className="s-btn" onClick={() => { void navigator.clipboard?.writeText(auth.url).then(() => toast.success("Link copied. Open it on the phone that has the app signed in.")); }}><Copy className="h-4 w-4" /> Copy link for your phone</button>
             </div>
-            <p className="text-[11.5px] mt-3" style={{ color: "var(--s-mute)" }}>The link works once and only for this brand. Don&apos;t share it.</p>
+            <p className="text-[11.5px] mt-3" style={{ color: "var(--s-mute)" }}>The link works once and only for this brand. Don&apos;t share it. Finished on your phone? Come back to this page: it checks by itself.</p>
           </>
         )}
       </Modal>

@@ -156,6 +156,17 @@ describe("PostForMe authorized behavior", () => {
     expect(response.status).toBe(200);
     const [, init] = vi.mocked(fetch).mock.calls[0];
     expect(JSON.parse(String(init?.body))).toMatchObject({ external_id: `${CLIENT_ID}:${BRAND_ID}` });
+    // 2026-10-21: Instagram connects by direct Instagram login (no Facebook Page needed)...
+    expect(JSON.parse(String(init?.body)).platform_data).toEqual({ instagram: { connection_type: "instagram" } });
+  });
+
+  it("connects Instagram through Facebook login only when asked", async () => {
+    scopeAuthorized();
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ url: "https://provider.example/auth" }), { status: 200 }));
+    const response = await createAuthUrl(jsonRequest("/api/social-accounts/auth-url", { platform: "instagram", clientId: CLIENT_ID, brandId: BRAND_ID, method: "facebook" }));
+    expect(response.status).toBe(200);
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(String(init?.body)).platform_data).toEqual({ instagram: { connection_type: "facebook" } });
   });
 
   it("filters provider list results to the verified client", async () => {

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Share2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useClient } from "@/hooks/useClient";
 
 /**
  * Where this brand posts (2026-10-20: auto-posting has to follow the brand). The accounts
@@ -12,6 +13,16 @@ import { supabase } from "@/lib/supabase";
  */
 export function BrandSocials({ brandId, brandName, shared }: { brandId: string; brandName: string; shared: boolean }) {
   const [list, setList] = useState<Array<{ platform: string; account_name: string | null }> | null>(null);
+  const { ownClientId } = useClient();
+  const [checked, setChecked] = useState(0);
+  // A quiet check with Post For Me first (2026-10-21), so an account connected elsewhere shows here.
+  useEffect(() => {
+    if (shared || !ownClientId) return;
+    let alive = true;
+    void fetch("/api/social-accounts/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId: ownClientId, brandId }) })
+      .catch(() => null).finally(() => { if (alive) setChecked((n) => n + 1); });
+    return () => { alive = false; };
+  }, [brandId, shared, ownClientId]);
   useEffect(() => {
     let alive = true;
     const q = shared
@@ -19,7 +30,7 @@ export function BrandSocials({ brandId, brandName, shared }: { brandId: string; 
       : supabase.from("social_accounts").select("platform, account_name").eq("brand_id", brandId).eq("is_active", true);
     void Promise.resolve(q).then(({ data }) => { if (alive) setList(((data ?? []) as Array<{ platform: string; account_name: string | null }>)); }, () => { if (alive) setList([]); });
     return () => { alive = false; };
-  }, [brandId, shared]);
+  }, [brandId, shared, checked]);
   return (
     <section id="socials" className="s-card p-5 md:p-6 scroll-mt-24">
       <div className="flex flex-wrap items-start gap-3">
