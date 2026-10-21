@@ -385,6 +385,18 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     return img;
   }, [add, size]);
 
+  /** The brand's logo as a layer (2026-10-21): small, in the bottom-right corner, like a poster's sign-off. */
+  const addLogo = useCallback(async (url: string) => {
+    try {
+      const img = await addImage(url, "Logo");
+      const s = Math.min((size.w * 0.22) / img.width, (size.h * 0.22) / img.height);
+      const m = Math.round(Math.min(size.w, size.h) * 0.05);
+      img.set({ scaleX: s, scaleY: s, left: size.w - img.width * s - m, top: size.h - img.height * s - m });
+      img.setCoords();
+      cv.current?.requestRenderAll();
+    } catch { toast.error("Couldn't load your logo. Try again, or check it on the Brand page."); }
+  }, [addImage, size]);
+
   const addSvg = useCallback(async (svg: string, opts: { x?: number; y?: number; w?: number; name?: string; quiet?: boolean } = {}) => {
     const clean = sanitizeSvg(svg);
     if (!clean) { if (!opts.quiet) toast.error("That's too detailed to turn into vectors. For a whole poster, use Split into layers."); return null; }
@@ -1634,7 +1646,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
           <span className="s-tip"><b>Add a photo</b><br /><span>From your Library or your device. Each photo is its own layer.</span></span>
         </button>
         {/* One tap, always there (2026-10-21: it was only in the canvas panel when nothing was selected). */}
-        <button className="s-tool group relative" onClick={() => { if (kit?.logoUrl) void addImage(kit.logoUrl, "Logo"); else toast.info("Add your logo on the Brand page first; then it's one tap here.", { action: { label: "Brand page", onClick: () => { window.location.href = "/studio/brand"; } } }); }} aria-label="Add your logo">
+        <button className="s-tool group relative" onClick={() => { if (kit?.logoUrl) void addLogo(kit.logoUrl); else toast.info("Add your logo on the Brand page first; then it's one tap here.", { action: { label: "Brand page", onClick: () => { window.location.href = "/studio/brand"; } } }); }} aria-label="Add your logo">
           <BadgeCheck className="h-[18px] w-[18px]" />
           <span className="s-tip"><b>Add your logo</b><br /><span>{kit?.logoUrl ? "Your brand's logo as its own layer." : "Add a logo on the Brand page first."}</span></span>
         </button>
@@ -1782,7 +1794,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                 )}
                 <p className="text-[11px]" style={{ color: "var(--s-mute)" }}>Comes in as editable layers you can recolour, resize and ungroup. Priced on what it takes, usually about 5 credits. Logos in the Brand builder are free.</p>
               </div>
-              {kit?.logoUrl && <button className="s-btn justify-start" onClick={() => void addImage(kit.logoUrl!, "Logo")}><ImagePlus className="h-4 w-4" /> Add your logo</button>}
+              {kit?.logoUrl && <button className="s-btn justify-start" onClick={() => void addLogo(kit.logoUrl!)}><ImagePlus className="h-4 w-4" /> Add your logo</button>}
               <p className="text-xs leading-relaxed" style={{ color: "var(--s-mute)" }}>Pick a tool on the left. Hover any tool to learn what it does. Click a layer to change it; AI tools appear when a photo is selected.</p>
             </div>
           ) : (

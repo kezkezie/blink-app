@@ -34,6 +34,7 @@ test("captions, removing a sent post, the editor's Export and logo, and Motion a
   test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY, "needs the service key");
   test.setTimeout(300_000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => { if (m.type() === "error") console.log(`console: ${m.text().slice(0, 300)}`); });
   for (const p of BLOCKED) await page.route(p, (r) => r.abort());
   const sb: SupabaseClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   const stamp = Date.now();
@@ -101,7 +102,13 @@ test("captions, removing a sent post, the editor's Export and logo, and Motion a
     const layers = () => page.evaluate(() => (window as unknown as { __blinkEditorCanvas?: { getObjects(): unknown[] } }).__blinkEditorCanvas?.getObjects().length ?? 0);
     const before = await layers();
     await page.getByRole("button", { name: "Add your logo" }).first().click();
-    await expect.poll(layers, { timeout: 20_000 }).toBe(before + 1);
+    // A cold image proxy on production can take a while the first time.
+    await expect.poll(layers, { timeout: 45_000 }).toBe(before + 1);
+    // Small, in the bottom-right corner.
+    const box = await page.evaluate(() => { const o = (window as unknown as { __blinkEditorCanvas: { getObjects(): Array<{ getBoundingRect(): { left: number; top: number; width: number } }>; width: number } }).__blinkEditorCanvas.getObjects().at(-1)!.getBoundingRect(); return o; });
+    expect(box.left).toBeGreaterThan(600);
+    expect(box.width).toBeLessThan(300);
+    await page.screenshot({ path: "test-results/round23-logo.png" });
 
     // 4. Video editor: Motion is a window, not the narrow rail.
     await page.goto(`${BASE}/studio/video?tab=editor`);
