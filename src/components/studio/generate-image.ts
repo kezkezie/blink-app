@@ -40,7 +40,12 @@ export type GenerateRequest = ImageRequest & {
   save?: boolean;
   /** The line to show while the server works ("Making your image", "trying another image service"). */
   onProgress?: (text: string) => void;
+  /** Stop (2026-10-22): the images still being made are removed and their credits come back. */
+  signal?: AbortSignal;
 };
+
+/** What generateBrandImages throws when it was stopped. */
+export const STOPPED = "stopped";
 
 const IMAGE_ASPECTS = ["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3"];
 /** The closest aspect the image models accept, for a "w:h" ratio (any numbers, e.g. pixel sizes). */
@@ -79,9 +84,16 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
       throw new Error(String(started.data.error || (started.status === 402 ? "Not enough credits for this. Get more in Billing." : "Couldn't start the image. Nothing was charged.")));
     }
     const ids = started.data.ids as string[];
+    const stopIfAsked = async () => {
+      if (!req.signal?.aborted) return;
+      await fetch(`/api/images?ids=${ids.join(",")}`, { method: "DELETE" }).catch(() => null);
+      throw new Error(STOPPED);
+    };
     let last: Array<{ id: string; state: string; text: string | null; url: string | null }> = [];
     for (let quiet = 0; ; ) {
-      await new Promise((r) => setTimeout(r, quiet < 20 ? 3000 : 6000));
+      await stopIfAsked();
+      await new Promise<void>((r) => { const t = setTimeout(r, quiet < 20 ? 3000 : 6000); req.signal?.addEventListener("abort", () => { clearTimeout(t); r(); }, { once: true }); });
+      await stopIfAsked();
       const res = await fetch(`/api/images?ids=${ids.join(",")}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { jobs?: typeof last } | null;
       quiet++;
       if (!res?.jobs?.length) continue; // offline for a moment: keep watching
@@ -100,6 +112,7 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
 
 /** A friendly message for a failed generation. */
 export function generationErrorMessage(e: unknown) {
+  if (e instanceof Error && e.message === STOPPED) return "Stopped. Your credits are back.";
   const msg = e instanceof Error ? e.message : "";
   if (/upstream_auth/.test(msg)) return "The image service isn't connected right now, so nothing was made and nothing was charged. We've been told; try again a little later.";
   if (/status: 504|timed out/i.test(msg)) return "The render took longer than the connection allowed. It may still finish; check your Library in a minute before trying again.";

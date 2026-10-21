@@ -117,7 +117,7 @@ export function withCacheMark(messages: AgentMessage[]): AgentMessage[] {
 
 export async function runAssistant(
   history: AgentMessage[],
-  ctx: ToolContext & { pageHint?: string; brief?: string; editor?: EditorContext; canvas?: CanvasSummary; effort?: Effort; skills?: Array<Pick<Skill, "id" | "name" | "description">> },
+  ctx: ToolContext & { pageHint?: string; brief?: string; editor?: EditorContext; canvas?: CanvasSummary; effort?: Effort; skills?: Array<Pick<Skill, "id" | "name" | "description">>; /** The person pressed Stop (2026-10-22): no more model calls or tool steps. */ signal?: AbortSignal },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ reply: string; actions: AssistantAction[]; usage: { input: number; output: number; cacheRead: number; cacheWrite: number }; provider: "anthropic" | "kie"; model: string; effort: Effort }> {
   const provider = assistantProvider();
@@ -181,6 +181,7 @@ export async function runAssistant(
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     if (turn > 0 && Date.now() - started > (effort === "max" || effort === "xhigh" ? 250_000 : TURN_BUDGET_MS)) break;
+    if (ctx.signal?.aborted) throw new Error("stopped");
     const res = await fetchImpl(provider.url, {
       method: "POST",
       headers: { ...provider.headers, "Content-Type": "application/json" },
@@ -189,7 +190,7 @@ export async function runAssistant(
         // Anthropic only (Kie's endpoint doesn't take it). Without it Sonnet 5.5 runs at "high".
         ...(provider.name === "anthropic" ? { output_config: { effort } } : {}),
       }),
-      signal: AbortSignal.timeout(callTimeout),
+      signal: ctx.signal ? AbortSignal.any([AbortSignal.timeout(callTimeout), ctx.signal]) : AbortSignal.timeout(callTimeout),
     });
     const data = (await res.json().catch(() => ({}))) as MessagesResponse;
     if (!res.ok || !Array.isArray(data.content)) {

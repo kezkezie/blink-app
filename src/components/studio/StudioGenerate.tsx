@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Film, ImagePlus, LayoutTemplate, Lightbulb, Loader2, RotateCcw, Sparkles, Wand2, X } from "lucide-react";
+import { ArrowRight, Check, Film, ImagePlus, LayoutTemplate, Lightbulb, Loader2, RotateCcw, Sparkles, Square, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -218,10 +218,14 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
     return () => { clearInterval(t); setElapsed(0); };
   }, [busy]);
 
+  // Stop (2026-10-22): the images being made are removed and the credits come back.
+  const stopRef = useRef<AbortController | null>(null);
   async function generate(override?: string) {
     const text = override ?? brief;
     if (!clientId || !activeBrand || !kit || text.trim().length < 8) return;
     setBusy(true);
+    const ac = new AbortController();
+    stopRef.current = ac;
     try {
       // Best looks at real references first (once per brand); Fast uses them if they're there.
       let board = brandVisual;
@@ -245,6 +249,8 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
           note = designed.notes || null;
         }
       }
+      // Stopped while it was still designing: nothing was started or charged.
+      if (ac.signal.aborted) { toast.success("Stopped. Nothing was charged."); return; }
       setPhase("make");
       const saved = await generateBrandImages({
         clientId, brandId: activeBrand.id, kit,
@@ -253,11 +259,13 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
         engine, aspect: format, style: activeLook, count,
         caption: (words.trim() || text.trim().split(/[.!?]/)[0]).slice(0, 120),
         onProgress: (line) => setProgress(line === "Making your image" ? null : line),
+        signal: ac.signal,
       });
       setResults((prev) => [...saved, ...prev]);
       setDesignNote(note);
       toast.success(`${saved.length} image${saved.length === 1 ? "" : "s"} made and saved to your Library.`);
     } catch (e) {
+      if (ac.signal.aborted) { toast.success("Stopped. Your credits are back."); return; }
       const msg = generationErrorMessage(e);
       // A refused picture of a medical or intimate subject: say why and what to try (2026-10-14).
       const sensitive = SENSITIVE.test(`${text} ${kit.description ?? ""}`) && /could not make|couldn't make|refused|safety|internal error/i.test(msg);
@@ -395,9 +403,12 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
               <span className="s-label">How many</span>
               <div className="flex gap-1.5">{[1, 2, 3, 4].map((n) => <button key={n} className="s-chip" aria-pressed={count === n} onClick={() => setCount(n)}>{n}</button>)}</div>
             </div>
-            <button className="s-btn primary lg w-full mt-auto" disabled={!ready || busy || !kit} onClick={() => void generate()}>
+            <div className="flex gap-2 mt-auto">
+            <button className="s-btn primary lg flex-1" disabled={!ready || busy || !kit} onClick={() => void generate()}>
               {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {phase === "refs" ? "Studying references…" : phase === "design" ? "Designing it…" : progress ? `${progress}…` : "Making it…"} {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
             </button>
+            {busy && <button className="s-btn lg" onClick={() => stopRef.current?.abort()} aria-label="Stop" title="Stop: it's removed and your credits come back"><Square className="h-3.5 w-3.5" fill="currentColor" /> Stop</button>}
+            </div>
             {/* What it learned from: reference pictures from the brand's category (2026-10-16). */}
             {studying ? (
               <p className="text-[11.5px] flex items-center gap-1.5" style={{ color: "var(--s-soft)" }} role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Studying reference pictures for {name} from Pinterest, brands and design studios, once for this brand (about a minute)…</p>

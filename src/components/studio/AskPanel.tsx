@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowUp, CalendarCheck, Check, ChevronUp, Coins, FileText, Loader2, MessageCircle, Paperclip, RotateCcw, Undo2, X } from "lucide-react";
+import { ArrowUp, CalendarCheck, Check, ChevronUp, Coins, FileText, Loader2, MessageCircle, Paperclip, RotateCcw, Square, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useClient } from "@/hooks/useClient";
 import { EFFORTS, EFFORT_INFO, allowedEfforts, creditCapFor, type Effort } from "@/lib/assistant/effort";
@@ -100,6 +100,8 @@ export function AskPanel() {
   const { activeBrand } = useBrandStore();
   const pathname = usePathname();
   const [busy, setBusy] = useState(false);
+  // Stop (2026-10-22, test users asked): cancels the request; the server stops its model call too.
+  const stopRef = useRef<AbortController | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [stage, setStage] = useState<string | null>(null);
   const [watch, setWatch] = useState(true);
@@ -145,6 +147,8 @@ export function AskPanel() {
     setDocs([]);
     setBusy(true);
     setError(null);
+    const ac = new AbortController();
+    stopRef.current = ac;
     try {
       const history = [...useAskStore.getState().messages].slice(-20).map((m) => ({ role: m.role, text: m.text, ...(m.images?.length ? { images: m.images } : {}), ...(m.files?.length ? { files: m.files } : {}) }));
       // In the Video Editor, send the timeline (and a few frames per clip) so the AI can edit it.
@@ -168,6 +172,7 @@ export function AskPanel() {
           tz: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })(), tzOffset: new Date().getTimezoneOffset(),
           effort: level,
         }),
+        signal: ac.signal,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "The assistant could not answer just now.");
@@ -185,8 +190,10 @@ export function AskPanel() {
         else if (a.href) { router.push(a.href); if (window.innerWidth < 1200) setOpen(false); }
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      if (ac.signal.aborted) push({ role: "assistant", text: "Stopped. Nothing else was done." });
+      else setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
+      stopRef.current = null;
       setBusy(false);
       setStage(null);
     }
@@ -404,9 +411,13 @@ export function AskPanel() {
             aria-label="Message"
             className="s-grow flex-1 bg-transparent outline-none resize-none text-sm px-1"
           />
-          <button type="submit" className="s-btn primary" style={{ width: 34, padding: 0 }} disabled={busy || uploading > 0 || (!draft.trim() && !pics.length && !docs.length)} aria-label="Send">
+          {busy ? (
+            <button type="button" className="s-btn" style={{ width: 34, padding: 0 }} onClick={() => stopRef.current?.abort()} aria-label="Stop" title="Stop">
+              <Square className="h-3.5 w-3.5" fill="currentColor" />
+            </button>
+          ) : <button type="submit" className="s-btn primary" style={{ width: 34, padding: 0 }} disabled={uploading > 0 || (!draft.trim() && !pics.length && !docs.length)} aria-label="Send">
             <ArrowUp className="h-4 w-4" />
-          </button>
+          </button>}
         </div>
         <div className="flex items-center justify-between gap-2 mt-2 px-1">
           <div className="relative flex items-center gap-1.5 min-w-0">

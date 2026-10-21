@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
 import { workspaceFor } from "@/lib/brand-access";
-import { jobStatuses, kickRescue, startImageJobs } from "@/lib/image-jobs-server";
+import { jobStatuses, kickRescue, startImageJobs, stopImageJobs } from "@/lib/image-jobs-server";
+import { supabaseAdmin } from "@/lib/supabase-server";
 
 /**
  * Images that arrive (lib/image-jobs.ts). POST { request, count, caption }: makes the Library
@@ -22,6 +23,24 @@ export async function POST(request: NextRequest) {
   if (!started.ok) return NextResponse.json({ error: started.error }, { status: started.status });
   after(started.value.work);
   return NextResponse.json({ ids: started.value.ids }, { status: 202 });
+}
+
+/** DELETE ?ids=a,b: stop images still being made (removed, credits back). The caller must be able to write to each brand. */
+export async function DELETE(request: NextRequest) {
+  const auth = await authenticateExecutionRequest(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const ids = (request.nextUrl.searchParams.get("ids") ?? "").split(",").filter((x) => UUID.test(x)).slice(0, 24);
+  if (!ids.length) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  const { data: rows } = await supabaseAdmin.from("content").select("id, client_id, brand_id").in("id", ids);
+  const byWorkspace = new Map<string, string[]>();
+  for (const r of rows ?? []) {
+    const ws = await workspaceFor(auth.value, { brandId: r.brand_id as string | null }).catch(() => null);
+    if (!ws || ws.clientId !== r.client_id) continue;
+    byWorkspace.set(ws.clientId, [...(byWorkspace.get(ws.clientId) ?? []), r.id as string]);
+  }
+  let stopped: string[] = [], refunded = 0;
+  for (const [clientId, list] of byWorkspace) { const r = await stopImageJobs(clientId, list); stopped = [...stopped, ...r.stopped]; refunded += r.refunded; }
+  return NextResponse.json({ stopped, refunded });
 }
 
 export async function GET(request: NextRequest) {

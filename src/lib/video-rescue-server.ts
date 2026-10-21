@@ -131,3 +131,16 @@ export async function rescueOnCheck(row: Record<string, unknown>): Promise<{ cla
   return { claimed: false, work: null };
 }
 
+/**
+ * Stop a video on this path (an AI connection's video, or a second try) before it arrives
+ * (2026-10-22): the Replicate prediction is cancelled and the post removed. These are charged only
+ * on delivery, so there is nothing to refund.
+ */
+export async function stopVideoJob(clientId: string, id: string): Promise<boolean> {
+  const { data: row } = await supabaseAdmin.from("content").select("id, generation_state, creation_metadata").eq("id", id).eq("client_id", clientId).maybeSingle();
+  const r = metaOf(row?.creation_metadata).video_rescue;
+  if (!row || row.generation_state !== "generating" || !r) return false;
+  if (r.prediction) await fetch(`${REPLICATE}/predictions/${r.prediction}/cancel`, { method: "POST", headers: { Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}` }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const { data: gone } = await supabaseAdmin.from("content").delete().eq("id", id).eq("client_id", clientId).eq("generation_state", "generating").select("id");
+  return !!gone?.length;
+}

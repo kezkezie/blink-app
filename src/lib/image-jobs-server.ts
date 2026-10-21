@@ -68,9 +68,14 @@ const update = async (id: string, patch: Record<string, unknown>): Promise<void>
   await supabaseAdmin.from("content").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).then(() => {}, () => {});
 };
 
-async function settleFirst(id: string, outcome: RouterOutcome) {
+async function settleFirst(id: string, outcome: RouterOutcome, stoppedRefund?: { clientId: string; brandId: string | null; credits: number }) {
   if (outcome.kind === "image") {
-    await update(id, { image_urls: outcome.urls, generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString() });
+    const { data: kept } = await supabaseAdmin.from("content").update({ image_urls: outcome.urls, generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id).select("id");
+    // Stopped meanwhile (the post is gone) but n8n delivered and kept its charge: that's the one refund.
+    // When n8n fails instead (it can't save to a removed post) it refunds itself, so nothing here.
+    if (!kept?.length && stoppedRefund && stoppedRefund.credits > 0) {
+      await supabaseAdmin.rpc("refund_credits", { p_client_id: stoppedRefund.clientId, p_amount: stoppedRefund.credits, p_operation: "refund", p_description: `Refund: image stopped [post:${id}]`, ...brandArg(stoppedRefund.brandId) }).then(() => {}, () => {});
+    }
   } else if (outcome.kind === "refused" || outcome.kind === "no_credits") {
     await update(id, { generation_state: "failed", generation_error_code: outcome.kind, generation_status_text: outcome.message || FINAL_FAILURE(0), retry_state: "retry_available", generation_completed_at: new Date().toISOString() });
   } else if (outcome.kind === "waiting") {
@@ -108,7 +113,8 @@ export async function startImageJobs(userId: string, raw: unknown, count: number
   // Cost log (2026-10-20): every first try, so second tries per engine can be counted against them.
   const perImage = IMAGE_ENGINE_REGISTRY[spec.engine === "nano-banana-2" ? "nb2" : spec.engine]?.creditCost ?? 8;
   for (const id of ids) logAiUsage({ feature: "image", provider: "n8n", model: spec.engine, clientId: payload.client_id as string, userId, brandId: payload.brand_id as string | null, usd: perImage * USD_PER_CREDIT, credits: perImage, meta: { post: id } });
-  const work = Promise.all(ids.map(async (id) => settleFirst(id, await askRouter(payload, id)))).then(() => {});
+  const stoppedRefund = { clientId: payload.client_id as string, brandId: (payload.brand_id as string | null) ?? null, credits: perImage };
+  const work = Promise.all(ids.map(async (id) => settleFirst(id, await askRouter(payload, id), stoppedRefund))).then(() => {});
   return { ok: true, value: { ids, work } };
 }
 
@@ -123,7 +129,9 @@ export async function rescue(id: string): Promise<void> {
     .update({ generation_attempt: 2, retry_state: "retrying", generation_status_text: STATUS.rescue, updated_at: new Date().toISOString() })
     .eq("id", id).eq("generation_attempt", 1).is("generation_completed_at", null).select("id");
   if (!claimed?.length) return;
-  const outcome = await secondTry(row.client_id as string, row.brand_id as string | null, spec, `post:${id}`, () => update(id, { billing_state: "charged" }));
+  // A post the person stopped meanwhile was refunded then: its failed second try refunds nothing more.
+  const stillThere = async () => { try { return !!(await supabaseAdmin.from("content").select("id").eq("id", id).maybeSingle()).data; } catch { return true; } };
+  const outcome = await secondTry(row.client_id as string, row.brand_id as string | null, spec, `post:${id}`, () => update(id, { billing_state: "charged" }), stillThere);
   if (outcome.ok) {
     await update(id, {
       image_urls: [outcome.url], generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString(),
@@ -137,14 +145,17 @@ export async function rescue(id: string): Promise<void> {
 
 type SecondTry = { ok: true; url: string; provider: string; credits: number } | { ok: false; message: string; code: string; charged: boolean };
 
-async function secondTry(clientId: string, brandId: string | null, spec: ImageJobSpec, label: string, onCharged?: () => Promise<void>): Promise<SecondTry> {
+async function secondTry(clientId: string, brandId: string | null, spec: ImageJobSpec, label: string, onCharged?: () => Promise<void>, refundIf?: () => Promise<boolean>): Promise<SecondTry> {
   const credits = rescueCredits(spec.engine);
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", {
     p_client_id: clientId, p_amount: credits, p_operation: "debit", p_description: `Image, second try [${label}]`, ...brandArg(brandId),
   });
   if (!isDeductionSuccessful(deducted, deductError)) return { ok: false, message: LOW_BALANCE_FOR_RESCUE, code: "no_credits", charged: false };
   await onCharged?.();
-  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: `Refund: image second try failed [${label}]`, ...brandArg(brandId) }).then(() => {}, () => {});
+  const refund = async () => {
+    if (refundIf && !(await refundIf())) return;
+    await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: `Refund: image second try failed [${label}]`, ...brandArg(brandId) }).then(() => {}, () => {});
+  };
   const rendered = await renderEdit(RESCUE_ENGINE, spec.prompt, spec.references, spec.aspect, Date.now() + 230_000, "2K");
   console.info("image rescue", JSON.stringify({ label, from: spec.engine, ...(rendered.ok ? { provider: rendered.provider } : { reason: rendered.reason.slice(0, 120), refused: rendered.refused }) }));
   // Replicate's Nano Banana 2 at 2K is $0.101; Kie's is about 18 of its credits. A Fast first try charges 6 for it.
@@ -160,6 +171,33 @@ async function secondTry(clientId: string, brandId: string | null, spec: ImageJo
   const up = file.ok ? await supabaseAdmin.storage.from("assets").upload(path, file.bytes, { contentType: png ? "image/png" : "image/jpeg" }) : null;
   if (!up || up.error) { await refund(); return { ok: false, charged: true, code: "save_failed", message: FINAL_FAILURE(credits) }; }
   return { ok: true, url: supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl, provider: rendered.provider, credits };
+}
+
+/**
+ * Stop images still being made (2026-10-22, test users asked for a Stop button): the post is
+ * removed, so a picture arriving later lands nowhere. The credits come back once: a first try's
+ * from n8n (it refunds when it can't save to the removed post) or from settleFirst (when n8n
+ * delivered anyway); a second try's here (charged here; its own failure refund then skips).
+ */
+export async function stopImageJobs(clientId: string, ids: string[]): Promise<{ stopped: string[]; refunded: number }> {
+  const { data } = await supabaseAdmin.from("content").select("id, brand_id, generation_state, generation_attempt, billing_state, creation_metadata")
+    .eq("client_id", clientId).in("id", ids).eq("generation_state", "generating");
+  const stopped: string[] = [];
+  let refunded = 0;
+  for (const r of data ?? []) {
+    const spec = validJobSpec((r.creation_metadata as { job?: unknown } | null)?.job);
+    if (!spec) continue;
+    const second = (Number(r.generation_attempt) || 1) >= 2;
+    const credits = second && r.billing_state === "charged" ? rescueCredits(spec.engine) : 0;
+    const { data: gone } = await supabaseAdmin.from("content").delete().eq("id", r.id).eq("client_id", clientId).eq("generation_state", "generating").select("id");
+    if (!gone?.length) continue;
+    stopped.push(r.id as string);
+    if (credits > 0) {
+      await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: `Refund: image stopped [post:${r.id}]`, ...brandArg(r.brand_id as string | null) }).then(() => {}, () => {});
+      refunded += credits;
+    }
+  }
+  return { stopped, refunded };
 }
 
 /** Both tries inside this request, no post (editor edits, first frames): the picture's URL or why not. */

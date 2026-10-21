@@ -12,6 +12,8 @@ import { updatePosts } from "@/lib/assistant/actions";
 import { cancelPendingPost, pfmApiKey } from "@/lib/social-schedule";
 import { sendPost } from "@/lib/social-post-server";
 import { IMAGE_QUALITY, VIDEO_PLAN, brandPicture, jobStates, makeImages, makeVideo, type Defer } from "./make-server";
+import { stopImageJobs } from "@/lib/image-jobs-server";
+import { stopVideoJob } from "@/lib/video-rescue-server";
 
 /**
  * Stage 1 tools (2026-10-20): read the brands, the Library and the calendar, and price things.
@@ -250,6 +252,25 @@ export function mcpTools(scope: KeyScope, opts: { defer?: Defer } = {}): McpTool
         const jobs = (await jobStates(scope.clientId, scope.brandIds, ids, defer)).map((j) => ({ ...j, ...(j.type === "image" && j.state === "done" ? { edit_in_editor: `https://www.blinkspot.io/studio/image?mode=design&content=${j.id}` } : {}) }));
         if (!jobs.length) return { text: "None of those posts are in this connection's brands.", error: true };
         return { text: JSON.stringify(jobs), data: { jobs } };
+      },
+    },
+    {
+      name: "stop_job", title: "Stop a job", readOnly: false,
+      description: "Stop images or videos that are still being made (from create_image or create_video). They are removed from the Library; an image's credits come back, and a video is never charged.",
+      inputSchema: { type: "object", properties: { post_ids: { type: "array", minItems: 1, maxItems: 12, items: { type: "string" } } }, required: ["post_ids"], additionalProperties: false },
+      run: async (args) => {
+        if (!can("spend")) return { text: NO_SPEND, error: true };
+        const ids = (Array.isArray(args.post_ids) ? args.post_ids : []).filter((x): x is string => typeof x === "string" && UUID.test(x)).slice(0, 12);
+        let q = supabaseAdmin.from("content").select("id, content_type").eq("client_id", scope.clientId).in("id", ids);
+        if (scope.brandIds) q = q.in("brand_id", scope.brandIds);
+        const { data } = await q;
+        const videos = (data ?? []).filter((r) => r.content_type === "video").map((r) => r.id as string);
+        const images = (data ?? []).filter((r) => r.content_type !== "video").map((r) => r.id as string);
+        const img = images.length ? await stopImageJobs(scope.clientId, images) : { stopped: [], refunded: 0 };
+        const vid = (await Promise.all(videos.map(async (id) => ((await stopVideoJob(scope.clientId, id)) ? id : null)))).filter((x): x is string => !!x);
+        const out = { stopped: [...img.stopped, ...vid], credits_back: img.refunded, not_stopped: ids.filter((id) => ![...img.stopped, ...vid].includes(id)) };
+        if (img.refunded) await supabaseAdmin.from("mcp_activity").insert({ key_id: scope.keyId, client_id: scope.clientId, tool: "stop_job", ok: true, credits: -img.refunded, meta: { stopped: out.stopped } });
+        return { text: JSON.stringify(out), data: out, ...(img.refunded ? { meta: { logged: true } } : {}) };
       },
     },
     {

@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     const [brief, skills] = await Promise.all([loadAccountBrief(ctx).catch(() => undefined), loadSkills()]);
     // Files, like pictures, are read only from this workspace's own folder.
     const withDocs = await withFiles(withPictures(parsed.messages, parsed.pictures, client.id), parsed.files, client.id);
-    const result = await runAssistant(withDocs, { ...ctx, brief, skills, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas, effort });
+    const result = await runAssistant(withDocs, { ...ctx, brief, skills, pageHint: parsed.page, editor: parsed.editor, canvas: parsed.canvas, effort, signal: request.signal });
     // One line per answer so the Claude bill can be traced to accounts in the Vercel logs.
     const usd = estimateUsd(result.model, result.usage);
     let credits = 0;
