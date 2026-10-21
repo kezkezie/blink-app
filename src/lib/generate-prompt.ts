@@ -69,7 +69,8 @@ export function buildGeneratePrompt(i: PromptInput): string {
     const fromRefs = directionFor(i.visual, i.look);
     if (fromRefs) lines.push(fromRefs);
     const colours = (i.colours ?? []).filter((c): c is string => !!c && /^#?[0-9a-f]{6}$/i.test(c));
-    if (colours.length) lines.push(`Use the brand's colours as the palette: ${colours.join(", ")}.`);
+    // Codes are for painting: a draft model wrote "#E4572E" on a poster (2026-10-21).
+    if (colours.length) lines.push(`Use the brand's colours as the palette: ${colours.join(", ")} (colours to paint with; never write colour codes or swatches on the image).`);
     if (i.font && (words || i.look === "poster")) lines.push(`Set headlines in a typeface like ${i.font}.`);
   }
   if (words) lines.push(`Write exactly this text on the image, spelled exactly as given, and no other words: "${words}".`);
@@ -80,6 +81,7 @@ export function buildGeneratePrompt(i: PromptInput): string {
   if (i.logo) lines.push("Image 1 is our logo: place it exactly as given (same shapes and colours), small and clean in a corner. Do not redraw it and do not add any other logo.");
   const direction = lookDirection(i.look, !!words || i.logo || i.look === "poster");
   if (direction) lines.push(direction);
+  if (!plain) lines.push("Show no other company's logo, badge or trademark on any product (no swooshes, stripes or famous marks).");
   if (!plain && i.research?.avoid.length) lines.push(`Avoid: ${i.research.avoid.slice(0, 3).join("; ")}.`);
   return lines.join("\n");
 }

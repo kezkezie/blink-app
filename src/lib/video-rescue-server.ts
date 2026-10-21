@@ -26,7 +26,7 @@ export function checkVideoRescueSignature(id: string, sig: string) {
   return want.length === got.length && timingSafeEqual(want, got);
 }
 
-type Meta = Record<string, unknown> & { video_job?: unknown; video_rescue?: { state?: string; prediction?: string; model?: string; cost?: number; at?: string } };
+type Meta = Record<string, unknown> & { video_job?: unknown; video_rescue?: { state?: string; prediction?: string; model?: string; cost?: number; at?: string; origin?: string } };
 const metaOf = (v: unknown): Meta => (v && typeof v === "object" ? (v as Meta) : {});
 const touch = (patch: Record<string, unknown>) => ({ ...patch, updated_at: new Date().toISOString() });
 
@@ -109,14 +109,16 @@ export async function finishVideoRescue(id: string): Promise<void> {
   if (up.error) return fail(id, meta, VIDEO_FINAL_FAILURE, "save_failed");
   const videoUrl = supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl;
   // Charged only now that the video exists. A balance that dropped meanwhile gets it anyway.
-  const charged = r.cost ? await chargeCredits(row.client_id as string, r.cost, `Video, second try [vidr:${id}]`, row.brand_id as string | null) : false;
+  // An AI connection's video (2026-10-21) runs this same path; it says so on the bill.
+  const fromMcp = (r as { origin?: string }).origin === "mcp";
+  const charged = r.cost ? await chargeCredits(row.client_id as string, r.cost, `${fromMcp ? "Video from an AI connection" : "Video, second try"} [vidr:${id}]`, row.brand_id as string | null) : false;
   await supabaseAdmin.from("content").update(touch({
     video_urls: [videoUrl], status: "draft", generation_state: "succeeded", billing_state: charged ? "charged" : "not_charged", generation_status_text: "Ready",
     generation_error_code: null, retry_state: "none", generation_completed_at: new Date().toISOString(), ai_model: `replicate:${r.model}`,
     creation_metadata: { ...meta, video_rescue: { ...r, state: "done", charged } },
   })).eq("id", id);
   console.info("video rescue done", JSON.stringify({ post: id, model: r.model, charged, cost: r.cost }));
-  logAiUsage({ feature: "video_second_try", provider: "replicate", model: r.model, clientId: row.client_id as string, brandId: row.brand_id as string | null, usd: (Number(r.cost) || 0) * USD_PER_CREDIT, credits: charged ? Number(r.cost) || 0 : 0, meta: { post: id } });
+  logAiUsage({ feature: fromMcp ? "video_mcp" : "video_second_try", provider: "replicate", model: r.model, clientId: row.client_id as string, brandId: row.brand_id as string | null, usd: (Number(r.cost) || 0) * USD_PER_CREDIT, credits: charged ? Number(r.cost) || 0 : 0, meta: { post: id } });
 }
 
 /** The status check's part: claim a failed first try, or look in on a second try whose webhook is late. */

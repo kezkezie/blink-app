@@ -20,7 +20,7 @@ describe("BlinkSpot keys", () => {
     expect(bearerKey(null)).toBeNull();
   });
   it("only open the brands they were given", () => {
-    const scope = { keyId: "k", clientId: "c", brandIds: ["b1"], permissions: ["read"], budget: 200 };
+    const scope = { keyId: "k", clientId: "c", userId: "u", brandIds: ["b1"], permissions: ["read"], budget: 200 };
     expect(brandAllowed(scope, "b1")).toBe(true);
     expect(brandAllowed(scope, "b2")).toBe(false);
     expect(brandAllowed({ ...scope, brandIds: null }, "b2")).toBe(true);

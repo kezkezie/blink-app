@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="supported-color-schemes" content="dark light">
+<title>Sign in to BlinkSpot</title>
+</head>
+<body style="margin:0;padding:0;background:#0C0D0F;">
+<!-- Built by scripts/email/build-templates.mjs in blink-app. Edit there, not here. -->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0C0D0F;">Sign in to BlinkSpot with one tap.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0C0D0F;">
+  <tr><td align="center" style="padding:40px 16px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+      <tr><td style="padding:0 4px 24px 4px;">
+        <a href="https://www.blinkspot.io" style="text-decoration:none;">
+          <img src="https://www.blinkspot.io/brand/app-icon.png" width="40" height="40" alt="BlinkSpot" style="display:inline-block;vertical-align:middle;border:0;border-radius:10px;">
+          <span style="display:inline-block;vertical-align:middle;margin-left:10px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:18px;font-weight:700;color:#ECEDEE;letter-spacing:-0.2px;">BlinkSpot</span>
+        </a>
+      </td></tr>
+      <tr><td style="background:#131417;border:1px solid #25282D;border-radius:16px;padding:36px 32px;">
+        <h1 style="margin:0 0 14px 0;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:24px;line-height:1.25;font-weight:700;color:#ECEDEE;letter-spacing:-0.3px;">Sign in to BlinkSpot</h1>
+        <p style="margin:0 0 16px 0;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:15px;line-height:1.6;color:#A9AEB6;">Tap the button to sign in. The link works once and expires soon.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 8px 0;">
+          <tr><td style="border-radius:10px;background:#C6F432;">
+            <a href="https://www.blinkspot.io/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink&next=/studio" style="display:inline-block;padding:14px 26px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:15px;font-weight:700;color:#0C0D0F;text-decoration:none;border-radius:10px;">Sign in</a>
+          </td></tr>
+        </table>
+        <p style="margin:18px 0 0 0;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:1.6;color:#6E737B;">Button not working? Paste this into your browser:<br><a href="https://www.blinkspot.io/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink&next=/studio" style="color:#A9AEB6;word-break:break-all;">https://www.blinkspot.io/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink&next=/studio</a></p>
+        
+      </td></tr>
+      <tr><td style="padding:22px 4px 0 4px;">
+        <p style="margin:0 0 6px 0;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:1.6;color:#6E737B;">Didn't ask to sign in? You can ignore this email; nobody can get in without this link.</p>
+        <p style="margin:0;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:1.6;color:#6E737B;">BlinkSpot · the AI social media studio for your brand · <a href="https://www.blinkspot.io" style="color:#A9AEB6;text-decoration:none;">blinkspot.io</a></p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

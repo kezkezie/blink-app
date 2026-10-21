@@ -21,7 +21,16 @@ export function bearerKey(header: string | null): string | null {
   return m ? m[1] : null;
 }
 
-export type KeyScope = { keyId: string; clientId: string; brandIds: string[] | null; permissions: string[]; budget: number };
+/**
+ * What a key may do (2026-10-21): read (always), spend (make images and videos, within the monthly
+ * budget), post (approve, schedule and publish the brand's posts on its connected accounts).
+ */
+export const KEY_PERMISSIONS = ["read", "spend", "post"] as const;
+export type KeyPermission = (typeof KEY_PERMISSIONS)[number];
+export const cleanPermissions = (v: unknown): KeyPermission[] => ["read", ...KEY_PERMISSIONS.filter((p) => p !== "read" && Array.isArray(v) && v.includes(p))] as KeyPermission[];
+
+/** userId: who made the key (the workspace owner), used where a maker checks the person. */
+export type KeyScope = { keyId: string; clientId: string; userId: string | null; brandIds: string[] | null; permissions: string[]; budget: number };
 
 /** May this key use this brand? null brand_ids = every brand of the workspace. */
 export const brandAllowed = (scope: KeyScope, brandId: string) => !scope.brandIds || scope.brandIds.includes(brandId);

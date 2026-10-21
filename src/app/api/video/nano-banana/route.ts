@@ -189,7 +189,15 @@ export async function POST(req: NextRequest) {
       const parsed = JSON.parse(rawText);
       // n8n answers 200 with a body code when its deduction gate refuses the call.
       if (parsed?.code === "insufficient_credits") {
-        return NextResponse.json({ error: "Not enough credits." }, { status: 402 });
+        // The scene's post would otherwise stay "Queued" forever (2026-10-21, NUF: three scenes sent
+        // with 33 credits left): close it honestly, nothing charged.
+        const message = "Not enough credits for this scene, so it didn't start. Nothing was charged. Top up in Billing, or switch it to Draft, then render it again.";
+        if (scenePost) {
+          const { supabaseAdmin } = await import("@/lib/supabase-server");
+          await supabaseAdmin.from("content").update({ generation_state: "failed", status: "failed", generation_error_code: "no_credits", generation_status_text: message, billing_state: "not_charged", retry_state: "retry_available", generation_completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq("id", scenePost.id).eq("client_id", scenePost.client).in("generation_state", ["queued", "preparing", "generating"]);
+        }
+        return NextResponse.json({ error: message, code: "no_credits" }, { status: 402 });
       }
       // The director refused instead of planning: say so plainly, with what to try.
       if (payload.mode === "director" && !(Array.isArray(parsed?.scenes) && parsed.scenes.length) && REFUSAL.test(rawText.slice(0, 4000))) {

@@ -2765,12 +2765,32 @@ export function StorytellingSetup({
     }
     updateScene(scene.id, "prompt", (scene.prompt || "") + value);
   };
-  const renderAllScenes = async () => {
+  const renderAllScenes = async (onlyWhatFits = false) => {
     const ready = bRollScenes.map((s, i) => ({ s, i })).filter(({ s }) => !s.videoUrl && !s.isGeneratingVideo);
     const unwritten = ready.filter(({ s }) => !s.prompt?.trim()).map(({ i }) => i + 1);
-    const go = ready.filter(({ s }) => s.prompt?.trim()).map(({ i }) => i);
+    let go = ready.filter(({ s }) => s.prompt?.trim()).map(({ i }) => i);
     if (unwritten.length) toast.info(`Scene${unwritten.length === 1 ? "" : "s"} ${unwritten.join(", ")} ${unwritten.length === 1 ? "has" : "have"} nothing written yet, so ${unwritten.length === 1 ? "it was" : "they were"} skipped.`);
     if (!go.length) return;
+    // Credits first (2026-10-21): 4 scenes (~820 cr) were sent with 238 in the account; the first
+    // took 205 and the video service refused the other three. Now it says so before anything starts.
+    const have = await fetch("/api/credits/balance", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => (typeof d?.balance === "number" ? d.balance as number : null)).catch(() => null);
+    if (have !== null) {
+      const cost = (i: number) => sceneInfo(bRollScenes[i]).credits ?? 0;
+      const need = go.reduce((n, i) => n + cost(i), 0);
+      if (need > have) {
+        const fits: number[] = [];
+        let left = have;
+        for (const i of go) { if (cost(i) <= left) { fits.push(i); left -= cost(i); } }
+        if (!onlyWhatFits || !fits.length) {
+          toast.error(`These ${go.length} scenes need about ${need} credits and you have ${have}. ${fits.length ? `${fits.length} fit${fits.length === 1 ? "s" : ""} now.` : "Top up, or switch scenes to Draft (cheaper) in Story settings."}`, {
+            duration: 15000,
+            action: fits.length ? { label: `Render ${fits.length} that fit`, onClick: () => { void renderAllScenes(true); } } : { label: "Get credits", onClick: () => { window.location.href = "/studio/account/billing"; } },
+          });
+          return;
+        }
+        go = fits;
+      }
+    }
     setIsGeneratingVideos(true);
     try {
       // In parallel, started a moment apart (each scene is charged and refunded on its own).
@@ -3152,7 +3172,7 @@ export function StorytellingSetup({
             <div className="text-[11px]" style={{ color: "var(--s-mute)" }}>{rendered ? `${rendered} of ${total} rendered` : "Render, then put them together"}</div>
           </div>
           <button type="button" className="s-btn" onClick={putScenesTogether} disabled={!rendered || stackingScenes}>{stackingScenes ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />} Put them together</button>
-          <button type="button" className="s-btn primary lg" onClick={renderAllScenes} disabled={isGeneratingVideos || toRender.length === 0}>
+          <button type="button" className="s-btn primary lg" onClick={() => void renderAllScenes()} disabled={isGeneratingVideos || toRender.length === 0}>
             {isGeneratingVideos ? <><Loader2 className="h-4 w-4 animate-spin" /> Rendering…</> : toRender.length === 0 ? <>Render scenes</> : <>Render {toRender.length === total ? "all" : toRender.length} <span className="cost">{renderCost} cr</span></>}
           </button>
         </div>
