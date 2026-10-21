@@ -39,7 +39,7 @@ test("motion graphics on their own page, saved to the Library", async ({ page })
     await page.getByRole("tab", { name: /1:1/ }).click();
     await page.getByLabel("What the motion is for").fill("A 6 second intro for our Drop 01 sneaker launch: the words Drop 01, then an end card saying Shop the drop");
     await page.getByRole("button", { name: /Write it/ }).click();
-    const studio = page.getByRole("dialog", { name: "Motion" });
+    const studio = page.getByRole("dialog", { name: "Motion", exact: true });
     await expect(studio.getByRole("button", { name: /^Make it/ })).toBeVisible({ timeout: 120_000 });
     await studio.getByRole("button", { name: /^Make it/ }).click();
     await expect(page.getByText(/saved to your Library/)).toBeVisible({ timeout: 180_000 });

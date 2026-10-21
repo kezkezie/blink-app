@@ -42,7 +42,7 @@ test("numbers that move and a post turned into a video use only what was pasted"
     await page.getByRole("button", { name: "Numbers that move" }).click();
     await page.getByLabel("Text or numbers to use").fill("Mushroom harvest, kg per month\nJune 140\nJuly 210\nAugust 265\nSeptember 330");
     await page.getByRole("button", { name: /Write it/ }).click();
-    const studio = page.getByRole("dialog", { name: "Motion" });
+    const studio = page.getByRole("dialog", { name: "Motion", exact: true });
     await expect(studio.getByRole("button", { name: /^Make it/ })).toBeVisible({ timeout: 150_000 });
     const s1 = (await kept())!;
     console.log("numbers plan", JSON.stringify(s1.scenes.map((s) => ({ t: s.template, title: s.title, bars: s.bars }))));

@@ -13,7 +13,7 @@ import {
   Undo2, Redo2, Download, Save, Trash2, Copy, Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown, Loader2,
   Scissors, Wand2, Shapes, ZoomIn, Upload as UploadIcon, LayoutTemplate, ZoomOut, Maximize, Layers as LayersIcon, Ungroup, X, UserRound, Film,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
-  LassoSelect, WandSparkles, GripVertical,
+  LassoSelect, WandSparkles, GripVertical, BadgeCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -239,6 +239,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const [picking, setPicking] = useState<null | "photo" | "face">(null);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [vectorPrompt, setVectorPrompt] = useState("");
+  const [exportAt, setExportAt] = useState<{ top: number; right: number } | null>(null);
   const [editPrompt, setEditPrompt] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const history = useRef<{ stack: string[]; index: number; restoring: boolean; timer?: ReturnType<typeof setTimeout> }>({ stack: [], index: -1, restoring: false });
@@ -1632,6 +1633,11 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
           <ImagePlus className="h-[18px] w-[18px]" />
           <span className="s-tip"><b>Add a photo</b><br /><span>From your Library or your device. Each photo is its own layer.</span></span>
         </button>
+        {/* One tap, always there (2026-10-21: it was only in the canvas panel when nothing was selected). */}
+        <button className="s-tool group relative" onClick={() => { if (kit?.logoUrl) void addImage(kit.logoUrl, "Logo"); else toast.info("Add your logo on the Brand page first; then it's one tap here.", { action: { label: "Brand page", onClick: () => { window.location.href = "/studio/brand"; } } }); }} aria-label="Add your logo">
+          <BadgeCheck className="h-[18px] w-[18px]" />
+          <span className="s-tip"><b>Add your logo</b><br /><span>{kit?.logoUrl ? "Your brand's logo as its own layer." : "Add a logo on the Brand page first."}</span></span>
+        </button>
         <div className="flex-1" />
         <button className="s-tool group relative" style={{ color: "var(--s-ai)" }} onClick={() => ask("")} aria-label="Ask BlinkSpot to edit">
           <Sparkles className="h-[18px] w-[18px]" />
@@ -1668,16 +1674,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
             </span>
           )}
           {aiBusy && <span className="s-pill"><Loader2 className="h-3 w-3 animate-spin" style={{ color: "var(--s-ai)" }} /> {aiBusy}</span>}
-          <div className="relative group shrink-0">
-            <button className="s-btn sm"><Download className="h-3.5 w-3.5" /> Export</button>
-            <div className="absolute right-0 top-full pt-1 hidden group-hover:block group-focus-within:block z-40">
-              <div className="p-1 rounded-xl grid" style={{ background: "var(--s-raised)", border: "1px solid var(--s-line-2)" }}>
-                <button className="px-3 py-1.5 text-left text-xs rounded-lg hover:bg-[var(--s-hover)]" onClick={() => exportFile("png")}>PNG (transparent ok)</button>
-                <button className="px-3 py-1.5 text-left text-xs rounded-lg hover:bg-[var(--s-hover)]" onClick={() => exportFile("jpeg")}>JPG (smaller)</button>
-                <button className="px-3 py-1.5 text-left text-xs rounded-lg hover:bg-[var(--s-hover)]" onClick={() => exportFile("svg")}>SVG (vectors, for print)</button>
-              </div>
-            </div>
-          </div>
+          {/* A click menu placed above everything (2026-10-21: the toolbar clips what overflows it, so the hover menu was cut off). */}
+          <button className="s-btn sm shrink-0" aria-haspopup="menu" aria-expanded={!!exportAt} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setExportAt(exportAt ? null : { top: r.bottom + 6, right: window.innerWidth - r.right }); }}><Download className="h-3.5 w-3.5" /> Export</button>
           {/* Never a button that silently does nothing while the account loads (known issue, 2026-10-11). */}
           {slideTarget?.slide !== undefined && <button className="s-btn primary sm shrink-0" onClick={saveToSlide} disabled={!!aiBusy || !clientId}><Save className="h-3.5 w-3.5" /> {clientId ? `Save to slide ${slideTarget.slide + 1}` : "Loading your account…"}</button>}
           <button className={`s-btn ${slideTarget?.slide !== undefined ? "" : "primary "}sm shrink-0`} onClick={saveToLibrary} disabled={!!aiBusy || !clientId}><Save className="h-3.5 w-3.5" /> {!clientId ? "Loading your account…" : slideTarget?.slide !== undefined ? "Save as a new post" : "Save to Library"}</button>
@@ -1922,6 +1920,17 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
           </Reorder.Group>
         </div>
       </aside>
+
+      {exportAt && (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={() => setExportAt(null)} aria-hidden />
+          <div role="menu" aria-label="Export" className="fixed z-[61] p-1 rounded-xl grid min-w-[200px]" style={{ top: exportAt.top, right: exportAt.right, background: "var(--s-raised)", border: "1px solid var(--s-line-2)", boxShadow: "0 12px 30px rgba(0,0,0,.4)" }}>
+            {([["png", "PNG (transparent ok)"], ["jpeg", "JPG (smaller)"], ["svg", "SVG (vectors, for print)"]] as const).map(([k, label]) => (
+              <button key={k} role="menuitem" className="px-3 py-2 text-left text-[12.5px] rounded-lg hover:bg-[var(--s-hover)]" onClick={() => { setExportAt(null); void exportFile(k); }}>{label}</button>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* pickers */}
       {picking && (

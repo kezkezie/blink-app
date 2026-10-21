@@ -19,13 +19,15 @@ const SHAPES: Array<{ id: MotionShape; label: string; line: string }> = [
   { id: "16:9", label: "16:9", line: "YouTube, websites" },
 ];
 
-/** Ask BlinkSpot can open this with a brief, screenshots and a shape (a walkthrough from a chat). */
+/** Ask BlinkSpot can open this with a brief, screenshots and a shape (a walkthrough from a chat); the Library with a picture. */
 function fromLink(params: URLSearchParams) {
   const brief = params.get("brief")?.slice(0, 600) || null;
   let screens: string[] = [];
   try { const s = JSON.parse(params.get("screens") ?? "[]"); if (Array.isArray(s)) screens = s.filter((u): u is string => typeof u === "string" && /^https:\/\/[^/]+\/storage\/v1\/object\/public\/assets\/images\//.test(u)).slice(0, 6); } catch { /* none */ }
   const shape = (["9:16", "1:1", "16:9"] as const).find((s) => s === params.get("shape")) ?? "9:16";
-  return { brief, screens, shape };
+  const p = params.get("picture");
+  const picture = p && /^[0-9a-f-]{36}$/i.test(p) ? p : null;
+  return { brief, screens, shape, picture };
 }
 
 function MotionPage() {
@@ -43,7 +45,7 @@ function MotionPage() {
         {SHAPES.map((s) => <button key={s.id} role="tab" aria-selected={shape === s.id} onClick={() => setShape(s.id)} title={s.line}>{s.label} <span className="hidden sm:inline" style={{ color: "var(--s-mute)" }}>· {s.line}</span></button>)}
       </div>
       <div className="s-card mt-4 py-2 ve" style={{ minHeight: 0 }}>
-        <MotionBin key={shape} clientId={clientId} shape={shape} standalone onAdded={() => {}} initialPrompt={link.brief} initialScreens={link.screens.length ? link.screens : null} />
+        <MotionBin key={shape} clientId={clientId} shape={shape} standalone onAdded={() => {}} initialPrompt={link.brief} initialScreens={link.screens.length ? link.screens : null} pictureId={link.picture} />
       </div>
     </div>
   );

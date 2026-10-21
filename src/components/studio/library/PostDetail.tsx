@@ -26,7 +26,7 @@ import { DetailSkeleton } from "@/components/studio/Skeletons";
  * post now or schedule, approvals, remake the image, delete. Plus: schedule a date right here
  * instead of "drag it on the calendar", and an honest queued / not queued state.
  */
-type Post = CalRow & { caption_short?: string | null; hashtags?: string | null; call_to_action?: string | null; rejection_reason?: string | null; ai_model?: string | null; image_prompt_used?: string | null };
+type Post = CalRow & { caption_choice?: string | null; caption_written?: boolean | null; caption_short?: string | null; hashtags?: string | null; call_to_action?: string | null; rejection_reason?: string | null; ai_model?: string | null; image_prompt_used?: string | null };
 
 const ENGINES: Array<{ id: ImageEngine; label: string; cost: number }> = [
   { id: "nb2", label: "Best quality", cost: 18 },
@@ -44,6 +44,8 @@ export function PostDetail({ id }: { id: string }) {
   const [short, setShort] = useState("");
   const [hashtags, setHashtags] = useState("");
   const [choice, setChoice] = useState<"long" | "short">("long");
+  // A real caption (typed or written by the AI), not the working title the post was made with.
+  const [written, setWritten] = useState(false);
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -76,6 +78,7 @@ export function PostDetail({ id }: { id: string }) {
     setPost(row);
     if (!row) return;
     setCaption(row.caption ?? ""); setShort(row.caption_short ?? ""); setHashtags(row.hashtags ?? "");
+    setChoice(row.caption_choice === "short" ? "short" : "long"); setWritten(!!row.caption_written);
     setPlatforms(enabledPlatforms(row.target_platforms));
     setDirty(false);
     if (row.brand_id) {
@@ -103,16 +106,26 @@ export function PostDetail({ id }: { id: string }) {
 
   async function save(quiet = false) {
     if (!post || !clientId) return false;
+    // Editing either caption makes it a real one; the working title alone isn't.
+    const isWritten = written || caption !== (post.caption ?? "") || short !== (post.caption_short ?? "");
     const { error } = await supabase.from("content").update({
-      caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms),
+      caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms), caption_choice: choice, caption_written: isWritten,
     } as Record<string, unknown>).eq("id", post.id).eq("client_id", clientId);
     if (error) { toast.error("Couldn't save your changes."); return false; }
-    setPost({ ...post, caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms) });
+    setWritten(isWritten);
+    setPost({ ...post, caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms), caption_choice: choice, caption_written: isWritten });
     setDirty(false);
     if (!quiet) toast.success("Saved.");
     return true;
   }
   const edit = <T,>(set: (v: T) => void) => (v: T) => { set(v); setDirty(true); };
+  /** The long/short pick is saved straight away: it's what the calendar posts too. */
+  async function pickCaption(next: "long" | "short") {
+    setChoice(next);
+    if (!post || !clientId || post.status === "posted") return;
+    await supabase.from("content").update({ caption_choice: next } as Record<string, unknown>).eq("id", post.id).eq("client_id", clientId);
+    setPost({ ...post, caption_choice: next });
+  }
 
   async function writeCaption(length: "long" | "short") {
     if (!post || !clientId) return;
@@ -129,8 +142,12 @@ export function PostDetail({ id }: { id: string }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't write the caption.");
-      if (length === "long") setCaption(data.caption_long || ""); else setShort(data.caption_short || "");
+      // The one asked for is replaced; the other is filled only when empty (same message, so the pair matches).
+      const working = !written;
+      if (length === "long" || working || !caption.trim()) { if (data.caption_long) setCaption(data.caption_long); }
+      if (length === "short" || working || !short.trim()) { if (data.caption_short) setShort(data.caption_short); }
       if (data.hashtags && !hashtags.trim()) setHashtags(data.hashtags);
+      setWritten(true);
       setDirty(true);
       toast.success("Written · 1 credit. Check it, then Save.");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't write the caption."); }
@@ -248,7 +265,7 @@ export function PostDetail({ id }: { id: string }) {
           <>
             <Link href={`/studio/image?mode=design&content=${post.id}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> Open in Editor</Link>
             <Link href={`/studio/library/${post.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>
-            <Link href={`/studio/video?tab=editor&rail=motion&motionPicture=${post.id}&motion=${encodeURIComponent(`Animate this picture${post.caption ? `: ${cleanCaption(post.caption).slice(0, 120)}` : ""}`)}`} className="s-btn sm" title="Animated titles and a reveal from this picture, in your brand font"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>
+            <Link href={`/studio/motion?picture=${post.id}&brief=${encodeURIComponent(`Animate this picture${post.caption ? `: ${cleanCaption(post.caption).slice(0, 120)}` : ""}`)}`} className="s-btn sm" title="Animated titles and a reveal from this picture, in your brand font"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>
             <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>
           </>
         )}
@@ -297,10 +314,16 @@ export function PostDetail({ id }: { id: string }) {
             <div className="flex items-center justify-between gap-2">
               <span className="s-label" style={{ margin: 0 }}>Caption</span>
               <div className="s-seg" role="group" aria-label="Which caption to post">
-                <button aria-pressed={choice === "long"} onClick={() => setChoice("long")}>Post long</button>
-                <button aria-pressed={choice === "short"} onClick={() => setChoice("short")}>Post short</button>
+                <button aria-pressed={choice === "long"} disabled={!canEdit} onClick={() => void pickCaption("long")}>Post long</button>
+                <button aria-pressed={choice === "short"} disabled={!canEdit} onClick={() => void pickCaption("short")}>Post short</button>
               </div>
             </div>
+            {canEdit && !written && (
+              <div role="note" className="rounded-lg p-2.5 text-[12.5px] grid gap-1.5" style={{ background: "var(--s-raised)", color: "var(--s-soft)" }}>
+                <span>{caption.trim() ? <>&ldquo;{caption.trim().slice(0, 60)}{caption.trim().length > 60 ? "…" : ""}&rdquo; is this post&apos;s working title, not a caption. Write one with AI or type your own before it posts.</> : "No caption yet. Write one with AI or type your own before it posts."}</span>
+                {caption.trim() && <button className="s-btn sm justify-self-start" onClick={() => { setWritten(true); setDirty(true); }}>Use it as the caption</button>}
+              </div>
+            )}
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between"><span className="text-[12px]" style={{ color: choice === "long" ? "var(--s-text)" : "var(--s-mute)" }}>Long{choice === "long" && " · this one posts"}</span>
                 <button className="s-btn ai sm" disabled={!!writing || !canEdit} onClick={() => writeCaption("long")}>{writing === "long" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write with AI <span className="cost">1 cr</span></button></div>
@@ -310,6 +333,7 @@ export function PostDetail({ id }: { id: string }) {
               <div className="flex items-center justify-between"><span className="text-[12px]" style={{ color: choice === "short" ? "var(--s-text)" : "var(--s-mute)" }}>Short{choice === "short" && " · this one posts"}</span>
                 <button className="s-btn ai sm" disabled={!!writing || !canEdit} onClick={() => writeCaption("short")}>{writing === "short" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write with AI <span className="cost">1 cr</span></button></div>
               <input className="s-input" value={short} onChange={(e) => edit(setShort)(e.target.value)} disabled={!canEdit} placeholder="A one-line hook" aria-label="Short caption" />
+              {choice === "short" && !short.trim() && caption.trim() && <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Empty, so the long one posts.</span>}
             </div>
             <div className="grid gap-1.5">
               <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>Hashtags</span>

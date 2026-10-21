@@ -52,11 +52,11 @@ export const CREATE_BRAND_TOOL = {
 
 export const UPDATE_POSTS_TOOL = {
   name: "update_posts",
-  description: "Write or change captions and hashtags on the brand's Library posts, or mark them approved, FOR the user (ids from list_library). Saves at once with an Undo. Never deletes or publishes.",
+  description: "Write or change captions and hashtags on the brand's Library posts, or mark them approved, FOR the user (ids from list_library). Write BOTH captions when writing one: `caption` (long, 2-3 short paragraphs) and `caption_short` (one or two sentences that work alone), saying the same thing. A post's caption from list_library may only be its working title; a post posts only once a real caption is written. Saves at once with an Undo. Never deletes or publishes.",
   input_schema: {
     type: "object",
     properties: {
-      posts: { type: "array", maxItems: 20, items: { type: "object", properties: { id: { type: "string" }, caption: { type: "string" }, hashtags: { type: "string", description: "Space-separated, e.g. #nairobi #juice" }, approve: { type: "boolean" } }, required: ["id"] } },
+      posts: { type: "array", maxItems: 20, items: { type: "object", properties: { id: { type: "string" }, caption: { type: "string", description: "The long caption" }, caption_short: { type: "string", description: "The short caption: one or two sentences" }, hashtags: { type: "string", description: "Space-separated, e.g. #nairobi #juice" }, approve: { type: "boolean" } }, required: ["id"] } },
     },
     required: ["posts"],
     additionalProperties: false,
@@ -111,7 +111,7 @@ const show = (v: unknown) => (Array.isArray(v) ? v.join(", ") : String(v ?? ""))
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 export type BrandUndo = { kind: "brand"; brandId: string; core: Record<string, unknown>; dna: unknown; addedProducts: string[]; changedProducts: Array<{ id: string; price: number | null; currency: string | null; description: string | null }> };
-export type PostsUndo = { kind: "posts"; brandId: string; posts: Array<{ id: string; caption: string | null; hashtags: string | null; status: string }> };
+export type PostsUndo = { kind: "posts"; brandId: string; posts: Array<{ id: string; caption: string | null; caption_short?: string | null; caption_written?: boolean; hashtags: string | null; status: string }> };
 export type AssistantUndo = BrandUndo | PostsUndo;
 
 type Applied = { changes: string[]; undo: AssistantUndo | null; error?: string };
@@ -199,7 +199,7 @@ export async function updatePosts(ctx: { clientId: string; brandId: string | nul
   if (!ctx.brandId) return { changes: [], undo: null, error: "No brand is open." };
   const asked = (Array.isArray(input.posts) ? input.posts : []).slice(0, 20).filter((p): p is Record<string, unknown> => !!p && typeof p === "object" && typeof (p as { id?: unknown }).id === "string" && UUID.test((p as { id: string }).id));
   if (!asked.length) return { changes: [], undo: null, error: "No valid post ids. Call list_library and use its ids." };
-  const { data: rows } = await supabaseAdmin.from("content").select("id, caption, hashtags, status").eq("client_id", ctx.clientId).eq("brand_id", ctx.brandId).in("id", asked.map((p) => p.id as string));
+  const { data: rows } = await supabaseAdmin.from("content").select("id, caption, caption_short, caption_written, hashtags, status").eq("client_id", ctx.clientId).eq("brand_id", ctx.brandId).in("id", asked.map((p) => p.id as string));
   const byId = new Map((rows ?? []).map((r) => [r.id as string, r]));
   const changes: string[] = [];
   const undo: PostsUndo = { kind: "posts", brandId: ctx.brandId, posts: [] };
@@ -209,13 +209,16 @@ export async function updatePosts(ctx: { clientId: string; brandId: string | nul
     const upd: Record<string, unknown> = {};
     const caption = typeof p.caption === "string" ? p.caption.trim().slice(0, 2200) : "";
     if (caption && caption !== row.caption) upd.caption = caption;
+    const short = typeof p.caption_short === "string" ? p.caption_short.trim().slice(0, 300) : "";
+    if (short && short !== row.caption_short) upd.caption_short = short;
+    if ((upd.caption || upd.caption_short) && !row.caption_written) upd.caption_written = true;
     const tags = typeof p.hashtags === "string" ? p.hashtags.split(/\s+/).filter((t) => /^#[\p{L}\p{N}_]{1,60}$/u.test(t)).slice(0, 30).join(" ") : "";
     if (tags && tags !== row.hashtags) upd.hashtags = tags;
     if (p.approve === true && ["draft", "pending_approval", "rejected"].includes(row.status as string)) upd.status = "approved";
     if (!Object.keys(upd).length) continue;
     await supabaseAdmin.from("content").update({ ...upd, updated_at: new Date().toISOString() }).eq("id", row.id).eq("client_id", ctx.clientId);
-    undo.posts.push({ id: row.id as string, caption: (row.caption as string | null) ?? null, hashtags: (row.hashtags as string | null) ?? null, status: row.status as string });
-    changes.push(`${s(caption || row.caption, 40) || "Post"}: ${[upd.caption && "caption", upd.hashtags && "hashtags", upd.status && "approved"].filter(Boolean).join(", ")}`);
+    undo.posts.push({ id: row.id as string, caption: (row.caption as string | null) ?? null, caption_short: (row.caption_short as string | null) ?? null, caption_written: !!row.caption_written, hashtags: (row.hashtags as string | null) ?? null, status: row.status as string });
+    changes.push(`${s(caption || short || row.caption, 40) || "Post"}: ${[upd.caption && "caption", upd.caption_short && "short caption", upd.hashtags && "hashtags", upd.status && "approved"].filter(Boolean).join(", ")}`);
   }
   return { changes, undo: undo.posts.length ? undo : null };
 }
@@ -243,7 +246,12 @@ export async function undoAssistantChange(clientId: string, raw: unknown): Promi
     for (const p of (Array.isArray(u.posts) ? u.posts : []).slice(0, 20)) {
       if (typeof p?.id !== "string" || !UUID.test(p.id)) continue;
       const status = ["draft", "pending_approval", "approved", "rejected"].includes(p.status) ? p.status : "draft";
-      await supabaseAdmin.from("content").update({ caption: typeof p.caption === "string" ? p.caption.slice(0, 2200) : null, hashtags: typeof p.hashtags === "string" ? p.hashtags.slice(0, 2000) : null, status, updated_at: new Date().toISOString() })
+      await supabaseAdmin.from("content").update({
+        caption: typeof p.caption === "string" ? p.caption.slice(0, 2200) : null, hashtags: typeof p.hashtags === "string" ? p.hashtags.slice(0, 2000) : null, status, updated_at: new Date().toISOString(),
+        // Undo from before 2026-10-21 has neither field: leave them as they are.
+        ...("caption_short" in p ? { caption_short: typeof p.caption_short === "string" ? p.caption_short.slice(0, 300) : null } : {}),
+        ...(typeof p.caption_written === "boolean" ? { caption_written: p.caption_written } : {}),
+      })
         .eq("id", p.id).eq("brand_id", u.brandId).eq("client_id", clientId).neq("status", "posted");
     }
     return { ok: true };

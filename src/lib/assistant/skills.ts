@@ -66,7 +66,7 @@ Write the final prompt in 80-150 words, then propose_image with style "poster".`
   {
     id: "motion-graphics",
     name: "Motion graphics and animated text",
-    description: "Animated logos, kinetic type, product spins, loops and transitions for Reels and ads.",
+    description: "Motion graphics (the Motion graphics page), animated logos, kinetic type, product spins, loops and transitions for Reels and ads.",
     body: `Motion graphics in BlinkSpot.
 
 What renders where:
@@ -77,9 +77,10 @@ What renders where:
 
 Write each shot prompt as: subject + action + camera move + light + mood + timing. Example: "The amber bottle on wet black stone, slow 180-degree orbit left, a thin rim light sweeps across the glass, droplets catch the light, calm and premium, 5 seconds."
 
-Motion panel (Video Editor > Motion, or make_motion): for animated words, numbers, a product reveal, a logo sting, a see-through lower third over footage or an end card, this is the first choice. Claude plans it from the brand's kit (4 credits), every letter is drawn exactly in the brand's font and colours, the preview and edits are free, and it lands on the timeline. Give make_motion a brief with the exact words, numbers and prices.
+Where Motion lives: its own page, Create > Motion graphics (/studio/motion). make_motion opens that page with the brief filled in. From inside the Video Editor, the Motion button (and make_motion) opens the same Motion over the timeline, and the clip lands on the timeline. Never send someone to the editor just to make motion graphics.
+Motion graphics: for animated words, numbers, bar charts, a before-and-after number, key points from a post, a product reveal, a logo sting, a see-through lower third over footage, an end card or an app walkthrough, this is the first choice. Claude plans it from the brand's kit (4 credits), every letter is drawn exactly in the brand's font and colours, the preview and edits are free, and it saves to the Library. Give make_motion a brief with the exact words, numbers and prices.
 
-Kinetic type (words that move): use the Motion panel, or plan it in the Editor. Short lines (2-4 words), one idea per beat, each line 0.6-1.2 s, cut on the music's beat (the Editor's Cut to the beat does this). Big, bold, high contrast, centred or on a strong left edge, inside the 10% safe area. For 9:16 keep words in the middle 60% so app buttons don't cover them.
+Kinetic type (words that move): use Motion graphics, or plan it in the Editor. Short lines (2-4 words), one idea per beat, each line 0.6-1.2 s, cut on the music's beat (the Editor's Cut to the beat does this). Big, bold, high contrast, centred or on a strong left edge, inside the 10% safe area. For 9:16 keep words in the middle 60% so app buttons don't cover them.
 
 Sequences: 3-6 shots of about 5 s, each a different angle or scale (wide, mid, close), a match cut or a whip between them. Use propose_video style "storytelling" for anything longer than one shot, then the user puts the scenes together in the Editor and adds the type and music there.
 Cost: video is priced per second; say the total before proposing and suggest Draft quality to try the motion first.`,

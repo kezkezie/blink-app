@@ -51,3 +51,24 @@ export async function cancelPendingPost(apiKey: string, postId: string | null | 
   if (del.ok || del.status === 404) return { outcome: "cancelled", status };
   return { outcome: "error", status };
 }
+
+export type CaptionChoice = "long" | "short";
+export type CaptionRow = { caption?: string | null; caption_short?: string | null; hashtags?: string | null; caption_choice?: string | null; caption_written?: boolean | null };
+
+/**
+ * The caption a post goes out with (2026-10-21). The long/short choice comes from the request,
+ * else the one saved with the post. The chosen caption posts; if it's empty the other one does,
+ * so a post never goes out blank. A post that only has its working title ("Container",
+ * "Inspo Remix") isn't posted: it needs a caption first. Instagram's limit is 2200 characters.
+ */
+export function pickCaption(row: CaptionRow, requested?: unknown): { ok: true; choice: CaptionChoice; text: string } | { ok: false; choice: CaptionChoice; code: "needs_caption"; error: string } {
+  const choice: CaptionChoice = requested === "short" || requested === "long" ? requested : row.caption_choice === "short" ? "short" : "long";
+  const long = (row.caption ?? "").trim();
+  const short = (row.caption_short ?? "").trim();
+  const body = choice === "short" ? short || long : long || short;
+  if (!row.caption_written || !body) {
+    return { ok: false, choice, code: "needs_caption", error: body ? `This post only has its working title ("${body.slice(0, 40)}"), not a caption. Write its caption first.` : "This post has no caption yet. Write its caption first." };
+  }
+  const text = [body, (row.hashtags ?? "").trim()].filter(Boolean).join("\n\n").slice(0, 2200);
+  return { ok: true, choice, text };
+}

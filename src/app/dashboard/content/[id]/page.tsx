@@ -390,7 +390,9 @@ export default function ContentDetailPage({
         caption_short: captionShort,
         hashtags,
         call_to_action: callToAction,
-        target_platforms: publishSettings // ✨ Save the complex object
+        target_platforms: publishSettings, // ✨ Save the complex object
+        // A caption typed or edited here is a real caption, not the working title (2026-10-21).
+        caption_written: Boolean((content as any).caption_written) || caption !== (content.caption ?? "") || captionShort !== ((content as any).caption_short ?? ""),
       } as any)
       .eq("id", content.id);
     return !error;

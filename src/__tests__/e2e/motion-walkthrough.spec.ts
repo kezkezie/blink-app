@@ -84,7 +84,7 @@ test("an app walkthrough from screenshots points at the right buttons", async ({
     await expect(page.getByLabel("What the motion is for")).toHaveValue(/walkthrough/i);
     await page.getByLabel("What the motion is for").fill("A walkthrough of our app: first tap Generate poster, then click Schedule post. One step per screenshot.");
     await page.getByRole("button", { name: /Write it/ }).click();
-    const studio = page.getByRole("dialog", { name: "Motion" });
+    const studio = page.getByRole("dialog", { name: "Motion", exact: true });
     await expect(studio.getByRole("button", { name: /^Make it/ })).toBeVisible({ timeout: 150_000 });
 
     // The plan (kept on this device) has one screen step per screenshot, on the right buttons.

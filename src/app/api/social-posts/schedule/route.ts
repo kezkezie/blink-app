@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
-import { accountsForPost, cancelPendingPost, pfmApiKey } from "@/lib/social-schedule";
+import { accountsForPost, cancelPendingPost, pfmApiKey, pickCaption } from "@/lib/social-schedule";
 import { clientIdMatches, workspaceFor } from "@/lib/brand-access";
 
 // FORMAT_TO_POST_TYPE maps user-selected format → PostForMe post type.
@@ -68,6 +68,13 @@ export async function POST(req: NextRequest) {
 
     if (contentError || !content) {
       throw new Error("Content not found in database");
+    }
+
+    // 1b. A real caption first (before cancelling an earlier queued copy), and keep the choice.
+    const early = pickCaption(content, captionChoice);
+    if (!early.ok) return NextResponse.json({ error: early.error, code: early.code }, { status: 400 });
+    if (early.choice !== content.caption_choice) {
+      await supabaseAdmin.from("content").update({ caption_choice: early.choice }).eq("id", contentId).eq("client_id", workspaceId);
     }
 
     // 2. Collect media URLs (image_urls first, then video_urls)
@@ -146,23 +153,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Build the caption — honour the user's long/short choice (fall back to
-    // the long caption if short is empty). Instagram hard limit is 2200 chars.
-    const chosenBody = captionChoice === "short"
-      ? (content.caption_short || content.caption || "")
-      : (content.caption || "");
-    const rawCaption = [chosenBody, content.hashtags || ""]
-      .map((s: string) => s.trim())
-      .filter(Boolean)
-      .join("\n\n");
-    const finalCaption = rawCaption.substring(0, 2200);
-
-    if (!finalCaption) {
-      return NextResponse.json(
-        { error: "Caption is required. Add a caption to this post before publishing." },
-        { status: 400 }
-      );
-    }
+    // 5. The caption picked in step 1b: the chosen one (long or short), never blank.
+    const finalCaption = early.text;
 
     // 6. Build the PostForMe payload — matches the official docs exactly.
     // platform_configurations (placement) is not supported on Quickstart Projects.

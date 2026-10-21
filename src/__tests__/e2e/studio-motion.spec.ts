@@ -46,7 +46,7 @@ async function sample(page: Page, url: string, t: number, region: [number, numbe
 
 /** Wait for the studio to close after Add; if the app shows an error instead, fail with its words. */
 async function addAndWait(page: Page, button: ReturnType<Page["getByRole"]>) {
-  const studio = page.getByRole("dialog", { name: "Motion" });
+  const studio = page.getByRole("dialog", { name: "Motion", exact: true });
   await button.click();
   const error = page.locator('[data-sonner-toast][data-type="error"]').first();
   const outcome = await Promise.race([
@@ -78,12 +78,15 @@ test("plan, preview, render to the timeline, overlay a lower third, export", asy
     const balance = async () => ((await sb.from("credit_balances").select("balance").eq("client_id", clientId!).single()).data?.balance as number);
     await signIn(page, email, password);
 
-    // 1. Plan an intro in the Motion panel, 9:16.
-    await page.goto(`${BASE}/studio/video?tab=editor&rail=motion`);
+    // 1. Plan an intro in Motion (a window over the editor since 2026-10-21), 9:16.
+    await page.goto(`${BASE}/studio/video?tab=editor`);
     await page.getByRole("group", { name: "Shape" }).getByRole("button", { name: "9:16" }).click({ timeout: 60_000 });
+    const openMotion = () => page.getByRole("navigation", { name: "Editor tools" }).getByRole("button", { name: "Motion" }).click();
+    await openMotion();
+    await expect(page.getByRole("dialog", { name: "Motion graphics" })).toBeVisible();
     await page.getByLabel("What the motion is for").fill("A 9 second intro for our Drop 01 sneaker launch this Friday: the words Drop 01, then 200 pairs only, then an end card saying Shop the drop");
     await page.getByRole("button", { name: /Write it/ }).click();
-    const studio = page.getByRole("dialog", { name: "Motion" });
+    const studio = page.getByRole("dialog", { name: "Motion", exact: true });
     await expect(studio.getByRole("button", { name: /Add at the start/ })).toBeVisible({ timeout: 120_000 });
     expect(await balance()).toBe(96);
     await page.waitForTimeout(2500);
@@ -100,7 +103,9 @@ test("plan, preview, render to the timeline, overlay a lower third, export", asy
     expect(f1.size).toEqual([1080, 1920]);
     fs.writeFileSync("test-results/motion-intro-frame.png", Buffer.from(f1.png.split(",")[1], "base64"));
 
-    // 3. A see-through lower third over it, at the playhead (0 s).
+    // 3. A see-through lower third over it, at the playhead (0 s). Adding closed the Motion window.
+    await expect(page.getByRole("dialog", { name: "Motion graphics" })).toBeHidden();
+    await openMotion();
     await page.getByRole("button", { name: "Lower third", exact: true }).click();
     await page.getByLabel("What the motion is for").fill("A lower third with the name Thandi Mokoena and the title Founder, Kasi Kicks");
     await page.getByRole("button", { name: /Write it/ }).click();

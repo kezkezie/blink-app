@@ -44,11 +44,11 @@ export function settingsFor(platforms: string[]): PublishSettings {
 
 async function post(path: string, body: Record<string, unknown>) {
   const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = (await res.json().catch(() => ({}))) as { error?: string };
-  return { ok: res.ok, error: data.error };
+  const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+  return { ok: res.ok, error: data.error, code: data.code };
 }
 
-export type PlaceResult = { ok: boolean; queued: boolean; error?: string };
+export type PlaceResult = { ok: boolean; queued: boolean; error?: string; code?: string };
 
 /** Put a post on the calendar at `iso` (and queue it if it has platforms). */
 export async function placeOnCalendar(clientId: string, item: SchedulablePost, iso: string, opts: { captionChoice?: "long" | "short" } = {}): Promise<PlaceResult> {
@@ -63,12 +63,12 @@ export async function placeOnCalendar(clientId: string, item: SchedulablePost, i
   if (error) return { ok: false, queued: false, error: "Couldn't save the date." };
   if (!platforms.length) return { ok: true, queued: false };
   const queued = await post("/api/social-posts/schedule", { contentId: item.id, clientId, scheduledAt: iso, ...(opts.captionChoice ? { captionChoice: opts.captionChoice } : {}) });
-  return { ok: true, queued: queued.ok, error: queued.ok ? undefined : queued.error || "Couldn't queue it with your social accounts." };
+  return { ok: true, queued: queued.ok, error: queued.ok ? undefined : queued.error || "Couldn't queue it with your social accounts.", code: queued.ok ? undefined : queued.code };
 }
 
-/** Take a post off the calendar, cancelling its queued PostForMe post. */
-export async function takeOffCalendar(contentId: string) {
-  return post("/api/social-posts/unschedule", { contentId });
+/** Take a post off the calendar, cancelling its queued PostForMe post. evenIfPosted: one that went out leaves the calendar too (it stays on the platform). */
+export async function takeOffCalendar(contentId: string, evenIfPosted = false) {
+  return post("/api/social-posts/unschedule", { contentId, ...(evenIfPosted ? { evenIfPosted: true } : {}) });
 }
 
 /** Save the platforms a post goes to (and approve it when it is already on the calendar, as the classic calendar does). */

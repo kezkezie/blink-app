@@ -109,6 +109,7 @@ export function Calendar() {
     const platforms = enabledPlatforms(item.target_platforms);
     if (r.queued) toast.success(`Scheduled for ${whenLabel(iso)} on ${platforms.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}.`);
     else if (!platforms.length) toast(`On the calendar for ${whenLabel(iso)}. Pick where it posts so it goes out.`, { action: { label: "Pick platforms", onClick: () => openPlatforms({ ...item, scheduled_at: iso }) } });
+    else if (r.code === "needs_caption") toast.error(`On the calendar, but not queued: ${r.error}`, { duration: 12000, action: { label: "Write it", onClick: () => { window.location.href = `/studio/library/${item.id}`; } } });
     else toast.error(`On the calendar, but not queued: ${r.error}`, { duration: 9000 });
   }
 
@@ -122,14 +123,16 @@ export function Calendar() {
     report(r, iso, item);
     await load();
   }
-  async function unschedule(item: CalRow) {
+  async function unschedule(item: CalRow, evenIfPosted = false) {
     setBusy(item.id);
-    const r = await takeOffCalendar(item.id);
+    const r = await takeOffCalendar(item.id, evenIfPosted);
     setBusy(null);
+    setConfirmOff(null);
     if (!r.ok) { toast.error(r.error || "Couldn't take it off the calendar."); return; }
-    toast.success("Taken off the calendar. It's back in Ready.");
+    toast.success(evenIfPosted ? "Taken off the calendar. It's still in your Library, and still on the platform it went to." : "Taken off the calendar. It's back in Ready.");
     await load();
   }
+  const [confirmOff, setConfirmOff] = useState<string | null>(null);
   function openWhen(item: CalRow) { setWhenFor(item); setWhenValue(toLocalInput(item.scheduled_at)); }
   function openPlatforms(item: CalRow) { setPlatformsFor(item); setPicked(enabledPlatforms(item.target_platforms).filter((p) => connected.includes(p))); }
   async function savePicked() {
@@ -141,7 +144,7 @@ export function Calendar() {
     setPlatformsFor(null);
     if (!r.ok) toast.error(r.error || "Couldn't save the platforms.");
     else if (item.scheduled_at && r.queued) toast.success(`Queued for ${whenLabel(item.scheduled_at)}.`);
-    else if (item.scheduled_at && r.error) toast.error(`Saved, but not queued: ${r.error}`, { duration: 9000 });
+    else if (item.scheduled_at && r.error) toast.error(`Saved, but not queued: ${r.error}`, { duration: 9000, ...(r.code === "needs_caption" ? { action: { label: "Write it", onClick: () => { window.location.href = `/studio/library/${item.id}`; } } } : {}) });
     else toast.success("Platforms saved.");
     await load();
   }
@@ -262,9 +265,20 @@ export function Calendar() {
                     <div className="flex flex-wrap gap-1.5">
                       {editable && <button className="s-btn sm" disabled={busy === p.id} onClick={() => openWhen(p)}><Clock className="h-3.5 w-3.5" /> Time</button>}
                       {editable && <button className={`s-btn sm${plats.length ? "" : " primary"}`} disabled={busy === p.id} onClick={() => openPlatforms(p)}><Send className="h-3.5 w-3.5" /> {plats.length ? "Platforms" : "Pick platforms"}</button>}
-                      {editable && <button className="s-btn ghost sm" disabled={busy === p.id} onClick={() => unschedule(p)}>{busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />} Remove</button>}
+                      {editable
+                        ? <button className="s-btn ghost sm" disabled={busy === p.id} onClick={() => unschedule(p)}>{busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />} Remove</button>
+                        : <button className="s-btn ghost sm" disabled={busy === p.id} onClick={() => setConfirmOff(confirmOff === p.id ? null : p.id)} aria-expanded={confirmOff === p.id}><X className="h-3.5 w-3.5" /> Remove</button>}
                       <Link href={`/studio/library/${p.id}`} className="s-btn ghost sm ml-auto"><ExternalLink className="h-3.5 w-3.5" /> Open</Link>
                     </div>
+                    {confirmOff === p.id && (
+                      <div className="rounded-lg p-2.5 grid gap-2 text-[12px]" role="alertdialog" aria-label="Remove from the calendar" style={{ background: "color-mix(in oklab, var(--s-danger) 8%, transparent)", border: "1px solid color-mix(in oklab, var(--s-danger) 30%, var(--s-line))", color: "var(--s-soft)" }}>
+                        <span>{st.label === "Not sent" ? "This one didn't go out." : `This one already went out${plats.length ? ` to ${plats.map((x) => PLATFORM_LABEL[x] ?? x).join(", ")}` : ""}.`} Removing it takes it off your calendar; {st.label === "Not sent" ? "it stays in your Library." : "it stays on the platform (delete it there if you want it gone) and in your Library."}</span>
+                        <div className="flex gap-1.5">
+                          <button className="s-btn sm" style={{ color: "var(--s-danger)" }} disabled={busy === p.id} onClick={() => unschedule(p, true)}>{busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Remove from the calendar</button>
+                          <button className="s-btn ghost sm" onClick={() => setConfirmOff(null)}>Keep it</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

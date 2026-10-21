@@ -16,7 +16,9 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await req.json().catch(() => ({}))) as { contentId?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { contentId?: unknown; evenIfPosted?: unknown };
+  // 2026-10-21: any post can come off the calendar. One that already went out stays on the platform.
+  const evenIfPosted = body.evenIfPosted === true;
   const contentId = typeof body.contentId === "string" ? body.contentId : "";
   if (!/^[0-9a-f-]{36}$/i.test(contentId)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
@@ -31,8 +33,8 @@ export async function POST(req: NextRequest) {
     const apiKey = pfmApiKey();
     if (!apiKey) return NextResponse.json({ error: "PostForMe isn't configured, so the queued post couldn't be cancelled." }, { status: 500 });
     const r = await cancelPendingPost(apiKey, content.postforme_tracking_id);
-    if (r.outcome === "published") {
-      return NextResponse.json({ error: r.status === "processing" ? "It's being published right now, so it can't be taken off." : "It has already been published." }, { status: 409 });
+    if (r.outcome === "published" && !(evenIfPosted && r.status !== "processing")) {
+      return NextResponse.json({ error: r.status === "processing" ? "It's being published right now, so it can't be taken off." : "It has already been published.", code: "published" }, { status: 409 });
     }
     if (r.outcome === "error") return NextResponse.json({ error: "Couldn't reach PostForMe to cancel it. Nothing was changed; try again." }, { status: 502 });
     cancelled = r.outcome === "cancelled";

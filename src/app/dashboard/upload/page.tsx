@@ -311,6 +311,7 @@ export default function YourContentPage() {
         caption_short: aiData.caption_short || "",
         hashtags: aiData.hashtags || "",
         call_to_action: aiData.call_to_action || "",
+        caption_written: true,
         status: "draft",
         ai_model: "gpt-4o",
       });

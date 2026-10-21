@@ -80,10 +80,10 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
     if (error) throw new Error("upload");
     return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
   }
-  async function save(slides: string[], kind: Way, caption: string, extra: Record<string, unknown> = {}) {
+  async function save(slides: string[], kind: Way, caption: string, extra: Record<string, unknown> = {}, written = false) {
     const { data, error } = await supabase.from("content").insert({
       client_id: clientId, brand_id: activeBrand!.id, content_type: "carousel", status: "draft", image_urls: slides,
-      caption: caption.slice(0, 2000) || "Carousel", ai_model: kind === "pictures" ? null : kind === "topic" ? "carousel-templates" : "nano-banana-2",
+      caption: caption.slice(0, 2000) || "Carousel", caption_written: written && !!caption.trim(), ai_model: kind === "pictures" ? null : kind === "topic" ? "carousel-templates" : "nano-banana-2",
       creation_metadata: { operation: "carousel", kind, shape, slides: slides.length, ...extra },
     }).select("id").single();
     if (error || !data) throw new Error("save");
@@ -120,7 +120,7 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
         urls.push(await upload(await still.blob({ format: "jpeg", quality: 0.92 }), i));
       }
       setBusy("Saving…");
-      await save(urls, "topic", plan.caption || topic, { topic, outline: plan.slides });
+      await save(urls, "topic", plan.caption || topic, { topic, outline: plan.slides }, !!plan.caption);
     } catch (e) { toast.error(e instanceof Error && e.message === "upload" ? "Couldn't save a slide. Try again." : "Couldn't draw the slides in this browser. Try Chrome or Edge."); }
     finally { setBusy(null); }
   }

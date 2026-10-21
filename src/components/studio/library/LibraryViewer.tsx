@@ -122,7 +122,7 @@ export function LibraryViewer({ items, index, onIndex, onClose, onDelete, hasMor
         <Link href={`/studio/library/${item.id}`} className="s-btn sm"><ExternalLink className="h-3.5 w-3.5" /> Open the post</Link>
         {image && !slides && <Link href={`/studio/library/${item.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>}
         {image && <Link href={`/studio/image?mode=design&content=${item.id}${slides ? `&slide=${slide}` : ""}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> {slides ? `Edit slide ${slide + 1}` : "Editor"}</Link>}
-        {image && <Link href={`/studio/video?tab=editor&rail=motion&motionPicture=${item.id}&motion=${encodeURIComponent(`Animate this picture${title ? `: ${title.slice(0, 120)}` : ""}`)}`} className="s-btn sm"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>}
+        {image && <Link href={`/studio/motion?picture=${item.id}&brief=${encodeURIComponent(`Animate this picture${title ? `: ${title.slice(0, 120)}` : ""}`)}`} className="s-btn sm"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>}
         {image && <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>}
         {media.isVideo && media.url && (
           <button className="s-btn sm" disabled={opening} onClick={async () => { setOpening(true); try { await queueForEditor([item]); router.push("/studio/video?tab=editor"); } finally { setOpening(false); } }}>

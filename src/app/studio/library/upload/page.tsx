@@ -70,6 +70,7 @@ export default function UploadPage() {
           ...(it.isVideo ? { video_urls: [url] } : { image_urls: [url] }),
           caption: text.caption_long || context.trim() || null, caption_short: text.caption_short || null, hashtags: text.hashtags || null, call_to_action: text.call_to_action || null,
           ai_model: captions && text.caption_long ? "caption-ai" : null,
+          caption_written: Boolean(text.caption_long || context.trim()),
         }).select("id").single();
         if (error || !row) throw new Error("Couldn't save it to your Library.");
         patch(i, { state: "done", id: row.id as string });

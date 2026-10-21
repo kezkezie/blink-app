@@ -109,12 +109,17 @@ describe("export overlays", () => {
 });
 
 describe("Ask BlinkSpot make_motion", () => {
-  it("opens the Motion panel with the brief, and only that page", async () => {
+  it("opens the Motion graphics page with the brief (2026-10-21), and the editor's Motion only from the editor", async () => {
     const r = await runAssistantTool("make_motion", { brief: "  A 6 second intro:\n Drop 01 this Friday " }, { clientId: "c1", brandId: "b1" });
     const url = new URL(r.action!.href!, "https://x");
-    expect(url.pathname).toBe("/studio/video");
-    expect(url.searchParams.get("rail")).toBe("motion");
-    expect(url.searchParams.get("motion")).toBe("A 6 second intro: Drop 01 this Friday");
+    expect(url.pathname).toBe("/studio/motion");
+    expect(url.searchParams.get("brief")).toBe("A 6 second intro: Drop 01 this Friday");
+    expect(url.searchParams.get("shape")).toBe("9:16");
+    const timeline = { clips: [], audio: [], text: [], length: 0 } as unknown as NonNullable<Parameters<typeof runAssistantTool>[2]["timeline"]>;
+    const inEditor = new URL((await runAssistantTool("make_motion", { brief: "An end card" }, { clientId: "c1", brandId: "b1", timeline })).action!.href!, "https://x");
+    expect(inEditor.pathname).toBe("/studio/video");
+    expect(inEditor.searchParams.get("rail")).toBe("motion");
+    expect(inEditor.searchParams.get("motion")).toBe("An end card");
     expect((await runAssistantTool("make_motion", { brief: "" }, { clientId: "c1", brandId: "b1" })).action).toBeUndefined();
   });
 });

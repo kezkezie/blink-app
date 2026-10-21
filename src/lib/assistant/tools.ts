@@ -68,6 +68,7 @@ const PAGES: Record<string, { href: string; label: string }> = {
   settings: { href: "/studio/account/settings", label: "Open settings" },
   skills: { href: "/studio/account/skills", label: "Open Ask skills" },
   generate: { href: "/studio/image?mode=generate", label: "Open Generate" },
+  motion: { href: "/studio/motion", label: "Open Motion graphics" },
 };
 
 /** Tool declarations in the Anthropic Messages format (Kie's Claude endpoint uses the same shape). */
@@ -184,7 +185,7 @@ export const ASSISTANT_TOOLS = [
   },
   {
     name: "make_motion",
-    description: "Offer a button that opens the video editor's Motion panel with a brief filled in: animated brand motion graphics (kinetic headline, a number counting up, a bar chart from numbers, a before-and-after number, key points from a post or notes, product reveal, logo sting, a see-through lower third over footage, end card, app walkthroughs) drawn exactly in the brand's font and colours. Writing the plan costs 4 credits there; previews and edits are free; it renders into a clip on the timeline and the Library. Use for intros, title cards, stats, end cards and lower thirds, not for filmed footage.",
+    description: "Offer a button that opens the Motion graphics page (Create > Motion graphics, /studio/motion) with a brief filled in; when the user is in the Video Editor it opens Motion over their timeline instead and the clip lands on it. Animated brand motion graphics (kinetic headline, a number counting up, a bar chart from numbers, a before-and-after number, key points from a post or notes, product reveal, logo sting, a see-through lower third over footage, end card, app walkthroughs) drawn exactly in the brand's font and colours. Writing the plan costs 4 credits there; previews and edits are free; it renders into a clip in the Library (and on the timeline from the editor). Use for intros, title cards, stats, end cards and lower thirds, not for filmed footage.",
     input_schema: {
       type: "object",
       properties: {
@@ -212,7 +213,7 @@ export const ASSISTANT_TOOLS = [
   },
   {
     name: "open_page",
-    description: "Offer a button to a page: inspo (Inspo Remix: the user drops a design they love and gets it remade for their brand), video_inspo (Video Inspo: the same for a video, rebuilt shot by shot), voiceover (text to speech in the Editor, 1 credit per ~20 s), library, upload, plan (calendar), approvals, brand, billing, settings, skills (add or import Ask skills).",
+    description: "Offer a button to a page: inspo (Inspo Remix: the user drops a design they love and gets it remade for their brand), video_inspo (Video Inspo: the same for a video, rebuilt shot by shot), voiceover (text to speech in the Editor, 1 credit per ~20 s), library, upload, plan (calendar), approvals, brand, billing, settings, skills (add or import Ask skills), motion (Motion graphics: explainers, numbers, walkthroughs; use make_motion to fill in a brief).",
     input_schema: {
       type: "object",
       properties: { page: { type: "string", enum: Object.keys(PAGES) } },
@@ -369,7 +370,7 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
       const limit = int(input.limit, 1, 12, 8);
       let q = supabaseAdmin
         .from("content")
-        .select("id, content_type, caption, status, created_at")
+        .select("id, content_type, caption, caption_short, caption_written, caption_choice, status, created_at")
         .eq("client_id", ctx.clientId)
         .eq("brand_id", ctx.brandId)
         .not("content_type", "in", "(sequence_clip,raw_clip,generated_audio,storyboard)")
@@ -378,7 +379,8 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
       if (kind === "video") q = q.in("content_type", ["reel", "video", "story_sequence", "story"]);
       if (kind === "image") q = q.in("content_type", ["post_image", "carousel", "post"]);
       const { data } = await q;
-      const rows = (data ?? []).map((r) => ({ ...r, caption: str(r.caption, 140) }));
+      // caption_written false: `caption` is only the working title; it won't post until one is written.
+      const rows = (data ?? []).map((r) => ({ ...r, caption: str(r.caption, 140), caption_short: str(r.caption_short, 140) }));
       return { content: JSON.stringify(rows) };
     }
     case "quote_video": {
@@ -537,7 +539,10 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
         const shape = oneOf(input.shape, ["9:16", "1:1", "16:9"] as const, "9:16");
         return { content: `Button shown: it opens Motion with ${screens.length} screenshot${screens.length === 1 ? "" : "s"} and these steps; planning it there costs 4 credits.`, action: { kind: "open_page", label: "Make this walkthrough", href: `/studio/motion?shape=${encodeURIComponent(shape)}&brief=${encodeURIComponent(brief)}&screens=${encodeURIComponent(JSON.stringify(screens))}` } };
       }
-      return { content: "Button shown: it opens the Motion panel with this brief.", action: { kind: "open_page", label: "Make this motion", href: `/studio/video?tab=editor&rail=motion&motion=${encodeURIComponent(brief)}` } };
+      // Motion graphics has its own page (2026-10-21); only from inside the Video Editor does it open over the timeline.
+      const shape = oneOf(input.shape, ["9:16", "1:1", "16:9"] as const, "9:16");
+      if (ctx.timeline) return { content: "Button shown: it opens Motion over the user's timeline with this brief; the clip lands on the timeline.", action: { kind: "open_page", label: "Make this motion", href: `/studio/video?tab=editor&rail=motion&motion=${encodeURIComponent(brief)}` } };
+      return { content: "Button shown: it opens the Motion graphics page with this brief; planning it there costs 4 credits.", action: { kind: "open_page", label: "Make this motion", href: `/studio/motion?shape=${encodeURIComponent(shape)}&brief=${encodeURIComponent(brief)}` } };
     }
     case "open_page": {
       const page = PAGES[oneOf(input.page, Object.keys(PAGES), "library")];

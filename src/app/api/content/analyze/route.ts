@@ -117,10 +117,12 @@ export async function POST(req: NextRequest) {
     }
     // ────────────────────────────────────────
 
-    // ✨ Dynamic length instruction
-    const lengthInstruction = lengthPreference === "short"
-      ? "Write a punchy, 1-2 sentence hook or short caption."
-      : "Write a detailed, engaging multi-paragraph social media caption. Tell a story.";
+    // Both lengths are always written together, about the same thing, so the pair matches
+    // (2026-10-21). lengthPreference only says which one the person is waiting for.
+    const lengthInstruction = `Write TWO captions that say the same thing at two lengths:
+- caption_long: 2-3 short paragraphs that tell the story of this post, then a call to action. 60-150 words.
+- caption_short: ONE or two sentences, under 120 characters, that work on their own as the whole caption. Not the first line of the long one copied, not a title.
+The person is waiting for the ${lengthPreference} one, so make that one especially good.`;
 
     // The visual analysis directive is what makes the caption SPECIFIC to this
     // exact post. Brand voice shapes the tone but must NOT override what's shown.
@@ -144,8 +146,8 @@ ${lengthInstruction}
 You MUST return ONLY a valid JSON object. Do not include markdown formatting like \`\`\`json.
 The JSON object must have EXACTLY these 4 keys:
 {
-  "caption_long": "The main engaging body of the post (if requested long, make it 2-3 paragraphs. If short, just repeat the short hook here).",
-  "caption_short": "A punchy 1-sentence hook or title.",
+  "caption_long": "2-3 short paragraphs, 60-150 words, ending with a call to action.",
+  "caption_short": "One or two sentences under 120 characters that work as the whole caption.",
   "hashtags": "A single string of 3-5 relevant hashtags (e.g., '#viral #trending').",
   "call_to_action": "A 1-sentence Call to Action."
 }`;

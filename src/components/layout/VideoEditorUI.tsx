@@ -29,6 +29,7 @@ import { useEditorBridge } from "@/components/video/editor-bridge";
 import { clearDraft, draftAge, loadDraft, saveDraft } from "@/lib/drafts";
 import { applyEditOps, type EditorState } from "@/lib/editor-ops";
 import { MotionBin } from "@/components/studio/motion/MotionBin";
+import { Modal } from "@/components/studio/Modal";
 import type { AddedMotion, MotionPlace } from "@/components/studio/motion/MotionStudio";
 
 interface MediaAsset {
@@ -119,9 +120,11 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   const [canvasAspect, setCanvasAspect] = useState<CanvasAspect>("16:9");
   const [fitMode, setFitMode] = useState<FitMode>("fit");
   // Studio look: left rail, AI tools state, waveforms, beat markers, measured canvas width.
-  const [rail, setRail] = useState<"media" | "scenes" | "audio" | "text" | "motion" | "ai">("media");
+  const [rail, setRail] = useState<"media" | "scenes" | "audio" | "text" | "ai">("media");
   // Motion deep link (Ask BlinkSpot's make_motion, the Library's "Animate this"): ?rail=motion&motion=...&motionPicture=<post>.
   const [motionStart, setMotionStart] = useState<{ prompt: string | null; picture: string | null }>({ prompt: null, picture: null });
+  // Motion opens as a window over the editor, not in the narrow rail (Kezie, 2026-10-21).
+  const [motionOpen, setMotionOpen] = useState(false);
   const [peaks, setPeaks] = useState<Record<string, number[]>>({});
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [cutEvery, setCutEvery] = useState<1 | 2 | 4>(2);
@@ -1106,7 +1109,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     else if (r === "motion") {
       const q = new URLSearchParams(window.location.search);
       setMotionStart({ prompt: q.get("motion")?.slice(0, 600) ?? null, picture: q.get("motionPicture") });
-      setRail("motion");
+      setMotionOpen(true);
     }
     else if (r === "ai" || r === "text" || r === "scenes" || r === "media") setRail(r);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1274,6 +1277,13 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     );
     return (
       <div className="ve">
+        <Modal open={motionOpen} onClose={() => setMotionOpen(false)} label="Motion graphics" width={760}>
+          {/* The same Motion as Create > Motion graphics; what you make lands on this timeline. */}
+          <div className="ve ve-motion-modal" style={{ display: "block", height: "auto", minHeight: 0, background: "transparent" }}>
+            <div className="flex justify-end px-2 pt-2 -mb-9 relative"><button type="button" className="s-btn ghost sm" onClick={() => setMotionOpen(false)} aria-label="Close Motion"><X className="h-4 w-4" /></button></div>
+            <MotionBin key={`${motionStart.prompt ?? ""}|${motionStart.picture ?? ""}`} clientId={clientId} shape={canvasAspect} initialPrompt={motionStart.prompt} pictureId={motionStart.picture} onAdded={(m, where) => { addMotion(m, where); setMotionOpen(false); }} />
+          </div>
+        </Modal>
         {isRendering && (
           <div className="absolute inset-0 z-50 grid place-items-center" style={{ background: "rgba(12,13,15,.9)", backdropFilter: "blur(6px)" }}>
             {!renderComplete ? (
@@ -1322,7 +1332,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             {railBtn("scenes", "Scenes", Layers)}
             {railBtn("audio", "Audio", Music)}
             {railBtn("text", "Text", Type)}
-            {railBtn("motion", "Motion", Clapperboard)}
+            <button type="button" aria-pressed={motionOpen} aria-haspopup="dialog" onClick={() => setMotionOpen(true)}><Clapperboard className="h-[18px] w-[18px]" />Motion</button>
             {railBtn("ai", "AI", Sparkles, "ai")}
           </nav>
 
@@ -1338,8 +1348,6 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Adds at the playhead. Drag it on the preview to move it.</p>
                 </div>
               </>
-            ) : rail === "motion" ? (
-              <MotionBin key={`${motionStart.prompt ?? ""}|${motionStart.picture ?? ""}`} clientId={clientId} shape={canvasAspect} initialPrompt={motionStart.prompt} pictureId={motionStart.picture} onAdded={addMotion} />
             ) : rail === "ai" ? (
               <>
                 <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}</div>
