@@ -937,16 +937,27 @@ export function StorytellingSetup({
   };
 
   // Load this brand's storyboard (or scaffold defaults); re-runs on brand switch.
+  const tookHandoff = useRef<string | null>(null);
   useEffect(() => {
+    // The plan was just applied for this brand: a second run (React's dev double-run) mustn't
+    // replace it with the saved storyboard.
+    if (tookHandoff.current === SCENES_KEY) return;
+    // Wait for the brand (2026-10-22): read before it loaded, the plan was taken and then the
+    // brand's own storyboard (or empty scenes) replaced it as soon as the brand arrived.
+    const pending = (() => { try { return !!sessionStorage.getItem(INSPO_HANDOFF_KEY); } catch { return false; } })();
+    if (pending && !activeBrand?.id) return;
     // A Video Inspo plan handed over from /studio/video/inspo replaces the saved storyboard, once.
     try {
       const raw = sessionStorage.getItem(INSPO_HANDOFF_KEY);
       if (raw) {
         sessionStorage.removeItem(INSPO_HANDOFF_KEY);
-        const h = JSON.parse(raw) as { plan?: InspoPlan; aspect?: string };
+        const h = JSON.parse(raw) as { plan?: InspoPlan; aspect?: string; frames?: Array<string | null> };
         if (h.plan?.scenes?.length) {
           const aspect = h.aspect && ["9:16", "16:9", "1:1"].includes(h.aspect) ? h.aspect : undefined;
-          setBRollScenes(h.plan.scenes.map((sc, i) => ({ ...makeDefaultScenes()[0], id: crypto.randomUUID(), scene_number: i + 1, mode: sc.mode, prompt: sc.prompt, duration: "5", ...(aspect ? { aspectRatio: reconcileAspectRatioFor("auto", aspect) } : {}) })));
+          // Shot by shot (2026-10-22): each scene starts from its frame remade for the brand.
+          const frameFor = (i: number) => { const f = h.frames?.[i]; return typeof f === "string" && /^https:\/\//.test(f) ? f : null; };
+          setBRollScenes(h.plan.scenes.map((sc, i) => ({ ...makeDefaultScenes()[0], id: crypto.randomUUID(), scene_number: i + 1, mode: sc.mode, prompt: sc.prompt, duration: "5", ...(aspect ? { aspectRatio: reconcileAspectRatioFor("auto", aspect) } : {}), ...(frameFor(i) ? { primaryPreview: frameFor(i), seedancePreviews: [frameFor(i)] } : {}) })));
+          tookHandoff.current = SCENES_KEY;
           return;
         }
       }
@@ -960,7 +971,8 @@ export function StorytellingSetup({
       try { setBRollScenes(JSON.parse(savedScenes)); return; } catch (e) { }
     }
     setBRollScenes(makeDefaultScenes());
-  }, [SCENES_KEY]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [SCENES_KEY, activeBrand?.id]);
 
   // ✨ Fetch saved actors from Supabase — reusable so the Casting Room can
   // refresh the list after creating a new genre variant.

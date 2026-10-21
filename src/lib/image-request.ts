@@ -86,7 +86,8 @@ export function imageRequestPayload(req: ImageRequest): Record<string, unknown> 
   }
   const referenceUrls = !req.plain && req.style === "brand" && req.kit.logoUrl ? [req.kit.logoUrl, ...refs] : refs;
   // Without the real logo in the references the models invent one (Kezie, 2026-10-12): forbid it.
-  if (!(req.kit.logoUrl && referenceUrls.includes(req.kit.logoUrl)) && req.mode !== "edit") {
+  // Not for plain requests (they go as written): it made the first frames write the brand's name (2026-10-22).
+  if (!req.plain && !(req.kit.logoUrl && referenceUrls.includes(req.kit.logoUrl)) && req.mode !== "edit") {
     assembled = assembled ? `${assembled}\nDraw no logo, icon or brand mark of any kind; where a brand mark would go, write "${req.kit.name}" as plain text.` : assembled;
   }
   const payload = {

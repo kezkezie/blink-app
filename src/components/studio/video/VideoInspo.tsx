@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Clapperboard, Copy, Film, Link2, Loader2, Scissors, Sparkles, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clapperboard, Copy, Film, ImageIcon, Link2, Loader2, RefreshCw, Scissors, Sparkles, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useCredits } from "@/components/studio/hooks";
@@ -11,6 +11,11 @@ import { readVideo, type VideoReading } from "@/lib/video-inspo/analyze";
 import { INSPO_HANDOFF_KEY, inspoPattern, inspoPatternKey, type InspoPlan } from "@/lib/video-inspo/plan";
 import { videoLinkProblem } from "@/lib/video-inspo/links";
 import { MOTION_INSPO_HANDOFF_KEY } from "@/lib/motion/spec";
+import { supabase } from "@/lib/supabase";
+import { useClient } from "@/hooks/useClient";
+import { generateBrandImages, generationErrorMessage, nearestImageAspect, useBrandKit } from "@/components/studio/generate-image";
+import { keyframePrompt } from "@/lib/video-inspo/keyframe";
+import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 
 /**
  * Video Inspo (Kezie, 2026-10-12: "the inspo for stealing videos ... replicate the video but for our
@@ -33,6 +38,43 @@ export function VideoInspo() {
   const [credits, setCredits] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const name = activeBrand?.brand_name || "your brand";
+  const { clientId } = useClient();
+  const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name);
+  // Shot by shot (2026-10-22): each scene's still remade for the brand, no words, then animated.
+  const [frames, setFrames] = useState<Array<string | null>>([]);
+  const [framing, setFraming] = useState<number[]>([]);
+  const FRAME_CREDITS = IMAGE_ENGINE_REGISTRY.nb2.creditCost;
+  async function makeFrame(i: number) {
+    if (!plan || !reading || !clientId || !activeBrand || !kit) return;
+    const sc = plan.scenes[i];
+    const shot = reading.shots[Math.min(reading.shots.length - 1, sc.shot - 1)];
+    setFraming((f) => [...f, i]);
+    try {
+      // The reference still as a picture the image model can read (our own storage, this account's folder).
+      const bytes = Uint8Array.from(atob(shot.data), (c) => c.charCodeAt(0));
+      const path = `images/${clientId}/inspo_shot_${Date.now()}_${i}.jpg`;
+      const { error } = await supabase.storage.from("assets").upload(path, new Blob([bytes], { type: "image/jpeg" }), { contentType: "image/jpeg" });
+      if (error) throw new Error("Couldn't upload the reference frame.");
+      const still = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      const { data: products } = await supabase.from("products").select("image_url").eq("brand_id", activeBrand.id).not("image_url", "is", null).limit(2);
+      const productUrls = (products ?? []).map((p) => p.image_url as string).filter(Boolean);
+      const [made] = await generateBrandImages({
+        clientId, brandId: activeBrand.id, kit, plain: true, save: false, style: "plain", engine: "nb2", caption: "",
+        prompt: `First frame: ${sc.what || sc.prompt}`.slice(0, 300),
+        assembledPrompt: keyframePrompt({ brand: kit.name || name, industry: kit.industry, description: kit.description, colours: [kit.primaryColor, kit.secondaryColor], what: sc.prompt || sc.what, cast: plan.cast, motion: plan.kind === "motion", products: productUrls.length }),
+        references: [still, ...productUrls], aspect: nearestImageAspect(`${reading.width || 9}:${reading.height || 16}`),
+      });
+      setFrames((f) => { const n = [...f]; n[i] = made.url; return n; });
+    } catch (e) { toast.error(`Scene ${i + 1}: ${generationErrorMessage(e)}`); }
+    finally { setFraming((f) => f.filter((x) => x !== i)); void refresh?.(); }
+  }
+  async function makeAllFrames() {
+    if (!plan) return;
+    const todo = plan.scenes.map((_, i) => i).filter((i) => !frames[i]);
+    if (balance !== null && balance < todo.length * FRAME_CREDITS) { toast.error(`The ${todo.length} first frames are ${todo.length * FRAME_CREDITS} credits and you have ${balance}. Get more in Billing.`); return; }
+    // A moment apart, like the Storyboard, so the image service isn't hit all at once.
+    await Promise.all(todo.map((i, k) => new Promise((r) => setTimeout(r, k * 1500)).then(() => makeFrame(i))));
+  }
 
   useEffect(() => () => { if (src?.url.startsWith("blob:")) URL.revokeObjectURL(src.url); }, [src]);
 
@@ -74,7 +116,7 @@ export function VideoInspo() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.plan) throw new Error(data.error || "Couldn't read that video.");
-      setPlan(data.plan); setCredits(data.credits ?? 0);
+      setPlan(data.plan); setCredits(data.credits ?? 0); setFrames([]);
       void refresh?.();
       toast.success(`Read ${r.shots.length} shot${r.shots.length === 1 ? "" : "s"} · ${data.credits} credits`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't read that video."); }
@@ -105,7 +147,7 @@ export function VideoInspo() {
     if (!plan || !reading) return;
     const aspect: "9:16" | "16:9" | "1:1" = reading.height > reading.width * 1.15 ? "9:16" : reading.width > reading.height * 1.15 ? "16:9" : "1:1";
     try {
-      sessionStorage.setItem(INSPO_HANDOFF_KEY, JSON.stringify({ plan, aspect, at: Date.now() }));
+      sessionStorage.setItem(INSPO_HANDOFF_KEY, JSON.stringify({ plan, aspect, at: Date.now(), ...(frames.some(Boolean) ? { frames: plan.scenes.map((_, i) => frames[i] ?? null) } : {}) }));
       // The rhythm, for the Editor's "Cut like your inspo" once the scenes are rendered.
       if (activeBrand) localStorage.setItem(inspoPatternKey(activeBrand.id), JSON.stringify(inspoPattern(plan, reading.shots, aspect)));
     } catch { toast.error("Couldn't hand the plan over. Try again."); return; }
@@ -215,8 +257,39 @@ export function VideoInspo() {
             })}
           </div>
           {plan.caption && <div className="s-card p-4 text-[13px]" style={{ color: "var(--s-soft)" }}><span className="s-label" style={{ margin: 0 }}>Caption</span><p className="mt-1">{plan.caption}</p></div>}
+          <div className="s-card p-4 grid gap-3" aria-label="Shot by shot">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="flex-1 min-w-[240px] grid gap-1">
+                <b className="text-[14px] flex items-center gap-2"><ImageIcon className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Make it yours, shot by shot <span className="s-badge">best match</span></b>
+                <p className="text-[12.5px]" style={{ color: "var(--s-soft)" }}>Each scene&apos;s frame from your video is remade for {name}: the same layout, camera and light, with your product and people and no words. Then every scene is animated from its frame, so the video follows the reference. The words go on in the Editor, spelled right.</p>
+              </div>
+              <button className="s-btn ai" disabled={!!framing.length || !kit || frames.filter(Boolean).length === plan.scenes.length} onClick={() => void makeAllFrames()}>
+                {framing.length ? <><Loader2 className="h-4 w-4 animate-spin" /> Making frames…</> : <><Sparkles className="h-4 w-4" /> Make the first frames</>} <span className="cost">{plan.scenes.filter((_, i) => !frames[i]).length * FRAME_CREDITS} cr</span>
+              </button>
+            </div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+              {plan.scenes.map((sc, i) => {
+                const shot = reading.shots[Math.min(reading.shots.length - 1, sc.shot - 1)];
+                const busyFrame = framing.includes(i);
+                return (
+                  <div key={i} className="grid gap-1.5 content-start">
+                    <span className="text-[11px] mono" style={{ color: "var(--s-mute)" }}>Scene {i + 1}</span>
+                    <div className="grid grid-cols-2 gap-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`data:image/jpeg;base64,${shot.data}`} alt={`Reference, scene ${i + 1}`} className="w-full rounded-md object-cover" style={{ aspectRatio: `${reading.width || 9} / ${reading.height || 16}` }} />
+                      <div className="rounded-md overflow-hidden grid place-items-center" style={{ aspectRatio: `${reading.width || 9} / ${reading.height || 16}`, background: "var(--s-raised)", border: "1px solid var(--s-line)" }} aria-label={`Your frame, scene ${i + 1}`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {busyFrame ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--s-ai)" }} /> : frames[i] ? <img src={frames[i]!} alt={`Your frame, scene ${i + 1}`} className="w-full h-full object-cover" /> : <span className="text-[10.5px] px-1 text-center" style={{ color: "var(--s-mute)" }}>Yours</span>}
+                      </div>
+                    </div>
+                    <button className="s-btn ghost sm" disabled={busyFrame || !kit} onClick={() => void makeFrame(i)}>{frames[i] ? <><RefreshCw className="h-3 w-3" /> Redo</> : <><Sparkles className="h-3 w-3" /> Make it</>} <span className="cost">{FRAME_CREDITS} cr</span></button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
-            <button className={`s-btn${plan.kind === "motion" ? "" : " primary"}`} onClick={toStoryboard}><Clapperboard className="h-4 w-4" /> Make it in the Storyboard</button>
+            <button className={`s-btn${plan.kind === "motion" ? "" : " primary"}`} onClick={toStoryboard}><Clapperboard className="h-4 w-4" /> {frames.some(Boolean) ? `Animate ${frames.filter(Boolean).length === plan.scenes.length ? "them" : `the ${frames.filter(Boolean).length} frames`} in the Storyboard` : "Make it in the Storyboard"}</button>
             {plan.kind !== "motion" && <button className="s-btn" disabled={motionBusy} onClick={toMotion}>{motionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Make it as motion graphics</button>}
             {words.length > 0 && <button className="s-btn" onClick={() => { void navigator.clipboard.writeText(words.join("\n")).then(() => toast.success("On-screen words copied")); }}><Copy className="h-4 w-4" /> Copy the on-screen words</button>}
             <Link href="/studio/video?tab=editor" className="s-btn ghost"><Scissors className="h-4 w-4" /> Or edit my own clips like it</Link>

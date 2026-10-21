@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Canvas, Rect, Ellipse, Line, Polygon, Textbox, FabricImage, Path, PencilBrush, loadSVGFromString, util,
-  FabricObject, Group, filters, Circle as FabricCircle, Point, cache as fabricCache, type TPointerEventInfo, type TPointerEvent,
+  FabricObject, Group, filters, Circle as FabricCircle, Point, cache as fabricCache, ActiveSelection, type TPointerEventInfo, type TPointerEvent,
 } from "fabric";
 import { EraserBrush } from "@erase2d/fabric";
 import { Reorder, useDragControls } from "framer-motion";
@@ -713,6 +713,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         return;
       }
       if ((e.key === "Delete" || e.key === "Backspace") && cv.current?.getActiveObject()) { e.preventDefault(); removeActive(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") { e.preventDefault(); selectAllLayers(); return; }
       const map: Record<string, Tool> = { v: "select", h: "hand", t: "text", r: "rect", o: "ellipse", l: "line", s: "star", g: "polygon", p: "pen", b: "brush", e: "eraser", m: "outline", a: "aierase" };
       const next = map[e.key.toLowerCase()];
       if (next && !e.metaKey && !e.ctrlKey) setToolSafe(next);
@@ -828,10 +829,54 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     objs.forEach((o) => c.remove(o));
     c.discardActiveObject();
     c.requestRenderAll();
+    bump();
   }
+  /**
+   * Several layers at once (Kezie, 2026-10-22: "select every one of them and delete them at the
+   * same time"): click picks one, Shift-click picks the range from the last one, Cmd or Ctrl-click
+   * adds or takes one away; Select all (or Cmd/Ctrl+A) takes every unlocked layer.
+   */
+  const lastPicked = useRef<string | null>(null);
+  function selectLayers(objs: FObj[]) {
+    const c = canvas();
+    const pick = objs.filter((o) => o.selectable !== false && o.visible !== false);
+    c.discardActiveObject();
+    if (pick.length === 1) c.setActiveObject(pick[0]);
+    else if (pick.length > 1) c.setActiveObject(new ActiveSelection(pick, { canvas: c }));
+    c.requestRenderAll();
+    bump();
+  }
+  function pickLayer(o: FObj, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }, order: FObj[]) {
+    setToolSafe("select");
+    const now = canvas().getActiveObjects() as FObj[];
+    if (e.shiftKey && lastPicked.current) {
+      const a = order.findIndex((x) => x.id === lastPicked.current), b = order.indexOf(o);
+      if (a >= 0 && b >= 0) { selectLayers([...new Set([...now, ...order.slice(Math.min(a, b), Math.max(a, b) + 1)])]); return; }
+    }
+    if (e.metaKey || e.ctrlKey) {
+      lastPicked.current = o.id ?? null;
+      selectLayers(now.includes(o) ? now.filter((x) => x !== o) : [...now, o]);
+      return;
+    }
+    lastPicked.current = o.id ?? null;
+    selectLayers([o]);
+  }
+  const selectAllLayers = () => selectLayers((canvas().getObjects() as FObj[]).filter((o) => !o.excludeFromExport));
   async function duplicateActive() {
     const o = active;
     if (!o) return;
+    if (o instanceof ActiveSelection) {
+      // Copy each picked layer (dropping the selection first puts them back on the page's coordinates), then pick the copies.
+      const c = canvas(), objs = o.getObjects() as FObj[];
+      c.discardActiveObject();
+      const copies = await Promise.all(objs.map(async (x) => {
+        const k = (await x.clone(["id", "name", "erasable", "srcUrl", "anchors", "closed"])) as FObj;
+        k.set({ left: (x.left ?? 0) + 24, top: (x.top ?? 0) + 24, id: uid(), name: `${x.name ?? "Layer"} copy` } as Partial<FObj>);
+        return add(k, k.name ?? "Layer", false);
+      }));
+      selectLayers(copies);
+      return;
+    }
     const copy = (await o.clone(["id", "name", "erasable", "srcUrl", "anchors", "closed"])) as FObj;
     copy.set({ left: (o.left ?? 0) + 24, top: (o.top ?? 0) + 24, id: uid(), name: `${o.name ?? "Layer"} copy` } as Partial<FObj>);
     add(copy, copy.name ?? "Layer");
@@ -855,8 +900,15 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     if (to === "backward") c.sendObjectBackwards(o);
     c.requestRenderAll(); record(); bump();
   }
+  /** Colour, outline and opacity go to each picked layer; position, size and angle move the selection as one. */
+  const EACH_LAYER = new Set(["fill", "stroke", "strokeWidth", "opacity"]);
   function setProp(o: FObj, props: Record<string, unknown>) {
-    o.set(props);
+    if (o instanceof ActiveSelection) {
+      const each = Object.fromEntries(Object.entries(props).filter(([k]) => EACH_LAYER.has(k)));
+      const whole = Object.fromEntries(Object.entries(props).filter(([k]) => !EACH_LAYER.has(k)));
+      if (Object.keys(each).length) o.getObjects().forEach((x) => x.set(each));
+      o.set(whole);
+    } else o.set(props);
     o.setCoords();
     canvas().requestRenderAll();
     record(); bump();
@@ -1800,10 +1852,10 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
           ) : (
             <div className="p-3.5 grid gap-3 grid-cols-[minmax(0,1fr)]">
               <div className="flex items-center gap-2">
-                <b className="text-[13px] truncate flex-1 min-w-0">{active.name ?? typeLabel(active)}</b>
+                <b className="text-[13px] truncate flex-1 min-w-0">{active instanceof ActiveSelection ? `${active.getObjects().length} layers` : active.name ?? typeLabel(active)}</b>
                 <button className="s-btn ghost sm" onClick={() => { canvas().discardActiveObject(); canvas().requestRenderAll(); bump(); }} title="Deselect (Esc)">Done</button>
                 <button className="s-btn ghost sm" onClick={duplicateActive} aria-label="Duplicate" title="Duplicate"><Copy className="h-3.5 w-3.5" /></button>
-                <button className="s-btn ghost sm" onClick={removeActive} aria-label="Delete layer" title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
+                <button className="s-btn ghost sm" onClick={removeActive} aria-label={active instanceof ActiveSelection ? "Delete these layers" : "Delete layer"} title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
               <div className="grid grid-cols-6 gap-1">
                 {([
@@ -1865,7 +1917,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
                       <input type="range" min={0} max={Math.round(Math.min(active.width, active.height) / 2)} value={active.rx ?? 0} onChange={(e) => setProp(active, { rx: Number(e.target.value), ry: Number(e.target.value) })} className="flex-1" style={{ accentColor: "var(--s-accent)" }} />
                     </label>
                   )}
-                  {active instanceof Group && <button className="s-btn sm justify-start" onClick={() => ungroup(active as Group & FObj)}><Ungroup className="h-3.5 w-3.5" /> Ungroup into layers</button>}
+                  {active instanceof Group && !(active instanceof ActiveSelection) && <button className="s-btn sm justify-start" onClick={() => ungroup(active as Group & FObj)}><Ungroup className="h-3.5 w-3.5" /> Ungroup into layers</button>}
                   {active.anchors?.length ? <button className="s-btn sm justify-start" onClick={() => startPointEdit(active)}><PenTool className="h-3.5 w-3.5" /> Edit points (or double-click the shape)</button> : null}
                 </div>
               )}
@@ -1909,6 +1961,16 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
         <div className="shrink-0 max-h-[38%] overflow-y-auto overflow-x-hidden" style={{ borderTop: "1px solid var(--s-line)" }}>
           <div className="flex items-center gap-2 px-3.5 py-2 sticky top-0" style={{ background: "var(--s-panel)" }}>
             <LayersIcon className="h-3.5 w-3.5" style={{ color: "var(--s-mute)" }} /><b className="text-[12px]">Layers</b>
+            <div className="flex-1" />
+            {(() => {
+              const n = cv.current?.getActiveObjects().length ?? 0;
+              return n > 1 ? (
+                <>
+                  <span className="text-[11px]" style={{ color: "var(--s-soft)" }}>{n} picked</span>
+                  <button className="s-btn ghost sm" style={{ color: "var(--s-danger)" }} onClick={removeActive} aria-label={`Delete ${n} layers`}><Trash2 className="h-3.5 w-3.5" /> Delete {n}</button>
+                </>
+              ) : layers.length > 1 ? <button className="s-btn ghost sm" onClick={selectAllLayers} title="Select every layer (Cmd/Ctrl+A). Shift-click picks a range, Cmd/Ctrl-click adds one.">Select all</button> : null;
+            })()}
           </div>
           {layers.length === 0 && <p className="text-xs px-4 py-2" style={{ color: "var(--s-mute)" }}>Nothing yet. Add text, a shape or a photo.</p>}
           {/* Drag a layer by its grip to move it up or down the stack (2026-10-20); the arrows still nudge one step. */}
@@ -1919,8 +1981,8 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
               return (
                 <LayerRow key={o.id} id={o.id ?? ""} onDragEnd={() => { record(); bump(); }} className="flex items-center gap-1.5 px-1 py-1.5 rounded-lg text-[12.5px] cursor-pointer"
                   style={{ background: sel ? "var(--s-raised)" : "var(--s-panel)", boxShadow: sel ? "inset 2px 0 0 var(--s-accent)" : "none", color: sel ? "var(--s-text)" : "var(--s-soft)", opacity: o.visible === false ? 0.5 : 1 }}
-                  onClick={() => { if (locked) return; setToolSafe("select"); canvas().setActiveObject(o); canvas().requestRenderAll(); bump(); }}>
-                  <span className="text-[10px] mono w-12 shrink-0" style={{ color: "var(--s-mute)" }}>{typeLabel(o)}</span>
+                  onClick={(e) => { if (locked) return; pickLayer(o, e, layers); }}>
+                  <span className="text-[10px] mono w-14 shrink-0 truncate" style={{ color: "var(--s-mute)" }}>{typeLabel(o)}</span>
                   <input data-no-mic className="bg-transparent outline-none flex-1 min-w-0 w-0 truncate" value={o.name ?? ""} onChange={(e) => { o.set({ name: e.target.value } as Partial<FObj>); bump(); record(); }} onBlur={() => record()} aria-label="Layer name" />
                   <button onClick={(e) => { e.stopPropagation(); setProp(o, { visible: o.visible === false }); }} aria-label={o.visible === false ? "Show layer" : "Hide layer"} className="p-0.5">{o.visible === false ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
                   <button onClick={(e) => { e.stopPropagation(); setProp(o, { selectable: locked, evented: locked }); if (!locked) canvas().discardActiveObject(); }} aria-label={locked ? "Unlock layer" : "Lock layer"} className="p-0.5">{locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5 opacity-40" />}</button>
@@ -1974,7 +2036,7 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
 }
 
 /** A layer row that drags by its grip: the cursor grabs, the row lifts, the others slide out of the way. */
-function LayerRow({ id, onDragEnd, children, className, style, onClick }: { id: string; onDragEnd: () => void; children: React.ReactNode; className: string; style: React.CSSProperties; onClick: () => void }) {
+function LayerRow({ id, onDragEnd, children, className, style, onClick }: { id: string; onDragEnd: () => void; children: React.ReactNode; className: string; style: React.CSSProperties; onClick: (e: React.MouseEvent) => void }) {
   const controls = useDragControls();
   return (
     <Reorder.Item as="div" value={id} dragListener={false} dragControls={controls} onDragEnd={onDragEnd} className={className} style={{ ...style, position: "relative" }} onClick={onClick}
