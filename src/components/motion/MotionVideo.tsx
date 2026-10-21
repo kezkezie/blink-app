@@ -359,6 +359,87 @@ function Points({ scene, palette, brand, frames }: { scene: Extract<MotionScene,
   );
 }
 
+/**
+ * A story card (2026-10-21, motion quotes): soft shapes first (they draw underneath), then the
+ * picture, the hill over the picture's foot, and the words last. Words blur in one line at a time
+ * (CSS blur, which the web renderer draws with the canvas filter) and blur out as the card leaves.
+ */
+const STORY_SIZE = { s: 5.2, m: 8, l: 14, xl: 19 } as const;
+function Story({ scene, palette, brand, frames }: { scene: Extract<MotionScene, { template: "story" }>; palette: Palette; brand: MotionBrand; frames: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { u, width, height, tall, wide } = useUnit();
+  const exit = useExit(frames);
+  const second = palette.second ?? shade(palette.accent, 0.35);
+  const ease = (a: number, b: number) => interpolate(frame, [a, b], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  const hilly = scene.backdrop === "hill" || scene.backdrop === "sunrise";
+  const hillTop = height * (tall ? 0.7 : 0.72);
+  const hillW = width * (wide ? 1.5 : 2.4);
+  const hillIn = ease(0, 18);
+  const sunD = Math.min(width, height) * 0.6;
+  const sunIn = ease(8, 34);
+  // The picture: in a circle (sitting on the hill when there is one), a card, or as it is.
+  const hasPic = !!scene.picture || !!scene.placeholder;
+  const textAt = scene.place;
+  const picD = Math.min(width, height) * 0.62;
+  const picW = scene.frame === "card" ? picD * 0.9 : picD, picH = scene.frame === "card" ? picD * 1.12 : picD;
+  const picCy = hilly ? hillTop - picH * 0.38 : textAt === "top" ? height * 0.6 : textAt === "bottom" ? height * 0.38 : height * 0.36;
+  const picIn = pop(frame, fps, 4, 15);
+  // The words: a column, each line its own size, the key words in the accent.
+  const onHill = hilly && textAt === "bottom";
+  const plain = onHill ? readableOn(palette.accent) : palette.text;
+  const key = onHill ? (contrast(second, palette.accent) >= 2.2 ? second : readableOn(palette.accent)) : palette.accent;
+  const colW = width * (wide ? 0.62 : 0.8);
+  const n = scene.lines.length;
+  const per = Math.max(5, Math.min(14, (frames * 0.45) / Math.max(1, n)));
+  const blockTop = textAt === "top" ? height * 0.1 : textAt === "bottom" ? (hilly ? hillTop + height * 0.06 : height * 0.62) : hasPic ? height * 0.66 : null;
+  const gone = scene.enter === "blur" ? `blur(${exit * u * 3}px)` : "none";
+  // Circles in the accent, unless that is the text colour (words over them would vanish): then the second colour.
+  const dot = contrast(palette.accent, palette.text) < 2 ? second : palette.accent;
+  // The words shrink together to fit the room they have (above the picture, on the hill, or the middle).
+  const room = textAt === "top" ? (hasPic ? picCy - picH / 2 - height * 0.12 : height * 0.75) : textAt === "bottom" ? height * 0.96 - (blockTop ?? 0) : hasPic ? height * 0.3 : height * 0.8;
+  const natural = scene.lines.reduce((sum, l) => sum + Math.min(u * STORY_SIZE[l.size] * (wide ? 0.8 : 1), colW / Math.max(3, l.text.length * 0.56)) * (l.size === "l" || l.size === "xl" ? 1.04 : 1.2), 0);
+  const fit = natural > 0 ? Math.min(1, Math.max(0.4, room / natural)) : 1;
+  return (
+    <AbsoluteFill style={{ opacity: 1 - exit * 0.9, filter: gone }}>
+      {scene.backdrop === "dots" && ([[0.08, tall ? 0.03 : 0.06, 0.3], [0.72, tall ? 0.6 : 0.55, 0.2], [-0.14, tall ? 0.8 : 0.66, 0.62]] as const).map(([x, y, d], i) => {
+        const g = pop(frame, fps, i * 4, 16);
+        const drift = Math.sin((frame + i * 40) / 45) * u * 1.2;
+        const size = Math.min(width, height) * d;
+        return <div key={i} style={{ position: "absolute", left: width * x, top: height * y + drift, width: size, height: size, borderRadius: "50%", background: dot, filter: `blur(${u * 0.5}px)`, transform: `scale(${g})` }} />;
+      })}
+      {scene.backdrop === "sunrise" && <div style={{ position: "absolute", left: width / 2 - sunD / 2, top: hillTop - sunD * 0.78 + (1 - sunIn) * sunD * 0.8, width: sunD, height: sunD, borderRadius: "50%", background: second, filter: `blur(${u * 0.25}px)` }} />}
+      {hasPic && (
+        <div style={{ position: "absolute", left: width / 2 - picW / 2, top: picCy - picH / 2, width: picW, height: picH, borderRadius: scene.frame === "circle" ? "50%" : scene.frame === "card" ? u * 4 : 0, overflow: "hidden",
+          background: scene.frame === "none" ? "transparent" : scene.picture ? second : shade(palette.background, 0.08), opacity: Math.min(1, picIn * 1.4), transform: `scale(${interpolate(picIn, [0, 1], [0.8, 1])})`,
+          boxShadow: scene.frame === "card" ? `0 ${u * 2}px ${u * 6}px rgba(0,0,0,0.25)` : undefined, display: "flex", alignItems: "center", justifyContent: "center", border: scene.picture ? undefined : `${u * 0.5}px dashed ${palette.accent}` }}>
+          {scene.picture
+            ? <Img src={scene.picture} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: scene.frame === "none" ? "contain" : "cover" }} />
+            : <div style={{ fontFamily: fontStack(brand.font), fontWeight: 600, fontSize: u * 3.6, lineHeight: 1.3, color: palette.text, opacity: 0.75, textAlign: "center", padding: u * 6 }}>Your photo here:<br />{scene.placeholder}</div>}
+        </div>
+      )}
+      {hilly && <div style={{ position: "absolute", left: width / 2 - hillW / 2, top: hillTop + (1 - hillIn) * height * 0.35, width: hillW, height: hillW, borderRadius: "50%", background: palette.accent }} />}
+      {n > 0 && (
+        <AbsoluteFill style={{ justifyContent: blockTop === null ? "center" : "flex-start", alignItems: "center", paddingTop: blockTop ?? 0 }}>
+          <div style={{ width: colW, display: "flex", flexDirection: "column" }}>
+            {scene.lines.map((l, i) => {
+              const big = l.size === "l" || l.size === "xl";
+              const size = Math.min(u * STORY_SIZE[l.size] * (wide ? 0.8 : 1), colW / Math.max(3, l.text.length * 0.56)) * fit;
+              const p = ease(6 + i * per, 6 + i * per + 12);
+              const sp = pop(frame, fps, 6 + i * per, 12);
+              const style: CSSProperties = scene.enter === "blur"
+                ? { opacity: p, filter: `blur(${(1 - p) * u * 2.4}px)`, transform: `scale(${1.06 - 0.06 * p})` }
+                : scene.enter === "rise" ? { opacity: p, transform: `translateY(${(1 - p) * size * 0.5}px)` }
+                : { opacity: Math.min(1, sp * 1.4), transform: `scale(${interpolate(sp, [0, 1], [0.6, 1])})` };
+              return <div key={i} style={{ ...style, alignSelf: l.align === "left" ? "flex-start" : l.align === "right" ? "flex-end" : "center", fontFamily: fontStack(brand.font), fontWeight: big ? 800 : 600, fontSize: size, lineHeight: big ? 1 : 1.15, paddingBottom: size * 0.06, marginTop: i && big ? -size * 0.08 : 0, letterSpacing: big ? -size * 0.02 : 0, color: l.accent ? key : plain, whiteSpace: "nowrap" }}>{l.text}</div>;
+            })}
+          </div>
+        </AbsoluteFill>
+      )}
+    </AbsoluteFill>
+  );
+}
+
 function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette; brand: MotionBrand }) {
   const frames = sceneFrames(scene);
   switch (scene.template) {
@@ -372,6 +453,7 @@ function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette
     case "bars": return <Bars scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "compare": return <Compare scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "points": return <Points scene={scene} palette={palette} brand={brand} frames={frames} />;
+    case "story": return <Story scene={scene} palette={palette} brand={brand} frames={frames} />;
   }
 }
 

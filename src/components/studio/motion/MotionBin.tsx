@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Clapperboard, FileText, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
+import { Clapperboard, FileText, Film, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -13,6 +13,7 @@ import { useBrandKit } from "@/components/studio/generate-image";
 import { MOTION_CREDITS, type MotionShape, type MotionSpec } from "@/lib/motion/spec";
 import type { AddedMotion, MotionPlace } from "./MotionStudio";
 import { track } from "@/lib/analytics";
+import { readVideo } from "@/lib/video-inspo/analyze";
 
 // The Player and the renderer load only when the studio opens.
 const MotionStudio = dynamic(() => import("./MotionStudio").then((m) => m.MotionStudio), { ssr: false });
@@ -51,8 +52,10 @@ async function shrinkScreen(file: File): Promise<Blob> {
  * The Motion panel in the video editor's rail (2026-10-15): say what it's for (or tap a start),
  * Claude plans it (4 credits), the studio opens with the live preview.
  */
-export function MotionBin({ clientId, shape, initialPrompt, initialScreens, pictureId, onAdded, standalone = false }: {
+export function MotionBin({ clientId, shape, initialPrompt, initialScreens, initialPlan, pictureId, onAdded, standalone = false }: {
   clientId: string | null; shape: MotionShape; initialPrompt?: string | null; pictureId?: string | null;
+  /** A plan made elsewhere (Video Inspo's "Make it as motion graphics", 2026-10-21): opens straight in the studio. */
+  initialPlan?: { spec: MotionSpec; pictures: Array<{ url: string; title: string }>; concept?: string } | null;
   /** Screenshots for a walkthrough, from Ask BlinkSpot's link (2026-10-20). */
   initialScreens?: string[] | null;
   onAdded: (m: AddedMotion, where: MotionPlace) => void;
@@ -64,15 +67,16 @@ export function MotionBin({ clientId, shape, initialPrompt, initialScreens, pict
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name ?? undefined);
   // Kept on this device per brand (2026-10-20): the brief and the plan (it cost credits).
   const keep = activeBrand ? `motion:${activeBrand.id}` : null;
-  const [prompt, setPrompt] = useKept(keep && `${keep}:prompt`, initialPrompt ?? "", !!initialPrompt);
+  const fresh = !!initialPrompt || !!initialPlan;
+  const [prompt, setPrompt] = useKept(keep && `${keep}:prompt`, initialPrompt ?? initialPlan?.concept ?? "", fresh);
   const [busy, setBusy] = useState(false);
-  const [spec, setSpec] = useKept<MotionSpec | null>(keep && `${keep}:spec`, null, !!initialPrompt);
-  const [pictures, setPictures] = useKept<Array<{ url: string; title: string }>>(keep && `${keep}:pictures`, [], !!initialPrompt);
+  const [spec, setSpec] = useKept<MotionSpec | null>(keep && `${keep}:spec`, initialPlan?.spec ?? null, fresh);
+  const [pictures, setPictures] = useKept<Array<{ url: string; title: string }>>(keep && `${keep}:pictures`, initialPlan?.pictures ?? [], fresh);
   // Screenshots for an app walkthrough (2026-10-20: "motion graphics tutorials on what buttons do what").
-  const [screens, setScreens] = useKept<string[]>(keep && `${keep}:screens`, initialScreens ?? [], !!initialPrompt);
+  const [screens, setScreens] = useKept<string[]>(keep && `${keep}:screens`, initialScreens ?? [], fresh);
   const [uploading, setUploading] = useState(false);
   // Text or numbers to work from (a post, notes, a table), kept with the brief.
-  const [source, setSource] = useKept<string>(keep && `${keep}:source`, "", !!initialPrompt);
+  const [source, setSource] = useKept<string>(keep && `${keep}:source`, "", fresh);
   const [showSource, setShowSource] = useState(false);
   async function addScreens(files: File[]) {
     if (!files.length || !clientId || !activeBrand) return;
@@ -93,8 +97,33 @@ export function MotionBin({ clientId, shape, initialPrompt, initialScreens, pict
     setUploading(false);
     if (added.length && prompt.trim().length < 3) setPrompt(STARTS.find((x) => x.label === "App walkthrough")!.prompt);
   }
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!initialPlan);
   const [made, setMade] = useState<AddedMotion[]>([]);
+  // Motion Inspo (Kezie, 2026-10-21: "copy the inspiration motion graphics video, create similar
+  // things in the brand"): the video is read here, shot by shot; only one still per shot is sent.
+  const videoRef = useRef<HTMLInputElement>(null);
+  const [copying, setCopying] = useState<number | null>(null);
+  async function copyVideo(f: File | undefined) {
+    if (!f || !activeBrand) return;
+    if (!f.type.startsWith("video/")) { toast.error("That isn't a video file."); return; }
+    if (f.size > 150 * 1024 * 1024) { toast.error("That video is over 150 MB. Trim it first."); return; }
+    const url = URL.createObjectURL(f);
+    setCopying(0);
+    try {
+      const r = await readVideo(url, (p) => setCopying(Math.min(0.99, p)));
+      setCopying(1);
+      const res = await fetch("/api/inspo/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "motion", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand.id, purpose: prompt.trim().slice(0, 300), shape }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.spec) throw new Error(data.error || "Couldn't copy that video.");
+      const plan = data.spec as MotionSpec;
+      const toAdd = plan.scenes.filter((x) => x.template === "story" && x.placeholder && !x.picture).length;
+      setSpec(plan); setPictures(data.pictures ?? []); setOpen(true);
+      if (data.concept && prompt.trim().length < 3) setPrompt(String(data.concept));
+      track("motion_inspo", { shots: r.shots.length, scenes: plan.scenes.length, placeholders: toAdd });
+      toast.success(`Made like your video: ${plan.scenes.length} scenes · ${data.credits} credits${toAdd ? ` · ${toAdd} photo${toAdd === 1 ? "" : "s"} to add` : ""}`, { duration: 8000 });
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't copy that video."); }
+    finally { URL.revokeObjectURL(url); setCopying(null); }
+  }
   const [picture, setPicture] = useState<string | null>(pictureId ?? null);
   async function write(text = prompt) {
     if (!activeBrand || text.trim().length < 3) { toast.info("Say what it's for first, e.g. a 6 second intro for our launch."); return; }
@@ -148,6 +177,15 @@ export function MotionBin({ clientId, shape, initialPrompt, initialScreens, pict
             </label>
           )}
           {!!screens.length && <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>One step per screenshot, in this order. Claude finds the button and says what it does.</span>}
+        </div>
+        <div className="grid gap-1">
+          <button className="s-btn ghost sm justify-between" disabled={copying !== null || !activeBrand} onClick={() => videoRef.current?.click()}>
+            <span className="flex items-center gap-2">{copying !== null ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />}
+              {copying === null ? "Copy a motion video you like" : copying < 1 ? `Reading its shots · ${Math.round(copying * 100)}%` : `Making it for ${activeBrand?.brand_name ?? "your brand"}…`}</span>
+            <span className="cost">up to 30 cr</span>
+          </button>
+          <input ref={videoRef} type="file" accept="video/*" className="sr-only" aria-label="Motion video to copy" disabled={copying !== null || !activeBrand} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void copyVideo(f); }} />
+          <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>The same beats, layout and shapes, in your colours and words. Your photos go in; where none fits, it leaves a space to add one. From TikTok or Instagram: Share, Save video, then pick the file.</span>
         </div>
         {picture && <span className="text-[11.5px] flex items-center gap-1" style={{ color: "var(--s-soft)" }}>Using the picture you picked <button className="underline" onClick={() => setPicture(null)}>(clear)</button></span>}
         <button className="s-btn ai justify-between" disabled={busy || !activeBrand || prompt.trim().length < 3} onClick={() => write()}>

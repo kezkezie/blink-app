@@ -1,6 +1,6 @@
 "use client";
 
-import { detectCuts, frameDiff, sampleTimes, shotsFrom, toGrey, type Shot } from "./cuts";
+import { detectCuts, frameDiff, frameRange, sampleTimes, shotsFrom, toGrey, type Shot } from "./cuts";
 
 /**
  * The browser half of Video Inspo: open the video, sample small grey frames to find the shots,
@@ -37,6 +37,8 @@ function seek(v: HTMLVideoElement, t: number): Promise<void> {
 
 export async function readVideo(src: string, onProgress?: (p: number) => void): Promise<VideoReading> {
   const v = await loadVideo(src);
+  // No picture size: the browser can't decode this file's video (no H.264 in this browser, say).
+  if (!v.videoWidth || !v.videoHeight) throw new Error("This browser couldn't see the video's pictures. Try it in Chrome, or save the video as MP4 or WebM.");
   const duration = Math.min(v.duration || 0, MAX_SECONDS);
   if (!duration || !Number.isFinite(duration)) throw new Error("Couldn't read the video's length.");
   const small = document.createElement("canvas");
@@ -45,15 +47,21 @@ export async function readVideo(src: string, onProgress?: (p: number) => void): 
   const times = sampleTimes(duration);
   const diffs: number[] = [];
   let prev: Uint8ClampedArray | null = null;
+  let seen = 0; // the most any frame varied: 0 means this browser drew no pictures
+
   for (let i = 0; i < times.length; i++) {
     await seek(v, times[i]);
     sctx.drawImage(v, 0, 0, 64, 36);
     let grey: Uint8ClampedArray;
     try { grey = toGrey(sctx.getImageData(0, 0, 64, 36).data); } catch { throw new Error("That video's host doesn't allow reading it. Upload the file instead."); }
+    seen = Math.max(seen, frameRange(grey));
     diffs.push(prev ? frameDiff(prev, grey) : 0);
     prev = grey;
     onProgress?.((i + 1) / (times.length + 16));
   }
+  // Every frame blank (2026-10-21): the browser opened the file but can't decode its pictures (an
+  // H.264 file in a browser without that codec). Stop here, before anything is sent or charged.
+  if (seen < 6) throw new Error("This browser couldn't see the video's pictures. Try it in Chrome, or save the video as MP4 or WebM.");
   const shots = shotsFrom(detectCuts(diffs, times), duration);
   const big = document.createElement("canvas");
   const w = 512;

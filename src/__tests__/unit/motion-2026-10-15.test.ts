@@ -76,7 +76,10 @@ describe("motion spec", () => {
     expect(p.text).toBe("#111111");
     expect(p.accent).toBe("#111111");
     const d = paletteFor({}, ctx.brand);
-    expect(d).toEqual({ background: "#231F20", text: "#FFFFFF", accent: "#6BBD51" });
+    expect(d).toMatchObject({ background: "#231F20", text: "#FFFFFF", accent: "#6BBD51" });
+    // The supporting colour (2026-10-21): a lighter accent when the brand has no third colour.
+    expect(d.second).toMatch(/^#[0-9A-F]{6}$/);
+    expect(d.second).not.toBe(d.background);
     expect(contrast(d.text, d.background)).toBeGreaterThan(4.5);
     expect(paletteFor({ background: "red" }, { primary: null, secondary: null }).background).toBe("#111111");
   });

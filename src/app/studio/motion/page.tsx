@@ -1,12 +1,12 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import "@/components/layout/video-editor.css";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { MotionBin } from "@/components/studio/motion/MotionBin";
-import type { MotionShape } from "@/lib/motion/spec";
+import { MOTION_INSPO_HANDOFF_KEY, type MotionShape, type MotionSpec } from "@/lib/motion/spec";
 
 /**
  * Motion graphics on their own (Kezie, 2026-10-20: "it needs its own place within Create"): the
@@ -30,12 +30,32 @@ function fromLink(params: URLSearchParams) {
   return { brief, screens, shape, picture };
 }
 
+/** A plan handed over by Video Inspo (2026-10-21), used once and only while fresh. Read after mount (the server can't see it). */
+type Handoff = { spec: MotionSpec; pictures: Array<{ url: string; title: string }>; concept?: string };
+function takeHandoff(params: URLSearchParams): Handoff | null {
+  if (params.get("from") !== "inspo" || typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(MOTION_INSPO_HANDOFF_KEY);
+    const h = raw ? JSON.parse(raw) as Handoff & { at?: number } : null;
+    return h?.spec && Array.isArray(h.spec.scenes) && Date.now() - (h.at ?? 0) < 30 * 60_000 ? { spec: h.spec, pictures: Array.isArray(h.pictures) ? h.pictures : [], concept: h.concept } : null;
+  } catch { return null; }
+}
+
 function MotionPage() {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
   const params = useSearchParams();
   const [link] = useState(() => fromLink(new URLSearchParams(params.toString())));
+  const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [shape, setShape] = useState<MotionShape>(link.shape);
+  useEffect(() => {
+    const h = takeHandoff(new URLSearchParams(window.location.search));
+    if (!h) return;
+    try { sessionStorage.removeItem(MOTION_INSPO_HANDOFF_KEY); } catch { /* private mode */ }
+    // A one-off read of the browser's storage after mount; the plan then remounts the form below.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHandoff(h); setShape(h.spec.shape);
+  }, []);
   return (
     <div className="max-w-[760px] mx-auto pt-2 md:pt-6 pb-10">
       <p className="text-sm mb-1" style={{ color: "var(--s-soft)" }}>Motion graphics · for {activeBrand?.brand_name ?? "your brand"}</p>
@@ -45,7 +65,7 @@ function MotionPage() {
         {SHAPES.map((s) => <button key={s.id} role="tab" aria-selected={shape === s.id} onClick={() => setShape(s.id)} title={s.line}>{s.label} <span className="hidden sm:inline" style={{ color: "var(--s-mute)" }}>· {s.line}</span></button>)}
       </div>
       <div className="s-card mt-4 py-2 ve" style={{ minHeight: 0 }}>
-        <MotionBin key={shape} clientId={clientId} shape={shape} standalone onAdded={() => {}} initialPrompt={link.brief} initialScreens={link.screens.length ? link.screens : null} pictureId={link.picture} />
+        <MotionBin key={`${shape}:${handoff ? "inspo" : ""}`} clientId={clientId} shape={shape} standalone onAdded={() => {}} initialPrompt={link.brief} initialScreens={link.screens.length ? link.screens : null} pictureId={link.picture} initialPlan={handoff && handoff.spec.shape === shape ? handoff : null} />
       </div>
     </div>
   );

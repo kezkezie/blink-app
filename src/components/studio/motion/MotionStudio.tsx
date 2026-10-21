@@ -2,14 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Player } from "@remotion/player";
-import { ArrowDown, ArrowUp, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ImagePlus, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Modal } from "@/components/studio/Modal";
 import { MotionVideo, type MotionBrand } from "@/components/motion/MotionVideo";
 import {
   MOTION_FPS, MOTION_TEMPLATES, motionTitle, paletteFor, sizeFor, totalFrames, totalSeconds, validateMotionSpec,
-  type MotionScene, type MotionSpec,
+  type MotionScene, type MotionSpec, type StoryLine,
 } from "@/lib/motion/spec";
 import { track } from "@/lib/analytics";
 
@@ -59,6 +59,25 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  // Photos added here for a story card's empty space (2026-10-21), offered next to the brand's own.
+  const [extra, setExtra] = useState<Array<{ url: string; title: string }>>([]);
+  const allPictures = useMemo(() => [...pictures, ...extra], [pictures, extra]);
+  const [uploadingFor, setUploadingFor] = useState<number | null>(null);
+  async function uploadPicture(i: number, f: File | undefined) {
+    if (!f || !clientId) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { toast.error("Use a JPG, PNG or WebP photo."); return; }
+    setUploadingFor(i);
+    try {
+      const ext = f.type === "image/png" ? "png" : f.type === "image/webp" ? "webp" : "jpg";
+      const path = `images/${clientId}/motion_photo_${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("assets").upload(path, f, { contentType: f.type });
+      if (error) throw error;
+      const url = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      setExtra((x) => [...x, { url, title: f.name.slice(0, 60) }]);
+      setScene(i, { picture: url, placeholder: undefined } as Partial<MotionScene>);
+    } catch { toast.error("Couldn't upload that photo."); }
+    finally { setUploadingFor(null); }
+  }
   const abort = useRef<AbortController | null>(null);
   const { width, height } = sizeFor(spec.shape);
   const frames = Math.max(1, totalFrames(spec));
@@ -76,8 +95,10 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
 
   async function add(where: MotionPlace) {
     // The browser's edits are checked the same way the server checked Claude's plan.
-    const checked = validateMotionSpec(spec, { shape: spec.shape, brand: { primary: brand.primary, secondary: brand.secondary }, images: pictures.map((p) => p.url) });
+    const checked = validateMotionSpec(spec, { shape: spec.shape, brand: { primary: brand.primary, secondary: brand.secondary }, images: allPictures.map((p) => p.url) });
     if (!checked) { toast.error("Each scene needs its words. Fill them in and try again."); return; }
+    const empty = checked.scenes.filter((x) => x.template === "story" && !x.picture && x.placeholder).length;
+    if (empty) toast.info(`${empty} story card${empty === 1 ? " still has its" : "s still have their"} photo space empty; it shows as "Your photo here".`, { duration: 7000 });
     abort.current = new AbortController();
     setBusy("Getting the font ready…"); setProgress(0);
     try {
@@ -171,10 +192,10 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
           <div className="grid gap-1.5">
             <span className="s-label" style={{ margin: 0 }}>Colours</span>
             <div className="flex items-center gap-3">
-              {(["background", "text", "accent"] as const).map((k) => (
+              {(spec.palette.second || spec.scenes.some((x) => x.template === "story") ? ["background", "text", "accent", "second"] as const : ["background", "text", "accent"] as const).map((k) => (
                 <label key={k} className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--s-soft)" }}>
-                  <input type="color" value={spec.palette[k]} onChange={(e) => setColour(k, e.target.value.toUpperCase())} className="h-7 w-9 rounded-md cursor-pointer" style={{ background: "transparent", border: "1px solid var(--s-line-2)" }} aria-label={`${k} colour`} />
-                  {k === "background" ? (spec.kind === "overlay" ? "Bar" : "Background") : k === "text" ? "Text" : "Accent"}
+                  <input type="color" value={spec.palette[k] ?? spec.palette.accent} onChange={(e) => setColour(k, e.target.value.toUpperCase())} className="h-7 w-9 rounded-md cursor-pointer" style={{ background: "transparent", border: "1px solid var(--s-line-2)" }} aria-label={`${k} colour`} />
+                  {k === "background" ? (spec.kind === "overlay" ? "Bar" : "Background") : k === "text" ? "Text" : k === "accent" ? "Accent" : "Second"}
                 </label>
               ))}
             </div>
@@ -251,6 +272,47 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                     ))}
                   </div>
                 )}
+              </>)}
+              {s.template === "story" && (<>
+                {s.lines.map((l, j) => {
+                  const setLine = (patch: Partial<StoryLine>) => setScene(i, { lines: s.lines.map((x, k) => (k === j ? { ...x, ...patch } : x)) });
+                  return (
+                    <div key={j} className="grid gap-1">
+                      <div className="flex gap-1.5 items-end">
+                        <div className="flex-1 min-w-0">{field(`Line ${j + 1}`, l.text, (v) => setLine({ text: v }))}</div>
+                        <button className="s-btn ghost sm" onClick={() => setScene(i, { lines: s.lines.filter((_, k) => k !== j) })} aria-label={`Remove line ${j + 1}`}><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        <div className="s-seg" role="group" aria-label={`Line ${j + 1} size`}>{(["s", "m", "l", "xl"] as const).map((z) => <button key={z} aria-pressed={l.size === z} onClick={() => setLine({ size: z })}>{z.toUpperCase()}</button>)}</div>
+                        <div className="s-seg" role="group" aria-label={`Line ${j + 1} side`}>{(["left", "center", "right"] as const).map((z) => <button key={z} aria-pressed={l.align === z} onClick={() => setLine({ align: z })}>{z === "left" ? "Left" : z === "center" ? "Mid" : "Right"}</button>)}</div>
+                        <button className="s-chip" aria-pressed={l.accent} onClick={() => setLine({ accent: !l.accent })} title="In the accent colour">Accent</button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {s.lines.length < 6 && <button className="s-btn ghost sm justify-self-start" onClick={() => setScene(i, { lines: [...s.lines, { text: "", size: "m", accent: false, align: "center" }] })}><Plus className="h-3.5 w-3.5" /> Add a line</button>}
+                <div className="flex flex-wrap gap-1">
+                  <div className="s-seg" role="group" aria-label="Shapes">{(["plain", "dots", "hill", "sunrise"] as const).map((b) => <button key={b} aria-pressed={s.backdrop === b} onClick={() => setScene(i, { backdrop: b })}>{b === "plain" ? "Plain" : b === "dots" ? "Circles" : b === "hill" ? "Hill" : "Sunrise"}</button>)}</div>
+                  <div className="s-seg" role="group" aria-label="Words at">{(["top", "center", "bottom"] as const).map((b) => <button key={b} aria-pressed={s.place === b} onClick={() => setScene(i, { place: b })}>{b === "top" ? "Top" : b === "center" ? "Middle" : "Bottom"}</button>)}</div>
+                  <div className="s-seg" role="group" aria-label="Words arrive">{(["blur", "rise", "pop"] as const).map((b) => <button key={b} aria-pressed={s.enter === b} onClick={() => setScene(i, { enter: b })}>{b === "blur" ? "Blur in" : b === "rise" ? "Rise" : "Pop"}</button>)}</div>
+                </div>
+                {(s.picture || s.placeholder) && (
+                  <div className="grid gap-1.5">
+                    <span className="text-[11.5px]" style={{ color: s.picture ? "var(--s-soft)" : "var(--s-warn)" }}>{s.picture ? "Picture" : `Add a photo here: ${s.placeholder}`}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allPictures.slice(0, 12).map((p) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <button key={p.url} title={p.title} onClick={() => setScene(i, { picture: p.url, placeholder: undefined })} className="h-12 w-12 rounded-lg overflow-hidden" style={{ border: `2px solid ${s.picture === p.url ? "var(--s-ai)" : "var(--s-line)"}` }}><img src={p.url} alt={p.title} className="h-full w-full object-cover" /></button>
+                      ))}
+                      <label className="h-12 w-12 rounded-lg grid place-items-center cursor-pointer" style={{ border: "1.5px dashed var(--s-line-2)" }} title="Upload a photo" aria-label="Upload a photo">
+                        {uploadingFor === i ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" style={{ color: "var(--s-soft)" }} />}
+                        <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void uploadPicture(i, f); }} />
+                      </label>
+                    </div>
+                    <div className="s-seg" role="group" aria-label="Picture shape">{(["circle", "card", "none"] as const).map((f) => <button key={f} aria-pressed={s.frame === f} onClick={() => setScene(i, { frame: f })}>{f === "circle" ? "Circle" : f === "card" ? "Card" : "As it is"}</button>)}</div>
+                  </div>
+                )}
+                {!s.picture && !s.placeholder && <button className="s-btn ghost sm justify-self-start" onClick={() => setScene(i, { placeholder: "a photo", frame: "circle" })}><ImagePlus className="h-3.5 w-3.5" /> Add a picture</button>}
               </>)}
               {s.template === "logo-sting" && field("Tagline", s.tagline, (v) => setScene(i, { tagline: v || undefined }), { placeholder: "Optional" })}
               {s.template === "lower-third" && (<>{field("Title", s.title, (v) => setScene(i, { title: v }))}{field("Smaller line", s.subtitle, (v) => setScene(i, { subtitle: v || undefined }), { placeholder: "Optional" })}</>)}

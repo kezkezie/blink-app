@@ -21,6 +21,13 @@ export function toGrey(rgba: Uint8ClampedArray): Uint8ClampedArray {
   return out;
 }
 
+/** How much a small grey frame varies (brightest minus darkest): near 0 is a blank frame. */
+export function frameRange(grey: Uint8ClampedArray): number {
+  let lo = 255, hi = 0;
+  for (const v of grey) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  return hi - lo;
+}
+
 /**
  * Cuts from per-sample differences. A cut is a difference well above the video's usual motion
  * (median + k * spread, never below `floor`), at least `minShot` seconds after the last cut.

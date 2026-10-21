@@ -10,6 +10,7 @@ import { useCredits } from "@/components/studio/hooks";
 import { readVideo, type VideoReading } from "@/lib/video-inspo/analyze";
 import { INSPO_HANDOFF_KEY, inspoPattern, inspoPatternKey, type InspoPlan } from "@/lib/video-inspo/plan";
 import { videoLinkProblem } from "@/lib/video-inspo/links";
+import { MOTION_INSPO_HANDOFF_KEY } from "@/lib/motion/spec";
 
 /**
  * Video Inspo (Kezie, 2026-10-12: "the inspo for stealing videos ... replicate the video but for our
@@ -78,6 +79,26 @@ export function VideoInspo() {
       toast.success(`Read ${r.shots.length} shot${r.shots.length === 1 ? "" : "s"} · ${data.credits} credits`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't read that video."); }
     finally { setStage(null); }
+  }
+
+  // Motion graphics from the same reading (2026-10-21): the beats, layout and shapes in BlinkSpot's motion kit.
+  const [motionBusy, setMotionBusy] = useState(false);
+  async function toMotion() {
+    if (!reading || !activeBrand) return;
+    setMotionBusy(true);
+    try {
+      const res = await fetch("/api/inspo/video", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "motion", shots: reading.shots.map(({ start, end, data }) => ({ start, end, data })), duration: reading.duration, width: reading.width, height: reading.height, brandId: activeBrand.id, purpose }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.spec) throw new Error(data.error || "Couldn't make it as motion graphics.");
+      sessionStorage.setItem(MOTION_INSPO_HANDOFF_KEY, JSON.stringify({ spec: data.spec, pictures: data.pictures ?? [], concept: data.concept ?? "", at: Date.now() }));
+      void refresh?.();
+      toast.success(`Motion graphics planned · ${data.credits} credits`);
+      router.push("/studio/motion?from=inspo");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't make it as motion graphics."); }
+    finally { setMotionBusy(false); }
   }
 
   function toStoryboard() {
@@ -155,10 +176,19 @@ export function VideoInspo() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-0">
               <h3 className="text-[20px] font-semibold">{plan.title}</h3>
+              {plan.concept && <p className="text-[13px] mt-1" style={{ color: "var(--s-soft)" }}>The idea: {plan.concept}</p>}
               {plan.hook && <p className="text-[13px] mt-1" style={{ color: "var(--s-soft)" }}>Your hook: {plan.hook}</p>}
             </div>
             <span className="text-[12px] mono" style={{ color: "var(--s-mute)" }}>{reading.shots.length} shots · {reading.duration.toFixed(0)} s · {credits} cr</span>
           </div>
+          {plan.cast && <p className="text-[12.5px] -mt-2" style={{ color: "var(--s-mute)" }}>The same people in every scene: {plan.cast}</p>}
+          {plan.kind === "motion" && (
+            <div className="s-card p-4 grid gap-2" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 40%, var(--s-line))" }}>
+              <b className="text-[14px] flex items-center gap-2"><Sparkles className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> This one is motion graphics</b>
+              <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>AI video can&apos;t spell, and it won&apos;t keep shapes clean. Make it as motion graphics instead: the same beats, layout and shapes, your words exact, in {name}&apos;s colours. Your photos go in; where none fits, it leaves a space to add one.</p>
+              <button className="s-btn ai justify-self-start" disabled={motionBusy} onClick={toMotion}>{motionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clapperboard className="h-4 w-4" />} Make it as motion graphics <span className="cost">up to 30 cr</span></button>
+            </div>
+          )}
           {plan.why.length > 0 && (
             <div className="s-card p-4 grid gap-2">
               <span className="s-label" style={{ margin: 0 }}>Why it works</span>
@@ -186,7 +216,8 @@ export function VideoInspo() {
           </div>
           {plan.caption && <div className="s-card p-4 text-[13px]" style={{ color: "var(--s-soft)" }}><span className="s-label" style={{ margin: 0 }}>Caption</span><p className="mt-1">{plan.caption}</p></div>}
           <div className="flex flex-wrap gap-2">
-            <button className="s-btn primary" onClick={toStoryboard}><Clapperboard className="h-4 w-4" /> Make it in the Storyboard</button>
+            <button className={`s-btn${plan.kind === "motion" ? "" : " primary"}`} onClick={toStoryboard}><Clapperboard className="h-4 w-4" /> Make it in the Storyboard</button>
+            {plan.kind !== "motion" && <button className="s-btn" disabled={motionBusy} onClick={toMotion}>{motionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Make it as motion graphics</button>}
             {words.length > 0 && <button className="s-btn" onClick={() => { void navigator.clipboard.writeText(words.join("\n")).then(() => toast.success("On-screen words copied")); }}><Copy className="h-4 w-4" /> Copy the on-screen words</button>}
             <Link href="/studio/video?tab=editor" className="s-btn ghost"><Scissors className="h-4 w-4" /> Or edit my own clips like it</Link>
           </div>

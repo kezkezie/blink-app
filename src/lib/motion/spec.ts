@@ -10,8 +10,11 @@ export type MotionShape = "9:16" | "1:1" | "16:9";
 export const MOTION_FPS = 30;
 export const MOTION_CREDITS = 4;
 export const MAX_MOTION_SECONDS = 30;
+/** Where the Motion page picks up a plan from Video Inspo's "Make it as motion graphics" (one handoff, then cleared). */
+export const MOTION_INSPO_HANDOFF_KEY = "blink-motion-inspo-plan";
 
-export type Palette = { background: string; text: string; accent: string };
+/** second: a supporting colour for shapes (the sun behind a hill, a picture's circle); older specs have none. */
+export type Palette = { background: string; text: string; accent: string; second?: string };
 
 export type KineticHeadline = { template: "kinetic-headline"; seconds: number; words: string; sub?: string; enter: "word" | "line" | "slam" };
 export type Stat = { template: "stat"; seconds: number; value: number; decimals: number; prefix?: string; suffix?: string; label: string };
@@ -33,7 +36,15 @@ export type ScreenStep = { template: "screen"; seconds: number; image: string; a
 export type Bars = { template: "bars"; seconds: number; title: string; bars: Array<{ label: string; value: number }>; prefix?: string; suffix?: string; decimals: number; highlight?: number };
 export type Compare = { template: "compare"; seconds: number; label: string; from: number; to: number; decimals: number; prefix?: string; suffix?: string; fromLabel?: string; toLabel?: string };
 export type Points = { template: "points"; seconds: number; title: string; points: string[] };
-export type MotionScene = KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points;
+/**
+ * A story card (Kezie, 2026-10-21, motion quotes like @vibex_26's): stacked words in mixed sizes
+ * (small connecting words around one big key word), soft shapes (floating circles, a hill rising,
+ * a sun rising behind it) and a picture in a circle or a card. With no picture yet, "placeholder"
+ * says which photo to add there; the studio swaps one in.
+ */
+export type StoryLine = { text: string; size: "s" | "m" | "l" | "xl"; accent: boolean; align: "left" | "center" | "right" };
+export type Story = { template: "story"; seconds: number; lines: StoryLine[]; place: "top" | "center" | "bottom"; backdrop: "plain" | "dots" | "hill" | "sunrise"; picture?: string; placeholder?: string; frame: "circle" | "card" | "none"; enter: "blur" | "rise" | "pop" };
+export type MotionScene = KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points | Story;
 export type MotionTemplate = MotionScene["template"];
 
 /** "full": scenes fill the frame (intros, stats, end cards). "overlay": a see-through lower third over footage. */
@@ -50,6 +61,7 @@ export const MOTION_TEMPLATES: Array<{ id: MotionTemplate; label: string; line: 
   { id: "bars", label: "Bar chart", line: "Your numbers grow into bars, counting up", seconds: [4, 8] },
   { id: "compare", label: "Before and after", line: "One number turns into another", seconds: [3, 6] },
   { id: "points", label: "Key points", line: "Points arrive one by one, from a post or notes", seconds: [4, 10] },
+  { id: "story", label: "Story card", line: "Stacked words, soft shapes and a picture, like a motion quote", seconds: [2, 7] },
 ];
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -79,7 +91,17 @@ export function paletteFor(raw: unknown, brand: { primary?: string | null; secon
   if (contrast(fg, background) < 4.5) fg = luminance(background) > 0.4 ? "#111111" : "#FFFFFF";
   let accent = pick(r.accent, primary);
   if (accent === background) accent = fg;
-  return { background, text: fg, accent };
+  // The supporting colour: as given, else the brand's other colour when it shows on the background, else a lighter accent.
+  const other = [secondary, primary].find((c) => c !== accent && c !== background && contrast(c, background) >= 1.4);
+  let second = pick(r.second, other ?? mixHex(accent, luminance(accent) > 0.5 ? "#000000" : "#FFFFFF", 0.45));
+  if (second === background) second = mixHex(accent, "#FFFFFF", 0.45);
+  return { background, text: fg, accent, second };
+}
+
+/** a, moved `amount` of the way to b. */
+export function mixHex(a: string, b: string, amount: number) {
+  const ch = (h: string, i: number) => parseInt(h.slice(i, i + 2), 16);
+  return `#${[1, 3, 5].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * amount).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
 }
 
 function scene(raw: unknown, images: Set<string>): MotionScene | null {
@@ -146,6 +168,22 @@ function scene(raw: unknown, images: Set<string>): MotionScene | null {
       const points = (Array.isArray(r.points) ? r.points : []).map((x) => words(text(x, 80), 10)).filter(Boolean).slice(0, 5);
       if (!title || points.length < 2) return null;
       return { template: t.id, seconds, title, points };
+    }
+    case "story": {
+      const SIZES = ["s", "m", "l", "xl"] as const, ALIGN = ["left", "center", "right"] as const;
+      const lines = (Array.isArray(r.lines) ? r.lines : []).slice(0, 6).map((x) => {
+        const l = (x && typeof x === "object" ? x : { text: x }) as Record<string, unknown>;
+        const t = words(text(l.text, 40), 5);
+        return t ? { text: t, size: SIZES.find((z) => z === l.size) ?? "m", accent: l.accent === true, align: ALIGN.find((z) => z === l.align) ?? "center" } : null;
+      }).filter((l): l is StoryLine => !!l);
+      const picture = typeof r.picture === "string" && images.has(r.picture) ? r.picture : undefined;
+      const placeholder = picture ? undefined : opt(r.placeholder, 70);
+      if (!lines.length && !picture && !placeholder) return null;
+      const place = r.place === "top" || r.place === "bottom" ? r.place : "center";
+      const backdrop = r.backdrop === "dots" || r.backdrop === "hill" || r.backdrop === "sunrise" ? r.backdrop : "plain";
+      const frame = r.frame === "card" || r.frame === "none" ? r.frame : "circle";
+      const enter = r.enter === "rise" || r.enter === "pop" ? r.enter : "blur";
+      return { template: t.id, seconds, lines, place, backdrop, ...(picture ? { picture } : {}), ...(placeholder ? { placeholder } : {}), frame, enter };
     }
     case "screen": {
       const image = typeof r.image === "string" && images.has(r.image) ? r.image : null;
@@ -215,7 +253,7 @@ export function sizeFor(shape: MotionShape) {
 /** A short name for the Library and the timeline. */
 export function motionTitle(spec: MotionSpec) {
   const s = spec.scenes[0];
-  const words = s.template === "kinetic-headline" ? s.words : s.template === "stat" ? s.label : s.template === "product-reveal" ? s.name : s.template === "lower-third" ? s.title : s.template === "end-card" ? s.cta : s.template === "screen" ? s.label : s.template === "bars" || s.template === "points" ? s.title : s.template === "compare" ? s.label : s.tagline || "Logo";
+  const words = s.template === "kinetic-headline" ? s.words : s.template === "stat" ? s.label : s.template === "product-reveal" ? s.name : s.template === "lower-third" ? s.title : s.template === "end-card" ? s.cta : s.template === "screen" ? s.label : s.template === "bars" || s.template === "points" ? s.title : s.template === "compare" ? s.label : s.template === "story" ? (s.lines.map((l) => l.text).join(" ") || s.placeholder || "Story") : s.tagline || "Logo";
   return `Motion · ${words}`.slice(0, 80);
 }
 
@@ -243,7 +281,9 @@ Templates (each scene is one of these; "seconds" within the range):
 - {"template":"bars","seconds":4-8,"title":"what the numbers show, up to 10 words","bars":[{"label":"up to 3 words","value":123}, ...2 to 8 bars in order],"prefix":"optional, e.g. $","suffix":"optional, e.g. % or k","decimals":0-2,"highlight":"optional index of the bar that matters"}
 - {"template":"compare","seconds":3-6,"label":"what changed, up to 8 words, e.g. Churn, down to","from":8.4,"to":0.9,"decimals":0-2,"prefix":"optional","suffix":"optional, e.g. %","fromLabel":"optional, e.g. Last year","toLabel":"optional, e.g. This year"}
 - {"template":"points","seconds":4-10,"title":"up to 10 words","points":["2 to 5 points, each up to 10 words"]}
+- {"template":"story","seconds":2-7,"lines":[{"text":"1 to 5 words","size":"s|m|l|xl","accent":true|false,"align":"left|center|right"}, ...0 to 6 lines, top to bottom],"place":"top|center|bottom","backdrop":"plain|dots|hill|sunrise","picture":"optional picture ref","placeholder":"only when no given picture fits: the photo to add here, up to 8 words","frame":"circle|card|none","enter":"blur|rise|pop"}
 - {"template":"screen","seconds":3-7,"image":"a screenshot ref (S1...)","box":[x, y, width, height],"label":"what to do or see there, up to 10 words","sub":"optional, up to 10 words","device":"phone" | "laptop" | "none"}
+Palette may also have "second": a supporting colour for shapes (the sun, a picture's circle).
 Rules:
 - "overlay" is only for a lower third shown over the user's footage: then exactly one lower-third scene and nothing else. Everything else is "full" and never uses lower-third.
 - 1 to 5 scenes, 6 to 20 seconds in all unless asked otherwise. Open with a hook; a promo ends with an end-card.
@@ -254,6 +294,7 @@ Rules:
 - An explainer ("explain how X works"): a hook headline, then one idea per scene (kinetic-headline, stat, compare or points), then the takeaway or an end-card.
 - Numbers given (a table, a list, results, a CSV): use bars for 2 to 8 values, compare for a before and after, stat for one number. Only the numbers given; never invent one.
 - A post, article or notes given: pull out the 3 to 5 points that matter most, in the order they appear, in short words (points), with a headline first and an end-card last.
+- Story cards are for motion quotes and kinetic stories: small connecting words (size s or m) around one or two key words (l or xl, accent), stacked and offset left and right, one thought per card. Backdrops: dots (soft floating circles), hill (a big accent hill rises from the bottom; words on it with place "bottom"), sunrise (a sun in the second colour rises behind the hill). A picture shows in a circle (frame circle), a card, or as it is (none); a poster or any picture with words on it (its title says so) goes in a card, never a circle, which would crop its words.
 - Screenshots given (an app or website walkthrough, a tutorial, "how it works", "what this button does"): one "screen" scene per step, in the order of the steps, using up to 6 scenes plus an optional opening kinetic-headline and a closing end-card (up to 8 scenes, 30 s). "box" is the rectangle around the exact button, field or area that step is about, in PIXELS of that screenshot (its size is given): look at it carefully and make the box fit the element snugly. The label is an instruction or the benefit, e.g. "Tap Generate to make your poster". "phone" for tall screenshots, "laptop" for wide ones.`;
 
 export function motionUserPrompt(b: MotionBrief) {

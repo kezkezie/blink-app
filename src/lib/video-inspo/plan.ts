@@ -7,7 +7,8 @@ export const SCENE_MODES = ["showcase", "ugc", "logo_reveal", "kling_keyframe", 
 export type SceneMode = (typeof SCENE_MODES)[number];
 
 export type InspoScene = { shot: number; shots: number[]; seconds: number; what: string; prompt: string; text: string; mode: SceneMode };
-export type InspoPlan = { title: string; why: string[]; style: { look: string; pace: string; camera: string; music: string; text: string }; hook: string; scenes: InspoScene[]; caption: string };
+/** kind "motion": the reference is motion graphics or animation (2026-10-21), so it can be made as motion graphics instead. */
+export type InspoPlan = { title: string; kind: "footage" | "motion"; concept: string; cast: string; why: string[]; style: { look: string; pace: string; camera: string; music: string; text: string }; hook: string; scenes: InspoScene[]; caption: string };
 
 export type EditText = { at: number; duration: number; text: string; y: number; size: "big" | "medium" | "small"; style: "caption" | "plain" };
 export type EditRecipe = { title: string; pace: string; cuts: number[]; texts: EditText[]; aspect: "9:16" | "1:1" | "16:9"; why: string[] };
@@ -32,6 +33,9 @@ export function validatePlan(raw: unknown, shotCount: number): InspoPlan | null 
   const st = (o.style && typeof o.style === "object" ? o.style : {}) as Record<string, unknown>;
   return {
     title: str(o.title, 80) || "Your version",
+    kind: o.kind === "motion" ? "motion" : "footage",
+    concept: str(o.concept, 240),
+    cast: str(o.cast, 300),
     why: (Array.isArray(o.why) ? o.why : []).map((w) => str(w, 200)).filter(Boolean).slice(0, 4),
     style: { look: str(st.look, 200), pace: str(st.pace, 120), camera: str(st.camera, 200), music: str(st.music, 120), text: str(st.text, 160) },
     hook: str(o.hook, 160),
