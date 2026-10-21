@@ -273,6 +273,92 @@ function Screen({ scene, palette, brand, frames }: { scene: Extract<MotionScene,
   );
 }
 
+/** Numbers that move (2026-10-21): bars grow one after another, each value counting up; one can be the accent. */
+function Bars({ scene, palette, brand, frames }: { scene: Extract<MotionScene, { template: "bars" }>; palette: Palette; brand: MotionBrand; frames: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { u, width, height, tall } = useUnit();
+  const exit = useExit(frames);
+  const n = scene.bars.length;
+  const max = Math.max(...scene.bars.map((b) => Math.abs(b.value)), 1e-9);
+  const title = pop(frame, fps, 0);
+  const chartW = width * (tall ? 0.84 : 0.78), chartH = height * (tall ? 0.42 : 0.5);
+  const gap = chartW * 0.04, barW = (chartW - gap * (n - 1)) / n;
+  const per = Math.max(4, Math.min(10, (frames * 0.55) / n));
+  const labelSize = Math.min(u * 3.6, barW * 0.22);
+  return (
+    <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity: 1 - exit, transform: `translateY(${-exit * u * 4}px)` }}>
+      <div style={{ opacity: title, transform: `translateY(${(1 - title) * u * 3}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * (tall ? 7 : 6), lineHeight: 1.15, paddingBottom: u * 0.4, color: palette.text, textAlign: "center", maxWidth: chartW, marginBottom: u * 5 }}>{scene.title}</div>
+      <div style={{ width: chartW, height: chartH, display: "flex", alignItems: "flex-end", gap }}>
+        {scene.bars.map((b, i) => {
+          const grow = interpolate(frame, [10 + i * per, 10 + i * per + 18], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+          const hot = scene.highlight === i;
+          const h = Math.max(u * 0.8, (Math.abs(b.value) / max) * (chartH - labelSize * 4.4) * grow);
+          return (
+            <div key={i} style={{ width: barW, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }}>
+              <div style={{ fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: labelSize * 1.15, lineHeight: 1.2, color: hot ? palette.accent : palette.text, opacity: Math.min(1, grow * 1.5), marginBottom: u * 1 }}>{`${scene.prefix ?? ""}${formatNumber(b.value * grow, scene.decimals)}${scene.suffix ?? ""}`}</div>
+              <div style={{ width: "100%", height: h, borderRadius: `${u * 1.2}px ${u * 1.2}px ${u * 0.4}px ${u * 0.4}px`, background: hot || scene.highlight === undefined ? palette.accent : shade(palette.background, 0.28) }} />
+              <div style={{ fontFamily: fontStack(brand.font), fontWeight: 600, fontSize: labelSize, lineHeight: 1.25, color: palette.text, opacity: 0.85, marginTop: u * 1.2, textAlign: "center", width: "100%" }}>{b.label}</div>
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+/** Before and after (2026-10-21): the first number, then it counts to the second; the change is the accent. */
+function Compare({ scene, palette, brand, frames }: { scene: Extract<MotionScene, { template: "compare" }>; palette: Palette; brand: MotionBrand; frames: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { u, tall } = useUnit();
+  const exit = useExit(frames);
+  const enter = pop(frame, fps, 0);
+  const turn = interpolate(frame, [Math.round(frames * 0.3), Math.round(frames * 0.62)], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.cubic) });
+  const value = scene.from + (scene.to - scene.from) * turn;
+  const fmt = (v: number) => `${scene.prefix ?? ""}${formatNumber(v, scene.decimals)}${scene.suffix ?? ""}`;
+  const final = fmt(scene.to);
+  const size = u * Math.min(tall ? 30 : 26, 160 / Math.max(3, final.length));
+  const down = scene.to < scene.from;
+  const tag = interpolate(frame, [Math.round(frames * 0.62), Math.round(frames * 0.62) + 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  return (
+    <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity: 1 - exit, transform: `scale(${1 - exit * 0.05})` }}>
+      <div style={{ opacity: enter * 0.9, fontFamily: fontStack(brand.font), fontWeight: 600, fontSize: u * 5.4, color: palette.text, marginBottom: u * 2.5, textAlign: "center", maxWidth: u * 84 }}>{scene.label}</div>
+      <div style={{ opacity: enter, transform: `translateY(${(1 - enter) * u * 4}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.1, paddingBottom: size * 0.05, letterSpacing: -size * 0.03, color: turn > 0.98 ? palette.accent : palette.text }}>{fmt(value)}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: u * 2, marginTop: u * 3, opacity: tag, transform: `translateY(${(1 - tag) * u * 2}px)` }}>
+        <span style={{ fontFamily: fontStack(brand.font), fontWeight: 600, fontSize: u * 3.8, color: palette.text, opacity: 0.6, textDecoration: "line-through" }}>{scene.fromLabel ? `${scene.fromLabel}: ` : ""}{fmt(scene.from)}</span>
+        <span style={{ fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 3.8, padding: `${u * 0.6}px ${u * 1.8}px`, borderRadius: u * 3, background: palette.accent, color: readableOn(palette.accent) }}>{down ? "▼" : "▲"} {scene.toLabel ?? fmt(Math.abs(scene.to - scene.from))}</span>
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+/** Key points (2026-10-21, a post or notes into a video): a headline, then each point slides in with an accent marker. */
+function Points({ scene, palette, brand, frames }: { scene: Extract<MotionScene, { template: "points" }>; palette: Palette; brand: MotionBrand; frames: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { u, width, tall } = useUnit();
+  const exit = useExit(frames);
+  const title = pop(frame, fps, 0);
+  const per = Math.max(8, Math.min(22, (frames * 0.6) / scene.points.length));
+  return (
+    <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: `0 ${u * 8}px`, opacity: 1 - exit, transform: `translateY(${-exit * u * 4}px)` }}>
+      <div style={{ width: Math.min(width * 0.86, u * 150), display: "flex", flexDirection: "column", gap: u * (tall ? 2.6 : 2) }}>
+        <div style={{ opacity: title, transform: `translateY(${(1 - title) * u * 3}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * (tall ? 8 : 6.6), lineHeight: 1.12, paddingBottom: u * 0.5, color: palette.text, marginBottom: u * 2 }}>{scene.title}</div>
+        {scene.points.map((p, i) => {
+          const inn = pop(frame, fps, 12 + i * per, 15);
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: u * 2.4, opacity: Math.min(1, inn * 1.3), transform: `translateX(${(1 - inn) * u * 10}px)`, padding: `${u * 2.2}px ${u * 2.8}px`, borderRadius: u * 2.4, background: shade(palette.background, 0.1) }}>
+              <div style={{ width: u * 5.4, height: u * 5.4, borderRadius: u * 2.7, background: palette.accent, color: readableOn(palette.accent), display: "flex", alignItems: "center", justifyContent: "center", fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 3, flexShrink: 0 }}>{i + 1}</div>
+              <div style={{ fontFamily: fontStack(brand.font), fontWeight: 700, fontSize: u * (tall ? 4.6 : 4), lineHeight: 1.25, paddingBottom: u * 0.2, color: palette.text }}>{p}</div>
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
 function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette; brand: MotionBrand }) {
   const frames = sceneFrames(scene);
   switch (scene.template) {
@@ -283,6 +369,9 @@ function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette
     case "lower-third": return <LowerThird scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "end-card": return <EndCard scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "screen": return <Screen scene={scene} palette={palette} brand={brand} frames={frames} />;
+    case "bars": return <Bars scene={scene} palette={palette} brand={brand} frames={frames} />;
+    case "compare": return <Compare scene={scene} palette={palette} brand={brand} frames={frames} />;
+    case "points": return <Points scene={scene} palette={palette} brand={brand} frames={frames} />;
   }
 }
 

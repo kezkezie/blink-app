@@ -184,7 +184,7 @@ export const ASSISTANT_TOOLS = [
   },
   {
     name: "make_motion",
-    description: "Offer a button that opens the video editor's Motion panel with a brief filled in: animated brand motion graphics (kinetic headline, a number counting up, product reveal, logo sting, a see-through lower third over footage, end card) drawn exactly in the brand's font and colours. Writing the plan costs 4 credits there; previews and edits are free; it renders into a clip on the timeline and the Library. Use for intros, title cards, stats, end cards and lower thirds, not for filmed footage.",
+    description: "Offer a button that opens the video editor's Motion panel with a brief filled in: animated brand motion graphics (kinetic headline, a number counting up, a bar chart from numbers, a before-and-after number, key points from a post or notes, product reveal, logo sting, a see-through lower third over footage, end card, app walkthroughs) drawn exactly in the brand's font and colours. Writing the plan costs 4 credits there; previews and edits are free; it renders into a clip on the timeline and the Library. Use for intros, title cards, stats, end cards and lower thirds, not for filmed footage.",
     input_schema: {
       type: "object",
       properties: {

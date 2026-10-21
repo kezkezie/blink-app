@@ -27,13 +27,15 @@ const urlsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is 
 const isVideo = (u: string) => /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u) || u.includes("/video/upload/");
 
 export async function POST(request: NextRequest) {
-  if (!isExecutionBodySizeAllowed(request, 12_000)) return NextResponse.json({ error: "Request too large" }, { status: 413 });
+  if (!isExecutionBodySizeAllowed(request, 24_000)) return NextResponse.json({ error: "Request too large" }, { status: 413 });
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  let body: { brandId?: unknown; prompt?: unknown; shape?: unknown; pictureId?: unknown; screens?: unknown };
+  let body: { brandId?: unknown; prompt?: unknown; shape?: unknown; pictureId?: unknown; screens?: unknown; source?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const brandId = typeof body.brandId === "string" && UUID.test(body.brandId) ? body.brandId : null;
   const prompt = typeof body.prompt === "string" ? body.prompt.replace(/\s+/g, " ").trim().slice(0, 600) : "";
+  // A post, notes or a table to work from (2026-10-21: blog post to video, numbers that move).
+  const source = typeof body.source === "string" ? body.source.replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, 8000) : "";
   const shape = SHAPES.find((s) => s === body.shape) ?? "9:16";
   const pictureId = typeof body.pictureId === "string" && UUID.test(body.pictureId) ? body.pictureId : null;
   if (!brandId || prompt.length < 3) return NextResponse.json({ error: "Say what the motion is for." }, { status: 400 });
@@ -102,6 +104,7 @@ export async function POST(request: NextRequest) {
         website: typeof brand.website_url === "string" ? brand.website_url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null,
         handle: handle ? `@${handle}` : null,
         screens: screens.map(({ ref, width, height }) => ({ ref, width, height })),
+        source: source || null,
       }) }] }],
     }),
     signal: AbortSignal.timeout(70_000),

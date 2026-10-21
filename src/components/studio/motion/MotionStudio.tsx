@@ -208,6 +208,38 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                 </div>
                 {field("Label", s.label, (v) => setScene(i, { label: v }))}
               </>)}
+              {s.template === "bars" && (<>
+                {field("Title", s.title, (v) => setScene(i, { title: v }))}
+                <div className="grid grid-cols-[70px_minmax(0,1fr)_70px] gap-2">
+                  {field("Before", s.prefix, (v) => setScene(i, { prefix: v || undefined }), { placeholder: "$" })}
+                  <span />
+                  {field("After", s.suffix, (v) => setScene(i, { suffix: v || undefined }), { placeholder: "%" })}
+                </div>
+                {s.bars.map((b, j) => (
+                  <div key={j} className="grid grid-cols-[minmax(0,1fr)_90px_auto] gap-2 items-end">
+                    {field(`Bar ${j + 1}`, b.label, (v) => setScene(i, { bars: s.bars.map((x, k) => (k === j ? { ...x, label: v } : x)) }))}
+                    <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-soft)" }}>Value</span><input className="s-input" type="number" value={b.value} onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setScene(i, { bars: s.bars.map((x, k) => (k === j ? { ...x, value: v } : x)) }); }} aria-label={`Bar ${j + 1} value`} /></label>
+                    <button className="s-chip" aria-pressed={s.highlight === j} onClick={() => setScene(i, { highlight: s.highlight === j ? undefined : j })} title="Make this the bar that stands out">Star</button>
+                  </div>
+                ))}
+              </>)}
+              {s.template === "compare" && (<>
+                {field("Label", s.label, (v) => setScene(i, { label: v }))}
+                <div className="grid grid-cols-[70px_minmax(0,1fr)_minmax(0,1fr)_70px] gap-2">
+                  {field("Before", s.prefix, (v) => setScene(i, { prefix: v || undefined }), { placeholder: "$" })}
+                  <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-soft)" }}>From</span><input className="s-input" type="number" value={s.from} onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setScene(i, { from: v }); }} aria-label="From" /></label>
+                  <label className="grid gap-1"><span className="text-[11.5px]" style={{ color: "var(--s-soft)" }}>To</span><input className="s-input" type="number" value={s.to} onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setScene(i, { to: v }); }} aria-label="To" /></label>
+                  {field("After", s.suffix, (v) => setScene(i, { suffix: v || undefined }), { placeholder: "%" })}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {field("Old label", s.fromLabel, (v) => setScene(i, { fromLabel: v || undefined }), { placeholder: "Last year" })}
+                  {field("Change label", s.toLabel, (v) => setScene(i, { toLabel: v || undefined }), { placeholder: "Optional" })}
+                </div>
+              </>)}
+              {s.template === "points" && (<>
+                {field("Title", s.title, (v) => setScene(i, { title: v }))}
+                {s.points.map((pt, j) => <div key={j}>{field(`Point ${j + 1}`, pt, (v) => setScene(i, { points: s.points.map((x, k) => (k === j ? v : x)) }))}</div>)}
+              </>)}
               {s.template === "product-reveal" && (<>
                 {field("Name", s.name, (v) => setScene(i, { name: v }))}
                 <div className="grid grid-cols-2 gap-2">{field("Price", s.price, (v) => setScene(i, { price: v || undefined }), { placeholder: "Optional" })}{field("Line", s.tagline, (v) => setScene(i, { tagline: v || undefined }), { placeholder: "Optional" })}</div>

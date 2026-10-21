@@ -25,7 +25,15 @@ export type EndCard = { template: "end-card"; seconds: number; cta: string; hand
  * fractions of the screenshot), a tap there and a label saying what it does.
  */
 export type ScreenStep = { template: "screen"; seconds: number; image: string; aspect: number; box: [number, number, number, number]; label: string; sub?: string; device: "phone" | "laptop" | "none" };
-export type MotionScene = KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep;
+/**
+ * The use cases of Claude's own motion graphics (Kezie, 2026-10-21, the "AI motion graphics" video):
+ * numbers that move (bars), the before-and-after number (compare) and a post or notes turned into
+ * key points (points).
+ */
+export type Bars = { template: "bars"; seconds: number; title: string; bars: Array<{ label: string; value: number }>; prefix?: string; suffix?: string; decimals: number; highlight?: number };
+export type Compare = { template: "compare"; seconds: number; label: string; from: number; to: number; decimals: number; prefix?: string; suffix?: string; fromLabel?: string; toLabel?: string };
+export type Points = { template: "points"; seconds: number; title: string; points: string[] };
+export type MotionScene = KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points;
 export type MotionTemplate = MotionScene["template"];
 
 /** "full": scenes fill the frame (intros, stats, end cards). "overlay": a see-through lower third over footage. */
@@ -39,6 +47,9 @@ export const MOTION_TEMPLATES: Array<{ id: MotionTemplate; label: string; line: 
   { id: "lower-third", label: "Lower third", line: "A name or caption bar over footage", seconds: [3, 8] },
   { id: "end-card", label: "End card", line: "Call to action, handle, website", seconds: [3, 5] },
   { id: "screen", label: "App walkthrough step", line: "Your screenshot zooms to a button: a tap and a label", seconds: [3, 7] },
+  { id: "bars", label: "Bar chart", line: "Your numbers grow into bars, counting up", seconds: [4, 8] },
+  { id: "compare", label: "Before and after", line: "One number turns into another", seconds: [3, 6] },
+  { id: "points", label: "Key points", line: "Points arrive one by one, from a post or notes", seconds: [4, 10] },
 ];
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -112,6 +123,30 @@ function scene(raw: unknown, images: Set<string>): MotionScene | null {
       if (!cta) return null;
       return { template: t.id, seconds, cta, handle: opt(r.handle, 40), website: opt(r.website, 60), logo: r.logo !== false };
     }
+    case "bars": {
+      const title = words(text(r.title, 70), 10);
+      const bars = (Array.isArray(r.bars) ? r.bars : []).slice(0, 8).map((b) => ({ label: words(text((b as { label?: unknown })?.label, 24), 3), value: Number((b as { value?: unknown })?.value) }))
+        .filter((b) => b.label && Number.isFinite(b.value) && Math.abs(b.value) <= 1e12);
+      if (!title || bars.length < 2) return null;
+      const suffix = opt(r.suffix, 6);
+      const d = Number(r.decimals);
+      const h = Number(r.highlight);
+      return { template: t.id, seconds, title, bars, suffix, prefix: suffix === "%" ? undefined : opt(r.prefix, 4), decimals: Number.isInteger(d) ? clamp(d, 0, 2) : bars.every((b) => Number.isInteger(b.value)) ? 0 : 1, highlight: Number.isInteger(h) && h >= 0 && h < bars.length ? h : undefined };
+    }
+    case "compare": {
+      const label = words(text(r.label, 60), 8);
+      const from = Number(r.from), to = Number(r.to);
+      if (!label || !Number.isFinite(from) || !Number.isFinite(to) || Math.abs(from) > 1e12 || Math.abs(to) > 1e12 || from === to) return null;
+      const suffix = opt(r.suffix, 6);
+      const d = Number(r.decimals);
+      return { template: t.id, seconds, label, from, to, suffix, prefix: suffix === "%" ? undefined : opt(r.prefix, 4), decimals: Number.isInteger(d) ? clamp(d, 0, 2) : Number.isInteger(from) && Number.isInteger(to) ? 0 : 1, fromLabel: opt(r.fromLabel, 20), toLabel: opt(r.toLabel, 20) };
+    }
+    case "points": {
+      const title = words(text(r.title, 70), 10);
+      const points = (Array.isArray(r.points) ? r.points : []).map((x) => words(text(x, 80), 10)).filter(Boolean).slice(0, 5);
+      if (!title || points.length < 2) return null;
+      return { template: t.id, seconds, title, points };
+    }
     case "screen": {
       const image = typeof r.image === "string" && images.has(r.image) ? r.image : null;
       const label = words(text(r.label, 70), 10);
@@ -180,7 +215,7 @@ export function sizeFor(shape: MotionShape) {
 /** A short name for the Library and the timeline. */
 export function motionTitle(spec: MotionSpec) {
   const s = spec.scenes[0];
-  const words = s.template === "kinetic-headline" ? s.words : s.template === "stat" ? s.label : s.template === "product-reveal" ? s.name : s.template === "lower-third" ? s.title : s.template === "end-card" ? s.cta : s.template === "screen" ? s.label : s.tagline || "Logo";
+  const words = s.template === "kinetic-headline" ? s.words : s.template === "stat" ? s.label : s.template === "product-reveal" ? s.name : s.template === "lower-third" ? s.title : s.template === "end-card" ? s.cta : s.template === "screen" ? s.label : s.template === "bars" || s.template === "points" ? s.title : s.template === "compare" ? s.label : s.tagline || "Logo";
   return `Motion · ${words}`.slice(0, 80);
 }
 
@@ -190,6 +225,8 @@ export type MotionBrief = {
   products: Array<{ ref: string; name: string; price?: string | null }>;
   pictures: Array<{ ref: string; title: string }>;
   look?: string | null; website?: string | null; handle?: string | null;
+  /** Text or numbers the user pasted (a post, notes, a table), the material to work from. */
+  source?: string | null;
   /** Screenshots for an app walkthrough, attached to the message in this order. */
   screens?: Array<{ ref: string; width: number; height: number }>;
 };
@@ -203,6 +240,9 @@ Templates (each scene is one of these; "seconds" within the range):
 - {"template":"logo-sting","seconds":2-4,"tagline":"optional, up to 6 words"}
 - {"template":"lower-third","seconds":3-8,"title":"name or caption, up to 7 words","subtitle":"optional"}
 - {"template":"end-card","seconds":3-5,"cta":"call to action, up to 6 words","handle":"optional @handle","website":"optional","logo":true}
+- {"template":"bars","seconds":4-8,"title":"what the numbers show, up to 10 words","bars":[{"label":"up to 3 words","value":123}, ...2 to 8 bars in order],"prefix":"optional, e.g. $","suffix":"optional, e.g. % or k","decimals":0-2,"highlight":"optional index of the bar that matters"}
+- {"template":"compare","seconds":3-6,"label":"what changed, up to 8 words, e.g. Churn, down to","from":8.4,"to":0.9,"decimals":0-2,"prefix":"optional","suffix":"optional, e.g. %","fromLabel":"optional, e.g. Last year","toLabel":"optional, e.g. This year"}
+- {"template":"points","seconds":4-10,"title":"up to 10 words","points":["2 to 5 points, each up to 10 words"]}
 - {"template":"screen","seconds":3-7,"image":"a screenshot ref (S1...)","box":[x, y, width, height],"label":"what to do or see there, up to 10 words","sub":"optional, up to 10 words","device":"phone" | "laptop" | "none"}
 Rules:
 - "overlay" is only for a lower third shown over the user's footage: then exactly one lower-third scene and nothing else. Everything else is "full" and never uses lower-third.
@@ -210,6 +250,10 @@ Rules:
 - Short, punchy, exact words. Spell names, prices and numbers exactly as given. No emoji, no hashtags, no quotes around words.
 - Use the brand's colours: one dominant background, high-contrast text, the accent for one thing that matters. Never light text on a light background.
 - Only use picture refs, product names, prices, websites and handles you were given; never invent facts or numbers. If a number isn't given, don't use a stat.
+- Plan like a director, not a list: each scene has one job, the strongest moment comes first or last, and the words are the exact ones to show.
+- An explainer ("explain how X works"): a hook headline, then one idea per scene (kinetic-headline, stat, compare or points), then the takeaway or an end-card.
+- Numbers given (a table, a list, results, a CSV): use bars for 2 to 8 values, compare for a before and after, stat for one number. Only the numbers given; never invent one.
+- A post, article or notes given: pull out the 3 to 5 points that matter most, in the order they appear, in short words (points), with a headline first and an end-card last.
 - Screenshots given (an app or website walkthrough, a tutorial, "how it works", "what this button does"): one "screen" scene per step, in the order of the steps, using up to 6 scenes plus an optional opening kinetic-headline and a closing end-card (up to 8 scenes, 30 s). "box" is the rectangle around the exact button, field or area that step is about, in PIXELS of that screenshot (its size is given): look at it carefully and make the box fit the element snugly. The label is an instruction or the benefit, e.g. "Tap Generate to make your poster". "phone" for tall screenshots, "laptop" for wide ones.`;
 
 export function motionUserPrompt(b: MotionBrief) {
@@ -224,5 +268,6 @@ export function motionUserPrompt(b: MotionBrief) {
     b.pictures.length ? `Other pictures (ref: title): ${b.pictures.map((p) => `${p.ref}: ${p.title}`).join("; ")}` : "",
     b.screens?.length ? `Screenshots, attached above in this order (ref: width x height px): ${b.screens.map((x) => `${x.ref}: ${x.width} x ${x.height}`).join("; ")}` : "",
     `What they want: ${b.prompt}`,
+    b.source ? `Material they gave (use its words and numbers; nothing else):\n"""\n${b.source}\n"""` : "",
   ].filter(Boolean).join("\n");
 }
