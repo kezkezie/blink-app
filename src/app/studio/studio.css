@@ -148,6 +148,13 @@ body.studio [role="menuitem"], body.studio [role="option"] { cursor: pointer; }
   .s-pill { font: 500 12px var(--s-mono); color: var(--s-soft); background: var(--s-raised); border: 1px solid var(--s-line);
     border-radius: 999px; padding: 6px 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
   .s-pill b { color: var(--s-text); font-weight: 500; }
+  /* The balance turning red (2026-10-22): low under about one video, out under one Best image. */
+  .s-pill.s-credits-low { color: var(--s-danger); border-color: color-mix(in oklab, var(--s-danger) 45%, var(--s-line)); background: color-mix(in oklab, var(--s-danger) 8%, var(--s-raised)); }
+  .s-pill.s-credits-low b { color: var(--s-danger); }
+  .s-pill.s-credits-out { color: #fff; border-color: var(--s-danger); background: var(--s-danger); animation: s-credits-pulse 2.4s ease-in-out infinite; }
+  .s-pill.s-credits-out b { color: #fff; }
+  @keyframes s-credits-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--s-danger) 45%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+  @media (prefers-reduced-motion: reduce) { .s-pill.s-credits-out { animation: none; } }
   .s-badge { font: 500 10px var(--s-mono); padding: 2px 7px; border-radius: 999px; background: var(--s-line); color: var(--s-soft); white-space: nowrap; }
   .s-badge.ok { background: color-mix(in oklab, var(--s-ok) 15%, transparent); color: var(--s-ok); }
   .s-badge.ai { background: color-mix(in oklab, var(--s-ai) 15%, transparent); color: var(--s-ai); }

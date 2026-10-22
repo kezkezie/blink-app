@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen, Users, Compass, CircleHelp } from "lucide-react";
@@ -20,6 +20,7 @@ import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { supabase } from "@/lib/supabase";
 import { UI_COOKIE, dashboardPathFor, studioSectionFor, studioTitleFor, type StudioSection } from "@/lib/studio-routes";
 import { formatCredits, useCredits, useStudioBrands } from "./hooks";
+import { creditLevel, creditWarning } from "@/lib/credit-level";
 import { useAskStore } from "./ask-store";
 import { ManageBrands } from "./ManageBrands";
 
@@ -240,11 +241,39 @@ function AccountMenu({ profile }: { profile: { name: string; email: string } | n
   );
 }
 
+/**
+ * The balance in the top bar: plain while there's room, red under about one video, solid red under
+ * one Best image, and shown on phones too once it's low. Dropping into a lower level says so once.
+ */
+function CreditPill({ shared }: { shared: boolean }) {
+  const { balance } = useCredits();
+  const level = creditLevel(balance);
+  const last = useRef<{ balance: number | null; shared: boolean }>({ balance: null, shared });
+  const router = useRouter();
+  useEffect(() => {
+    if (balance === null) return;
+    // Switching to or from a shared brand switches whose credits these are: not a drop.
+    const before = last.current.shared === shared ? last.current.balance : null;
+    last.current = { balance, shared };
+    const w = creditWarning(before, balance, shared);
+    if (!w) return;
+    // A shared brand spends the owner's credits: only the owner can top them up.
+    const go = shared ? undefined : { label: "Get credits", onClick: () => router.push("/studio/account/billing") };
+    if (w.level === "out") toast.error(w.text, { action: go, duration: 12_000 });
+    else toast.warning(w.text, { action: go, duration: 9000 });
+  }, [balance, shared, router]);
+  const title = level === "out" ? "Nearly out of credits: top up to keep making" : level === "low" ? "Credits are running low" : "Credit balance";
+  return (
+    <Link href="/studio/account/billing" className={`s-pill ${level === "ok" ? "hidden sm:inline-flex" : `s-credits-${level}`}`} title={title} data-tour="credits" data-level={level} aria-label={`${formatCredits(balance)} credits${level === "ok" ? "" : level === "low" ? ", running low" : ", nearly out"}`}>
+      <b>{formatCredits(balance)}</b> <span className={level === "ok" ? "" : "hidden sm:inline"}>credits</span>{level === "out" && <span className="hidden md:inline">· Top up</span>}
+    </Link>
+  );
+}
+
 export function StudioTopBar() {
   const pathname = usePathname();
   const { activeBrand } = useBrandStore();
   const { refresh, profile } = useStudioBrands();
-  const { balance } = useCredits();
   const { setOpen } = useAskStore();
   const title = studioTitleFor(pathname);
   return (
@@ -254,9 +283,7 @@ export function StudioTopBar() {
       <div className="flex-1" />
       <ActivityChip />
       <Link href="/studio/guide" className="s-btn ghost sm hidden sm:inline-flex" title="Guide: where everything is and what it costs" aria-label="Guide"><CircleHelp className="h-4 w-4" /></Link>
-      <Link href="/studio/account/billing" className="s-pill hidden sm:inline-flex" title="Credit balance" data-tour="credits">
-        <b>{formatCredits(balance)}</b> credits
-      </Link>
+      <CreditPill shared={isSharedBrand(activeBrand)} />
       <button className="s-btn ai hidden md:inline-flex" onClick={() => setOpen(true)}>
         <MessageCircle className="h-4 w-4" /> Ask BlinkSpot
       </button>

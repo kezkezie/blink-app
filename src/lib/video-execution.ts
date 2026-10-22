@@ -29,8 +29,11 @@ export const VIDEO_MODES = new Set([
 ]);
 
 // nano-banana scene video modes additionally include the motion sub-modes that
-// select the motion webhooks.
-export const NANO_VIDEO_MODES = new Set([...VIDEO_MODES, "motion_brush", "motion_transfer"]);
+// select the motion webhooks, and audio_to_video (lip-sync: LipSyncSetup posts
+// video_mode "audio_to_video" to this route; it was missing here, so the boundary
+// 400'd every lip-sync job — "The lip-sync engine didn't accept the job". The
+// prompt writer already handles it, see sceneWithoutWords's audio|lip|talk case).
+export const NANO_VIDEO_MODES = new Set([...VIDEO_MODES, "motion_brush", "motion_transfer", "audio_to_video"]);
 
 // Every video model the UI, Director, or agent route can select — DERIVED from
 // the model registry, so adding a model there automatically makes it acceptable
