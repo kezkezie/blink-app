@@ -202,7 +202,7 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
   const spots = !result && scan ? scan.objects.filter((o) => o.box && o.kind !== "background" && o.box[2] * o.box[3] < 640_000) : [];
 
   return (
-    <div className="grid gap-4 s-reading">
+    <div className="grid gap-4 mx-auto w-full max-w-[1600px]">
       <div className="flex flex-wrap items-center gap-2">
         {onBack
           ? <button className="s-btn ghost sm -ml-2" onClick={onBack}><ArrowLeft className="h-3.5 w-3.5" /> Pick another</button>
@@ -210,12 +210,14 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
         <h2 className="text-[16px] font-semibold">Edit with AI</h2>
         <span className="text-[12.5px]" style={{ color: "var(--s-mute)" }}>Change one thing, keep the rest. Your original is never overwritten.</span>
       </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(340px,1fr)] items-start">
-        <div className="grid gap-2">
-          <div className="relative rounded-2xl overflow-hidden grid place-items-center" style={{ background: "#000", border: "1px solid var(--s-line)", minHeight: 360 }}>
-            <div className="relative inline-block max-w-full">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] xl:grid-cols-[minmax(0,1fr)_460px] items-start">
+        <div className="grid gap-2 min-w-0">
+          {/* The frame hugs the picture (no wide black bars around a portrait shot), and the image
+              gets the extra width on bigger screens. The hotspots sit on the image's own box. */}
+          <div className="relative grid place-items-center min-w-0" style={{ minHeight: 360 }}>
+            <div className="relative inline-block max-w-full rounded-2xl overflow-hidden" style={{ border: "1px solid var(--s-line)", background: "#0b0c0e" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={thumbUrl(shown, 1600)} alt={result && !showBefore ? "Your edited picture" : "The picture you're editing"} className="block max-w-full object-contain" style={{ maxHeight: "76dvh" }} />
+              <img src={thumbUrl(shown, 1600)} alt={result && !showBefore ? "Your edited picture" : "The picture you're editing"} className="block max-w-full object-contain" style={{ maxHeight: "82dvh" }} />
               {spots.map((o) => {
                 const [x, y, w, h] = o.box!;
                 const on = open === o.id || hover === o.id;
@@ -247,7 +249,7 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
           ) : scan && <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>Tap anything in the picture, or pick it from the list.</span>}
         </div>
 
-        <aside className="s-card overflow-hidden flex flex-col" style={{ maxHeight: "calc(100dvh - 150px)" }}>
+        <aside className="s-card overflow-hidden flex flex-col min-w-0 lg:sticky lg:top-4" style={{ maxHeight: "calc(100dvh - 120px)" }}>
           {result ? (
             <div className="p-5 grid gap-3">
               <span className="h-11 w-11 rounded-xl grid place-items-center" style={{ background: "color-mix(in oklab, var(--s-ai) 14%, transparent)" }}><Check className="h-5 w-5" style={{ color: "var(--s-ai)" }} /></span>
@@ -279,7 +281,7 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
                 {scan.scene && <p className="text-[12.5px] line-clamp-2" style={{ color: "var(--s-mute)" }}>{scan.scene}</p>}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-2 grid gap-2 content-start">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 grid gap-2 content-start min-w-0">
                 {GROUPS.map((g) => {
                   const items = scan.objects.filter((o) => o.kind === g.kind);
                   if (!items.length) return null;
