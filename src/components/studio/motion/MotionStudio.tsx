@@ -78,6 +78,22 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
     } catch { toast.error("Couldn't upload that photo."); }
     finally { setUploadingFor(null); }
   }
+  // A picture to play the clip over (Kezie, 2026-10-22). -1 marks the background uploader.
+  async function uploadBackground(f: File | undefined) {
+    if (!f || !clientId) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { toast.error("Use a JPG, PNG or WebP photo."); return; }
+    setUploadingFor(-1);
+    try {
+      const ext = f.type === "image/png" ? "png" : f.type === "image/webp" ? "webp" : "jpg";
+      const path = `images/${clientId}/motion_bg_${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("assets").upload(path, f, { contentType: f.type });
+      if (error) throw error;
+      const url = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      setExtra((x) => [...x, { url, title: f.name.slice(0, 60) }]);
+      onSpec({ ...spec, background: url });
+    } catch { toast.error("Couldn't upload that photo."); }
+    finally { setUploadingFor(null); }
+  }
   const abort = useRef<AbortController | null>(null);
   const { width, height } = sizeFor(spec.shape);
   const frames = Math.max(1, totalFrames(spec));
@@ -95,7 +111,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
 
   async function add(where: MotionPlace) {
     // The browser's edits are checked the same way the server checked Claude's plan.
-    const checked = validateMotionSpec(spec, { shape: spec.shape, brand: { primary: brand.primary, secondary: brand.secondary }, images: allPictures.map((p) => p.url) });
+    const checked = validateMotionSpec(spec, { shape: spec.shape, brand: { primary: brand.primary, secondary: brand.secondary }, images: [...allPictures.map((p) => p.url), ...(spec.background ? [spec.background] : [])] });
     if (!checked) { toast.error("Each scene needs its words. Fill them in and try again."); return; }
     const empty = checked.scenes.filter((x) => x.template === "story" && !x.picture && x.placeholder).length;
     if (empty) toast.info(`${empty} story card${empty === 1 ? " still has its" : "s still have their"} photo space empty; it shows as "Your photo here".`, { duration: 7000 });
@@ -189,6 +205,23 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
 
         <div className="flex flex-col gap-3 min-h-0" style={{ maxHeight: "min(72dvh, 820px)" }}>
         <div className="grid gap-3 content-start overflow-y-auto pr-1 min-h-0 flex-1" style={{ maskImage: "linear-gradient(to bottom, #000 calc(100% - 28px), transparent)" }}>
+          {spec.kind !== "overlay" && (
+            <div className="grid gap-1.5">
+              <span className="s-label" style={{ margin: 0 }}>Background picture</span>
+              <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Play the words and shapes over one of your pictures. It drifts slowly with a soft fade so the text stays readable.</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={() => onSpec({ ...spec, background: undefined })} className="h-12 w-12 rounded-lg grid place-items-center text-[10px]" style={{ border: `2px solid ${!spec.background ? "var(--s-ai)" : "var(--s-line)"}`, color: "var(--s-soft)" }} title="No background picture">None</button>
+                {[...new Set([...(spec.background ? [spec.background] : []), ...allPictures.map((p) => p.url)])].slice(0, 12).map((url) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <button key={url} onClick={() => onSpec({ ...spec, background: url })} className="h-12 w-12 rounded-lg overflow-hidden" style={{ border: `2px solid ${spec.background === url ? "var(--s-ai)" : "var(--s-line)"}` }} title="Use as the background"><img src={url} alt="" className="h-full w-full object-cover" /></button>
+                ))}
+                <label className="h-12 w-12 rounded-lg grid place-items-center cursor-pointer" style={{ border: "1.5px dashed var(--s-line-2)" }} title="Upload a background picture" aria-label="Upload a background picture">
+                  {uploadingFor === -1 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" style={{ color: "var(--s-soft)" }} />}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Background picture file" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void uploadBackground(f); }} />
+                </label>
+              </div>
+            </div>
+          )}
           <div className="grid gap-1.5">
             <span className="s-label" style={{ margin: 0 }}>Colours</span>
             <div className="flex items-center gap-3">

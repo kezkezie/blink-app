@@ -41,7 +41,10 @@ export async function POST(request: NextRequest) {
 
   const ws = await workspaceFor(auth.value, { brandId }).catch(() => null);
   if (!ws) return NextResponse.json({ error: "Brand not found." }, { status: 404 });
-  const kit = await motionContext(ws.clientId, brandId, { pictureId });
+  // A picture handed off from the Library ("Motion graphic" on an image, or ?picture=) becomes the
+  // clip's animated background (Kezie, 2026-10-22), not a picture placed inside a scene — so it is
+  // NOT offered to the planner as a scene ref; its URL is set as spec.background below.
+  const kit = await motionContext(ws.clientId, brandId);
   if (!kit) return NextResponse.json({ error: "Brand not found." }, { status: 404 });
   const limit = await consumeAiLimits(auth.value, ["motion"]);
   if (!limit.allowed) return NextResponse.json({ error: limit.message }, { status: limit.status });
@@ -92,5 +95,14 @@ export async function POST(request: NextRequest) {
   if (!spec) return refund("The motion plan came back unclear. Try saying it another way.");
   // Picture refs become our URLs.
   placePictures(spec, pictures);
-  return NextResponse.json({ spec, pictures: [...pictures.map(({ url, title }) => ({ url, title })), ...screens.map((x) => ({ url: x.url, title: `Screenshot ${x.ref}` }))], credits: MOTION_CREDITS });
+  // The handed-off picture plays as the background (the words and shapes animate over it).
+  let background: string | null = null;
+  if (pictureId && spec.kind !== "overlay") {
+    const { data: bgRow } = await supabaseAdmin.from("content").select("image_urls").eq("id", pictureId).eq("client_id", ws.clientId).maybeSingle();
+    let urls: unknown = bgRow?.image_urls;
+    if (typeof urls === "string") { try { urls = JSON.parse(urls); } catch { urls = [urls]; } }
+    const first = Array.isArray(urls) ? urls.find((u): u is string => typeof u === "string" && /^https:\/\//.test(u) && !/\.(mp4|mov|webm|m4v)(\?|$)/i.test(u) && !u.includes("/video/upload/")) : null;
+    if (first) { spec.background = first; background = first; }
+  }
+  return NextResponse.json({ spec, pictures: [...(background ? [{ url: background, title: "This picture" }] : []), ...pictures.map(({ url, title }) => ({ url, title })), ...screens.map((x) => ({ url: x.url, title: `Screenshot ${x.ref}` }))], credits: MOTION_CREDITS });
 }

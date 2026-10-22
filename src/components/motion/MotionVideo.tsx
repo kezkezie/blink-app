@@ -27,12 +27,39 @@ function useExit(frames: number) {
 }
 const pop = (frame: number, fps: number, delay = 0, damping = 14) => spring({ frame: frame - delay, fps, config: { damping, stiffness: 140, mass: 0.7 } });
 
-function Frame({ palette, transparent, children }: { palette: Palette; transparent: boolean; children: ReactNode }) {
+function Frame({ palette, transparent, background, children }: { palette: Palette; transparent: boolean; background?: string; children: ReactNode }) {
   return (
     <AbsoluteFill style={{ background: transparent ? "transparent" : `linear-gradient(160deg, ${palette.background} 0%, ${palette.background} 55%, ${shade(palette.background, 0.12)} 100%)` }}>
+      {background && <Backdrop src={background} palette={palette} />}
       {children}
     </AbsoluteFill>
   );
+}
+
+/**
+ * The picture a clip plays over (Kezie, 2026-10-22): a slow ken-burns push so the still feels alive,
+ * and a top+bottom scrim in the brand's background colour so the animated text stays readable over
+ * it. A function of the frame, so the preview and the render match.
+ */
+function Backdrop({ src, palette }: { src: string; palette: Palette }) {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const t = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const scale = 1.06 + t * 0.08; // a gentle zoom in across the whole clip
+  const drift = t * 2; // percent
+  const bg = palette.background;
+  return (
+    <AbsoluteFill>
+      <Img src={src} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale}) translate(${-drift * 0.3}%, ${-drift}%)`, transformOrigin: "50% 45%" }} />
+      <AbsoluteFill style={{ background: `linear-gradient(180deg, ${rgba(bg, 0.55)} 0%, ${rgba(bg, 0.12)} 24%, ${rgba(bg, 0.12)} 62%, ${rgba(bg, 0.78)} 100%)` }} />
+    </AbsoluteFill>
+  );
+}
+
+/** A hex colour at an alpha, for the readability scrim. */
+function rgba(hex: string, a: number) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
 /** A little lighter (or darker, for light colours) version of a colour. */
@@ -459,7 +486,7 @@ function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette
 
 export function MotionVideo({ spec, brand }: MotionProps) {
   return (
-    <Frame palette={spec.palette} transparent={spec.kind === "overlay"}>
+    <Frame palette={spec.palette} transparent={spec.kind === "overlay"} background={spec.kind === "overlay" ? undefined : spec.background}>
       <Series>
         {spec.scenes.map((s, i) => (
           <Series.Sequence key={i} durationInFrames={sceneFrames(s)}>

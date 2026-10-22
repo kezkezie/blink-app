@@ -47,8 +47,15 @@ export type Story = { template: "story"; seconds: number; lines: StoryLine[]; pl
 export type MotionScene = KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points | Story;
 export type MotionTemplate = MotionScene["template"];
 
-/** "full": scenes fill the frame (intros, stats, end cards). "overlay": a see-through lower third over footage. */
-export type MotionSpec = { kind: "full" | "overlay"; shape: MotionShape; palette: Palette; scenes: MotionScene[] };
+/**
+ * "full": scenes fill the frame (intros, stats, end cards). "overlay": a see-through lower third over
+ * footage. `background` (Kezie, 2026-10-22: "animate vectors over a real frame"): a picture the clip
+ * plays over, with a slow ken-burns move and a scrim so text stays readable — the motion-graphics
+ * look on an AI frame or any photo. The scenes animate on top of it.
+ */
+export type MotionSpec = { kind: "full" | "overlay"; shape: MotionShape; palette: Palette; scenes: MotionScene[]; background?: string };
+
+const HTTPS = /^https:\/\/[^\s"'<>]+$/i;
 
 export const MOTION_TEMPLATES: Array<{ id: MotionTemplate; label: string; line: string; seconds: [number, number] }> = [
   { id: "kinetic-headline", label: "Kinetic headline", line: "Words arrive one by one", seconds: [2.5, 6] },
@@ -220,7 +227,29 @@ export function validateMotionSpec(raw: unknown, ctx: { shape: MotionShape; bran
     total += s.seconds;
   }
   if (!kept.length) return null;
-  return { kind: overlay ? "overlay" : "full", shape: ctx.shape, palette: paletteFor(r.palette, ctx.brand), scenes: overlay ? kept.slice(0, 1) : kept };
+  // A background picture travels with a "full" clip (never under a see-through lower third). Only a
+  // known image, or any https URL our own builder set, is kept — the model can't invent one.
+  const bg = typeof r.background === "string" && HTTPS.test(r.background.trim()) && (images.size === 0 || images.has(r.background.trim())) ? r.background.trim() : undefined;
+  return { kind: overlay ? "overlay" : "full", shape: ctx.shape, palette: paletteFor(r.palette, ctx.brand), scenes: overlay ? kept.slice(0, 1) : kept, ...(bg && !overlay ? { background: bg } : {}) };
+}
+
+/**
+ * Animate a picture (Kezie, 2026-10-22). A deterministic overlay clip: the picture as the moving
+ * background, a kinetic headline, and an end card with the brand's call to action — the vector/text
+ * motion-graphics look on a real frame, no AI call. Words come from the brief and the brand.
+ */
+export function overlayOnPicture(opts: {
+  picture: string; shape: MotionShape; brand: { primary?: string | null; secondary?: string | null }; headline: string; sub?: string; cta?: string; handle?: string; website?: string;
+}): MotionSpec {
+  const palette = paletteFor(null, opts.brand);
+  const words = (opts.headline || "").trim().slice(0, 90) || "Your brand, in motion";
+  const scenes: MotionScene[] = [
+    { template: "kinetic-headline", seconds: 3, words, ...(opts.sub ? { sub: opts.sub.slice(0, 60) } : {}), enter: "word" },
+  ];
+  if (opts.cta || opts.handle || opts.website) {
+    scenes.push({ template: "end-card", seconds: 2.5, cta: (opts.cta || "Learn more").slice(0, 40), ...(opts.handle ? { handle: opts.handle.slice(0, 40) } : {}), ...(opts.website ? { website: opts.website.slice(0, 60) } : {}), logo: true });
+  }
+  return { kind: "full", shape: opts.shape, palette, scenes, background: opts.picture };
 }
 
 /**
