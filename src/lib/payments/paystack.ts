@@ -109,6 +109,17 @@ export const paystack: PaymentProvider = {
       case "subscription.disable":
       case "subscription.not_renew": return { type: "subscription.stopped", subscriptionCode: String(d.subscription_code ?? ""), customerCode: d.customer?.customer_code };
       case "invoice.payment_failed": return { type: "payment.failed", subscriptionCode: d.subscription?.subscription_code, customerCode: d.customer?.customer_code };
+      case "charge.dispute.create":
+      case "charge.dispute.remind":
+      case "charge.dispute.resolve": {
+        const txn = (d.transaction ?? {}) as { reference?: string; amount?: number; currency?: string };
+        const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+        return {
+          type: "dispute", stage: body.event === "charge.dispute.create" ? "opened" : body.event === "charge.dispute.remind" ? "reminder" : "resolved",
+          reference: str(txn.reference), amountMinor: typeof txn.amount === "number" ? txn.amount : undefined, currency: str(txn.currency) ?? str(d.currency),
+          customerEmail: d.customer?.email, status: str(d.status), resolution: str(d.resolution), dueAt: str(d.due_at), category: str(d.category),
+        };
+      }
       default: return { type: "ignored", name: String(body.event ?? "unknown") };
     }
   },

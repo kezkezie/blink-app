@@ -37,6 +37,8 @@ export type ProviderEvent =
   | { type: "subscription.created"; subscriptionCode: string; customerCode?: string; customerEmail?: string; nextPaymentAt?: string; planCode?: string }
   | { type: "subscription.stopped"; subscriptionCode: string; customerCode?: string }
   | { type: "payment.failed"; subscriptionCode?: string; customerCode?: string }
+  /** A card dispute (chargeback): Paystack gives 16 hours to answer (2026-10-23, the merchant agreement). */
+  | { type: "dispute"; stage: "opened" | "reminder" | "resolved"; reference?: string; amountMinor?: number; currency?: string; customerEmail?: string; status?: string; resolution?: string; dueAt?: string; category?: string }
   | { type: "ignored"; name: string };
 
 export interface PaymentProvider {

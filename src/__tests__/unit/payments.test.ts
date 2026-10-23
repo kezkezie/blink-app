@@ -145,3 +145,27 @@ describe("subscription events", () => {
     expect(db.clients.get("c1")).toMatchObject({ plan_tier: "pro", billing_status: "cancelled" });
   });
 });
+
+describe("card disputes (2026-10-23: 16 hours to answer)", () => {
+  const disputeBody = (event: string) => JSON.stringify({ event, data: { status: "awaiting-merchant-feedback", category: "chargeback", due_at: "2026-10-24T10:00:00.000Z", customer: { email: "buyer@gmail.com" }, transaction: { reference: "bs_disp", amount: 348300, currency: "KES" } } });
+  it("a new dispute notes the payment and alerts the owner on Telegram", async () => {
+    process.env.TELEGRAM_BOT_TOKEN = "t0k"; process.env.TELEGRAM_CHAT_ID = "42";
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    db.payments.set("bs_disp", { reference: "bs_disp", status: "paid", client_id: "c1" });
+    const body = disputeBody("charge.dispute.create");
+    const res = await webhook(new NextRequest("http://localhost/api/webhooks/paystack", { method: "POST", body, headers: { "x-paystack-signature": sign(body) } }));
+    expect(res.status).toBe(200);
+    expect(String(db.payments.get("bs_disp")!.failure)).toMatch(/^dispute: opened \(awaiting-merchant-feedback\), chargeback, answer by 2026-10-24 10:00 UTC/);
+    expect(db.payments.get("bs_disp")!.status).toBe("paid");
+    const [url, init] = fetchMock.mock.calls.find(([u]) => String(u).includes("api.telegram.org")) ?? [];
+    expect(String(url)).toBe("https://api.telegram.org/bott0k/sendMessage");
+    expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({ chat_id: "42", text: expect.stringMatching(/New card dispute: answer within 16 hours\nKES 3,483 from buyer@gmail.com/) });
+    delete process.env.TELEGRAM_BOT_TOKEN; delete process.env.TELEGRAM_CHAT_ID;
+  });
+  it("without a bot set up it only logs, and never throws", async () => {
+    db.payments.set("bs_disp", { reference: "bs_disp", status: "paid" });
+    await expect(handleProviderEvent({ type: "dispute", stage: "resolved", reference: "bs_disp", resolution: "merchant-accepted" })).resolves.toBeUndefined();
+    expect(String(db.payments.get("bs_disp")!.failure)).toBe("dispute: resolved, merchant-accepted");
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("telegram"))).toBe(false);
+  });
+});

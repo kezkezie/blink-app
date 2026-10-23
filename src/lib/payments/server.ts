@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { CREDIT_PACKS, PLAN_CREDITS, PLANS, type PlanTier } from "@/lib/plans";
 import { paystack } from "./paystack";
 import type { Charge, PaymentProvider, ProviderEvent } from "./types";
+import { sendAlert } from "@/lib/alerts";
 
 /**
  * Buying credits and plans (2026-10-12). The routes call these; the database function
@@ -144,5 +145,28 @@ export async function handleProviderEvent(ev: ProviderEvent): Promise<void> {
   }
   if (ev.type === "payment.failed" && ev.subscriptionCode) {
     await supabaseAdmin.from("clients").update({ billing_status: "paused" }).eq("billing_subscription_code", ev.subscriptionCode);
+    return;
   }
+  if (ev.type === "dispute") { await noteDispute(ev); return; }
+}
+
+/**
+ * A card dispute (2026-10-23). Paystack gives 16 hours to answer in its dashboard, and disputes over
+ * 1% of volume can switch card payments off, so the owner hears about it straight away (Telegram,
+ * lib/alerts.ts) and the payment carries a note the admin dashboard lists. The note goes in
+ * payments.failure: status may only be pending/paid/failed until a migration adds 'disputed'.
+ */
+async function noteDispute(ev: Extract<ProviderEvent, { type: "dispute" }>) {
+  const amount = ev.amountMinor !== undefined ? `${ev.currency ?? ""} ${(ev.amountMinor / 100).toLocaleString("en-US")}`.trim() : "an amount";
+  const due = ev.dueAt ? new Date(ev.dueAt) : null;
+  const dueText = due && !Number.isNaN(due.getTime()) ? due.toISOString().slice(0, 16).replace("T", " ") + " UTC" : null;
+  const note = `dispute: ${ev.stage}${ev.status ? ` (${ev.status})` : ""}${ev.resolution ? `, ${ev.resolution}` : ""}${ev.category ? `, ${ev.category}` : ""}${dueText ? `, answer by ${dueText}` : ""}`.slice(0, 300);
+  if (ev.reference) await supabaseAdmin.from("payments").update({ failure: note }).eq("reference", ev.reference);
+  const head = ev.stage === "resolved" ? "Card dispute closed" : ev.stage === "reminder" ? "Reminder: answer a card dispute" : "New card dispute: answer within 16 hours";
+  await sendAlert(`${head}
+${amount}${ev.customerEmail ? ` from ${ev.customerEmail}` : ""}${ev.reference ? `
+Ref ${ev.reference}` : ""}${dueText ? `
+Answer by ${dueText}` : ""}
+https://dashboard.paystack.com/#/disputes
+Admin: https://www.blinkspot.io/studio/admin`);
 }

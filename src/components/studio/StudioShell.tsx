@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen, Users, Compass, CircleHelp } from "lucide-react";
+import { Sparkles, LayoutGrid, CalendarDays, Palette, Globe, MessageCircle, ChevronDown, Check, Plus, Briefcase, Loader2, CreditCard, Settings, LogOut, Undo2, BookOpen, Users, Compass, CircleHelp, Activity } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -21,6 +21,8 @@ import { supabase } from "@/lib/supabase";
 import { UI_COOKIE, dashboardPathFor, studioSectionFor, studioTitleFor, type StudioSection } from "@/lib/studio-routes";
 import { formatCredits, useCredits, useStudioBrands } from "./hooks";
 import { creditLevel, creditWarning } from "@/lib/credit-level";
+import { useStudioPresence } from "./presence";
+import { isAdminEmail } from "@/lib/admin";
 import { useAskStore } from "./ask-store";
 import { ManageBrands } from "./ManageBrands";
 
@@ -214,6 +216,7 @@ function AccountMenu({ profile }: { profile: { name: string; email: string } | n
         <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/account/settings"><Settings className="h-4 w-4" /> Settings &amp; accounts</Link></DropdownMenuItem>
         <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/guide"><Compass className="h-4 w-4" /> Guide</Link></DropdownMenuItem>
         <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/account/skills"><BookOpen className="h-4 w-4" /> Ask skills</Link></DropdownMenuItem>
+        {isAdminEmail(profile?.email) && <DropdownMenuItem asChild className="gap-3 cursor-pointer"><Link href="/studio/admin"><Activity className="h-4 w-4" /> Admin</Link></DropdownMenuItem>}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="gap-3 cursor-pointer"
@@ -272,6 +275,8 @@ function CreditPill({ shared }: { shared: boolean }) {
 
 export function StudioTopBar() {
   const pathname = usePathname();
+  // This tab counts on the owner's live dashboard (no email or name is shared).
+  useStudioPresence(studioSectionFor(pathname));
   const { activeBrand } = useBrandStore();
   const { refresh, profile } = useStudioBrands();
   const { setOpen } = useAskStore();
