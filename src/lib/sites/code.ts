@@ -61,7 +61,8 @@ Reply with edit blocks only, as many as needed, each exactly:
 (the new lines)
 >>>>>>> REPLACE
 If the change touches most of the page, reply instead with the whole new file, from <!doctype html> to </html>.
-The same rules still hold: {{img:N}} for the brand's picture N and {{logo}} for the logo (or keep the picture URLs already in the file), only facts given, no forms, no fetch, no other external scripts than GSAP 3.13.0 from cdnjs, complete without JavaScript.`;
+The same rules still hold: {{img:N}} for the brand's picture N and {{logo}} for the logo (or keep the picture URLs already in the file), only facts given, no forms, no fetch, no other external scripts than GSAP 3.13.0 from cdnjs, complete without JavaScript.
+A scroll film (the data-scroll-film section) stays as it is unless the owner asks to change or remove it: keep its data-film-* attributes, its canvas and picture, and the style and script marked data-blink-film. Its words are the data-film-step blocks.`;
 
 export type BrandForCode = {
   name: string; tagline?: string; brief: string; industry?: string;
@@ -87,7 +88,15 @@ export function brandLinks(b: BrandForCode) {
   ].filter(Boolean);
 }
 
-export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?: string; patterns?: string | null; captions?: string[] }) {
+/** Designs the owner likes (2026-10-23): shown to Claude after the brand's pictures as Design A, B... */
+export const MAX_INSPIRATION = 4;
+export const designLetter = (n: number) => String.fromCharCode(65 + n);
+export function inspirationPrompt(count: number) {
+  const names = count > 1 ? `Designs A to ${designLetter(count - 1)}` : "Design A";
+  return `${names}, shown above after the brand's pictures, ${count > 1 ? "are designs" : "is a design"} the owner loves. Follow ${count > 1 ? "them" : "it"} closely: the layout and grid, section order and rhythm, type scale, weight and pairing, spacing, colour blocking, picture crops and treatments, buttons, and the motion feel. Make it the brand's own: the brand's colours and fonts (unless the owner's brief says otherwise), the brand's words and the brand's pictures. Never copy their text, logos, brand names, prices or photos, and never put them on the page (they are not {{img:N}} pictures).`;
+}
+
+export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?: string; patterns?: string | null; captions?: string[]; inspiration?: number; film?: string }) {
   const b = i.brand, t = b.theme;
   const look = SITE_LOOKS.find((l) => l.id === i.look)!;
   const links = brandLinks(b);
@@ -102,6 +111,8 @@ export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?:
     i.captions?.length ? `Past post captions (for the voice):\n${i.captions.slice(0, 8).map((c) => `- ${c}`).join("\n")}` : "",
     i.patterns ? `What strong websites in this category do (patterns only, never copy them):\n${i.patterns}` : "",
     `Look: ${look.direction}`,
+    i.inspiration ? inspirationPrompt(Math.min(MAX_INSPIRATION, i.inspiration)) : "",
+    i.film ?? "",
     i.brief ? `The owner's brief: ${i.brief}` : "",
     "Write the page.",
   ].filter(Boolean).join("\n\n");

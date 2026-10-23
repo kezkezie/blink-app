@@ -7,7 +7,11 @@ import { ArrowLeft, Check, Code2, Copy, Download, ExternalLink, Eye, Globe, Layo
 import { toast } from "sonner";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { MAX_LOOKS, SITE_CHANGE_CREDITS, SITE_LOOKS, SITE_PAGE_CREDITS, cleanSlug, downloadName, type SiteLook } from "@/lib/sites/code";
+import type { FilmInput } from "@/lib/sites/scroll-film";
+import { useKept } from "@/lib/drafts";
+import { useClient } from "@/hooks/useClient";
 import { Modal } from "../Modal";
+import { FilmBox, InspirationBox } from "./DesignInputs";
 import { SiteFullscreen, SitePreview, SiteThumb } from "./SitePreview";
 import { SectionsEditor } from "./SectionsEditor";
 import { track } from "@/lib/analytics";
@@ -24,7 +28,9 @@ const CodeEditor = dynamic(() => import("./CodeEditor").then((m) => m.CodeEditor
  */
 
 type Page = { id: string; brand_id: string; name: string; html: string; brief: string | null; notes: string | null; parent_id: string | null; slug: string | null; published_at: string | null; created_at: string; updated_at: string };
-type Job = { key: string; look: SiteLook; code: string; error?: string };
+/** What a page is written from besides the brief: designs the owner likes and a scroll film (2026-10-23). */
+type Extras = { inspiration: string[]; film: FilmInput | null };
+type Job = { key: string; look: SiteLook; code: string; error?: string; text: string; extras: Extras };
 type Refs = { sites: Array<{ url: string; name: string; why: string; host: string }>; patterns: string; at: string };
 type View = { kind: "gallery" } | { kind: "page"; id: string } | { kind: "job"; key: string };
 
@@ -41,9 +47,15 @@ function families(pages: Page[]) {
   return [...groups.values()].map((list) => list.sort((a, b) => a.created_at.localeCompare(b.created_at)));
 }
 
-export function CodeStudio({ initialBrief, initialLooks, autoStart }: { initialBrief?: string; initialLooks?: string; autoStart?: boolean } = {}) {
+export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: { initialBrief?: string; initialLooks?: string; autoStart?: boolean; wantFilm?: boolean } = {}) {
   const { activeBrand } = useBrandStore();
   const brandId = activeBrand?.id;
+  const { clientId } = useClient();
+  // Kept on this device per brand: the pictures and frames are in the owner's storage.
+  const [inspiration, setInspiration] = useKept<string[]>(brandId ? `sites:${brandId}:inspiration` : null, []);
+  const [film, setFilm] = useKept<FilmInput | null>(brandId ? `sites:${brandId}:film` : null, null);
+  const [filmBusy, setFilmBusy] = useState(false);
+  const filmRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [pages, setPages] = useState<Page[] | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -92,13 +104,13 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart }: { initialB
     }, 200);
   };
 
-  const runJob = useCallback(async (key: string, look: SiteLook, text: string) => {
+  const runJob = useCallback(async (key: string, look: SiteLook, text: string, extras: Extras) => {
     if (!brandId) return;
     codes.current.set(key, "");
     const fail = (error: string) => setJobs((list) => list.map((j) => (j.key === key ? { ...j, error } : j)));
     try {
-      track("site_page_started", { look });
-      const res = await fetch("/api/sites/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, look, brief: text }) });
+      track("site_page_started", { look, designs: extras.inspiration.length, film: !!extras.film });
+      const res = await fetch("/api/sites/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, look, brief: text, inspiration: extras.inspiration, film: extras.film }) });
       if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); fail(d.error || "Couldn't write the page."); return; }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -129,20 +141,33 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart }: { initialB
   }, [brandId]);
 
   async function write() {
-    if (!brandId || !looks.length) return;
+    if (!brandId || !looks.length || filmBusy) return;
     if (!refs && studyFirst) await study();
     const text = brief.trim();
-    const started = looks.map((look) => ({ key: `${look}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, look, code: "" }));
+    const extras: Extras = { inspiration, film };
+    const started: Job[] = looks.map((look) => ({ key: `${look}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, look, code: "", text, extras }));
     setJobs((list) => [...started, ...list]);
-    started.forEach((j) => void runJob(j.key, j.look, text));
+    started.forEach((j) => void runJob(j.key, j.look, text, extras));
   }
 
+  // From Ask BlinkSpot with a scroll film: the video has to be picked here first, so no auto start without one.
   useEffect(() => {
     if (!autoStart || autoStarted.current || !brandId || pages === null) return;
-    const t = setTimeout(() => { autoStarted.current = true; router.replace("/studio/sites", { scroll: false }); void write(); }, 0);
+    const t = setTimeout(() => {
+      autoStarted.current = true;
+      router.replace("/studio/sites", { scroll: false });
+      if (wantFilm && !film) { filmRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); toast("Pick the video for the scroll film, then press Write."); return; }
+      void write();
+    }, 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart, brandId, pages]);
+
+  useEffect(() => {
+    if (!wantFilm || autoStart) return;
+    const t = setTimeout(() => filmRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+    return () => clearTimeout(t);
+  }, [wantFilm, autoStart]);
 
   const groups = useMemo(() => families(pages ?? []).sort((a, b) => b[b.length - 1].created_at.localeCompare(a[a.length - 1].created_at)), [pages]);
 
@@ -150,7 +175,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart }: { initialB
 
   if (view.kind === "job") {
     const job = jobs.find((j) => j.key === view.key);
-    if (job) return <JobView job={job} onBack={() => setView({ kind: "gallery" })} onRetry={() => { setJobs((l) => l.map((j) => (j.key === job.key ? { ...j, code: "", error: undefined } : j))); void runJob(job.key, job.look, brief.trim()); }} />;
+    if (job) return <JobView job={job} onBack={() => setView({ kind: "gallery" })} onRetry={() => { setJobs((l) => l.map((j) => (j.key === job.key ? { ...j, code: "", error: undefined } : j))); void runJob(job.key, job.look, job.text, job.extras); }} />;
   }
   if (view.kind === "page" && pages) {
     const family = groups.find((g) => g.some((p) => p.id === view.id));
@@ -198,13 +223,19 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart }: { initialB
             })}
           </div>
         </div>
+        <div className="grid gap-3 lg:grid-cols-2 items-start">
+          <InspirationBox urls={inspiration} setUrls={setInspiration} clientId={clientId} />
+          <div ref={filmRef} className="rounded-xl" style={wantFilm && !film ? { outline: "2px solid var(--s-ai)", outlineOffset: 2 } : undefined}>
+            <FilmBox film={film} setFilm={setFilm} clientId={clientId} brandId={activeBrand.id} busy={filmBusy} setBusy={setFilmBusy} />
+          </div>
+        </div>
         <ResearchStrip refs={refs} studying={studying} studyFirst={studyFirst} setStudyFirst={setStudyFirst} showPatterns={showPatterns} setShowPatterns={setShowPatterns} onStudy={() => void study(!!refs)} />
         <div className="flex flex-wrap items-center gap-3">
-          <button className="s-btn primary" disabled={!n || studying} onClick={() => void write()}>
+          <button className="s-btn primary" disabled={!n || studying || filmBusy} onClick={() => void write()}>
             {studying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {studying ? "Studying sites like yours…" : `Write ${n === 1 ? "the page" : `${n} pages`}`} <span className="cost">{n * SITE_PAGE_CREDITS} cr</span>
           </button>
-          <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>About 1 to 3 minutes. Watch the code come in on each card.</span>
+          <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{filmBusy ? "Waiting for the film's frames…" : `About 1 to 3 minutes. Watch the code come in on each card.${inspiration.length || film ? ` Using ${[inspiration.length ? `${inspiration.length} design${inspiration.length === 1 ? "" : "s"} you like` : "", film ? "your scroll film" : ""].filter(Boolean).join(" and ")}.` : ""}`}</span>
         </div>
       </div>
 

@@ -41,7 +41,7 @@ async function pinImageUrls(pinId: string): Promise<string[]> {
 export async function POST(request: NextRequest) {
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  let body: { url?: unknown };
+  let body: { url?: unknown; web?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const raw = typeof body.url === "string" ? body.url.trim() : "";
   if (!raw || raw.length > 2000) return NextResponse.json({ error: "Paste a link to an image or a Pinterest pin." }, { status: 400 });
@@ -50,7 +50,9 @@ export async function POST(request: NextRequest) {
   if (!client?.id) return NextResponse.json({ error: "Account not found" }, { status: 404 });
 
   const pinId = pinterestPinId(raw) ?? (isPinterestShortLink(raw) ? await followToPin(raw) : null);
-  const candidates = pinId ? await pinImageUrls(pinId) : [raw];
+  const sizes = pinId ? await pinImageUrls(pinId) : [raw];
+  // web: for Claude to look at (the website studio), the 736 rendition first: originals can pass 5 MB.
+  const candidates = pinId && body.web === true ? [sizes[1], sizes[2], sizes[0]].filter(Boolean) : sizes;
   if (!candidates.length) return NextResponse.json({ error: "Couldn't read that Pinterest pin. Try saving the image and uploading it." }, { status: 422 });
 
   for (const url of candidates) {

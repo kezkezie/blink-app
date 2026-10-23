@@ -23,7 +23,7 @@ export function SitesHome() {
   }
   return (
     <div>
-      <CodeStudio initialBrief={params.get("brief") ?? undefined} initialLooks={params.get("looks") ?? undefined} autoStart={params.get("auto") === "1"} />
+      <CodeStudio initialBrief={params.get("brief") ?? undefined} initialLooks={params.get("looks") ?? undefined} autoStart={params.get("auto") === "1"} wantFilm={params.get("film") === "1"} />
       <p className="max-w-[1180px] mx-auto pb-8 text-[12px]" style={{ color: "var(--s-mute)" }}>
         Have a page from the older one-page builder (blinkspot.io/s/…)? <Link href="/studio/sites?mode=builder" className="underline">Open it here</Link>.
       </p>

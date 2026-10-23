@@ -8,6 +8,7 @@ import { brandArg } from "@/lib/credits-meter";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
 import { CHANGE_SYSTEM, SITE_CHANGE_CREDITS, applyEdits, changeUserPrompt, checkHtml, extractHtml, fillImages } from "@/lib/sites/code";
+import { keepFilm, withoutEngine } from "@/lib/sites/scroll-film";
 import { logAiUsage } from "@/lib/ai-usage";
 
 /**
@@ -64,13 +65,15 @@ export async function POST(request: NextRequest) {
     return ((d?.content ?? []) as Array<{ type: string; text?: string }>).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
   };
 
-  const prompt = changeUserPrompt({ html: page.html, instruction, images });
+  // A scroll film's engine is ours, not the page's: Claude edits the page without it, and it goes back after.
+  const current = withoutEngine(page.html);
+  const prompt = changeUserPrompt({ html: current, instruction, images });
   const reply = await ask(CHANGE_SYSTEM, prompt, 16000);
   let next: string | null = null, how = "none";
   const whole = /<!doctype html/i.test(reply) && !/<{5,9} ?FIND/.test(reply) ? extractHtml(reply) : null;
   if (whole) { next = whole; how = "whole"; }
   else if (reply) {
-    const edited = applyEdits(page.html, reply);
+    const edited = applyEdits(current, reply);
     if (edited.ok) { next = edited.html; how = `edits:${edited.edits}`; }
   }
   if (!next && reply) {
@@ -81,7 +84,7 @@ export async function POST(request: NextRequest) {
   console.info("site change usage", JSON.stringify({ user: auth.value, page: id, model, how, usd: Number(usd.toFixed(4)) }));
   logAiUsage({ feature: "site_change", provider: provider.name, model, clientId: client?.id, userId: auth.value, brandId: page?.brand_id, usd, credits: SITE_CHANGE_CREDITS, meta: { how } });
   if (!next) return fail(502, "Couldn't make that change this time. Try saying it another way.");
-  const checked = checkHtml(fillImages(next, images, brain?.logoUrl ?? null));
+  const checked = checkHtml(keepFilm(fillImages(next, images, brain?.logoUrl ?? null), page.html, `${brain?.name ?? page.name}, the film`));
   if (!checked.ok) return fail(502, checked.error);
   if (checked.html === page.html) return fail(422, "That didn't change anything. Try saying it another way.");
 

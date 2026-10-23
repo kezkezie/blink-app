@@ -199,13 +199,14 @@ export const ASSISTANT_TOOLS = [
   },
   {
     name: "make_website",
-    description: `Write a website for the brand in the website studio: one complete page per look (${SITE_LOOKS.map((l) => `${l.id}: ${l.line}`).join("; ")}), ${SITE_PAGE_CREDITS} credits each, editable by sections or as code, downloadable or published at blinkspot.io/w/<name>. With start_now (the user asked you to make it) it opens and starts writing straight away.`,
+    description: `Write a website for the brand in the website studio: one complete page per look (${SITE_LOOKS.map((l) => `${l.id}: ${l.line}`).join("; ")}), ${SITE_PAGE_CREDITS} credits each, editable by sections or as code, downloadable or published at blinkspot.io/w/<name>. With start_now (the user asked you to make it) it opens and starts writing straight away. In the studio the user can also add designs they like (screenshots, Pinterest pins, Library pictures) for the page to follow. scroll_film: the user wants a video that plays frame by frame as visitors scroll (like the Nuf Farms site); the studio opens on the film picker so they choose the video there, and starts writing once it is chosen.`,
     input_schema: {
       type: "object",
       properties: {
         brief: { type: "string", maxLength: 1500, description: "What the site is for, in the brand's words" },
         looks: { type: "array", items: { type: "string", enum: SITE_LOOKS.map((l) => l.id) }, maxItems: MAX_LOOKS },
         start_now: { type: "boolean" },
+        scroll_film: { type: "boolean", description: "A scroll-played video section" },
       },
       required: ["brief"],
       additionalProperties: false,
@@ -578,10 +579,11 @@ export async function runAssistantTool(name: string, input: Record<string, unkno
       const looks = [...new Set((Array.isArray(input.looks) ? input.looks : []).filter((l): l is string => typeof l === "string" && SITE_LOOKS.some((x) => x.id === l)))].slice(0, MAX_LOOKS);
       const chosen = looks.length ? looks : ["cinematic", "editorial"];
       const now = input.start_now === true;
-      const params = new URLSearchParams({ brief, looks: chosen.join(","), ...(now ? { auto: "1" } : {}) });
+      const filmed = input.scroll_film === true;
+      const params = new URLSearchParams({ brief, looks: chosen.join(","), ...(now ? { auto: "1" } : {}), ...(filmed ? { film: "1" } : {}) });
       const credits = chosen.length * SITE_PAGE_CREDITS;
       return {
-        content: now ? `The website studio is opening and writing ${chosen.length} page(s) now (${credits} credits).` : `Button shown: it opens the website studio with the brief and looks filled in (${credits} credits to write).`,
+        content: filmed ? `The website studio is opening on the scroll film picker: the user picks the video there (free), then the page${chosen.length === 1 ? " is" : "s are"} written (${credits} credits).` : now ? `The website studio is opening and writing ${chosen.length} page(s) now (${credits} credits).` : `Button shown: it opens the website studio with the brief and looks filled in (${credits} credits to write).`,
         action: { kind: "open_page", label: now ? "Writing it in the website studio" : "Open the website studio", href: `/studio/sites?${params}`, estimatedCredits: credits, note: `${chosen.length} look${chosen.length === 1 ? "" : "s"}: ${chosen.join(", ")}`, ...(now ? { auto: true } : {}) },
       };
     }
