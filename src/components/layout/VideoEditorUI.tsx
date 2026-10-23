@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music,
   Image as ImageIcon, UploadCloud, Settings, Download,
   ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check, Maximize2, Minimize2,
-  Scissors, Copy, Sparkles, Wand2, Undo2, AudioLines, Subtitles, Clapperboard
+  Scissors, Copy, Sparkles, Wand2, Undo2, Redo2, AudioLines, Subtitles, Clapperboard, Gauge
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCredits } from "@/components/studio/hooks";
@@ -17,6 +17,8 @@ import { VOICES, voiceoverCredits } from "@/lib/voiceover";
 import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
 import { canvasSize, drawtextFilter, frameAt, normalizeFilter, overlayFilter, overlayStep, webmDecoder, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
+import { SPEEDS, sourceAt, span, speedLabel, speedOf, withSpeed } from "@/lib/editor/speed";
+import { commit, emptyHistory, isRedoKey, isUndoKey, redoStep, undoStep, type History } from "@/lib/editor/history";
 import "./video-editor.css";
 import { Button } from "@/components/ui/button";
 import { cn, cloudinaryVideoPoster } from "@/lib/utils";
@@ -41,6 +43,8 @@ interface MediaAsset {
   duration?: number;
 }
 
+const noSubscribe = () => () => {};
+
 interface TrackClip {
   id: string;
   assetId: string;
@@ -54,6 +58,8 @@ interface TrackClip {
   opacity?: number;
   volume?: number;
   trackRow?: number;
+  /** Playback speed (2026-10-23, slow-mo): 0.5 plays at half speed and lasts twice as long. */
+  speed?: number;
 }
 
 interface TextLayer {
@@ -78,6 +84,7 @@ interface TextLayer {
  * hides the side panels so playback is big. The classic page keeps the original layout.
  */
 export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "studio" } = {}) {
+  if (typeof window !== "undefined") { const w = window as unknown as { __veRenders?: number }; w.__veRenders = (w.__veRenders ?? 0) + 1; } // [VEDBG]
   const studio = variant === "studio";
   const [focusPreview, setFocusPreview] = useState(false);
   const { clientId } = useClient();
@@ -140,34 +147,71 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   // Ask BlinkSpot can read and edit this timeline through the editor bridge (smart editing).
   // Nothing visual changes here; an AI edit is applied only when the user presses Apply.
   const liveTimeline = useRef<EditorState>({ videoClips: [], audioClips: [], textLayers: [], assets: [] });
-  const aiUndo = useRef<EditorState | null>(null);
   useEffect(() => {
     liveTimeline.current = { videoClips, audioClips, textLayers, assets } as EditorState;
   }, [videoClips, audioClips, textLayers, assets]);
+
+  // Undo and redo for every change to the timeline (2026-10-23: Cmd+Z on a Mac, Ctrl+Z on Windows;
+  // it used to keep one step, and only for AI changes, splits and duplicates). A burst of changes
+  // (a drag, a trim) settles for 350 ms and becomes one step. Snapshots are the arrays themselves,
+  // compared by content: some effects rebuild an array with the same clips in it (a video's length
+  // arriving), and a by-reference check made each of those a step, so Undo seemed to do nothing.
+  type Snap = { videoClips: TrackClip[]; audioClips: TrackClip[]; textLayers: TextLayer[] };
+  const history = useRef<History<Snap>>(emptyHistory<Snap>());
+  const [, setHistoryTick] = useState(0);
+  const sameList = (a: unknown[], b: unknown[]) => a === b || (a.length === b.length && JSON.stringify(a) === JSON.stringify(b));
+  const sameSnap = (a: Snap, b: Snap) => sameList(a.videoClips, b.videoClips) && sameList(a.audioClips, b.audioClips) && sameList(a.textLayers, b.textLayers);
+  const liveSnap = (): Snap => ({ videoClips: liveTimeline.current.videoClips as TrackClip[], audioClips: liveTimeline.current.audioClips as TrackClip[], textLayers: liveTimeline.current.textLayers as TextLayer[] });
+  // A file's real length arrives after its clip is added (a Library video is guessed at 10 s until
+  // then). That correction is not an edit: it joins the current step, and a step restored later
+  // never brings the guess back.
+  const knownLength = useRef<Record<string, number>>({});
+  const absorbNext = useRef(false);
+  const withRealLengths = (list: TrackClip[]) => list.map((c) => {
+    const d = knownLength.current[c.url];
+    return d && (c.maxDuration !== d || c.trimEnd > d) ? { ...c, maxDuration: d, trimEnd: Math.min(c.trimEnd, d) } : c;
+  });
+  const keep = useRef((snap: Snap, absorb = false) => {
+    const h = history.current;
+    const next = absorb && h.present ? (sameSnap(h.present, snap) ? h : { ...h, present: snap }) : commit(h, snap, sameSnap);
+    if (next === h) return;
+    history.current = next;
+    setHistoryTick((t) => t + 1);
+    useEditorBridge.setState({ canUndo: next.past.length > 0 });
+  });
+  const travel = useRef((step: (h: History<Snap>) => History<Snap>) => {
+    keep.current(liveSnap()); // a change still settling becomes its own step first
+    const stepped = step(history.current);
+    if (stepped === history.current || !stepped.present) return;
+    const present = { videoClips: withRealLengths(stepped.present.videoClips), audioClips: withRealLengths(stepped.present.audioClips), textLayers: stepped.present.textLayers };
+    history.current = { ...stepped, present };
+    setHistoryTick((t) => t + 1);
+    useEditorBridge.setState({ canUndo: stepped.past.length > 0 });
+    setVideoClips(present.videoClips); setAudioClips(present.audioClips); setTextLayers(present.textLayers);
+  });
+  const undoTimeline = () => travel.current(undoStep);
+  const redoTimeline = () => travel.current(redoStep);
+  const canUndoTimeline = history.current.past.length > 0;
+  const canRedoTimeline = history.current.future.length > 0;
+  // For the shortcut hints: the server says "not a Mac", the browser corrects it after hydrating.
+  const isMac = useSyncExternalStore(noSubscribe, () => /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent), () => false);
+
   useEffect(() => {
     useEditorBridge.setState({
       attached: true,
       getState: () => liveTimeline.current,
+      // An AI edit is one step in the history like any other, so Undo (or Cmd/Ctrl+Z) takes it back.
       apply: (ops) => {
-        const before = liveTimeline.current;
-        const next = applyEditOps(before, ops);
-        aiUndo.current = before;
+        keep.current(liveSnap());
+        const next = applyEditOps(liveTimeline.current, ops);
         setVideoClips(next.videoClips as TrackClip[]);
         setAudioClips(next.audioClips as TrackClip[]);
         setTextLayers(next.textLayers as TextLayer[]);
-        useEditorBridge.setState({ canUndo: true });
       },
-      undo: () => {
-        const prev = aiUndo.current;
-        if (!prev) return;
-        setVideoClips(prev.videoClips as TrackClip[]);
-        setAudioClips(prev.audioClips as TrackClip[]);
-        setTextLayers(prev.textLayers as TextLayer[]);
-        aiUndo.current = null;
-        useEditorBridge.setState({ canUndo: false });
-      },
+      undo: () => travel.current(undoStep),
     });
     return () => useEditorBridge.setState({ attached: false, getState: null, apply: null, undo: null, canUndo: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // A queued stack (rendered scenes, or clips picked in the Library) lands on the main track in order.
@@ -214,6 +258,14 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     const t = setTimeout(() => { void saveDraft<VideoDraft>(draftKey, { assets, videoClips, audioClips, textLayers, canvasAspect, fitMode }); }, 1000);
     return () => clearTimeout(t);
   }, [draftReady, draftKey, assets, videoClips, audioClips, textLayers, canvasAspect, fitMode]);
+  useEffect(() => {
+    if (!draftReady) return;
+    const snap = { videoClips, audioClips, textLayers };
+    const absorb = absorbNext.current;
+    absorbNext.current = false;
+    const t = setTimeout(() => keep.current(snap, absorb), 350);
+    return () => clearTimeout(t);
+  }, [draftReady, videoClips, audioClips, textLayers]);
 
   const queued = useEditorBridge((b) => b.queue);
   useEffect(() => {
@@ -221,7 +273,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     useEditorBridge.setState({ queue: [] });
     const newAssets: MediaAsset[] = [];
     const newClips: TrackClip[] = [];
-    let at = Math.max(0, ...liveTimeline.current.videoClips.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (c.trimEnd - c.trimStart)));
+    let at = Math.max(0, ...liveTimeline.current.videoClips.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (span(c))));
     for (const q of queued) {
       const id = crypto.randomUUID();
       const length = q.duration > 0 ? q.duration : 5;
@@ -355,9 +407,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
 
         setGlobalTime((prev) => {
           const nextTime = prev + deltaSeconds;
-          const maxVideo = videoClips.length > 0 ? Math.max(...videoClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart))) : 0;
-          const maxAudio = audioClips.length > 0 ? Math.max(...audioClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart))) : 0;
-          const maxText = textLayers.length > 0 ? Math.max(...textLayers.map((c) => c.timelineStart + (c.trimEnd - c.trimStart))) : 0;
+          const maxVideo = videoClips.length > 0 ? Math.max(...videoClips.map((c) => c.timelineStart + (span(c)))) : 0;
+          const maxAudio = audioClips.length > 0 ? Math.max(...audioClips.map((c) => c.timelineStart + (span(c)))) : 0;
+          const maxText = textLayers.length > 0 ? Math.max(...textLayers.map((c) => c.timelineStart + (span(c)))) : 0;
           const maxTime = Math.max(maxVideo, maxAudio, maxText, 5);
 
           if (nextTime >= maxTime) { setIsPlaying(false); return maxTime; }
@@ -374,11 +426,14 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     videoClips.forEach(clip => {
       const el = videoRefs.current[clip.id];
       if (!el) return;
-      const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart);
+      const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip));
       if (isActive) {
         el.volume = (clip.volume ?? 100) / 100;
-        const expectedTime = clip.trimStart + (globalTime - clip.timelineStart);
-        if (Math.abs(el.currentTime - expectedTime) > 0.25) el.currentTime = expectedTime;
+        // Slow-mo (2026-10-23): the source second at this time, played at the clip's speed.
+        const rate = speedOf(clip);
+        if (el.playbackRate !== rate) el.playbackRate = rate;
+        const expectedTime = sourceAt(clip, globalTime);
+        if (Math.abs(el.currentTime - expectedTime) > 0.25 * rate) el.currentTime = expectedTime;
         if (isPlaying && el.paused) el.play().catch(() => { });
       } else {
         if (!el.paused) el.pause();
@@ -388,7 +443,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     audioClips.forEach(clip => {
       const el = audioRefs.current[clip.id];
       if (!el) return;
-      const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart);
+      const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip));
       if (isActive) {
         el.volume = (clip.volume ?? 100) / 100;
         const expectedTime = clip.trimStart + (globalTime - clip.timelineStart);
@@ -490,7 +545,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
         setRenderStatusText(`Processing visual media ${i + 1} of ${orderedVideos.length}...`);
         const clip = orderedVideos[i];
         const isImg = clip.type === 'image';
-        const duration = clip.trimEnd - clip.trimStart;
+        const duration = span(clip); // on the timeline
+        const source = clip.trimEnd - clip.trimStart; // seconds of the file
         let fileName = written.get(clip.url);
         if (!fileName) {
           fileName = `media_${written.size}.${isImg ? 'jpg' : 'mp4'}`;
@@ -505,10 +561,10 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
         if (isImg) {
           inputArgs.push('-loop', '1', '-framerate', '30', '-t', String(duration), '-i', fileName);
         } else {
-          inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
+          inputArgs.push('-ss', String(clip.trimStart), '-t', String(source), '-i', fileName);
         }
 
-        filterSteps.push(normalizeFilter(i, W, H, fitMode));
+        filterSteps.push(normalizeFilter(i, W, H, fitMode, isImg ? 1 : speedOf(clip)));
         concatStreams += `[v${i}]`;
 
         setRenderProgress(15 + Math.floor((i / orderedVideos.length) * 30));
@@ -524,8 +580,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
         setRenderStatusText(`Layering ${j + 1} of ${overlays.length}...`);
         const clip = overlays[j];
         const index = orderedVideos.length + j;
-        const duration = clip.trimEnd - clip.trimStart;
+        const duration = span(clip); // on the timeline
         const isImg = clip.type === 'image';
+        const source = isImg ? duration : clip.trimEnd - clip.trimStart;
         const fileName = `overlay_${j}.${isImg ? 'jpg' : 'video'}`;
         try {
           const bytes = isImg ? await imageForExport(clip.url, Math.max(W, H)) : await fetchFile(getProxyUrl(clip.url));
@@ -533,11 +590,11 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
           const decoder = isImg ? null : webmDecoder(bytes as Uint8Array);
           await ffmpeg.writeFile(fileName, bytes);
           if (isImg) inputArgs.push('-loop', '1', '-framerate', '30', '-t', String(duration), '-i', fileName);
-          else inputArgs.push(...(decoder ? ['-c:v', decoder] : []), '-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
+          else inputArgs.push(...(decoder ? ['-c:v', decoder] : []), '-ss', String(clip.trimStart), '-t', String(source), '-i', fileName);
         } catch {
           throw new Error(`Failed to download layer ${j + 1}.`);
         }
-        filterSteps.push(overlayFilter(index, W, H, fitMode, clip.timelineStart, clip.opacity ?? 100));
+        filterSteps.push(overlayFilter(index, W, H, fitMode, clip.timelineStart, clip.opacity ?? 100, isImg ? 1 : speedOf(clip)));
         filterSteps.push(overlayStep(finalVideoMap, index, clip.timelineStart, clip.timelineStart + duration, `lay${j}`));
         finalVideoMap = `[lay${j}]`;
       }
@@ -564,7 +621,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
           const safeExt = ['mp4', 'mp3', 'wav', 'mov', 'webm', 'aac'].includes(rawExt) ? rawExt : 'mp3';
 
           const fileName = `audio_0.${safeExt}`;
-          const duration = clip.trimEnd - clip.trimStart;
+          const duration = span(clip);
           await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
 
           inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
@@ -582,7 +639,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             const safeExt = ['mp4', 'mp3', 'wav', 'mov', 'webm', 'aac'].includes(rawExt) ? rawExt : 'mp3';
 
             const fileName = `audio_${i}.${safeExt}`;
-            const duration = clip.trimEnd - clip.trimStart;
+            const duration = span(clip);
             await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
 
             inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
@@ -601,7 +658,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       setRenderProgress(70);
       const finalFilterGraph = filterSteps.join(';');
 
-      const maxVideoTime = orderedVideos.reduce((max, clip) => Math.max(max, clip.timelineStart + (clip.trimEnd - clip.trimStart)), 0);
+      const maxVideoTime = orderedVideos.reduce((max, clip) => Math.max(max, clip.timelineStart + (span(clip))), 0);
 
       setRenderStatusText("Encoding final masterpiece...");
       const execArgs = [
@@ -723,14 +780,14 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     setAssets((prev) => [asset, ...prev]);
     const clip = (start: number, row: number): TrackClip => ({ id: crypto.randomUUID(), assetId: asset.id, url: m.url, type: "video", name: m.name, timelineStart: start, trimStart: 0, trimEnd: m.seconds, maxDuration: m.seconds, opacity: 100, volume: 100, trackRow: row });
     if (m.kind === "overlay") {
-      setVideoClips((prev) => [...prev, clip(globalTime, Math.max(1, ...prev.filter((c) => (c.trackRow ?? 0) > 0 && c.timelineStart < globalTime + m.seconds && c.timelineStart + (c.trimEnd - c.trimStart) > globalTime).map((c) => (c.trackRow ?? 0) + 1)))]);
+      setVideoClips((prev) => [...prev, clip(globalTime, Math.max(1, ...prev.filter((c) => (c.trackRow ?? 0) > 0 && c.timelineStart < globalTime + m.seconds && c.timelineStart + (span(c)) > globalTime).map((c) => (c.trackRow ?? 0) + 1)))]);
     } else if (where === "start") {
       const later = <T extends { timelineStart: number }>(x: T) => ({ ...x, timelineStart: x.timelineStart + m.seconds });
       setVideoClips((prev) => [clip(0, 0), ...prev.map(later)]);
       setTextLayers((prev) => prev.map(later));
       setAudioClips((prev) => prev.map(later));
     } else {
-      setVideoClips((prev) => [...prev, clip(Math.max(0, ...prev.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (c.trimEnd - c.trimStart))), 0)]);
+      setVideoClips((prev) => [...prev, clip(Math.max(0, ...prev.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (span(c)))), 0)]);
     }
   }
 
@@ -769,6 +826,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
 
   function handleLoadedMetadata(id: string, duration: number, type: "video" | "audio") {
     if (isNaN(duration) || duration === Infinity) duration = 10;
+    const clip = (type === "video" ? videoClips : audioClips).find((c) => c.id === id);
+    if (clip && Number.isFinite(duration)) knownLength.current[clip.url] = duration;
+    absorbNext.current = true; // the real length joins the current step; it isn't an edit
     if (type === "video") setVideoClips((prev) => prev.map((c) => c.id === id ? { ...c, maxDuration: duration, trimEnd: Math.min(c.trimEnd, duration) } : c));
     else setAudioClips((prev) => prev.map((c) => c.id === id ? { ...c, maxDuration: duration, trimEnd: Math.min(c.trimEnd, duration) } : c));
   }
@@ -853,12 +913,14 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
         setClips((prev: any[]) => prev.map((clip: any) => {
           if (clip.id !== id) return clip;
           let newClip = { ...clip };
+          // The mouse moves timeline seconds; a sped-up or slowed clip moves its source by that times its speed.
+          const rate = speedOf(clip);
           if (edge === "start") {
-            const newTrim = Math.max(0, Math.min(initTrim + deltaSeconds, clip.trimEnd - 0.5));
+            const newTrim = Math.max(0, Math.min(initTrim + deltaSeconds * rate, clip.trimEnd - 0.5));
             newClip.trimStart = newTrim;
-            newClip.timelineStart = initTimeline + (newTrim - initTrim);
+            newClip.timelineStart = initTimeline + (newTrim - initTrim) / rate;
           } else {
-            newClip.trimEnd = Math.max(clip.trimStart + 0.5, Math.min(clip.maxDuration, initTrim + deltaSeconds));
+            newClip.trimEnd = Math.max(clip.trimStart + 0.5, Math.min(clip.maxDuration, initTrim + deltaSeconds * rate));
           }
           return newClip;
         }));
@@ -879,14 +941,14 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             const snapThreshold = 15 / PIXELS_PER_SECOND;
             let bestSnapDist = snapThreshold;
             let bestSnapTime = newTimelineStart;
-            const duration = clip.trimEnd - clip.trimStart;
+            const duration = span(clip);
 
             const allClips = [...videoClips, ...audioClips, ...textLayers];
 
             allClips.forEach(other => {
               if (other.id === id) return;
               const otherStart = other.timelineStart;
-              const otherEnd = other.timelineStart + (other.trimEnd - other.trimStart);
+              const otherEnd = other.timelineStart + (span(other));
 
               if (Math.abs(newTimelineStart - otherEnd) < bestSnapDist) {
                 bestSnapDist = Math.abs(newTimelineStart - otherEnd);
@@ -945,7 +1007,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     setSelectedElement(null);
   }
 
-  const contentMax = Math.max(30, ...videoClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), ...audioClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), ...textLayers.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), globalTime) + 60;
+  const contentMax = Math.max(30, ...videoClips.map((c) => c.timelineStart + (span(c))), ...audioClips.map((c) => c.timelineStart + (span(c))), ...textLayers.map((c) => c.timelineStart + (span(c))), globalTime) + 60;
   const maxVisibleTime = Math.min(contentMax, 3600);
 
   let rulerStep = 1;
@@ -967,21 +1029,21 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   // arrangement after Kezie's references: tool rail, media bin, big preview, inspector, and a timeline
   // with filmstrips, waveforms and beat markers. Plus split / duplicate / shortcuts, 9:16 and 1:1,
   // and three AI tools: cut to the beat (local, free), captions and shorts (transcribed, per minute).
-  const totalLength = Math.max(0, ...videoClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), ...audioClips.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)), ...textLayers.map((c) => c.timelineStart + (c.trimEnd - c.trimStart)));
+  const totalLength = Math.max(0, ...videoClips.map((c) => c.timelineStart + (span(c))), ...audioClips.map((c) => c.timelineStart + (span(c))), ...textLayers.map((c) => c.timelineStart + (span(c))));
   const fmt = (s: number) => { const m = Math.floor(s / 60); const r = s - m * 60; return `${String(m).padStart(2, "0")}:${r.toFixed(1).padStart(4, "0")}`; };
-  const snapshot = () => { aiUndo.current = liveTimeline.current; useEditorBridge.setState({ canUndo: true }); };
-  const canUndo = useEditorBridge((b) => b.canUndo);
+  const snapshot = () => keep.current(liveSnap());
+  const canUndo = canUndoTimeline;
 
   function splitAtPlayhead() {
     const t = globalTime;
-    const hit = (c: { timelineStart: number; trimStart: number; trimEnd: number }) => t > c.timelineStart + 0.1 && t < c.timelineStart + (c.trimEnd - c.trimStart) - 0.1;
+    const hit = (c: { timelineStart: number; trimStart: number; trimEnd: number }) => t > c.timelineStart + 0.1 && t < c.timelineStart + (span(c)) - 0.1;
     const pick = <T extends { id: string; timelineStart: number; trimStart: number; trimEnd: number }>(list: T[], type: string) =>
       (selectedElement?.type === type ? list.filter((c) => c.id === selectedElement.id) : list).find(hit);
     const v = pick(videoClips, "video"), a = !v ? pick(audioClips, "audio") : undefined, x = !v && !a ? pick(textLayers, "text") : undefined;
     const target = v ?? a ?? x;
     if (!target) { toast.info("Put the playhead over a clip to split it."); return; }
     snapshot();
-    const cut = target.trimStart + (t - target.timelineStart);
+    const cut = sourceAt(target, t);
     const left = { ...target, trimEnd: cut };
     const right = { ...target, id: crypto.randomUUID(), timelineStart: t, trimStart: cut };
     if (v) setVideoClips((p) => p.flatMap((c) => (c.id === v.id ? [left as TrackClip, right as TrackClip] : [c])));
@@ -992,7 +1054,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   function duplicateSelected() {
     if (!selectedElement) return;
     snapshot();
-    const copy = <T extends { id: string; timelineStart: number; trimStart: number; trimEnd: number }>(c: T): T => ({ ...c, id: crypto.randomUUID(), timelineStart: c.timelineStart + (c.trimEnd - c.trimStart) });
+    const copy = <T extends { id: string; timelineStart: number; trimStart: number; trimEnd: number }>(c: T): T => ({ ...c, id: crypto.randomUUID(), timelineStart: c.timelineStart + (span(c)) });
     if (selectedElement.type === "video") { const c = videoClips.find((x) => x.id === selectedElement.id); if (c) { const n = copy(c); setVideoClips((p) => [...p, n]); setSelectedElement({ id: n.id, type: "video" }); } }
     if (selectedElement.type === "audio") { const c = audioClips.find((x) => x.id === selectedElement.id); if (c) { const n = copy(c); setAudioClips((p) => [...p, n]); setSelectedElement({ id: n.id, type: "audio" }); } }
     if (selectedElement.type === "text") { const c = textLayers.find((x) => x.id === selectedElement.id); if (c) { const n = copy(c); setTextLayers((p) => [...p, n]); setSelectedElement({ id: n.id, type: "text" }); } }
@@ -1001,7 +1063,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   function addAssetAtPlayhead(asset: MediaAsset) {
     if (asset.type === "audio") addClipToTimeline(asset, "audio", globalTime, 0);
     else {
-      const end = Math.max(0, ...videoClips.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (c.trimEnd - c.trimStart)));
+      const end = Math.max(0, ...videoClips.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (span(c))));
       addClipToTimeline(asset, "video", videoClips.length ? end : 0, 0);
     }
   }
@@ -1015,12 +1077,16 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     setSelectedElement({ id, type: "text" });
   }
 
-  // Studio shortcuts: Space play, S split, D duplicate, Delete/Backspace remove, arrows nudge the playhead.
+  // Studio shortcuts: Space play, S split, D duplicate, Delete/Backspace remove, arrows nudge the playhead,
+  // Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z (or Ctrl+Y) redo.
   useEffect(() => {
     if (!studio) return;
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      // Cmd+Z / Ctrl+Z undo, Cmd+Shift+Z / Ctrl+Shift+Z / Ctrl+Y redo (typing in a box keeps its own undo).
+      if (isUndoKey(e)) { e.preventDefault(); undoTimeline(); return; }
+      if (isRedoKey(e)) { e.preventDefault(); redoTimeline(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === "Space") { e.preventDefault(); togglePlay(); }
       else if (e.key === "s" || e.key === "S") { e.preventDefault(); splitAtPlayhead(); }
@@ -1089,7 +1155,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       const r = detectBeats(samples, sr);
       if (!r.bpm || r.beats.length < 4) { toast.info("Couldn't find a steady beat in this track. Try a song with drums."); return; }
       const beatsTl = r.beats.filter((b) => b >= music.trimStart && b <= music.trimEnd).map((b) => music.timelineStart + (b - music.trimStart));
-      const from = music.timelineStart, to = music.timelineStart + (music.trimEnd - music.trimStart);
+      const from = music.timelineStart, to = music.timelineStart + (span(music));
       const pieces = beatCut(vids.map((v) => ({ id: v.id, maxDuration: v.type === "image" ? 3600 : v.maxDuration, trimStart: v.trimStart })), beatsTl, { from, to: Math.min(to, from + beatLength), every: cutEvery });
       if (!pieces.length) { toast.info("The song is too short for that. Pick a longer stretch."); return; }
       snapshot();
@@ -1216,12 +1282,12 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       const layers: TextLayer[] = [];
       let spent = 0;
       for (const c of targets) {
-        const len = c.trimEnd - c.trimStart;
+        const len = c.trimEnd - c.trimStart; // seconds of the source file
         const audioUrl = await extractAudioToStorage(c.url, c.trimStart, len);
         const r = await transcribe({ mode: "captions", audioUrl, seconds: len });
         spent += r.credits;
         for (const ch of captionChunks(r.segments, 0, len)) {
-          layers.push({ id: crypto.randomUUID(), text: ch.text, x: 50, y: 82, fontSize: 34, color: "#FFFFFF", style: "caption", timelineStart: c.timelineStart + ch.start, trimStart: 0, trimEnd: Math.max(0.3, ch.end - ch.start), maxDuration: 3600, opacity: 100, trackRow: 0 });
+          layers.push({ id: crypto.randomUUID(), text: ch.text, x: 50, y: 82, fontSize: 34, color: "#FFFFFF", style: "caption", timelineStart: c.timelineStart + ch.start / speedOf(c), trimStart: 0, trimEnd: Math.max(0.3, (ch.end - ch.start) / speedOf(c)), maxDuration: 3600, opacity: 100, trackRow: 0 });
         }
       }
       if (!layers.length) { toast.info(`Nobody speaks in ${targets.length === 1 ? "this clip" : "these clips"}, so there's nothing to caption. ${spent} credits used.`); return; }
@@ -1312,7 +1378,10 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
         <div className="ve-top">
           <b className="text-[13.5px]">Edit</b>
           <span className="mono text-[11.5px]" style={{ color: "var(--s-mute)" }}>{fmt(totalLength)}</span>
-          {canUndo && <button type="button" className="s-btn ghost sm" onClick={() => useEditorBridge.getState().undo?.()}><Undo2 className="h-3.5 w-3.5" /> Undo</button>}
+          <span className="flex items-center gap-0.5">
+            <button type="button" className="s-btn ghost sm" disabled={!canUndoTimeline} onClick={undoTimeline} aria-label="Undo" title={`Undo (${isMac ? "⌘Z" : "Ctrl+Z"})`}><Undo2 className="h-3.5 w-3.5" /></button>
+            <button type="button" className="s-btn ghost sm" disabled={!canRedoTimeline} onClick={redoTimeline} aria-label="Redo" title={`Redo (${isMac ? "⇧⌘Z" : "Ctrl+Y"})`}><Redo2 className="h-3.5 w-3.5" /></button>
+          </span>
           <div className="flex-1" />
           <div className="s-seg" role="group" aria-label="Shape">
             {(["9:16", "1:1", "16:9"] as const).map((a) => <button key={a} type="button" aria-pressed={canvasAspect === a} onClick={() => setCanvasAspect(a)} title={a === "9:16" ? "Reels, TikTok, Shorts" : a === "1:1" ? "Feed posts" : "YouTube, websites"}>{a}</button>)}
@@ -1417,7 +1486,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                       </div>
                     )}
                   </div>
-                  {canUndo && <button type="button" className="s-btn ghost sm" onClick={() => useEditorBridge.getState().undo?.()}><Undo2 className="h-3.5 w-3.5" /> Undo the last AI change</button>}
+                  {canUndo && <button type="button" className="s-btn ghost sm" onClick={undoTimeline}><Undo2 className="h-3.5 w-3.5" /> Undo the last AI change</button>}
                 </div>
               </>
             ) : (
@@ -1467,7 +1536,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             <div className="ve-canvaswrap">
               <div ref={canvasRef} className="ve-canvas" style={{ aspectRatio: String(shape), width: `min(100cqw, calc(100cqh * ${shape}))`, ["--cw" as string]: String(canvasW) }}>
                 {[...videoClips].sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
-                  const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart);
+                  const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip));
                   return (
                     <div key={`canvas-${clip.id}`} className="absolute inset-0 pointer-events-none" style={{ opacity: isActive ? (clip.opacity ?? 100) / 100 : 0, zIndex: clip.trackRow || 0, display: isActive ? "block" : "none" }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1476,7 +1545,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                     </div>
                   );
                 })}
-                {!videoClips.some((clip) => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart)) && (
+                {!videoClips.some((clip) => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip))) && (
                   <div className="absolute inset-0 grid place-items-center text-center px-4" style={{ color: "var(--s-mute)" }}>
                     <span className="grid justify-items-center gap-2 text-[12.5px]"><Film className="h-7 w-7" />{videoClips.length ? "Nothing at the playhead" : "Drag clips from the left onto the timeline"}</span>
                   </div>
@@ -1486,7 +1555,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   {audioClips.map((clip) => (<video key={`canvas-audio-${clip.id}`} ref={(el) => { audioRefs.current[clip.id] = el; }} src={clip.url} preload="metadata" onLoadedMetadata={(e) => handleLoadedMetadata(clip.id, e.currentTarget.duration, "audio")} />))}
                 </div>
                 {[...textLayers].sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((layer) => {
-                  const isVisible = globalTime >= layer.timelineStart && globalTime < layer.timelineStart + (layer.trimEnd - layer.trimStart);
+                  const isVisible = globalTime >= layer.timelineStart && globalTime < layer.timelineStart + (span(layer));
                   if (!isVisible) return null;
                   return (
                     <div key={layer.id}
@@ -1525,7 +1594,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   {range("Across", Math.round(selText.x), 5, 95, (v) => updateTextLayer(selText.id, { x: v }))}
                   {range("Down", Math.round(selText.y), 5, 95, (v) => updateTextLayer(selText.id, { y: v }))}
                 </div>
-                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selText.timelineStart)} · {(selText.trimEnd - selText.trimStart).toFixed(1)} s</span></div>
+                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selText.timelineStart)} · {(span(selText)).toFixed(1)} s</span></div>
               </>
             ) : selVideo ? (
               <>
@@ -1536,7 +1605,15 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                     <span className="flex gap-1"><button type="button" className="s-btn sm" onClick={() => updateVideoClip(selVideo.id, { trackRow: Math.max(0, (selVideo.trackRow || 0) - 1) })}><ArrowUp className="h-3.5 w-3.5" /></button><button type="button" className="s-btn sm" onClick={() => updateVideoClip(selVideo.id, { trackRow: (selVideo.trackRow || 0) + 1 })}><ArrowDown className="h-3.5 w-3.5" /></button></span>
                     <span className="v">V{(selVideo.trackRow || 0) + 1}</span></label>
                 </div>
-                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selVideo.timelineStart)} · {(selVideo.trimEnd - selVideo.trimStart).toFixed(1)} s of {selVideo.type === "image" ? "a photo" : `${selVideo.maxDuration.toFixed(1)} s`}</span></div>
+                {selVideo.type === "video" && (
+                  <div className="ve-sec"><div className="h"><Gauge className="h-3.5 w-3.5" /> Speed</div>
+                    <div className="s-seg grid grid-cols-3 w-full min-w-0" role="group" aria-label="Speed">
+                      {SPEEDS.map((sp) => <button key={sp} type="button" className="justify-center" aria-pressed={speedOf(selVideo) === sp} onClick={() => setVideoClips((p) => withSpeed(p, selVideo.id, sp))} title={sp < 1 ? `Slow motion: ${1 / sp}× as long` : sp > 1 ? `${sp}× faster` : "Normal speed"}>{speedLabel(sp)}</button>)}
+                    </div>
+                    <span className="text-[11.5px] min-w-0 break-words" style={{ color: "var(--s-mute)" }}>{speedOf(selVideo) < 1 ? "Slow motion. Clips after it on this row move along so nothing overlaps." : speedOf(selVideo) > 1 ? "Sped up. Clips after it on this row move up to close the gap." : "Slow it down for a slow-mo moment, or speed it up."}</span>
+                  </div>
+                )}
+                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selVideo.timelineStart)} · {span(selVideo).toFixed(1)} s{speedOf(selVideo) !== 1 ? ` (${(selVideo.trimEnd - selVideo.trimStart).toFixed(1)} s at ${speedLabel(speedOf(selVideo))})` : ""} of {selVideo.type === "image" ? "a photo" : `${selVideo.maxDuration.toFixed(1)} s`}</span></div>
               </>
             ) : selAudio ? (
               <>
@@ -1544,7 +1621,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   {range("Volume", selAudio.volume ?? 100, 0, 100, (v) => updateAudioClip(selAudio.id, { volume: v }))}
                   <button type="button" className="s-btn ai sm justify-self-start" disabled={!!aiBusy} onClick={() => { setRail("ai"); void cutToBeat(); }}><AudioLines className="h-3.5 w-3.5" /> Cut the video to this song</button>
                 </div>
-                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selAudio.timelineStart)} · {(selAudio.trimEnd - selAudio.trimStart).toFixed(1)} s</span></div>
+                <div className="ve-sec"><div className="h">Timing</div><span className="mono text-[12px]">{fmt(selAudio.timelineStart)} · {(span(selAudio)).toFixed(1)} s</span></div>
               </>
             ) : (
               <>
@@ -1593,7 +1670,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   <div key={`vr${i}`} className={`ve-track${hoveredTrackInfo?.type === "video" && hoveredTrackInfo.row === i ? " over" : ""}`} style={{ height: trackH.video }}
                     onDragOver={(e) => { e.preventDefault(); setHoveredTrackInfo({ type: "video", row: i }); }} onDragLeave={() => setHoveredTrackInfo(null)} onDrop={(e) => handleDropOnTrack(e, "video", i)}>
                     {videoClips.filter((c) => (c.trackRow || 0) === i).map((clip) => {
-                      const width = (clip.trimEnd - clip.trimStart) * pps;
+                      const width = (span(clip)) * pps;
                       const tile = 80;
                       const frames = clip.type === "video" ? Array.from({ length: Math.min(24, Math.max(1, Math.ceil(width / tile))) }, (_, k) => frameAt(clip.url, clip.trimStart + ((clip.trimEnd - clip.trimStart) * k) / Math.max(1, Math.ceil(width / tile)))).filter(Boolean) : [];
                       const bg = clip.type === "image" ? `url("${clip.url}")` : frames.length ? frames.map((f) => `url("${f}")`).join(",") : cloudinaryVideoPoster(clip.url) ? `url("${cloudinaryVideoPoster(clip.url)}")` : undefined;
@@ -1602,7 +1679,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                         <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "video")} className={`ve-clip ${clip.type === "image" ? "image" : "video"}${selectedElement?.id === clip.id ? " sel" : ""}`}
                           style={{ left: `${clip.timelineStart * pps}px`, width: `${width}px`, backgroundImage: bg, backgroundPosition: positions, backgroundSize: frames.length > 1 ? `${tile}px 100%` : "auto 100%", backgroundRepeat: frames.length > 1 ? "no-repeat" : "repeat-x" }}>
                           <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "start")} />
-                          <span className="nm">{clip.name}</span>
+                          <span className="nm">{speedOf(clip) !== 1 && <b className="ve-speed" title={speedOf(clip) < 1 ? "Slow motion" : "Sped up"}>{speedLabel(speedOf(clip))}</b>}{clip.name}</span>
                           <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "end")} />
                         </div>
                       );
@@ -1612,7 +1689,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                 {Array.from({ length: textTrackCount }).map((_, i) => (
                   <div key={`tr${i}`} className="ve-track" style={{ height: trackH.text }}>
                     {textLayers.filter((l) => (l.trackRow || 0) === i).map((layer) => (
-                      <div key={layer.id} onMouseDown={(e) => onClipMouseDown(e, layer.id, "text")} className={`ve-clip text${selectedElement?.id === layer.id ? " sel" : ""}`} style={{ left: `${layer.timelineStart * pps}px`, width: `${(layer.trimEnd - layer.trimStart) * pps}px`, top: 3, bottom: 3 }}>
+                      <div key={layer.id} onMouseDown={(e) => onClipMouseDown(e, layer.id, "text")} className={`ve-clip text${selectedElement?.id === layer.id ? " sel" : ""}`} style={{ left: `${layer.timelineStart * pps}px`, width: `${(span(layer)) * pps}px`, top: 3, bottom: 3 }}>
                         <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "start")} />
                         <span className="nm">{layer.text}</span>
                         <div className="grip" onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "end")} />
@@ -1627,7 +1704,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                       const p = peaks[clip.url] ?? [];
                       const dur = Math.max(0.01, clip.maxDuration);
                       const from = Math.floor((clip.trimStart / dur) * p.length), to = Math.ceil((clip.trimEnd / dur) * p.length);
-                      const width = (clip.trimEnd - clip.trimStart) * pps;
+                      const width = (span(clip)) * pps;
                       const bars = p.slice(from, to);
                       const step = Math.max(1, Math.ceil(bars.length / Math.max(8, Math.floor(width / 3))));
                       const shown = bars.filter((_, k) => k % step === 0);
@@ -1860,7 +1937,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             <div ref={canvasRef} className="relative aspect-video max-w-full max-h-full h-full w-auto mx-auto bg-[#000000] rounded-lg shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden ring-1 ring-[#57707A]/50 z-10">
 
               {videoClips.sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
-                const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart);
+                const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip));
                 return (
                   <div
                     key={`canvas-${clip.id}`}
@@ -1894,7 +1971,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                 </div>
               )}
 
-              {!videoClips.some(clip => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (clip.trimEnd - clip.trimStart)) && (
+              {!videoClips.some(clip => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip))) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-[#57707A] z-0 bg-[#000000]">
                   <Video className="w-12 h-12 mb-3 opacity-50" />
                   <p className="text-xs font-bold tracking-widest uppercase">Drag media to timeline</p>
@@ -1917,7 +1994,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
               </div>
 
               {textLayers.sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((layer) => {
-                const isVisible = globalTime >= layer.timelineStart && globalTime < layer.timelineStart + (layer.trimEnd - layer.trimStart);
+                const isVisible = globalTime >= layer.timelineStart && globalTime < layer.timelineStart + (span(layer));
                 if (!isVisible) return null;
 
                 return (
@@ -2132,7 +2209,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   onDrop={(e) => handleDropOnTrack(e, "video", i)}
                 >
                   {videoClips.filter(c => (c.trackRow || 0) === i).map((clip) => (
-                    <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "video")} style={{ left: `${clip.timelineStart * PIXELS_PER_SECOND}px`, width: `${(clip.trimEnd - clip.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-11 bg-[#C5BAC4]/20 border border-[#C5BAC4] rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === clip.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
+                    <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "video")} style={{ left: `${clip.timelineStart * PIXELS_PER_SECOND}px`, width: `${(span(clip)) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-11 bg-[#C5BAC4]/20 border border-[#C5BAC4] rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === clip.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
                       <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "start")} className="w-2.5 h-full bg-[#C5BAC4] cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
                       <span className="text-[10px] font-bold text-[#DEDCDC] px-2 truncate flex-1 pointer-events-none">{clip.name}</span>
                       <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "video", "end")} className="w-2.5 h-full bg-[#C5BAC4] cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
@@ -2144,7 +2221,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
               {Array.from({ length: textTrackCount }).map((_, i) => (
                 <div key={`trow-${i}`} className="h-12 border-b border-[#57707A]/20 relative py-1.5">
                   {textLayers.filter(l => (l.trackRow || 0) === i).map((layer) => (
-                    <div key={layer.id} onMouseDown={(e) => onClipMouseDown(e, layer.id, "text")} style={{ left: `${layer.timelineStart * PIXELS_PER_SECOND}px`, width: `${(layer.trimEnd - layer.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-9 bg-[#DEDCDC]/10 border border-[#DEDCDC]/50 rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === layer.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
+                    <div key={layer.id} onMouseDown={(e) => onClipMouseDown(e, layer.id, "text")} style={{ left: `${layer.timelineStart * PIXELS_PER_SECOND}px`, width: `${(span(layer)) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-9 bg-[#DEDCDC]/10 border border-[#DEDCDC]/50 rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === layer.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
                       <div onMouseDown={(e) => onTrimMouseDown(e, layer.id, "text", "start")} className="w-2.5 h-full bg-[#DEDCDC]/60 cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
                       <Type className="w-3 h-3 text-white mx-2 shrink-0 pointer-events-none" />
                       <span className="text-[10px] font-bold text-white truncate flex-1 pointer-events-none">{layer.text}</span>
@@ -2163,7 +2240,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   onDrop={(e) => handleDropOnTrack(e, "audio", i)}
                 >
                   {audioClips.filter(c => (c.trackRow || 0) === i).map((clip) => (
-                    <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "audio")} style={{ left: `${clip.timelineStart * PIXELS_PER_SECOND}px`, width: `${(clip.trimEnd - clip.trimStart) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-11 bg-[#B3FF00]/20 border border-[#B3FF00] rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === clip.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
+                    <div key={clip.id} onMouseDown={(e) => onClipMouseDown(e, clip.id, "audio")} style={{ left: `${clip.timelineStart * PIXELS_PER_SECOND}px`, width: `${(span(clip)) * PIXELS_PER_SECOND}px` }} className={cn("absolute top-1.5 h-11 bg-[#B3FF00]/20 border border-[#B3FF00] rounded-md flex items-center overflow-hidden cursor-grab active:cursor-grabbing backdrop-blur-md", selectedElement?.id === clip.id ? "ring-2 ring-white z-10 shadow-lg brightness-110" : "")}>
                       <div onMouseDown={(e) => onTrimMouseDown(e, clip.id, "audio", "start")} className="w-2.5 h-full bg-[#B3FF00] cursor-ew-resize shrink-0 hover:bg-white transition-colors" />
                       <Music className="w-3 h-3 text-[#B3FF00] mx-2 shrink-0 pointer-events-none" />
                       <span className="text-[10px] font-bold text-[#DEDCDC] truncate flex-1 pointer-events-none">{clip.name}</span>

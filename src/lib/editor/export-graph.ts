@@ -1,3 +1,5 @@
+import { speedOf } from "./speed";
+
 /**
  * Export settings for the video editor (2026-10-11): the canvas shape (16:9, 9:16 for Reels/TikTok,
  * 1:1), fit (letterbox) or fill (crop to the frame), and text that lands where the preview shows it.
@@ -9,12 +11,17 @@ export function canvasSize(aspect: CanvasAspect): { W: number; H: number } {
   return aspect === "9:16" ? { W: 1080, H: 1920 } : aspect === "1:1" ? { W: 1080, H: 1080 } : { W: 1920, H: 1080 };
 }
 
-/** Scale one input to the canvas: letterboxed (fit) or cropped to fill. */
-export function normalizeFilter(index: number, W: number, H: number, fit: FitMode): string {
+/**
+ * Scale one input to the canvas: letterboxed (fit) or cropped to fill. A clip with a speed
+ * (2026-10-23, slow-mo) has its frames stretched first, so fps=30 then fills the slowed clip.
+ */
+export function normalizeFilter(index: number, W: number, H: number, fit: FitMode, speed = 1): string {
   const size = fit === "fill"
     ? `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`
     : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black`;
-  return `[${index}:v]${size},setsar=1,fps=30,format=yuv420p[v${index}]`;
+  const s = speedOf({ speed });
+  const stretch = s === 1 ? "" : `setpts=${(1 / s).toFixed(4)}*(PTS-STARTPTS),`;
+  return `[${index}:v]${stretch}${size},setsar=1,fps=30,format=yuv420p[v${index}]`;
 }
 
 export type ExportText = { text: string; x: number; y: number; fontSize: number; color: string; timelineStart: number; trimStart: number; trimEnd: number; style?: "plain" | "caption" };
@@ -43,12 +50,14 @@ export function frameAt(url: string, seconds: number, height = 64): string | und
  * export used to string every clip one after another, so the preview's layers didn't survive).
  * Fitted to the canvas with a transparent surround, placed at its timeline time, faded by its opacity.
  */
-export function overlayFilter(index: number, W: number, H: number, fit: FitMode, start: number, opacity = 100): string {
+export function overlayFilter(index: number, W: number, H: number, fit: FitMode, start: number, opacity = 100, speed = 1): string {
   const size = fit === "fill"
     ? `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`
     : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0`;
   const fade = opacity < 100 ? `,colorchannelmixer=aa=${(Math.max(0, opacity) / 100).toFixed(2)}` : "";
-  return `[${index}:v]format=yuva420p,${size},setsar=1,fps=30${fade},setpts=PTS-STARTPTS+${start}/TB[ov${index}]`;
+  const s = speedOf({ speed });
+  const pts = s === 1 ? "PTS-STARTPTS" : `${(1 / s).toFixed(4)}*(PTS-STARTPTS)`;
+  return `[${index}:v]format=yuva420p,${size},setsar=1,fps=30${fade},setpts=${pts}+${start}/TB[ov${index}]`;
 }
 
 /** Lay one overlay onto the running picture between its start and end. */
