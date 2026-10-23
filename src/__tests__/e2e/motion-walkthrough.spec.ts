@@ -98,7 +98,9 @@ test("an app walkthrough from screenshots points at the right buttons", async ({
     expect(centreInside(steps[0].box, generate)).toBe(true);
     expect(centreInside(steps[1].box, schedule)).toBe(true);
 
-    // The step editor: clicking the screenshot moves where it points.
+    // The step editor: pick the first walkthrough step in the scene strip (the studio edits one scene
+    // at a time since 2026-10-23), then clicking the screenshot moves where it points.
+    await studio.getByRole("list", { name: "Scenes" }).getByRole("listitem").filter({ hasText: "App walkthrough step" }).first().click();
     const where = studio.getByRole("button", { name: "Where this step points" }).first();
     await where.scrollIntoViewIfNeeded();
     const r = (await where.boundingBox())!;

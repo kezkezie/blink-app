@@ -6,6 +6,8 @@
  * timing, the prompt); the templates are in components/motion, the call in /api/editor/motion.
  */
 
+import { cleanLayers, type MotionLayer } from "./layers";
+
 export type MotionShape = "9:16" | "1:1" | "16:9";
 export const MOTION_FPS = 30;
 export const MOTION_CREDITS = 4;
@@ -44,7 +46,8 @@ export type Points = { template: "points"; seconds: number; title: string; point
  */
 export type StoryLine = { text: string; size: "s" | "m" | "l" | "xl"; accent: boolean; align: "left" | "center" | "right" };
 export type Story = { template: "story"; seconds: number; lines: StoryLine[]; place: "top" | "center" | "bottom"; backdrop: "plain" | "dots" | "hill" | "sunrise"; picture?: string; placeholder?: string; frame: "circle" | "card" | "none"; enter: "blur" | "rise" | "pop" };
-export type MotionScene = KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points | Story;
+/** Every scene can carry free layers on top of its template (lib/motion/layers.ts, 2026-10-23). */
+export type MotionScene = (KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points | Story) & { layers?: MotionLayer[] };
 export type MotionTemplate = MotionScene["template"];
 
 /**
@@ -53,7 +56,7 @@ export type MotionTemplate = MotionScene["template"];
  * plays over, with a slow ken-burns move and a scrim so text stays readable — the motion-graphics
  * look on an AI frame or any photo. The scenes animate on top of it.
  */
-export type MotionSpec = { kind: "full" | "overlay"; shape: MotionShape; palette: Palette; scenes: MotionScene[]; background?: string };
+export type MotionSpec = { kind: "full" | "overlay"; shape: MotionShape; palette: Palette; scenes: MotionScene[]; background?: string; look?: string; font?: string };
 
 const HTTPS = /^https:\/\/[^\s"'<>]+$/i;
 
@@ -216,7 +219,12 @@ export function validateMotionSpec(raw: unknown, ctx: { shape: MotionShape; bran
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const images = new Set(ctx.images ?? []);
-  const all = (Array.isArray(r.scenes) ? r.scenes : []).slice(0, 8).map((s) => scene(s, images)).filter((s): s is MotionScene => !!s);
+  // Free layers ride along on each scene (pictures only from what was offered, like everything else).
+  const all = (Array.isArray(r.scenes) ? r.scenes : []).slice(0, 8).map((s) => {
+    const sc = scene(s, images);
+    const layers = sc && s && typeof s === "object" ? cleanLayers((s as Record<string, unknown>).layers, images) : [];
+    return sc && layers.length ? ({ ...sc, layers } as MotionScene) : sc;
+  }).filter((s): s is MotionScene => !!s);
   const overlay = r.kind === "overlay" || (all.length > 0 && all.every((s) => s.template === "lower-third"));
   const scenes = all.filter((s) => (overlay ? s.template === "lower-third" : s.template !== "lower-third"));
   const kept: MotionScene[] = [];
@@ -233,7 +241,10 @@ export function validateMotionSpec(raw: unknown, ctx: { shape: MotionShape; bran
   // the studio passes the current background in `images` when it re-checks before a render.
   const bgRaw = typeof r.background === "string" ? r.background.trim() : "";
   const bg = bgRaw && HTTPS.test(bgRaw) && images.has(bgRaw) ? bgRaw : undefined;
-  return { kind: overlay ? "overlay" : "full", shape: ctx.shape, palette: paletteFor(r.palette, ctx.brand), scenes: overlay ? kept.slice(0, 1) : kept, ...(bg && !overlay ? { background: bg } : {}) };
+  // A look (lib/motion/looks.ts) and its typeface: names only, checked by shape (an unknown look draws plain).
+  const look = typeof r.look === "string" && /^[a-z0-9-]{2,24}$/.test(r.look) ? r.look : undefined;
+  const font = typeof r.font === "string" && /^[A-Za-z0-9 ]{2,40}$/.test(r.font.trim()) ? r.font.trim() : undefined;
+  return { kind: overlay ? "overlay" : "full", shape: ctx.shape, palette: paletteFor(r.palette, ctx.brand), scenes: overlay ? kept.slice(0, 1) : kept, ...(bg && !overlay ? { background: bg } : {}), ...(look ? { look } : {}), ...(font ? { font } : {}) };
 }
 
 /**
@@ -343,4 +354,23 @@ export function motionUserPrompt(b: MotionBrief) {
     `What they want: ${b.prompt}`,
     b.source ? `Material they gave (use its words and numbers; nothing else):\n"""\n${b.source}\n"""` : "",
   ].filter(Boolean).join("\n");
+}
+
+/**
+ * A new scene for "+ Scene" in the studio (2026-10-23): a ready-to-edit default for each template
+ * (a walkthrough step needs a screenshot and a lower third its own clip, so those aren't offered).
+ */
+export const ADDABLE_TEMPLATES: MotionTemplate[] = ["kinetic-headline", "story", "points", "stat", "bars", "compare", "product-reveal", "logo-sting", "end-card"];
+export function blankScene(template: MotionTemplate, brandName = "your brand"): MotionScene {
+  switch (template) {
+    case "stat": return { template, seconds: 3.5, value: 100, decimals: 0, suffix: "%", label: "of customers come back" };
+    case "bars": return { template, seconds: 5, title: "This year", bars: [{ label: "Q1", value: 40 }, { label: "Q2", value: 65 }, { label: "Q3", value: 90 }], decimals: 0 };
+    case "compare": return { template, seconds: 4, label: "Orders a week", from: 120, to: 480, decimals: 0, fromLabel: "Before", toLabel: "Now" };
+    case "points": return { template, seconds: 6, title: `Why ${brandName}`, points: ["Fast delivery", "Fair prices", "Made with care"] };
+    case "product-reveal": return { template, seconds: 4, name: "Your product", tagline: "Made for you" };
+    case "logo-sting": return { template, seconds: 3, tagline: brandName };
+    case "end-card": return { template, seconds: 3.5, cta: "Shop now", logo: true };
+    case "story": return { template, seconds: 4, lines: [{ text: "Big idea", size: "xl", accent: true, align: "center" }, { text: "in a few words", size: "m", accent: false, align: "center" }], place: "center", backdrop: "dots", frame: "none", enter: "rise" };
+    default: return { template: "kinetic-headline", seconds: 3, words: "Your headline here", enter: "word" };
+  }
 }

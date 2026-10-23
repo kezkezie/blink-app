@@ -3,6 +3,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import { AbsoluteFill, Easing, Img, Series, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { MOTION_FPS, contrast, sceneFrames, type MotionScene, type MotionSpec, type Palette } from "@/lib/motion/spec";
+import { arrival, type MotionLayer } from "@/lib/motion/layers";
+import { lookById, type Look, type Texture } from "@/lib/motion/looks";
 
 /**
  * BlinkSpot's motion kit (2026-10-15; the walkthrough step 2026-10-20): Remotion templates drawn from a spec Claude writes
@@ -27,11 +29,99 @@ function useExit(frames: number) {
 }
 const pop = (frame: number, fps: number, delay = 0, damping = 14) => spring({ frame: frame - delay, fps, config: { damping, stiffness: 140, mass: 0.7 } });
 
-function Frame({ palette, transparent, background, children }: { palette: Palette; transparent: boolean; background?: string; children: ReactNode }) {
+function Frame({ palette, transparent, background, look, children }: { palette: Palette; transparent: boolean; background?: string; look?: Look | null; children: ReactNode }) {
+  const back = look && !transparent ? look.textures.filter((t) => BACK_TEXTURES.has(t)) : [];
+  const front = look && !transparent ? look.textures.filter((t) => !BACK_TEXTURES.has(t)) : [];
   return (
-    <AbsoluteFill style={{ background: transparent ? "transparent" : `linear-gradient(160deg, ${palette.background} 0%, ${palette.background} 55%, ${shade(palette.background, 0.12)} 100%)` }}>
+    <AbsoluteFill style={{ background: transparent ? "transparent" : look ? palette.background : `linear-gradient(160deg, ${palette.background} 0%, ${palette.background} 55%, ${shade(palette.background, 0.12)} 100%)` }}>
       {background && <Backdrop src={background} palette={palette} />}
+      {back.map((t) => <TextureLayer key={t} texture={t} look={look!} palette={palette} />)}
       {children}
+      {front.map((t) => <TextureLayer key={t} texture={t} look={look!} palette={palette} />)}
+    </AbsoluteFill>
+  );
+}
+
+/**
+ * A look's texture (lib/motion/looks.ts), drawn as one SVG picture over the whole frame: the web
+ * renderer draws images but not CSS filters, blend modes or radial gradients, so grids, glows,
+ * paper, grain, halftone dots and scanlines are all SVG. Grid, glow, paper and deco lines sit behind
+ * the content; grain, halftone and scanlines lie over it, like film or print.
+ */
+const BACK_TEXTURES = new Set<Texture>(["grid", "glow", "paper", "deco"]);
+function TextureLayer({ texture, look, palette }: { texture: Texture; look: Look; palette: Palette }) {
+  const { width: W, height: H } = useVideoConfig();
+  const u = Math.min(W, H) / 100;
+  const line = look.lineColor;
+  const svg = (() => {
+    switch (texture) {
+      case "grid": {
+        const cell = Math.round(W / 12);
+        return `<pattern id="g" width="${cell}" height="${cell}" patternUnits="userSpaceOnUse"><path d="M ${cell} 0 L 0 0 0 ${cell}" fill="none" stroke="${line}" stroke-opacity="0.08" stroke-width="${Math.max(1, u * 0.12)}"/></pattern><rect width="100%" height="100%" fill="url(#g)"/>`;
+      }
+      case "glow":
+        return `<defs><radialGradient id="r" cx="50%" cy="28%" r="70%"><stop offset="0" stop-color="${palette.accent}" stop-opacity="0.16"/><stop offset="0.55" stop-color="${palette.accent}" stop-opacity="0.03"/><stop offset="1" stop-color="#000" stop-opacity="0.45"/></radialGradient></defs><rect width="100%" height="100%" fill="url(#r)"/>`;
+      case "paper":
+        return `<filter id="p"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4"/><feColorMatrix values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.09 0"/></filter><rect width="100%" height="100%" filter="url(#p)"/>`;
+      case "grain":
+        return `<filter id="n"><feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="1" seed="9"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.11 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/>`;
+      case "halftone": {
+        const d = Math.max(6, Math.round(u * 1.1));
+        return `<pattern id="h" width="${d}" height="${d}" patternUnits="userSpaceOnUse" patternTransform="rotate(15)"><circle cx="${d / 2}" cy="${d / 2}" r="${d * 0.22}" fill="${palette.text}" fill-opacity="0.07"/></pattern><rect width="100%" height="100%" fill="url(#h)"/>`;
+      }
+      case "scanlines": {
+        const gap = Math.max(3, Math.round(H / 360));
+        return `<pattern id="s" width="4" height="${gap}" patternUnits="userSpaceOnUse"><rect width="4" height="${Math.max(1, gap / 2)}" fill="#000" fill-opacity="0.28"/></pattern><rect width="100%" height="100%" fill="url(#s)"/>`;
+      }
+      case "deco": {
+        const cx = W / 2, cy = H * 1.05, rays = Array.from({ length: 13 }, (_, i) => { const a = Math.PI * (0.18 + (0.64 * i) / 12); return `<line x1="${cx}" y1="${cy}" x2="${cx - Math.cos(a) * H * 1.4}" y2="${cy - Math.sin(a) * H * 1.4}" stroke="${line}" stroke-opacity="0.13" stroke-width="${u * 0.25}"/>`; }).join("");
+        const m = u * 3.2;
+        return `${rays}<rect x="${m}" y="${m}" width="${W - m * 2}" height="${H - m * 2}" fill="none" stroke="${line}" stroke-opacity="0.45" stroke-width="${u * 0.22}"/><rect x="${m * 1.45}" y="${m * 1.45}" width="${W - m * 2.9}" height="${H - m * 2.9}" fill="none" stroke="${line}" stroke-opacity="0.25" stroke-width="${u * 0.12}"/>`;
+      }
+    }
+  })();
+  const src = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>`)}`;
+  return <Img src={src} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
+}
+
+/**
+ * The free layers on a scene (lib/motion/layers.ts, 2026-10-23): pictures, words and shapes the user
+ * placed, drawn after the template in list order (no z-index in the web renderer). Each arrives
+ * by its own entrance after its delay, and leaves with the scene.
+ */
+function SceneLayers({ layers, frames, font }: { layers: MotionLayer[]; frames: number; font?: string | null }) {
+  const frame = useCurrentFrame();
+  const { fps, width: W, height: H } = useVideoConfig();
+  const exit = useExit(frames);
+  return (
+    <AbsoluteFill style={{ opacity: 1 - exit }}>
+      {layers.map((l) => {
+        const a = l.enter === "none" ? 1 : arrival(frame, fps, l.delay, l.enter === "draw" ? 0.9 : 0.5);
+        const e = Easing.out(Easing.cubic)(a);
+        let opacity = l.opacity, pre = "", clip: string | undefined;
+        if (l.enter === "fade") opacity *= e;
+        else if (l.enter === "rise") { opacity *= e; pre = `translateY(${(1 - e) * H * 0.04}px) `; }
+        else if (l.enter === "pop") { const p = spring({ frame: frame - l.delay * fps, fps, config: { damping: 12, stiffness: 160, mass: 0.6 } }); pre = `scale(${0.6 + 0.4 * p}) `; opacity *= Math.min(1, p * 1.6); }
+        else if (l.enter === "wipe") clip = `inset(0 ${(1 - e) * 100}% 0 0)`;
+        else if (l.enter === "draw") clip = `inset(0 ${(1 - a) * 100}% 0 0)`; // even speed, like being written
+        const box: CSSProperties = {
+          position: "absolute", left: `${(l.x - l.w / 2) * 100}%`, top: `${(l.y - l.h / 2) * 100}%`, width: `${l.w * 100}%`, height: `${l.h * 100}%`,
+          opacity, transform: `${pre}rotate(${l.rotate}deg)`, transformOrigin: "50% 50%", ...(clip ? { clipPath: clip } : {}),
+        };
+        const side = Math.min(l.w * W, l.h * H);
+        if (l.kind === "image") return (
+          <div key={l.id} style={{ ...box, overflow: "hidden", borderRadius: l.radius * side }}>
+            <Img src={l.src} style={{ width: "100%", height: "100%", objectFit: l.fit }} />
+          </div>
+        );
+        if (l.kind === "text") return (
+          <div key={l.id} style={{ ...box, display: "flex", alignItems: "center", justifyContent: l.align === "left" ? "flex-start" : l.align === "right" ? "flex-end" : "center" }}>
+            <span style={{ width: "100%", fontFamily: fontStack(font), fontWeight: l.weight, fontSize: l.size * H, lineHeight: 1.15, color: l.color, textAlign: l.align, overflowWrap: "break-word" }}>{l.text}</span>
+          </div>
+        );
+        const radius = l.shape === "circle" ? "50%" : l.shape === "pill" ? 9999 : l.shape === "line" ? 0 : l.radius * side;
+        return <div key={l.id} style={{ ...box, background: l.fill, borderRadius: radius }} />;
+      })}
     </AbsoluteFill>
   );
 }
@@ -469,6 +559,15 @@ function Story({ scene, palette, brand, frames }: { scene: Extract<MotionScene, 
 
 function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette; brand: MotionBrand }) {
   const frames = sceneFrames(scene);
+  return (
+    <>
+      <TemplateScene scene={scene} palette={palette} brand={brand} frames={frames} />
+      {scene.layers?.length ? <SceneLayers layers={scene.layers} frames={frames} font={brand.font} /> : null}
+    </>
+  );
+}
+
+function TemplateScene({ scene, palette, brand, frames }: { scene: MotionScene; palette: Palette; brand: MotionBrand; frames: number }) {
   switch (scene.template) {
     case "kinetic-headline": return <KineticHeadline scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "stat": return <Stat scene={scene} palette={palette} brand={brand} frames={frames} />;
@@ -484,9 +583,11 @@ function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette
   }
 }
 
-export function MotionVideo({ spec, brand }: MotionProps) {
+export function MotionVideo({ spec, brand: brandIn }: MotionProps) {
+  // A look brings its typeface (and the user can pick another): it is the font every template uses.
+  const brand = spec.font ? { ...brandIn, font: spec.font } : brandIn;
   return (
-    <Frame palette={spec.palette} transparent={spec.kind === "overlay"} background={spec.kind === "overlay" ? undefined : spec.background}>
+    <Frame palette={spec.palette} transparent={spec.kind === "overlay"} background={spec.kind === "overlay" ? undefined : spec.background} look={lookById(spec.look)}>
       <Series>
         {spec.scenes.map((s, i) => (
           <Series.Sequence key={i} durationInFrames={sceneFrames(s)}>

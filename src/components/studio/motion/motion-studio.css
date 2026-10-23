@@ -1,0 +1,69 @@
+/* The motion studio as a canvas editor (2026-10-23): tools, canvas, inspector, scene filmstrip.
+   Layout after a Pinterest story-editor reference Kezie sent. Uses the studio tokens (.studio). */
+.ms { display: grid; grid-template-rows: auto minmax(0, 1fr); height: min(86dvh, 980px); }
+.ms-top { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--s-line); flex-wrap: wrap; }
+.ms-body { display: grid; grid-template-columns: 64px minmax(0, 1fr) 340px; min-height: 0; }
+
+.ms-rail { display: flex; flex-direction: column; gap: 4px; padding: 10px 8px; border-right: 1px solid var(--s-line); position: relative; }
+.ms-rail > button { display: grid; justify-items: center; gap: 3px; padding: 8px 4px; border-radius: 10px; color: var(--s-soft); font-size: 10.5px; }
+.ms-rail > button:hover, .ms-rail > button[aria-expanded="true"] { background: var(--s-raised); color: var(--s-text); }
+.ms-pop { position: absolute; left: calc(100% + 6px); top: 56px; width: 240px; z-index: 6; background: var(--s-panel); border: 1px solid var(--s-line-2); border-radius: 12px; padding: 10px; display: grid; gap: 8px; box-shadow: 0 12px 40px rgba(0, 0, 0, .45); }
+.ms-pop.up { left: 0; top: auto; bottom: calc(100% + 6px); width: 270px; max-height: 340px; overflow: auto; gap: 2px; padding: 4px; }
+
+.ms-stage { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; min-width: 0; min-height: 0; padding: 12px; gap: 8px; background: var(--s-bg); }
+.ms-canvas-wrap { min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 8px; }
+.ms-canvas { position: relative; max-width: 100%; max-height: 100%; border-radius: 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, .4); }
+.ms-frame { position: absolute; inset: 0; border-radius: 12px; overflow: hidden; }
+.ms-overlay { position: absolute; inset: 0; z-index: 2; }
+.ms-box { position: absolute; outline: 1px dashed rgba(255, 255, 255, .32); cursor: move; touch-action: none; }
+.ms-box:hover { outline: 1px solid color-mix(in oklab, var(--s-accent) 75%, transparent); }
+.ms-box.sel { outline: 2px solid var(--s-accent); }
+.ms-box.locked { cursor: default; outline-style: dotted; }
+.ms-h { position: absolute; width: 12px; height: 12px; background: #fff; border: 2px solid var(--s-accent); border-radius: 3px; touch-action: none; }
+.ms-h.nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.ms-h.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.ms-h.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.ms-h.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.ms-lock { position: absolute; right: 4px; top: 4px; color: #fff; }
+.ms-guide { position: absolute; background: #FF4FD8; pointer-events: none; }
+.ms-guide.v { left: 50%; top: 0; bottom: 0; width: 1px; }
+.ms-guide.h { top: 50%; left: 0; right: 0; height: 1px; }
+
+.ms-transport { display: flex; align-items: center; gap: 8px; }
+.ms-transport input[type="range"] { accent-color: var(--s-accent); }
+.ms-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.ms-card { flex: 0 0 150px; display: grid; gap: 2px; align-content: start; text-align: left; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--s-line); background: var(--s-panel); cursor: pointer; min-height: 62px; }
+.ms-card:hover { border-color: var(--s-line-2); }
+.ms-card.sel { border-color: var(--s-accent); box-shadow: inset 0 0 0 1px var(--s-accent); }
+.ms-card.add { flex-basis: 90px; display: grid; place-items: center; color: var(--s-soft); border-style: dashed; height: 100%; }
+
+.ms-insp { border-left: 1px solid var(--s-line); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; min-height: 0; min-width: 0; }
+.ms-insp-body { overflow-y: auto; overflow-x: hidden; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 12px; padding-right: 2px; min-width: 0; }
+.ms-sec { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); padding-top: 10px; border-top: 1px solid var(--s-line); }
+.ms-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 44px; align-items: center; gap: 8px; font-size: 11.5px; color: var(--s-soft); }
+.ms-row input[type="range"] { accent-color: var(--s-accent); min-width: 0; }
+.ms-row b { font-size: 11px; color: var(--s-mute); text-align: right; font-weight: 500; }
+.ms-row select { grid-column: span 2; min-width: 0; }
+.ms-layer { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12.5px; color: var(--s-soft); min-width: 0; }
+.ms-layer:hover { background: var(--s-raised); color: var(--s-text); }
+.ms-menuitem { display: grid; text-align: left; width: 100%; padding: 7px 10px; border-radius: 7px; font-size: 12.5px; color: var(--s-text); }
+.ms-menuitem small { color: var(--s-mute); font-size: 11px; }
+.ms-menuitem:hover { background: var(--s-raised); }
+.ms-ctx { position: fixed; z-index: 90; width: 190px; background: var(--s-panel); border: 1px solid var(--s-line-2); border-radius: 10px; padding: 4px; box-shadow: 0 14px 40px rgba(0, 0, 0, .5); }
+.ms-ctx hr { border: 0; border-top: 1px solid var(--s-line); margin: 3px 0; }
+
+.ms-look { display: grid; gap: 8px; align-content: space-between; text-align: left; padding: 12px; border-radius: 12px; min-height: 122px; border: 2px solid transparent; transition: transform .12s ease; }
+.ms-look:hover { transform: translateY(-2px); }
+.ms-look b { font-size: 19px; line-height: 1.15; font-weight: 700; }
+.ms-look small { font-size: 11px; line-height: 1.35; }
+.ms-look i { width: 16px; height: 16px; border-radius: 50%; display: inline-block; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18); }
+.ms-look.sel { border-color: var(--s-ai); }
+
+@media (max-width: 1100px) { .ms-body { grid-template-columns: 56px minmax(0, 1fr) 300px; } }
+@media (max-width: 820px) {
+  .ms { height: auto; }
+  .ms-body { grid-template-columns: minmax(0, 1fr); }
+  .ms-rail { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--s-line); }
+  .ms-insp { border-left: 0; border-top: 1px solid var(--s-line); }
+  .ms-canvas-wrap { height: 56dvh; }
+}
