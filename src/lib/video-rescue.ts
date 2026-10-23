@@ -15,6 +15,8 @@ export type VideoJobSpec = {
 
 /** The first try's failures worth a second try (not invalid requests, not stuck money). */
 export const RESCUABLE = new Set(["provider_failure", "stale_reconciled"]);
+/** Scene modes a plain-video second try can't redo: lip-sync and motion copied from a reference. */
+export const NO_SECOND_TRY = new Set(["audio_to_video", "motion_brush", "motion_transfer"]);
 export const RESCUE_STATUS = "Taking longer than usual: trying another video service";
 export const VIDEO_FINAL_FAILURE = "We tried two video services and neither could make this scene right now. Nothing was charged for it. Try again in a few minutes, or change the start frame or the wording a little.";
 export const VIDEO_LOW_BALANCE = "The first try failed and your balance is too low for a second one (that try was refunded). Top up in Billing and try again.";
@@ -58,6 +60,12 @@ export function specFromScene(payload: Record<string, unknown>): VideoJobSpec | 
   const prompt = typeof d.visual_prompt === "string" ? d.visual_prompt.trim() : "";
   if (!prompt) return null;
   const audio = (d.audio && typeof d.audio === "object" ? d.audio : {}) as Record<string, unknown>;
+  // A second try is a plain video model on Replicate: it can't redo a lip-sync (the face comes in
+  // primary_image_url and the voice as an audio file, neither of which it takes) or copy motion from
+  // a reference video. Without this, a failed lip-sync was "rescued" into a silent stranger talking,
+  // and charged (2026-10-23). Those fail and refund instead.
+  const mode = String(payload.video_mode ?? d.video_mode ?? "");
+  if (NO_SECOND_TRY.has(mode) || (typeof audio.audio_url === "string" && audio.audio_url.trim())) return null;
   return {
     prompt: prompt.slice(0, 4000), start: url(frames.start_frame), end: url(frames.end_frame),
     seconds: Number(d.duration) || 5, aspect: typeof payload.aspect_ratio === "string" ? payload.aspect_ratio : "16:9",

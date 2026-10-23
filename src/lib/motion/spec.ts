@@ -227,9 +227,12 @@ export function validateMotionSpec(raw: unknown, ctx: { shape: MotionShape; bran
     total += s.seconds;
   }
   if (!kept.length) return null;
-  // A background picture travels with a "full" clip (never under a see-through lower third). Only a
-  // known image, or any https URL our own builder set, is kept — the model can't invent one.
-  const bg = typeof r.background === "string" && HTTPS.test(r.background.trim()) && (images.size === 0 || images.has(r.background.trim())) ? r.background.trim() : undefined;
+  // A background picture travels with a "full" clip (never under a see-through lower third). Only an
+  // image the caller offered is kept, so the model can never invent one (a made-up stock URL would
+  // also break the in-browser render). The server sets the handed-off picture after validating;
+  // the studio passes the current background in `images` when it re-checks before a render.
+  const bgRaw = typeof r.background === "string" ? r.background.trim() : "";
+  const bg = bgRaw && HTTPS.test(bgRaw) && images.has(bgRaw) ? bgRaw : undefined;
   return { kind: overlay ? "overlay" : "full", shape: ctx.shape, palette: paletteFor(r.palette, ctx.brand), scenes: overlay ? kept.slice(0, 1) : kept, ...(bg && !overlay ? { background: bg } : {}) };
 }
 

@@ -20,14 +20,14 @@ describe("motion over a picture (Kezie, 2026-10-22: animate vectors over a real 
     expect(spec.scenes.some((s) => s.template === "end-card")).toBe(false);
   });
 
-  it("validateMotionSpec keeps a background that is a known image, drops an unknown or non-https one", () => {
+  it("validateMotionSpec keeps only an offered https background", () => {
     const base = { kind: "full", palette: {}, scenes: [{ template: "kinetic-headline", seconds: 3, words: "Hi", enter: "word" }] };
     const ctx = { shape: "9:16" as const, brand, images: [PIC] };
     expect(validateMotionSpec({ ...base, background: PIC }, ctx)?.background).toBe(PIC);
     expect(validateMotionSpec({ ...base, background: "https://evil.example/x.jpg" }, ctx)?.background).toBeUndefined();
     expect(validateMotionSpec({ ...base, background: "javascript:alert(1)" }, ctx)?.background).toBeUndefined();
-    // No image list given (our own builder path): any https URL is allowed.
-    expect(validateMotionSpec({ ...base, background: PIC }, { ...ctx, images: [] })?.background).toBe(PIC);
+    // No image list: nothing was offered, so no background is accepted (the model can't invent one).
+    expect(validateMotionSpec({ ...base, background: PIC }, { ...ctx, images: [] })?.background).toBeUndefined();
   });
 
   it("never puts a background under a see-through lower third (overlay)", () => {

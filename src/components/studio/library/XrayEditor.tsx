@@ -249,7 +249,7 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
           ) : scan && <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>Tap anything in the picture, or pick it from the list.</span>}
         </div>
 
-        <aside className="s-card overflow-hidden flex flex-col min-w-0 lg:sticky lg:top-4" style={{ maxHeight: "calc(100dvh - 120px)" }}>
+        <aside className="s-card overflow-hidden flex flex-col min-w-0 lg:sticky lg:top-[72px]" style={{ maxHeight: "calc(100dvh - 96px)" }}>
           {result ? (
             <div className="p-5 grid gap-3">
               <span className="h-11 w-11 rounded-xl grid place-items-center" style={{ background: "color-mix(in oklab, var(--s-ai) 14%, transparent)" }}><Check className="h-5 w-5" style={{ color: "var(--s-ai)" }} /></span>
