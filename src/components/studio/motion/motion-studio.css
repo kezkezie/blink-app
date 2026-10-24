@@ -19,6 +19,13 @@
 .ms-box:hover { outline: 1px solid color-mix(in oklab, var(--s-accent) 75%, transparent); }
 .ms-box.sel { outline: 2px solid var(--s-accent); }
 .ms-box.locked { cursor: default; outline-style: dotted; }
+/* The AI's own parts (2026-10-24): quieter until hovered, named when picked. */
+.ms-box.part { outline: 1px dashed rgba(255, 255, 255, .14); }
+.ms-box.part:hover { outline: 1px dashed color-mix(in oklab, var(--s-ai) 80%, transparent); }
+.ms-box.part.sel { outline: 2px solid var(--s-ai); }
+.ms-box.part:focus-visible { outline: 2px solid var(--s-ai); }
+.ms-box.part .ms-h { border-color: var(--s-ai); }
+.ms-tag { position: absolute; left: 4px; top: 4px; padding: 1px 6px; border-radius: 4px; background: var(--s-ai); color: #fff; font-size: 10.5px; font-weight: 600; white-space: nowrap; pointer-events: none; }
 .ms-h { position: absolute; width: 12px; height: 12px; background: #fff; border: 2px solid var(--s-accent); border-radius: 3px; touch-action: none; }
 .ms-h.nw { left: -6px; top: -6px; cursor: nwse-resize; }
 .ms-h.ne { right: -6px; top: -6px; cursor: nesw-resize; }

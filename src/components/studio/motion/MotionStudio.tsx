@@ -4,15 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, ImagePlus, Layers as LayersIcon, Loader2, Lock, Palette as PaletteIcon, Pause, Play, Plus,
-  RefreshCw, Shapes, Sparkles, Trash2, Type, Unlock, X,
+  Move, RefreshCw, Shapes, Sparkles, Trash2, Type, Undo2, Unlock, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Modal } from "@/components/studio/Modal";
-import { MotionVideo, type MotionBrand } from "@/components/motion/MotionVideo";
+import { MotionVideo, settleFrame, type MotionBrand } from "@/components/motion/MotionVideo";
 import {
-  ADDABLE_TEMPLATES, MOTION_FPS, MOTION_TEMPLATES, blankScene, motionTitle, paletteFor, sceneFrames, sizeFor, totalFrames, totalSeconds, validateMotionSpec,
-  type MotionScene, type MotionSpec, type StoryLine,
+  ADDABLE_TEMPLATES, MOTION_FPS, MOTION_TEMPLATES, PART_NAMES, blankScene, motionTitle, paletteFor, sceneFrames, sizeFor, totalFrames, totalSeconds, validateMotionSpec,
+  type MotionScene, type MotionSpec, type PartNudge, type StoryLine,
 } from "@/lib/motion/spec";
 import { LAYER_ENTERS, LAYER_LIMIT, LAYER_SHAPES, duplicateLayer, newLayer, reorderLayer, type MotionLayer } from "@/lib/motion/layers";
 import { LOOKS, applyLook, lookById } from "@/lib/motion/looks";
@@ -66,6 +66,10 @@ const SHAPE_LABEL: Record<(typeof LAYER_SHAPES)[number], string> = { rect: "Box"
 const FONT_CHOICES = ["Inter", "Archivo", "Space Grotesk", "Poppins", "Montserrat", "Playfair Display", "DM Serif Display", "Bebas Neue", "Oswald", "Kalam", "Special Elite", "Fredoka"];
 const layerName = (l: MotionLayer) => (l.kind === "image" ? "Picture" : l.kind === "text" ? (l.text.length > 22 ? `${l.text.slice(0, 22)}…` : l.text) : SHAPE_LABEL[l.shape]);
 type Drag = { id: string; mode: "move" | "nw" | "ne" | "sw" | "se"; sx: number; sy: number; start: MotionLayer; rect: DOMRect };
+/** A part of what the AI made, as found on the canvas (fractions of the frame). */
+type PartBox = { id: string; name: string; x: number; y: number; w: number; h: number };
+type PartDrag = { id: string; mode: Drag["mode"]; sx: number; sy: number; start: PartNudge; box: PartBox; rect: DOMRect };
+const NO_NUDGE: PartNudge = { dx: 0, dy: 0, scale: 1 };
 
 export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, clientId, brandId, onAdded, onRewrite, rewriting, standalone = false }: {
   open: boolean; onClose: () => void; spec: MotionSpec; onSpec: (s: MotionSpec) => void; brand: MotionBrand & { primary?: string | null; secondary?: string | null };
@@ -108,7 +112,12 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
   }
 
   // While a layer is dragged, the canvas shows a live copy; it's kept (and saved) on release.
-  const [live, setLive] = useState<MotionSpec | null>(null);
+  const [live, setLiveState] = useState<MotionSpec | null>(null);
+  // The latest live copy, so letting go saves it outside any state update (saving inside one updated
+  // the parent while this component rendered).
+  const liveRef = useRef<MotionSpec | null>(null);
+  const setLive = (v: MotionSpec | null) => { liveRef.current = v; setLiveState(v); };
+  const keepLive = () => { const v = liveRef.current; setLive(null); if (v) onSpec(v); };
   const view = live ?? spec;
   const abort = useRef<AbortController | null>(null);
   const { width, height } = sizeFor(view.shape);
@@ -125,6 +134,10 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
   const [layerId, setLayerId] = useState<string | null>(null);
   const layers = scene?.layers ?? [];
   const layer = layers.find((l) => l.id === layerId) ?? null;
+  // The AI's own parts on this scene (words, pictures, labels...), found on the canvas.
+  const [partId, setPartId] = useState<string | null>(null);
+  const [partBoxes, setPartBoxes] = useState<PartBox[]>([]);
+  const frameEl = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"design" | "animation">("design");
 
   // The player: paused on a scene's settled frame while editing, so what you see is what you move.
@@ -136,11 +149,12 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
     const s = view.scenes[i];
     if (!s) return 0;
     const n = sceneFrames(s);
-    const lastIn = Math.max(1.4, ...(s.layers ?? []).map((l) => l.delay + (l.enter === "draw" ? 1 : 0.6)));
-    return starts[i] + Math.min(n - 10, Math.round(lastIn * MOTION_FPS));
+    // When the template's own parts have all arrived, or the last layer has (whichever is later).
+    const lastIn = Math.max(...(s.layers ?? []).map((l) => l.delay + (l.enter === "draw" ? 1 : 0.6)), 0);
+    return starts[i] + Math.min(n - 10, Math.max(settleFrame(s), Math.round(lastIn * MOTION_FPS)));
   }, [view.scenes, starts]);
   const goTo = useCallback((i: number) => {
-    setSceneIx(i); stopAt.current = null;
+    setSceneIx(i); setPartId(null); stopAt.current = null;
     player.current?.pause();
     player.current?.seekTo(Math.max(0, settled(i)));
   }, [settled]);
@@ -196,6 +210,91 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
     setPicking(false);
   };
 
+  // The AI's parts: moves and sizes kept on the scene (spec.ts PartNudge), drawn by MotionVideo.
+  const nudgeOf = (id: string) => scene?.parts?.[id] ?? NO_NUDGE;
+  const setPart = (id: string, p: PartNudge | null, base = spec) => {
+    const s = base.scenes[si];
+    const rest = { ...(s.parts ?? {}) };
+    if (p && (Math.abs(p.dx) > 1e-4 || Math.abs(p.dy) > 1e-4 || Math.abs(p.scale - 1) > 1e-3)) rest[id] = p; else delete rest[id];
+    const parts = Object.keys(rest).length ? rest : undefined;
+    return { ...base, scenes: base.scenes.map((x, j) => (j === si ? ({ ...s, parts } as MotionScene) : x)) };
+  };
+  const part = partBoxes.find((b) => b.id === partId) ?? null;
+
+  // Where each part is: measured from the preview itself, on the frame being edited.
+  const measure = useCallback(() => {
+    const root = frameEl.current;
+    if (!root || playing) { setPartBoxes([]); return; }
+    const fr = root.getBoundingClientRect();
+    if (!fr.width || !scene) return;
+    const names = PART_NAMES[scene.template] ?? {};
+    const seen = new Set<string>();
+    const boxes: PartBox[] = [];
+    root.querySelectorAll<HTMLElement>("[data-part]").forEach((el) => {
+      const id = el.dataset.part!;
+      const r = el.getBoundingClientRect();
+      if (seen.has(id) || !(id in names) || r.width < 4 || r.height < 4) return;
+      seen.add(id);
+      boxes.push({ id, name: names[id], x: (r.left - fr.left) / fr.width, y: (r.top - fr.top) / fr.height, w: r.width / fr.width, h: r.height / fr.height });
+    });
+    setPartBoxes((was) => (JSON.stringify(was) === JSON.stringify(boxes) ? was : boxes));
+  }, [playing, scene]);
+  useEffect(() => {
+    // After the preview has drawn this frame (twice: pictures and fonts can settle a moment later).
+    let a = requestAnimationFrame(() => { a = requestAnimationFrame(measure); });
+    const late = setTimeout(measure, 350);
+    return () => { cancelAnimationFrame(a); clearTimeout(late); };
+  }, [measure, view, at, open]);
+  useEffect(() => {
+    const root = frameEl.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [measure, open]);
+
+  const partDrag = useRef<PartDrag | null>(null);
+  function startPartDrag(e: React.PointerEvent, b: PartBox, mode: Drag["mode"]) {
+    e.stopPropagation(); e.preventDefault();
+    setPartId(b.id); setLayerId(null); setMenu(null);
+    if (!canvas.current) return;
+    player.current?.pause();
+    partDrag.current = { id: b.id, mode, sx: e.clientX, sy: e.clientY, start: nudgeOf(b.id), box: b, rect: canvas.current.getBoundingClientRect() };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  }
+  function onPartDrag(e: React.PointerEvent) {
+    const d = partDrag.current;
+    if (!d) return;
+    const fx = (e.clientX - d.sx) / d.rect.width, fy = (e.clientY - d.sy) / d.rect.height;
+    const s0 = d.start, b = d.box;
+    let next: PartNudge;
+    let gx = false, gy = false;
+    if (d.mode === "move") {
+      let ox = fx, oy = fy;
+      // Snap the part's middle to the frame's middle, with a guide line.
+      const cx = b.x + b.w / 2 + ox, cy = b.y + b.h / 2 + oy;
+      if (Math.abs(cx - 0.5) < 0.012) { ox += 0.5 - cx; gx = true; }
+      if (Math.abs(cy - 0.5) < 0.012) { oy += 0.5 - cy; gy = true; }
+      next = { ...s0, dx: s0.dx + ox, dy: s0.dy + oy };
+    } else {
+      // A corner: bigger or smaller, keeping its shape; the opposite corner stays put.
+      const sx = d.mode === "ne" || d.mode === "se" ? 1 : -1, sy = d.mode === "sw" || d.mode === "se" ? 1 : -1;
+      const ratio = Math.max((b.w + sx * fx) / b.w, (b.h + sy * fy) / b.h);
+      const scale = Math.min(4, Math.max(0.2, s0.scale * ratio));
+      const r = scale / s0.scale;
+      next = { scale, dx: s0.dx + (sx * (b.w * r - b.w)) / 2, dy: s0.dy + (sy * (b.h * r - b.h)) / 2 };
+    }
+    if (raf.current) cancelAnimationFrame(raf.current);
+    raf.current = requestAnimationFrame(() => { setLive(setPart(d.id, next)); setGuide({ x: gx, y: gy }); });
+  }
+  function endPartDrag() {
+    if (!partDrag.current) return;
+    partDrag.current = null;
+    if (raf.current) cancelAnimationFrame(raf.current);
+    setGuide({ x: false, y: false });
+    keepLive();
+  }
+
   // Moving and resizing on the canvas. Pictures keep their shape; words and shapes stretch freely.
   const canvas = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -203,7 +302,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
   const [guide, setGuide] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
   function startDrag(e: React.PointerEvent, l: MotionLayer, mode: Drag["mode"]) {
     e.stopPropagation(); e.preventDefault();
-    setLayerId(l.id);
+    setLayerId(l.id); setPartId(null);
     if (l.locked || !canvas.current) return;
     player.current?.pause();
     drag.current = { id: l.id, mode, sx: e.clientX, sy: e.clientY, start: l, rect: canvas.current.getBoundingClientRect() };
@@ -240,7 +339,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
     drag.current = null;
     if (raf.current) cancelAnimationFrame(raf.current);
     setGuide({ x: false, y: false });
-    setLive((v) => { if (v) onSpec(v); return null; });
+    keepLive();
   }
 
   // Keys: Delete removes the layer, arrows nudge it (Shift: further), Escape lets go of it.
@@ -250,7 +349,14 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      if (e.key === "Escape" && (menu || layerId)) { e.stopPropagation(); setMenu(null); setLayerId(null); return; }
+      if (e.key === "Escape" && (menu || layerId || partId)) { e.stopPropagation(); setMenu(null); setLayerId(null); setPartId(null); return; }
+      const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (part && !layer && arrow) {
+        e.preventDefault();
+        const step = e.shiftKey ? 0.02 : 0.005, n = nudgeOf(part.id);
+        onSpec(setPart(part.id, { ...n, dx: n.dx + arrow[0] * step, dy: n.dy + arrow[1] * step }));
+        return;
+      }
       if (!layer) return;
       if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeLayer(layer.id); return; }
       const step = e.shiftKey ? 0.02 : 0.005;
@@ -477,7 +583,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
 
   return (
     <Modal open={open} onClose={() => (busy ? abort.current?.abort() : onClose())} label="Motion" width={1680} className="ms-modal">
-      <div className="ms" onPointerMove={onDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onClick={() => setMenu(null)}>
+      <div className="ms" onPointerMove={(e) => { onDrag(e); onPartDrag(e); }} onPointerUp={() => { endDrag(); endPartDrag(); }} onPointerCancel={() => { endDrag(); endPartDrag(); }} onClick={() => setMenu(null)}>
         {/* Top bar */}
         <div className="ms-top">
           <b className="text-[14px]">Motion</b>
@@ -530,7 +636,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
             <div className="ms-canvas-wrap">
               <div className="ms-canvas" style={{ aspectRatio: `${width} / ${height}`, ...(tall ? { height: "100%" } : { width: "100%" }), background: view.kind === "overlay" ? "linear-gradient(135deg,#3a4250,#1b1f26)" : "#000" }}>
                 {/* Only the picture is clipped to the frame; a layer hanging off the edge keeps its handles. */}
-                <div className="ms-frame">
+                <div className="ms-frame" ref={frameEl}>
                   <Player
                     ref={player} component={MotionVideo} inputProps={props} durationInFrames={frames} fps={MOTION_FPS}
                     compositionWidth={width} compositionHeight={height} controls={false} clickToPlay={false} loop={false} autoPlay={false}
@@ -538,7 +644,21 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                   />
                 </div>
                 {/* What you can grab: this scene's layers, shown while the preview is still. */}
-                <div ref={canvas} className="ms-overlay" style={{ pointerEvents: playing ? "none" : "auto" }} onPointerDown={() => { setLayerId(null); setMenu(null); }}>
+                <div ref={canvas} className="ms-overlay" style={{ pointerEvents: playing ? "none" : "auto" }} onPointerDown={() => { setLayerId(null); setPartId(null); setMenu(null); }}>
+                  {/* The AI's own parts first (your layers draw over them, so they're on top here too). */}
+                  {!playing && partBoxes.map((b) => {
+                    const sel = b.id === partId;
+                    return (
+                      <div key={`part-${b.id}`} className={`ms-box part${sel ? " sel" : ""}`} role="button" tabIndex={0} aria-label={`Part: ${b.name}`} aria-pressed={sel}
+                        style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` }}
+                        onFocus={() => { setPartId(b.id); setLayerId(null); }}
+                        onPointerDown={(e) => startPartDrag(e, b, "move")}
+                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setPartId(b.id); setLayerId(null); setMenu({ x: e.clientX, y: e.clientY, id: `part:${b.id}` }); }}>
+                        {sel && <span className="ms-tag">{b.name}</span>}
+                        {sel && (["nw", "ne", "sw", "se"] as const).map((h) => <i key={h} className={`ms-h ${h}`} onPointerDown={(e) => startPartDrag(e, b, h)} />)}
+                      </div>
+                    );
+                  })}
                   {!playing && layers.map((l) => {
                     const sel = l.id === layerId;
                     return (
@@ -674,6 +794,20 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                       <input type="number" step={0.5} min={1} max={10} className="s-input" style={{ width: 64, height: 28 }} value={scene.seconds} onChange={(e) => setScene(si, { seconds: Number(e.target.value) || scene.seconds })} aria-label={`Scene ${si + 1} seconds`} /> s
                     </label>
                   </div>
+                  {part && (() => {
+                    const n = nudgeOf(part.id);
+                    return (
+                      <div className="ms-sec ms-part-sec" role="group" aria-label={`${part.name}, moved`}>
+                        <span className="s-label flex items-center gap-1"><Move className="h-3 w-3" /> {part.name}</span>
+                        {range("Size", Math.round(n.scale * 100), 20, 400, 1, (v) => onSpec(setPart(part.id, { ...n, scale: v / 100 })), (v) => `${v}%`)}
+                        <div className="flex gap-1.5 flex-wrap">
+                          <button className="s-btn ghost sm" onClick={() => onSpec(setPart(part.id, { ...n, dx: n.dx + 0.5 - (part.x + part.w / 2), dy: n.dy + 0.5 - (part.y + part.h / 2) }))}>Centre it</button>
+                          <button className="s-btn ghost sm" disabled={!scene.parts?.[part.id]} onClick={() => onSpec(setPart(part.id, null))}><Undo2 className="h-3.5 w-3.5" /> Put it back</button>
+                        </div>
+                        <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>Drag it on the canvas, pull a corner to resize it, or use the arrow keys (Shift for bigger steps). It still animates the same way, from where you put it. Its words are below.</span>
+                      </div>
+                    );
+                  })()}
                   <div className="ms-sec"><span className="s-label flex items-center gap-1"><LayersIcon className="h-3 w-3" /> Layers</span>
                     {layers.length ? (
                       <div className="grid gap-1">{[...layers].reverse().map((l) => (
@@ -683,7 +817,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                           {l.locked && <Lock className="h-3 w-3" />}
                         </button>
                       ))}</div>
-                    ) : <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>None yet. Add words, a picture or a shape from the left, then drag it where you want it.</span>}
+                    ) : <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>None yet. Add words, a picture or a shape from the left. Anything on the canvas can be dragged, including what the AI made.</span>}
                   </div>
                   {tab === "design" ? (
                     <>
@@ -740,9 +874,23 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
 
         {/* Right-click menu on a layer */}
         {menu && (() => {
+          const item = (text: string, on: () => void, danger = false) => <button type="button" role="menuitem" className="ms-menuitem" style={danger ? { color: "var(--s-danger)" } : undefined} onClick={() => { on(); setMenu(null); }}>{text}</button>;
+          if (menu.id.startsWith("part:")) {
+            const b = partBoxes.find((x) => `part:${x.id}` === menu.id);
+            if (!b) return null;
+            const n = nudgeOf(b.id);
+            return (
+              <div className="ms-ctx" role="menu" aria-label={b.name} style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+                {item("Bigger", () => onSpec(setPart(b.id, { ...n, scale: Math.min(4, n.scale * 1.15) })))}
+                {item("Smaller", () => onSpec(setPart(b.id, { ...n, scale: Math.max(0.2, n.scale / 1.15) })))}
+                {item("Centre it", () => onSpec(setPart(b.id, { ...n, dx: n.dx + 0.5 - (b.x + b.w / 2), dy: n.dy + 0.5 - (b.y + b.h / 2) })))}
+                <hr />
+                {item("Put it back", () => onSpec(setPart(b.id, null)))}
+              </div>
+            );
+          }
           const l = layers.find((x) => x.id === menu.id);
           if (!l) return null;
-          const item = (text: string, on: () => void, danger = false) => <button type="button" role="menuitem" className="ms-menuitem" style={danger ? { color: "var(--s-danger)" } : undefined} onClick={() => { on(); setMenu(null); }}>{text}</button>;
           return (
             <div className="ms-ctx" role="menu" aria-label="Layer" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
               {item("Bring forward", () => onSpec(setLayers(reorderLayer(layers, l.id, 1))))}

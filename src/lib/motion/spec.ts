@@ -47,8 +47,46 @@ export type Points = { template: "points"; seconds: number; title: string; point
 export type StoryLine = { text: string; size: "s" | "m" | "l" | "xl"; accent: boolean; align: "left" | "center" | "right" };
 export type Story = { template: "story"; seconds: number; lines: StoryLine[]; place: "top" | "center" | "bottom"; backdrop: "plain" | "dots" | "hill" | "sunrise"; picture?: string; placeholder?: string; frame: "circle" | "card" | "none"; enter: "blur" | "rise" | "pop" };
 /** Every scene can carry free layers on top of its template (lib/motion/layers.ts, 2026-10-23). */
-export type MotionScene = (KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points | Story) & { layers?: MotionLayer[] };
+/**
+ * Where the owner moved a part of what the AI made (Kezie, 2026-10-24: "drag it around, you know,
+ * like almost like an image editor"): an offset as fractions of the frame and a size, applied on top
+ * of the template's own layout and animation. Each template names its parts in PART_NAMES.
+ */
+export type PartNudge = { dx: number; dy: number; scale: number };
+export type MotionScene = (KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points | Story) & { layers?: MotionLayer[]; parts?: Record<string, PartNudge> };
 export type MotionTemplate = MotionScene["template"];
+
+/** The parts of each template that can be moved and resized, with their names in the studio. */
+export const PART_NAMES: Record<MotionTemplate, Record<string, string>> = {
+  "kinetic-headline": { words: "Words", bar: "Bar", sub: "Smaller line" },
+  stat: { bar: "Progress bar", number: "Number", label: "Label" },
+  "product-reveal": { card: "Card", picture: "Picture", name: "Name", tagline: "Tagline", price: "Price" },
+  "logo-sting": { ring: "Ring", logo: "Logo", tagline: "Tagline" },
+  "lower-third": { bar: "Name bar" },
+  "end-card": { logo: "Logo", button: "Button", details: "Handle and website" },
+  screen: { device: "Screen", label: "Label" },
+  bars: { title: "Title", chart: "Chart" },
+  compare: { label: "Label", number: "Number", change: "Change" },
+  points: { title: "Title", points: "Points" },
+  story: { picture: "Picture", words: "Words" },
+};
+
+/** The moves kept for a scene: known parts only, within the frame's reach, and none that does nothing. */
+export function cleanParts(raw: unknown, template: MotionTemplate): Record<string, PartNudge> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const names = PART_NAMES[template] ?? {};
+  const out: Record<string, PartNudge> = {};
+  for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!(id in names) || !v || typeof v !== "object") continue;
+    const n = v as Record<string, unknown>;
+    const dx = Number(n.dx), dy = Number(n.dy), scale = Number(n.scale ?? 1);
+    if (![dx, dy, scale].every(Number.isFinite)) continue;
+    const p = { dx: clamp(dx, -1, 1), dy: clamp(dy, -1, 1), scale: clamp(scale, 0.2, 4) };
+    if (Math.abs(p.dx) < 1e-4 && Math.abs(p.dy) < 1e-4 && Math.abs(p.scale - 1) < 1e-3) continue;
+    out[id] = { dx: Math.round(p.dx * 10000) / 10000, dy: Math.round(p.dy * 10000) / 10000, scale: Math.round(p.scale * 1000) / 1000 };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 /**
  * "full": scenes fill the frame (intros, stats, end cards). "overlay": a see-through lower third over
@@ -223,7 +261,8 @@ export function validateMotionSpec(raw: unknown, ctx: { shape: MotionShape; bran
   const all = (Array.isArray(r.scenes) ? r.scenes : []).slice(0, 8).map((s) => {
     const sc = scene(s, images);
     const layers = sc && s && typeof s === "object" ? cleanLayers((s as Record<string, unknown>).layers, images) : [];
-    return sc && layers.length ? ({ ...sc, layers } as MotionScene) : sc;
+    const parts = sc && s && typeof s === "object" ? cleanParts((s as Record<string, unknown>).parts, sc.template) : undefined;
+    return sc ? ({ ...sc, ...(layers.length ? { layers } : {}), ...(parts ? { parts } : {}) } as MotionScene) : sc;
   }).filter((s): s is MotionScene => !!s);
   const overlay = r.kind === "overlay" || (all.length > 0 && all.every((s) => s.template === "lower-third"));
   const scenes = all.filter((s) => (overlay ? s.template === "lower-third" : s.template !== "lower-third"));
