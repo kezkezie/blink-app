@@ -17,6 +17,8 @@ import {
 import { LAYER_ENTERS, LAYER_LIMIT, LAYER_SHAPES, duplicateLayer, newLayer, reorderLayer, type MotionLayer } from "@/lib/motion/layers";
 import { LOOKS, applyLook, lookById } from "@/lib/motion/looks";
 import { track } from "@/lib/analytics";
+import { needsStamp } from "@/lib/stamp";
+import { useCredits } from "../hooks";
 import "./motion-studio.css";
 
 /**
@@ -123,7 +125,11 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
   const { width, height } = sizeFor(view.shape);
   const tall = height > width;
   const frames = Math.max(1, totalFrames(view));
-  const props = useMemo(() => ({ spec: view, brand }), [view, brand]);
+  // The free plan's clips carry the BlinkSpot stamp, in the preview and the render (lib/stamp.ts).
+  const { plan } = useCredits();
+  const stamp = plan !== null && needsStamp(plan);
+  const shown = useMemo(() => ({ ...brand, stamp }), [brand, stamp]);
+  const props = useMemo(() => ({ spec: view, brand: shown }), [view, shown]);
   useEffect(() => { void ensureMotionFont(view.font ?? brand.font, clientId); }, [view.font, brand.font, clientId]);
 
   // Scenes on the clip's timeline, and the one being edited.
@@ -386,7 +392,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
       const composition = { id: "blink-motion", component: MotionVideo, durationInFrames: totalFrames(checked), fps: MOTION_FPS, width, height, defaultProps: { spec: checked, brand } };
       const render = (container: "mp4" | "webm") => renderMediaOnWeb({
         // BlinkSpot qualifies for Remotion's free licence (up to 3 people; Kezie approved Remotion 2026-10-15).
-        composition, inputProps: { spec: checked, brand }, container, muted: true, signal: abort.current!.signal, licenseKey: "free-license",
+        composition, inputProps: { spec: checked, brand: shown }, container, muted: true, signal: abort.current!.signal, licenseKey: "free-license",
         ...(container === "webm" ? { videoCodec: "vp8" as const, transparent: overlay } : {}),
         onProgress: ({ progress: p }) => setProgress(Math.round(p * 100)),
       });
@@ -868,7 +874,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                 </>
               ) : null}
             </div>
-            <span className="text-[11px] px-1" style={{ color: "var(--s-mute)" }}>{standalone ? "Renders on this computer in a few seconds and goes to your Library." : "Renders on this computer in a few seconds, then lands on the timeline and in your Library."} Every edit is free.</span>
+            <span className="text-[11px] px-1" style={{ color: "var(--s-mute)" }}>{standalone ? "Renders on this computer in a few seconds and goes to your Library." : "Renders on this computer in a few seconds, then lands on the timeline and in your Library."} Every edit is free.{stamp ? " On the free plan it carries a small BlinkSpot stamp; any paid plan removes it." : ""}</span>
           </aside>
         </div>
 
@@ -908,7 +914,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
         })()}
       </div>
 
-      <LooksModal open={looksOpen} onClose={() => setLooksOpen(false)} spec={spec} brand={brand} clientId={clientId} onUse={(s) => { onSpec(s); setLooksOpen(false); }} />
+      <LooksModal open={looksOpen} onClose={() => setLooksOpen(false)} spec={spec} brand={shown} clientId={clientId} onUse={(s) => { onSpec(s); setLooksOpen(false); }} />
     </Modal>
   );
 }

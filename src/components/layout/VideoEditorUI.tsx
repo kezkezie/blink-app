@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import { useCredits } from "@/components/studio/hooks";
 import { AI_NEEDS_CREDITS } from "@/lib/plans";
+import { needsStamp, stampBox } from "@/lib/stamp";
 import { readVideo } from "@/lib/video-inspo/analyze";
 import { inspoPatternKey, type EditRecipe, type InspoPattern } from "@/lib/video-inspo/plan";
 import { VOICES, voiceoverCredits } from "@/lib/voiceover";
@@ -141,7 +142,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   const [shorts, setShorts] = useState<{ source: { url: string; name: string; duration: number }; highlights: Highlight[]; segments: Segment[]; credits: number } | null>(null);
   const [canvasW, setCanvasW] = useState(960);
   // AI needs credits, not a plan (2026-10-12); Cut to the beat runs in the browser and is always free.
-  const { balance } = useCredits();
+  const { balance, plan } = useCredits();
+  // The free plan's exports carry the BlinkSpot stamp in the corner (lib/stamp.ts).
+  const stampExport = plan !== null && needsStamp(plan);
   const aiLocked = balance !== null && balance <= 0;
 
   // Ask BlinkSpot can read and edit this timeline through the editor bridge (smart editing).
@@ -653,6 +656,17 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
           }
           filterSteps.push(`${audioMixStr}amix=inputs=${audioClips.length}:duration=longest:dropout_transition=0[outa]`);
         }
+      }
+
+      if (stampExport) {
+        // Last input: the stamp picture, laid over the finished picture for the whole video.
+        const b = stampBox(W, H);
+        await ffmpeg.writeFile('stamp.png', await fetchFile('/brand/stamp.png'));
+        const stampIndex = orderedVideos.length + overlays.length + audioClips.length;
+        inputArgs.push('-i', 'stamp.png');
+        filterSteps.push(`[${stampIndex}:v]scale=${b.width}:${b.height}[stampimg]`);
+        filterSteps.push(`${finalVideoMap}[stampimg]overlay=${b.left}:${b.top}:eof_action=repeat[stamped]`);
+        finalVideoMap = '[stamped]';
       }
 
       setRenderProgress(70);

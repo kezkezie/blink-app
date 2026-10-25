@@ -10,6 +10,7 @@ import { renderEdit } from "@/lib/ai-edit-server";
 import { assistantProvider } from "@/lib/assistant/agent";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { seamlessPlan, seamlessPrompt, type SlideShape } from "@/lib/carousel";
+import { stampIfFree } from "@/lib/stamp-server";
 
 /**
  * POST { brandId, brief, slides, shape }: the wide picture for a seamless carousel (2026-10-16).
@@ -79,8 +80,10 @@ export async function POST(request: NextRequest) {
   // Kept in our storage (the services' links expire).
   const file = await safeFetchBytes(best.url, { maxBytes: 25_000_000, timeoutMs: 45_000 });
   if (!file.ok) return refund("Couldn't save the picture.");
-  const path = `images/${ws.clientId}/seamless_${Date.now()}.jpg`;
-  const up = await supabaseAdmin.storage.from("assets").upload(path, file.bytes, { contentType: file.contentType.includes("png") ? "image/png" : "image/jpeg" });
+  // A free account's carousel carries the BlinkSpot stamp (on the last slide's corner).
+  const pic = await stampIfFree(ws.clientId, file.bytes, file.contentType);
+  const path = `images/${ws.clientId}/${pic.stamped ? "stamped_" : ""}seamless_${Date.now()}.${pic.contentType.includes("png") ? "png" : "jpg"}`;
+  const up = await supabaseAdmin.storage.from("assets").upload(path, pic.bytes, { contentType: pic.contentType.includes("png") ? "image/png" : "image/jpeg" });
   if (up.error) return refund("Couldn't save the picture.");
   return NextResponse.json({ url: supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl, slides: plan.slides, aspect: plan.aspect, continuity: best.score, credits });
 }

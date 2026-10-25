@@ -12,6 +12,8 @@ import {
 } from "@/lib/image-jobs";
 import { logAiUsage, USD_PER_CREDIT } from "@/lib/ai-usage";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
+import { kickStamp, stampImageBytes, stampImages, workspaceNeedsStamp } from "@/lib/stamp-server";
+import { stampPending } from "@/lib/stamp";
 
 /**
  * Image jobs, server side (lib/image-jobs.ts). startImageJobs makes the Library posts and runs the
@@ -68,9 +70,16 @@ const update = async (id: string, patch: Record<string, unknown>): Promise<void>
   await supabaseAdmin.from("content").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).then(() => {}, () => {});
 };
 
-async function settleFirst(id: string, outcome: RouterOutcome, stoppedRefund?: { clientId: string; brandId: string | null; credits: number }) {
+async function settleFirst(id: string, outcome: RouterOutcome, stoppedRefund?: { clientId: string; brandId: string | null; credits: number }, meta?: Record<string, unknown>) {
   if (outcome.kind === "image") {
-    const { data: kept } = await supabaseAdmin.from("content").update({ image_urls: outcome.urls, generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id).select("id");
+    // A free account's pictures get the BlinkSpot stamp before they're shown (lib/stamp.ts).
+    let urls = outcome.urls, stampPatch = {};
+    if (meta?.stamp === true && stoppedRefund) {
+      const out = await stampImages(urls, stoppedRefund.clientId);
+      urls = out.urls;
+      stampPatch = { creation_metadata: { ...meta, stamp_state: out.failed ? "failed" : "done", stamp_at: new Date().toISOString() } };
+    }
+    const { data: kept } = await supabaseAdmin.from("content").update({ image_urls: urls, ...stampPatch, generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id).select("id");
     // Stopped meanwhile (the post is gone) but n8n delivered and kept its charge: that's the one refund.
     // When n8n fails instead (it can't save to a removed post) it refunds itself, so nothing here.
     if (!kept?.length && stoppedRefund && stoppedRefund.credits > 0) {
@@ -102,11 +111,12 @@ export async function startImageJobs(userId: string, raw: unknown, count: number
   const spec = jobSpecFrom(payload);
   const n = Math.min(4, Math.max(1, Math.floor(count) || 1));
   const now = new Date().toISOString();
+  const meta: Record<string, unknown> = { operation: "generate", job: spec, ...((await workspaceNeedsStamp(payload.client_id as string)) ? { stamp: true } : {}) };
   const { data, error } = await supabaseAdmin.from("content").insert(Array.from({ length: n }, () => ({
     client_id: payload.client_id, brand_id: payload.brand_id, content_type: "post_image", status: "draft",
     caption: caption.slice(0, 300) || null, ai_model: typeof payload.kie_model === "string" ? payload.kie_model : null,
     generation_state: "generating", generation_status_text: STATUS.making, generation_started_at: now, generation_attempt: 1, retry_state: "none",
-    creation_metadata: { operation: "generate", job: spec },
+    creation_metadata: meta,
   }))).select("id");
   if (error || !data?.length) return fail(500, "Couldn't start the image. Nothing was charged.");
   const ids = data.map((r) => r.id as string);
@@ -114,15 +124,17 @@ export async function startImageJobs(userId: string, raw: unknown, count: number
   const perImage = IMAGE_ENGINE_REGISTRY[spec.engine === "nano-banana-2" ? "nb2" : spec.engine]?.creditCost ?? 8;
   for (const id of ids) logAiUsage({ feature: "image", provider: "n8n", model: spec.engine, clientId: payload.client_id as string, userId, brandId: payload.brand_id as string | null, usd: perImage * USD_PER_CREDIT, credits: perImage, meta: { post: id } });
   const stoppedRefund = { clientId: payload.client_id as string, brandId: (payload.brand_id as string | null) ?? null, credits: perImage };
-  const work = Promise.all(ids.map(async (id) => settleFirst(id, await askRouter(payload, id), stoppedRefund))).then(() => {});
+  const work = Promise.all(ids.map(async (id) => settleFirst(id, await askRouter(payload, id), stoppedRefund, meta))).then(() => {});
   return { ok: true, value: { ids, work } };
 }
 
 /** The second try: Nano Banana 2 on Kie, then on Replicate, charged like the first, refunded on failure. */
 export async function rescue(id: string): Promise<void> {
   const { data: row } = await supabaseAdmin.from("content").select("id, client_id, brand_id, image_urls, generation_state, generation_attempt, creation_metadata").eq("id", id).maybeSingle();
-  if (!row || jobView(row).state !== "making") return;
+  // A post that has its pictures (waiting for the stamp, at most) never needs a second try.
+  if (!row || (Array.isArray(row.image_urls) && row.image_urls.length) || jobView(row).state !== "making") return;
   const spec = validJobSpec((row.creation_metadata as { job?: unknown } | null)?.job);
+  const stamp = (row.creation_metadata as { stamp?: unknown } | null)?.stamp === true;
   if (!spec) { await update(id, { generation_state: "failed", generation_status_text: FINAL_FAILURE(0), generation_error_code: "no_spec" }); return; }
   // Claim it: only one rescue per post, whoever calls first.
   const { data: claimed } = await supabaseAdmin.from("content")
@@ -131,21 +143,21 @@ export async function rescue(id: string): Promise<void> {
   if (!claimed?.length) return;
   // A post the person stopped meanwhile was refunded then: its failed second try refunds nothing more.
   const stillThere = async () => { try { return !!(await supabaseAdmin.from("content").select("id").eq("id", id).maybeSingle()).data; } catch { return true; } };
-  const outcome = await secondTry(row.client_id as string, row.brand_id as string | null, spec, `post:${id}`, () => update(id, { billing_state: "charged" }), stillThere);
+  const outcome = await secondTry(row.client_id as string, row.brand_id as string | null, spec, `post:${id}`, () => update(id, { billing_state: "charged" }), stillThere, stamp);
   if (outcome.ok) {
     await update(id, {
       image_urls: [outcome.url], generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString(),
       retry_state: "none", billing_state: "charged", ai_model: RESCUE_ENGINE,
-      creation_metadata: { ...(row.creation_metadata as object), rescued: { engine: RESCUE_ENGINE, provider: outcome.provider, credits: outcome.credits, from: spec.engine } },
+      creation_metadata: { ...(row.creation_metadata as object), rescued: { engine: RESCUE_ENGINE, provider: outcome.provider, credits: outcome.credits, from: spec.engine }, ...(stamp ? { stamp_state: outcome.stamped ? "done" : "failed", stamp_at: new Date().toISOString() } : {}) },
     });
   } else {
     await update(id, { generation_state: "failed", generation_status_text: outcome.message, generation_error_code: outcome.code, retry_state: "retry_available", billing_state: outcome.charged ? "refunded" : "not_charged", generation_completed_at: new Date().toISOString() });
   }
 }
 
-type SecondTry = { ok: true; url: string; provider: string; credits: number } | { ok: false; message: string; code: string; charged: boolean };
+type SecondTry = { ok: true; url: string; provider: string; credits: number; stamped: boolean } | { ok: false; message: string; code: string; charged: boolean };
 
-async function secondTry(clientId: string, brandId: string | null, spec: ImageJobSpec, label: string, onCharged?: () => Promise<void>, refundIf?: () => Promise<boolean>): Promise<SecondTry> {
+async function secondTry(clientId: string, brandId: string | null, spec: ImageJobSpec, label: string, onCharged?: () => Promise<void>, refundIf?: () => Promise<boolean>, stamp = false): Promise<SecondTry> {
   const credits = rescueCredits(spec.engine);
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", {
     p_client_id: clientId, p_amount: credits, p_operation: "debit", p_description: `Image, second try [${label}]`, ...brandArg(brandId),
@@ -164,13 +176,17 @@ async function secondTry(clientId: string, brandId: string | null, spec: ImageJo
     await refund();
     return { ok: false, charged: true, code: rendered.refused ? "refused" : "rescue_failed", message: rendered.refused ? `The image service's safety filter refused this one. Your credits are back. Try different wording.` : FINAL_FAILURE(credits) };
   }
-  // A stable copy in our storage (provider links expire).
+  // A stable copy in our storage (provider links expire), with the stamp for a free account.
   const file = await safeFetchBytes(rendered.url, { maxBytes: 25_000_000, timeoutMs: 45_000 });
-  const png = file.ok && file.contentType.includes("png");
-  const path = `images/${clientId}/gen_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${png ? "png" : "jpg"}`;
-  const up = file.ok ? await supabaseAdmin.storage.from("assets").upload(path, file.bytes, { contentType: png ? "image/png" : "image/jpeg" }) : null;
+  let bytes: Uint8Array | null = file.ok ? file.bytes : null, png = file.ok && file.contentType.includes("png"), stamped = false;
+  if (bytes && stamp) {
+    try { const s = await stampImageBytes(bytes); bytes = s.bytes; png = s.type === "image/png"; stamped = true; }
+    catch (e) { console.warn("stamp failed", "image", label, e instanceof Error ? e.message : e); }
+  }
+  const path = `images/${clientId}/${stamped ? "stamped" : "gen"}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${png ? "png" : "jpg"}`;
+  const up = bytes ? await supabaseAdmin.storage.from("assets").upload(path, bytes, { contentType: png ? "image/png" : "image/jpeg" }) : null;
   if (!up || up.error) { await refund(); return { ok: false, charged: true, code: "save_failed", message: FINAL_FAILURE(credits) }; }
-  return { ok: true, url: supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl, provider: rendered.provider, credits };
+  return { ok: true, url: supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl, provider: rendered.provider, credits, stamped };
 }
 
 /**
@@ -225,6 +241,12 @@ export async function jobStatuses(canRead: (row: { client_id: string; brand_id: 
   const rescues: string[] = [];
   const now = Date.now();
   for (const r of rows) {
+    // Pictures waiting for their stamp: if the first-try function died before stamping, stamp them now.
+    const urls = Array.isArray(r.image_urls) ? r.image_urls.filter((u: unknown): u is string => typeof u === "string") : [];
+    if (urls.length && stampPending(r.creation_metadata, urls)) {
+      if (now - new Date((r.updated_at ?? r.generation_started_at) as string).getTime() > 25_000) await kickStamp(r.id as string, "image", (r.creation_metadata ?? {}) as Record<string, unknown>);
+      continue;
+    }
     if (jobView(r).state !== "making" || r.generation_state !== "generating") continue;
     const quiet = now - new Date((r.updated_at ?? r.generation_started_at) as string).getTime();
     if ((r.generation_attempt ?? 1) <= 1 && quiet > RESCUE_AFTER_MS) rescues.push(r.id as string);

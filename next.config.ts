@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
     ];
   },
   skipTrailingSlashRedirect: true,
+  // The stamp on free accounts' videos (2026-10-25) runs ffmpeg in /api/stamp only: the binary is
+  // loaded from node_modules at run time and shipped with that one function.
+  serverExternalPackages: ["ffmpeg-static"],
+  outputFileTracingIncludes: { "/api/stamp": ["./node_modules/ffmpeg-static/ffmpeg"] },
   allowedDevOrigins: ["http://72.61.194.197:3001", "http://72.61.194.197:3000"],
   images: {
     remotePatterns: [

@@ -10,6 +10,7 @@ import {
   normalizeChanges, scanAfterEdit, scanSystem, validateScan, type EditEngine, type Scan, type StoredScan,
 } from "@/lib/ai-edit";
 import { logAiUsage } from "@/lib/ai-usage";
+import { stampIfFree } from "@/lib/stamp-server";
 
 /**
  * Edit with AI, server side (2026-10-15; see lib/ai-edit.ts). The scan is Claude looking at the
@@ -254,12 +255,14 @@ export async function applyEdit(input: ApplyInput): Promise<Result<ApplyView>> {
     }
     const file = await safeFetchBytes(rendered.url, { maxBytes: 25_000_000, timeoutMs: 45_000 });
     if (!file.ok) return undo(`Couldn't save the edited picture. Your ${EDIT_CREDITS} credits were refunded.`);
-    const png = file.contentType.includes("png");
-    const path = `images/${input.clientId}/edit_${Date.now()}.${png ? "png" : "jpg"}`;
-    const up = await supabaseAdmin.storage.from("assets").upload(path, file.bytes, { contentType: png ? "image/png" : "image/jpeg" });
+    // A free account's edit carries the BlinkSpot stamp (same corner, so an edit of an edit lines up).
+    const pic = await stampIfFree(input.clientId, file.bytes, file.contentType);
+    const png = pic.contentType.includes("png");
+    const path = `images/${input.clientId}/${pic.stamped ? "stamped_" : ""}edit_${Date.now()}.${png ? "png" : "jpg"}`;
+    const up = await supabaseAdmin.storage.from("assets").upload(path, pic.bytes, { contentType: png ? "image/png" : "image/jpeg" });
     if (up.error) return undo(`Couldn't save the edited picture. Your ${EDIT_CREDITS} credits were refunded.`);
     const url = supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl;
-    const outSize = imageSize(file.bytes);
+    const outSize = imageSize(pic.bytes);
     const xray: StoredScan = { source: url, scan: scanAfterEdit(kept.scan, changes), at: new Date().toISOString(), from: "edit", ...(outSize ? { size: [outSize.width, outSize.height] as [number, number] } : {}) };
     await supabaseAdmin.from("content").update({ image_urls: [url], generation_status_text: null, image_prompt_used: prompt.slice(0, 4000), xray }).eq("id", placeholder.id);
     return { ok: true, value: { contentId: placeholder.id, url, credits: EDIT_CREDITS, provider: rendered.provider } };

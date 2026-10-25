@@ -8,6 +8,7 @@
  * Measured 2026-10-17: GPT Image 2 image-to-image failed 6 of 8 on 10-13 with no fallback, and the
  * n8n host flapped between 502 and 200. Pure parts here; the calls are in image-jobs-server.ts.
  */
+import { STAMP_STATUS, stampPending } from "@/lib/stamp";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 
 /** What a rescue needs to make the picture again, kept on the post (creation_metadata.job). */
@@ -81,9 +82,11 @@ export function validJobSpec(raw: unknown): ImageJobSpec | null {
 export type JobView = { id: string; state: "making" | "done" | "failed"; text: string | null; url: string | null; attempt: number };
 
 /** What the browser sees for a post that is (or was) an image job. */
-export function jobView(row: { id: string; image_urls?: unknown; generation_state?: string | null; generation_status_text?: string | null; generation_attempt?: number | null }): JobView {
+export function jobView(row: { id: string; image_urls?: unknown; generation_state?: string | null; generation_status_text?: string | null; generation_attempt?: number | null; creation_metadata?: unknown }): JobView {
   const urls = Array.isArray(row.image_urls) ? row.image_urls.filter((u): u is string => typeof u === "string") : [];
   const attempt = row.generation_attempt ?? 1;
+  // A free account's picture is shown once it carries the BlinkSpot stamp (lib/stamp.ts).
+  if (urls.length && stampPending(row.creation_metadata, urls)) return { id: row.id, state: "making", text: STAMP_STATUS, url: null, attempt };
   if (urls.length) return { id: row.id, state: "done", text: null, url: urls[0], attempt };
   if (row.generation_state === "failed") return { id: row.id, state: "failed", text: row.generation_status_text ?? FINAL_FAILURE(0), url: null, attempt };
   return { id: row.id, state: "making", text: row.generation_status_text ?? STATUS.making, url: null, attempt };

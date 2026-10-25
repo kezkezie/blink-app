@@ -7,6 +7,7 @@ import {
   type UpscaleImageFactor, type UpscaleVideoTarget,
 } from "@/lib/upscale";
 import { brandArg } from "@/lib/credits-meter";
+import { stampIfFree } from "@/lib/stamp-server";
 
 /**
  * Upscaler, server side (2026-10-13). Topaz on Replicate. The credits are taken first; the job row
@@ -166,9 +167,11 @@ export async function settle(job: Job, known?: { status?: string; output?: unkno
   try {
     const file = await safeFetchBytes(out, { maxBytes: STORAGE_LIMIT, timeoutMs: 60_000 });
     if (!file.ok) return markFailed(job, file.reason.includes("large") ? "the result is over 45 MB" : "couldn't download the result");
-    const ext = job.kind === "video" ? "mp4" : "jpg";
-    const path = `${job.kind === "video" ? "videos" : "images"}/${job.client_id}/upscaled_${Date.now()}.${ext}`;
-    const up = await supabaseAdmin.storage.from("assets").upload(path, file.bytes, { contentType: job.kind === "video" ? "video/mp4" : "image/jpeg" });
+    // A free account's upscaled picture carries the BlinkSpot stamp (a video keeps its source's).
+    const pic = job.kind === "image" ? await stampIfFree(job.client_id, file.bytes, "image/jpeg") : { bytes: file.bytes, contentType: "video/mp4", stamped: false };
+    const ext = job.kind === "video" ? "mp4" : pic.contentType.includes("png") ? "png" : "jpg";
+    const path = `${job.kind === "video" ? "videos" : "images"}/${job.client_id}/${pic.stamped ? "stamped_" : ""}upscaled_${Date.now()}.${ext}`;
+    const up = await supabaseAdmin.storage.from("assets").upload(path, pic.bytes, { contentType: job.kind === "video" ? "video/mp4" : pic.contentType });
     if (up.error) return markFailed(job, "couldn't save the result");
     const url = supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl;
     const { data: source } = job.source_content_id

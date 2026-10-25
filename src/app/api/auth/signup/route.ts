@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { testModeEnabled } from '@/lib/test-mode'
+import { agreedToTerms, consentRecord } from '@/lib/legal'
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
+    const { email, password, acceptTerms } = await request.json()
 
     // Validate input
     if (!email || !password) {
@@ -12,6 +13,10 @@ export async function POST(request: NextRequest) {
         { error: 'Email and password are required' },
         { status: 400 }
       )
+    }
+    // Sign-up needs the agreement, as on the sign-up page (2026-10-25).
+    if (!agreedToTerms(acceptTerms)) {
+      return NextResponse.json({ error: 'Agree to the Terms, Privacy Policy and Acceptable Use Policy to sign up.' }, { status: 400 })
     }
 
     // Create Supabase client with cookie handling
@@ -45,6 +50,7 @@ export async function POST(request: NextRequest) {
         // In testing mode, don't require email confirmation
         emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/welcome`,
         data: {
+          ...consentRecord(),
           onboarding_completed: false,
           client_id: undefined, // Will be generated in onboarding
         },

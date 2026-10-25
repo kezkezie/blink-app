@@ -5,6 +5,7 @@ import { AbsoluteFill, Easing, Img, Series, interpolate, spring, useCurrentFrame
 import { MOTION_FPS, contrast, sceneFrames, type MotionScene, type MotionSpec, type Palette } from "@/lib/motion/spec";
 import { arrival, type MotionLayer } from "@/lib/motion/layers";
 import { lookById, type Look, type Texture } from "@/lib/motion/looks";
+import { stampBox } from "@/lib/stamp";
 
 /**
  * BlinkSpot's motion kit (2026-10-15; the walkthrough step 2026-10-20): Remotion templates drawn from a spec Claude writes
@@ -12,7 +13,7 @@ import { lookById, type Look, type Texture } from "@/lib/motion/looks";
  * gradients, border-radius, clip-path, text-shadow; no z-index (later elements draw on top).
  * Everything is a function of the frame, so the preview and the rendered clip are identical.
  */
-export type MotionBrand = { name: string; font?: string | null; logoUrl?: string | null };
+export type MotionBrand = { name: string; font?: string | null; logoUrl?: string | null; /** The free plan's BlinkSpot stamp (lib/stamp.ts). */ stamp?: boolean };
 export type MotionProps = { spec: MotionSpec; brand: MotionBrand };
 
 const EXIT = 8; // frames each scene takes to leave
@@ -637,19 +638,29 @@ function TemplateScene({ scene, palette, brand, frames }: { scene: MotionScene; 
   }
 }
 
+/** "Made with BlinkSpot" in the corner for the whole clip, over everything (the free plan, lib/stamp.ts). */
+function StampMark() {
+  const { width, height } = useVideoConfig();
+  const b = stampBox(width, height);
+  return <Img src="/brand/stamp.png" style={{ position: "absolute", left: b.left, top: b.top, width: b.width, height: b.height }} />;
+}
+
 export function MotionVideo({ spec, brand: brandIn }: MotionProps) {
   // A look brings its typeface (and the user can pick another): it is the font every template uses.
   const brand = spec.font ? { ...brandIn, font: spec.font } : brandIn;
   return (
-    <Frame palette={spec.palette} transparent={spec.kind === "overlay"} background={spec.kind === "overlay" ? undefined : spec.background} look={lookById(spec.look)}>
-      <Series>
-        {spec.scenes.map((s, i) => (
-          <Series.Sequence key={i} durationInFrames={sceneFrames(s)}>
-            <Scene scene={s} palette={spec.palette} brand={brand} />
-          </Series.Sequence>
-        ))}
-      </Series>
-    </Frame>
+    <AbsoluteFill>
+      <Frame palette={spec.palette} transparent={spec.kind === "overlay"} background={spec.kind === "overlay" ? undefined : spec.background} look={lookById(spec.look)}>
+        <Series>
+          {spec.scenes.map((s, i) => (
+            <Series.Sequence key={i} durationInFrames={sceneFrames(s)}>
+              <Scene scene={s} palette={spec.palette} brand={brand} />
+            </Series.Sequence>
+          ))}
+        </Series>
+      </Frame>
+      {brand.stamp && <StampMark />}
+    </AbsoluteFill>
   );
 }
 

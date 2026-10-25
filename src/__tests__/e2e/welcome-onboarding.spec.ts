@@ -20,6 +20,9 @@ test("sign up, answer the brand questions, land in the studio", async ({ page })
     await page.getByPlaceholder("John Doe").fill("Wanjiru Test");
     await page.getByPlaceholder("you@company.com").fill(email);
     await page.getByPlaceholder("••••••••").fill("BlinkTest123!");
+    // The agreement comes first (2026-10-25): no account without it.
+    await expect(page.getByRole("button", { name: /Create account/ })).toBeDisabled();
+    await page.getByRole("checkbox", { name: /I agree to BlinkSpot/ }).check();
     await page.getByRole("button", { name: /Create account/ }).click();
     await page.waitForURL(/\/welcome/, { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: /Hi Wanjiru/ })).toBeVisible({ timeout: 20_000 });
@@ -53,6 +56,11 @@ test("sign up, answer the brand questions, land in the studio", async ({ page })
     expect(bal).toMatchObject({ balance: 100, lifetime_earned: 100 });
     const { count } = await sb.from("credit_transactions").select("id", { count: "exact", head: true }).eq("client_id", client!.id).eq("operation", "signup_bonus");
     expect(count).toBe(1);
+    // When they agreed, and to which versions, is on the account.
+    const { data: who } = await sb.from("clients").select("user_id").eq("id", client!.id).single();
+    const { data: user } = await sb.auth.admin.getUserById(who!.user_id as string);
+    expect(user.user?.user_metadata?.terms_version).toMatch(/^terms@\d{4}-\d{2}-\d{2},privacy@/);
+    expect(Date.now() - new Date(user.user?.user_metadata?.terms_accepted_at).getTime()).toBeLessThan(10 * 60_000);
     expect(errors).toEqual([]);
   } finally {
     const sb = admin();
@@ -82,6 +90,9 @@ test("sign up and fill the brand in from a website (AI auto-fill)", async ({ pag
     await page.getByPlaceholder("John Doe").fill("Njeri Test");
     await page.getByPlaceholder("you@company.com").fill(email);
     await page.getByPlaceholder("••••••••").fill("BlinkTest123!");
+    // The agreement comes first (2026-10-25): no account without it.
+    await expect(page.getByRole("button", { name: /Create account/ })).toBeDisabled();
+    await page.getByRole("checkbox", { name: /I agree to BlinkSpot/ }).check();
     await page.getByRole("button", { name: /Create account/ }).click();
     await page.waitForURL(/\/welcome/, { timeout: 30_000 });
     await page.getByRole("button", { name: /^My business/ }).click();

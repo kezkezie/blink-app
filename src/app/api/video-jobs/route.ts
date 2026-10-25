@@ -9,6 +9,8 @@ import {
 import { sceneSpecFromCreationMetadata } from "@/lib/scene-spec-adapters";
 import { rescueOnCheck } from "@/lib/video-rescue-server";
 import { RESCUE_STATUS } from "@/lib/video-rescue";
+import { kickStamp, workspaceNeedsStamp } from "@/lib/stamp-server";
+import { STAMP_STATUS, isStampedUrl } from "@/lib/stamp";
 
 /**
  * GET /api/video-jobs?id=<contentId> — restore one owned video job's durable
@@ -82,6 +84,15 @@ export async function GET(req: NextRequest) {
     const rescue = await rescueOnCheck({ ...row, generation_state: row.generation_state }).catch(() => ({ claimed: false, work: null }));
     if (rescue.work) after(rescue.work.catch((e) => console.error("video rescue", row.id, e instanceof Error ? e.message : e)));
     if (rescue.claimed) { generationState = "generating"; message = RESCUE_STATUS; errorCode = null; attempt = 2; }
+
+    // A free account's clip gets the BlinkSpot stamp (lib/stamp.ts) in /api/stamp before it's shown.
+    // If the stamp can't be added it's delivered as it is (stamp_state "failed"), never held back.
+    const meta = (row.creation_metadata ?? {}) as Record<string, unknown>;
+    if (generationState === "succeeded" && videoUrls[0] && !isStampedUrl(videoUrls[0]) && meta.stamp_state !== "done" && meta.stamp_state !== "failed"
+      && await workspaceNeedsStamp(row.client_id as string)) {
+      await kickStamp(row.id as string, "video", meta);
+      generationState = "generating"; message = STAMP_STATUS; errorCode = null; videoUrls = [];
+    }
 
     return NextResponse.json(
       {

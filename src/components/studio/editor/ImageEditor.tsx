@@ -31,6 +31,7 @@ import { AI_NEEDS_CREDITS } from "@/lib/plans";
 import { useCanvasBridge } from "./canvas-bridge";
 import { clearDraft, draftAge, loadDraft, saveDraft } from "@/lib/drafts";
 import { canvasSafe, loadImage, originalUrl, paletteOf, penPath, shrinkToBlob, starPoints, type PenAnchor } from "./util";
+import { STAMP_LINK, needsStamp, stampBox } from "@/lib/stamp";
 import { LiveWire, edgeCost, fastenAt, simplify, snapToEdge } from "@/lib/editor/livewire";
 import { AI_ERASE_CREDITS, MAP_CREDITS, validRegionMap } from "@/lib/editor/regions";
 import {
@@ -195,7 +196,9 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
   const { clientId } = useClient();
   // Every plan keeps every manual tool; the AI buttons use credits (the routes check the balance).
   // AI needs credits, not a plan (2026-10-12): the buttons wait only when the balance is 0.
-  const { balance } = useCredits();
+  const { balance, plan } = useCredits();
+  // The free plan's designs carry the BlinkSpot stamp when saved or downloaded (lib/stamp.ts).
+  const stampExport = plan !== null && needsStamp(plan);
   const aiLocked = balance !== null && balance <= 0;
   const { activeBrand } = useBrandStore();
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name);
@@ -1484,14 +1487,29 @@ export function ImageEditor({ initial }: { initial?: PickedImage | null }) {
     const c = canvas();
     c.discardActiveObject();
     c.requestRenderAll();
-    return withoutHelpers(() => c.toDataURL({ format, quality: 0.95, multiplier: 1 / zoom }));
+    const url = withoutHelpers(() => c.toDataURL({ format, quality: 0.95, multiplier: 1 / zoom }));
+    if (!stampExport) return url;
+    // The stamp in the corner of the finished picture (not a layer, so it can't be moved off).
+    const [pic, mark] = await Promise.all([loadImage(url), loadImage("/brand/stamp.png")]);
+    const out = document.createElement("canvas");
+    out.width = pic.naturalWidth; out.height = pic.naturalHeight;
+    const g = out.getContext("2d")!;
+    g.drawImage(pic, 0, 0);
+    const b = stampBox(out.width, out.height);
+    g.drawImage(mark, b.left, b.top, b.width, b.height);
+    return out.toDataURL(`image/${format}`, 0.95);
   }
   async function exportFile(kind: "png" | "jpeg" | "svg") {
     try {
       const a = document.createElement("a");
       const base = `${(kit?.name || "design").replace(/\W+/g, "-").toLowerCase()}-${size.id}`;
       if (kind === "svg") {
-        const blob = new Blob([canvas().toSVG({ width: `${size.w}`, height: `${size.h}`, viewBox: { x: 0, y: 0, width: size.w, height: size.h } })], { type: "image/svg+xml" });
+        let svg = canvas().toSVG({ width: `${size.w}`, height: `${size.h}`, viewBox: { x: 0, y: 0, width: size.w, height: size.h } });
+        if (stampExport) {
+          const b = stampBox(size.w, size.h);
+          svg = svg.replace(/<\/svg>\s*$/, `<a href="${STAMP_LINK}"><image href="https://www.blinkspot.io/brand/stamp.png" x="${b.left}" y="${b.top}" width="${b.width}" height="${b.height}"/></a></svg>`);
+        }
+        const blob = new Blob([svg], { type: "image/svg+xml" });
         a.href = URL.createObjectURL(blob); a.download = `${base}.svg`;
       } else { a.href = await render(kind); a.download = `${base}.${kind === "jpeg" ? "jpg" : "png"}`; }
       a.click();

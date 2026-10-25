@@ -54,3 +54,6 @@ node_modules
 
 # ops backups of live n8n workflows (may contain secrets)
 scripts/ops/backups/
+
+# Secrets saved by hand: never commit (2026-10-25)
+*recovery-codes*
