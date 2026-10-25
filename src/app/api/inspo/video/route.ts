@@ -106,7 +106,8 @@ export async function POST(request: NextRequest) {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({ model, max_tokens: 4000, system: mode === "edit" ? EDIT : mode === "motion" ? MOTION_INSPO : REMAKE, messages: [{ role: "user", content }], ...(provider.name === "anthropic" ? { output_config: { effort: "medium" } } : {}) }),
-    signal: AbortSignal.timeout(100_000),
+    // Stop in the browser ends the call here too (2026-10-25).
+    signal: AbortSignal.any([request.signal, AbortSignal.timeout(100_000)]),
   }).catch(() => null);
   const out = (await res?.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } } | undefined;
   const usd = estimateUsd(model, { input: out?.usage?.input_tokens ?? 0, output: out?.usage?.output_tokens ?? 0 });
@@ -116,8 +117,10 @@ export async function POST(request: NextRequest) {
   const motion = kit ? validateMotionSpec(raw, { shape: motionShape, brand: kit.brand, images: kit.pictures.map((p) => p.ref) }) : null;
   const result = mode === "edit" ? validateRecipe(raw, duration) : mode === "motion" ? motion : validatePlan(raw, shots.length);
   console.info("video inspo usage", JSON.stringify({ client: client.id, mode, shots: shots.length, model, ok: !!result, usd: usd === null ? null : Number(usd.toFixed(4)) }));
-  logAiUsage({ feature: "video_inspo", provider: provider.name, model, clientId: client.id, userId: auth.value, brandId, usage: { input: out?.usage?.input_tokens, output: out?.usage?.output_tokens }, usd, credits: res?.ok && result ? meteredCredits(usd, cap, mode === "edit" ? 2 : 3) : 0, ok: !!result, meta: { mode, shots: shots.length } });
+  logAiUsage({ feature: "video_inspo", provider: provider.name, model, clientId: client.id, userId: auth.value, brandId, usage: { input: out?.usage?.input_tokens, output: out?.usage?.output_tokens }, usd, credits: res?.ok && result && !request.signal.aborted ? meteredCredits(usd, cap, mode === "edit" ? 2 : 3) : 0, ok: !!result, meta: { mode, shots: shots.length } });
   if (!res?.ok || !result) return NextResponse.json({ error: "Couldn't read that video this time. Nothing was charged; try again." }, { status: 502 });
+  // Stopped while the answer was on its way: nothing is charged.
+  if (request.signal.aborted) return NextResponse.json({ error: "Stopped. Nothing was charged." }, { status: 499 });
 
   const credits = meteredCredits(usd, cap, mode === "edit" ? 2 : 3);
   if (!(await chargeCredits(client.id, credits, mode === "edit" ? "Video Inspo: read the edit" : mode === "motion" ? "Motion Inspo: copy a motion graphic" : "Video Inspo: remake for your brand", brandId))) console.error("video inspo: charge failed", client.id, credits);

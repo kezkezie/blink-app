@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Maximize2, X } from "lucide-react";
+import { Loader2, Maximize2, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import { Modal } from "../Modal";
 import { imageUpscaleCredits, videoUpscaleCredits, type UpscaleImageFactor, type UpscaleVideoTarget } from "@/lib/upscale";
@@ -45,7 +45,8 @@ export function UpscaleButton({ contentId, mediaUrl, isVideo }: { contentId: str
       toast.success(`Upscaled · ${j.credits} credits. It's a new post in your Library.`, { duration: 8000 });
       setOpen(false);
       router.push(`/studio/library/${j.contentId}`);
-    } else if (j.state === "failed") toast.error(j.error || "The upscale didn't work. Your credits were refunded.", { duration: 10000 });
+    } else if (j.state === "failed" && j.error?.startsWith("Stopped")) toast.success(j.error);
+    else if (j.state === "failed") toast.error(j.error || "The upscale didn't work. Your credits were refunded.", { duration: 10000 });
   }
 
   async function start(choice: { factor?: UpscaleImageFactor; target?: UpscaleVideoTarget }) {
@@ -99,9 +100,18 @@ export function UpscaleButton({ contentId, mediaUrl, isVideo }: { contentId: str
             </button>
           ))}
           {running && (
-            <p className="text-[12.5px]" role="status" style={{ color: "var(--s-soft)" }}>
-              {isVideo ? "Upscaling the video: usually 1 to 3 minutes. You can leave this page; it lands in your Library." : "Upscaling: usually under a minute."}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-[12.5px] flex-1" role="status" style={{ color: "var(--s-soft)" }}>
+                {isVideo ? "Upscaling the video: usually 1 to 3 minutes. You can leave this page; it lands in your Library." : "Upscaling: usually under a minute."}
+              </p>
+              {/* Stop (2026-10-25): cancelled at Replicate, the credits come back. */}
+              {job?.state === "running" && (
+                <button className="s-btn sm" title="Stop: your credits come back" onClick={async () => {
+                  const r = await fetch(`/api/upscale?job=${job.id}`, { method: "DELETE" }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+                  if (r) finish(r); else toast.error("Couldn't stop it just now. Try again.");
+                }}><Square className="h-3 w-3" fill="currentColor" /> Stop</button>
+              )}
+            </div>
           )}
           {job?.state === "failed" && <p className="text-[12.5px]" style={{ color: "var(--s-danger)" }}>{job.error}</p>}
           <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Topaz upscaling. If it fails, the credits come back automatically.</p>

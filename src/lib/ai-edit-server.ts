@@ -239,7 +239,11 @@ export async function applyEdit(input: ApplyInput): Promise<Result<ApplyView>> {
     creation_metadata: { operation: "ai_edit", source_content_id: post.id, engine, changes: changeCount(changes), credits: EDIT_CREDITS },
   }).select("id").single();
   const undo = async (message: string, status = 502) => {
-    if (placeholder?.id) await supabaseAdmin.from("content").delete().eq("id", placeholder.id).eq("client_id", input.clientId).then(() => {}, () => {});
+    if (placeholder?.id) {
+      // Stopped from its card meanwhile (lib/stop-jobs-server.ts): that removed it and refunded it.
+      const { data: gone, error } = await supabaseAdmin.from("content").delete().eq("id", placeholder.id).eq("client_id", input.clientId).not("generation_status_text", "is", null).select("id");
+      if (!error && !gone?.length) return fail(499, "Stopped.");
+    }
     await refund(input.clientId, EDIT_CREDITS, `Refund: Edit with AI failed [post:${post.id}]`, post.brand_id);
     return fail(status, message);
   };
@@ -264,7 +268,10 @@ export async function applyEdit(input: ApplyInput): Promise<Result<ApplyView>> {
     const url = supabaseAdmin.storage.from("assets").getPublicUrl(path).data.publicUrl;
     const outSize = imageSize(pic.bytes);
     const xray: StoredScan = { source: url, scan: scanAfterEdit(kept.scan, changes), at: new Date().toISOString(), from: "edit", ...(outSize ? { size: [outSize.width, outSize.height] as [number, number] } : {}) };
-    await supabaseAdmin.from("content").update({ image_urls: [url], generation_status_text: null, image_prompt_used: prompt.slice(0, 4000), xray }).eq("id", placeholder.id);
+    // Only while it's still being made: a stopped edit (its post removed, credits back) isn't saved.
+    const { data: saved } = await supabaseAdmin.from("content").update({ image_urls: [url], generation_status_text: null, image_prompt_used: prompt.slice(0, 4000), xray })
+      .eq("id", placeholder.id).not("generation_status_text", "is", null).select("id");
+    if (!saved?.length) { console.info("ai edit stopped before saving", placeholder.id); await supabaseAdmin.storage.from("assets").remove([path]).then(() => {}, () => {}); return fail(499, "Stopped."); }
     return { ok: true, value: { contentId: placeholder.id, url, credits: EDIT_CREDITS, provider: rendered.provider } };
   } catch {
     return undo(`The edit failed. Your ${EDIT_CREDITS} credits were refunded.`);

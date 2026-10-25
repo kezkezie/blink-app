@@ -64,6 +64,8 @@ export function useVideoStudio() {
   const [onBrand, setOnBrand] = useState(true);
 
   const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
+  // Every post this run started (one video, or each B-roll scene), so Stop stops all of them (2026-10-25).
+  const runPosts = useRef<string[]>([]);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
@@ -301,6 +303,7 @@ export function useVideoStudio() {
   }
 
   async function handleGenerate() {
+    runPosts.current = [];
     const safeClientId = hookClientId;
     if (!safeClientId) {
       toast.error("User session not found. Please refresh the page and try again.");
@@ -381,6 +384,7 @@ export function useVideoStudio() {
 
           if (dbError) throw new Error(`Database Insert Failed: ${dbError.message}`);
           lastRecordId = clipRecord.id;
+          runPosts.current.push(clipRecord.id);
 
           // ✨ FIXED: Passing brand_id to workflow
           await triggerWorkflow("blink-generate-video-v1", {
@@ -492,6 +496,7 @@ export function useVideoStudio() {
 
       if (dbError) throw new Error(`Database Insert Failed: ${dbError.message}`);
       setGeneratingPostId(contentRecord.id);
+      runPosts.current.push(contentRecord.id);
 
       // The video comes out in the start photo's shape, so the photo is fitted to the chosen one first (QA-014).
       const fittedPrimary = await conformFrame(primaryUrl, aspectRatio, safeClientId);
@@ -567,6 +572,7 @@ export function useVideoStudio() {
     setOnBrand,
     generatingPostId,
     setGeneratingPostId,
+    runPostIds: () => [...new Set([...runPosts.current, ...(generatingPostId ? [generatingPostId] : [])])],
     generatedVideoUrl,
     setGeneratedVideoUrl,
     generationError,

@@ -66,12 +66,13 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
   const taskId = `img-${Date.now()}`;
   addTask(taskId, "Generating Image");
   const n = Math.min(4, Math.max(1, req.count ?? 1));
-  const post = (url: string, body: unknown) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  const post = (url: string, body: unknown, signal?: AbortSignal) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal })
     .then(async (r) => ({ ok: r.ok, status: r.status, data: (await r.json().catch(() => ({}))) as Record<string, unknown> }));
   try {
     // In-between editor steps: both tries inside one request, no Library post.
     if (req.save === false) {
-      const made = await Promise.all(Array.from({ length: n }, () => post("/api/images/now", { request: payload })));
+      // Stop cancels the request; the server gives back what a stopped picture cost.
+      const made = await Promise.all(Array.from({ length: n }, () => post("/api/images/now", { request: payload }, req.signal)));
       const urls = made.filter((m) => m.ok && typeof m.data.url === "string").map((m) => m.data.url as string);
       if (!urls.length) throw new Error(String(made[0]?.data.error || "The image could not be made."));
       return urls.map((url) => ({ id: null, url }));

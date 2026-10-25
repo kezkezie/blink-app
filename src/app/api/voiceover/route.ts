@@ -46,6 +46,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const audio = await openAiSpeech(text, voice);
+    // Stopped in the editor while it was being recorded: not saved, and the credits come back (2026-10-25).
+    if (request.signal.aborted) { await refund(); return NextResponse.json({ error: "Stopped. Your credits were refunded." }, { status: 499 }); }
     const path = `videos/${client.id}/voiceover_${Date.now()}.mp3`;
     const { error: upErr } = await supabaseAdmin.storage.from("assets").upload(path, new Uint8Array(audio), { contentType: "audio/mpeg" });
     if (upErr) throw new Error("upload");

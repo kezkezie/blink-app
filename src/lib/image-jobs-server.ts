@@ -216,14 +216,26 @@ export async function stopImageJobs(clientId: string, ids: string[]): Promise<{ 
   return { stopped, refunded };
 }
 
-/** Both tries inside this request, no post (editor edits, first frames): the picture's URL or why not. */
-export async function makeImageNow(userId: string, raw: unknown): Promise<Result<{ url: string; rescued: boolean }>> {
+/**
+ * Both tries inside this request, no post (editor edits, first frames): the picture's URL or why
+ * not. Stopped in the browser (`signal`, 2026-10-25): the router has charged for a picture it made,
+ * so that picture's credits go back; no second try starts. (Its answer is waited for: a failed first
+ * try is refunded by n8n itself.)
+ */
+export async function makeImageNow(userId: string, raw: unknown, signal?: AbortSignal): Promise<Result<{ url: string; rescued: boolean }>> {
   const auth = await authorizeImageRequest(userId, raw);
   if (!auth.ok) return auth;
   const first = await askRouter(auth.value, null, 150_000);
+  const spec = jobSpecFrom(auth.value);
+  if (signal?.aborted) {
+    if (first.kind === "image") {
+      const credits = IMAGE_ENGINE_REGISTRY[spec.engine === "nano-banana-2" ? "nb2" : spec.engine]?.creditCost ?? 0;
+      if (credits > 0) await supabaseAdmin.rpc("refund_credits", { p_client_id: auth.value.client_id as string, p_amount: credits, p_operation: "refund", p_description: "Refund: image stopped", ...brandArg((auth.value.brand_id as string | null) ?? null) }).then(() => {}, () => {});
+    }
+    return fail(499, "Stopped.");
+  }
   if (first.kind === "image") return { ok: true, value: { url: first.urls[0], rescued: false } };
   if (first.kind === "refused" || first.kind === "no_credits") return fail(first.kind === "no_credits" ? 402 : 422, first.message || FINAL_FAILURE(0));
-  const spec = jobSpecFrom(auth.value);
   const second = await secondTry(auth.value.client_id as string, (auth.value.brand_id as string) ?? null, spec, "direct");
   return second.ok ? { ok: true, value: { url: second.url, rescued: true } } : fail(second.code === "no_credits" ? 402 : 502, second.message);
 }

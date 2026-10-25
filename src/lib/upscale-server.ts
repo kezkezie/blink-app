@@ -194,6 +194,23 @@ export async function settle(job: Job, known?: { status?: string; output?: unkno
   }
 }
 
+/**
+ * Stop a job before its result is saved (2026-10-25, Kezie: "a way to stop any kind of AI
+ * generation"): Replicate cancels the prediction and the credits come back. A job already saving
+ * its result (finalizing) finishes instead.
+ */
+export async function stopUpscale(jobId: string, clientId: string): Promise<Result<JobView>> {
+  const { data: job } = await supabaseAdmin.from("upscale_jobs").select("*").eq("id", jobId).eq("client_id", clientId).maybeSingle();
+  if (!job) return fail(404, "Upscale not found.");
+  if (job.state !== "running") return { ok: true, value: view(job as Job) };
+  if (job.prediction_id) await fetch(`${REPLICATE}/predictions/${job.prediction_id}/cancel`, { method: "POST", headers: replicateHeaders(), signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const { data } = await supabaseAdmin.from("upscale_jobs").update({ state: "failed", error: `Stopped. Your ${job.credits} credits are back.`, updated_at: new Date().toISOString() })
+    .eq("id", job.id).eq("state", "running").select("*");
+  if (data?.length) await refund(job.client_id, job.credits, `Refund: upscale ${job.kind} stopped`, job.brand_id);
+  const { data: now } = await supabaseAdmin.from("upscale_jobs").select("*").eq("id", job.id).single();
+  return { ok: true, value: view((now as Job) ?? (job as Job)) };
+}
+
 /** A job of this workspace, brought up to date. */
 export async function checkUpscale(jobId: string, clientId: string): Promise<Result<JobView>> {
   const { data: job } = await supabaseAdmin.from("upscale_jobs").select("*").eq("id", jobId).eq("client_id", clientId).maybeSingle();

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { requestWorkspace, workspaceFor } from "@/lib/brand-access";
-import { checkUpscale, startUpscale } from "@/lib/upscale-server";
+import { checkUpscale, startUpscale, stopUpscale } from "@/lib/upscale-server";
 
 /**
  * Upscale a Library post (2026-10-13). POST { contentId, factor: 2 | 4 } for a picture or
  * { contentId, target: "1080p" | "4k" } for a video: charged first, refunded if it fails, and the
- * result is a new Library post. GET ?job= reports progress (pictures usually finish inside the POST).
+ * result is a new Library post. GET ?job= reports progress (pictures usually finish inside the POST);
+ * DELETE ?job= stops it (cancelled at Replicate, credits back).
  */
 export const maxDuration = 120;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,5 +43,17 @@ export async function GET(request: NextRequest) {
   if (!ws) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   let r = await checkUpscale(job, ws.clientId);
   if (!r.ok && ws.ownClientId && ws.ownClientId !== ws.clientId) r = await checkUpscale(job, ws.ownClientId);
+  return r.ok ? NextResponse.json(r.value) : NextResponse.json({ error: r.error }, { status: r.status });
+}
+
+export async function DELETE(request: NextRequest) {
+  const auth = await authenticateExecutionRequest(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const job = request.nextUrl.searchParams.get("job") ?? "";
+  if (!UUID.test(job)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  const ws = await requestWorkspace(request, auth.value).catch(() => null);
+  if (!ws) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+  let r = await stopUpscale(job, ws.clientId);
+  if (!r.ok && ws.ownClientId && ws.ownClientId !== ws.clientId) r = await stopUpscale(job, ws.ownClientId);
   return r.ok ? NextResponse.json(r.value) : NextResponse.json({ error: r.error }, { status: r.status });
 }

@@ -115,6 +115,16 @@ export default function LibraryPage() {
     return () => clearInterval(t);
   }, [pendingIds]);
 
+  // A post stopped from its card (or anywhere else) leaves the grid at once.
+  useEffect(() => {
+    const onStopped = (e: Event) => {
+      const gone = new Set((e as CustomEvent<string[]>).detail ?? []);
+      setResult((cur) => cur && { ...cur, rows: cur.rows.filter((r) => !gone.has(r.id)) });
+    };
+    window.addEventListener("blink:stopped", onStopped);
+    return () => window.removeEventListener("blink:stopped", onStopped);
+  }, []);
+
   const current = result?.key === key ? result : null;
   const rows = useMemo(() => current?.rows ?? [], [current]);
   const more = current?.more ?? false;

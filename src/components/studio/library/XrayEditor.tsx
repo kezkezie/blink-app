@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, ChevronRight, ImagePlus, Loader2, Package, RefreshCw, RotateCcw, ScanSearch, Trash2, Type, Undo2, Wand2, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, ImagePlus, Loader2, Package, RefreshCw, RotateCcw, ScanSearch, Square, Trash2, Type, Undo2, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -13,6 +13,7 @@ import { ImagePicker } from "@/components/studio/ImagePicker";
 import { useBrandKit } from "@/components/studio/generate-image";
 import { EDIT_CREDITS, MAX_SWAPS, SCAN_CREDITS, changeCount, normalizeChanges, type EditEngine, type EditKind, type Scan, type ScanObject } from "@/lib/ai-edit";
 import { DetailSkeleton } from "@/components/studio/Skeletons";
+import { stopPosts } from "@/components/studio/stop";
 
 /**
  * Edit with AI in the studio look (rebuilt 2026-10-15; the classic X-ray page stays at
@@ -174,8 +175,26 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
     } catch { toast.error("Couldn't upload that photo."); }
   }
 
+  // Stop (2026-10-25): the edit's "Making your edit" post is removed and the credits come back.
+  // (Closing the tab doesn't stop it: the picture you paid for still lands in the Library.)
+  const stopped = useRef(false);
+  const [stopping, setStopping] = useState(false);
+  async function stopEdit() {
+    stopped.current = true; setStopping(true);
+    try {
+      for (let i = 0; i < 4; i++) {
+        const { data } = await supabase.from("content").select("id").eq("creation_metadata->>source_content_id", id).eq("creation_metadata->>operation", "ai_edit")
+          .not("generation_status_text", "is", null).order("created_at", { ascending: false }).limit(1);
+        if (data?.[0]) { const out = await stopPosts([data[0].id as string]); if (out?.stopped.length) setApplying(false); return; }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      toast.info("It had already finished, so there was nothing to stop.");
+    } finally { setStopping(false); }
+  }
+
   async function apply() {
     if (!scan || !count) return;
+    stopped.current = false;
     setApplying(true); setResult(null);
     try {
       const body = {
@@ -191,7 +210,7 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
       setResult({ contentId: data.contentId, url: data.url }); setShowBefore(false);
       writeDraft(id, null);
       toast.success("Edit ready · saved as a new post, your original is untouched");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "The edit didn't work."); }
+    } catch (e) { if (!stopped.current) toast.error(e instanceof Error ? e.message : "The edit didn't work."); }
     finally { setApplying(false); }
   }
 
@@ -237,6 +256,7 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
                   <Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--s-ai)" }} />
                   <b className="text-[14px]">{scanning ? "Looking at every part of the picture…" : `Making your edit… ${elapsed > 0 ? `${elapsed} s` : ""}`}</b>
                   {applying && <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Usually 30 to 60 seconds. You can leave: it lands in your Library as a new post.</span>}
+                  {applying && <button className="s-btn sm mt-1" disabled={stopping} onClick={() => void stopEdit()} title="Stop: your credits come back">{stopping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" fill="currentColor" />} Stop</button>}
                 </div>
               </div>
             )}

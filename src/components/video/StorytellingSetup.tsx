@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Upload, X, Sparkles, Loader2, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Zap } from "lucide-react";
+import { Upload, X, Sparkles, Loader2, Square, Film, Settings2, Images, ScrollText, ImageIcon, Maximize2, Palette, Mic, FolderOpen, Wand2, Plus, Trash2, Video, CheckCircle, Save, Users, Lock, UserPlus, MessageSquare, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Zap } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -38,6 +38,7 @@ import {
   videoModelFamily,
 } from "@/lib/video-model-registry";
 import { queueForEditor } from "@/components/studio/queue-clips";
+import { stopPosts } from "@/components/studio/stop";
 import "./storyboard.css";
 import { conformFrame } from "@/lib/video/conform-frame";
 import { SensitiveGuide } from "@/components/studio/SensitiveGuide";
@@ -3091,7 +3092,17 @@ export function StorytellingSetup({
                   <div className="grid gap-2">
                     <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--s-ai)" }} /><b className="text-[13.5px]">Rendering scene {sel + 1}…</b></div>
                     <p className="text-[12px]" style={{ color: "var(--s-mute)" }}>Usually 2 to 6 minutes. It runs in the background; you can leave this page.</p>
-                    <button type="button" className="s-btn ghost sm justify-self-start" onClick={() => updateScene(scene.id, "isGeneratingVideo", false)}>Stop waiting here</button>
+                    <div className="flex flex-wrap gap-2">
+                      {/* Stop the render itself (2026-10-25): the scene is removed and its credits come back. */}
+                      {sceneJobIds.current[scene.id] && (
+                        <button type="button" className="s-btn sm" title="Stop: the render is removed and your credits come back" onClick={async () => {
+                          const id = sceneJobIds.current[scene.id];
+                          const out = await stopPosts([id]);
+                          if (out?.stopped.includes(id)) { stopObservingScene(scene.id); delete sceneJobIds.current[scene.id]; updateScene(scene.id, "isGeneratingVideo", false); }
+                        }}><Square className="h-3 w-3" fill="currentColor" /> Stop</button>
+                      )}
+                      <button type="button" className="s-btn ghost sm" onClick={() => updateScene(scene.id, "isGeneratingVideo", false)}>Stop waiting here</button>
+                    </div>
                   </div>
                 ) : locked ? (
                   <p className="text-[12.5px] flex items-center gap-1.5" style={{ color: "var(--s-ok)" }}><CheckCircle className="h-4 w-4" /> Rendered. Put the scenes together when they&apos;re all done.</p>

@@ -2,12 +2,7 @@
 
 import { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music,
-  Image as ImageIcon, UploadCloud, Settings, Download,
-  ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check, Maximize2, Minimize2,
-  Scissors, Copy, Sparkles, Wand2, Undo2, Redo2, AudioLines, Subtitles, Clapperboard, Gauge
-} from "lucide-react";
+import { Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music, Image as ImageIcon, UploadCloud, Settings, Download, ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check, Maximize2, Minimize2, Scissors, Copy, Sparkles, Wand2, Undo2, Redo2, AudioLines, Subtitles, Clapperboard, Gauge, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useCredits } from "@/components/studio/hooks";
 import { AI_NEEDS_CREDITS } from "@/lib/plans";
@@ -135,6 +130,10 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   const [motionOpen, setMotionOpen] = useState(false);
   const [peaks, setPeaks] = useState<Record<string, number[]>>({});
   const [aiBusy, setAiBusy] = useState<string | null>(null);
+  // Stop for the AI tools (2026-10-25): the request ends, and the server refunds the step in progress.
+  const aiStop = useRef<AbortController | null>(null);
+  const aiStart = (label: string) => { aiStop.current = new AbortController(); setAiBusy(label); return aiStop.current.signal; };
+  const AI_STOPPED = "Stopped. The step that was running isn't charged.";
   const [cutEvery, setCutEvery] = useState<1 | 2 | 4>(2);
   const [beatLength, setBeatLength] = useState(30);
   const [beatMarks, setBeatMarks] = useState<number[]>([]);
@@ -1151,8 +1150,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     if (error) throw new Error("Couldn't upload the sound for transcription.");
     return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
   }
-  async function transcribe(body: Record<string, unknown>) {
-    const res = await fetch("/api/editor/highlights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, brandId: activeBrand?.id, hint: activeBrand?.brand_name }) });
+  async function transcribe(body: Record<string, unknown>, signal?: AbortSignal) {
+    const res = await fetch("/api/editor/highlights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, brandId: activeBrand?.id, hint: activeBrand?.brand_name }), signal });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "That didn't work. Try again.");
     return data as { segments: Segment[]; duration: number; credits: number; highlights?: Highlight[]; note?: string };
@@ -1201,9 +1200,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   async function makeVoiceover() {
     const text = voText.trim();
     if (text.length < 2) { toast.info("Write what the voice should say."); return; }
-    setAiBusy("Recording the voiceover…");
+    const signal = aiStart("Recording the voiceover…");
     try {
-      const res = await fetch("/api/voiceover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: voVoice, brandId: activeBrand?.id }) });
+      const res = await fetch("/api/voiceover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: voVoice, brandId: activeBrand?.id }), signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) throw new Error(data.error || "Couldn't make the voiceover.");
       const len = await new Promise<number>((resolve) => { const a = new Audio(); a.preload = "metadata"; a.onloadedmetadata = () => resolve(Number.isFinite(a.duration) ? a.duration : 10); a.onerror = () => resolve(10); a.src = data.url; });
@@ -1212,7 +1211,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       addAssetAtPlayhead(asset);
       setVoText("");
       toast.success(`Voiceover on the audio track · ${data.credits} credit${data.credits === 1 ? "" : "s"}`);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't make the voiceover."); }
+    } catch (e) { if (signal.aborted) toast.info(AI_STOPPED); else toast.error(e instanceof Error ? e.message : "Couldn't make the voiceover."); }
     finally { setAiBusy(null); }
   }
 
@@ -1259,12 +1258,13 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     const vids = videoClips.filter((c) => (c.trackRow ?? 0) === 0).sort((a, b) => a.timelineStart - b.timelineStart);
     if (!vids.length) { toast.info("Add your own clips or photos to the video track first, then pick the video to copy."); return; }
     const url = URL.createObjectURL(file);
-    setAiBusy("Reading the inspo's editing…");
+    const signal = aiStart("Reading the inspo's editing…");
     try {
       const r = await readVideo(url, (p) => setAiBusy(`Reading the inspo · ${Math.round(p * 100)}%`));
+      if (signal.aborted) throw new Error(AI_STOPPED);
       if (r.shots.length < 2) { toast.info("That video is one long shot, so there's no editing to copy. Try one with cuts."); return; }
       setAiBusy("Working out the edit…");
-      const res = await fetch("/api/inspo/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "edit", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand?.id }) });
+      const res = await fetch("/api/inspo/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "edit", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand?.id }), signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.recipe) throw new Error(data.error || "Couldn't read that video's editing.");
       const recipe = data.recipe as EditRecipe;
@@ -1284,21 +1284,22 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       setCanvasAspect(recipe.aspect); setFitMode("fill");
       setBeatMarks(cutTimes);
       toast.success(`Edited like the inspo: ${pieces.length} cuts${recipe.texts.length ? `, ${recipe.texts.length} lines of text` : ""} (${recipe.pace || "same pace"}) · ${data.credits} credits. Undo is one click.`, { duration: 8000 });
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't read that video's editing."); }
+    } catch (e) { if (signal.aborted) toast.info(AI_STOPPED); else toast.error(e instanceof Error ? e.message : "Couldn't read that video's editing."); }
     finally { URL.revokeObjectURL(url); setAiBusy(null); }
   }
 
   async function addCaptions() {
     const targets = (selectedElement?.type === "video" ? videoClips.filter((c) => c.id === selectedElement.id) : videoClips).filter((c) => c.type === "video");
     if (!targets.length) { toast.info("Add a video with talking in it first."); return; }
-    setAiBusy("Listening to what's said…");
+    const signal = aiStart("Listening to what's said…");
     try {
       const layers: TextLayer[] = [];
       let spent = 0;
       for (const c of targets) {
         const len = c.trimEnd - c.trimStart; // seconds of the source file
         const audioUrl = await extractAudioToStorage(c.url, c.trimStart, len);
-        const r = await transcribe({ mode: "captions", audioUrl, seconds: len });
+        if (signal.aborted) throw new Error(AI_STOPPED);
+        const r = await transcribe({ mode: "captions", audioUrl, seconds: len }, signal);
         spent += r.credits;
         for (const ch of captionChunks(r.segments, 0, len)) {
           layers.push({ id: crypto.randomUUID(), text: ch.text, x: 50, y: 82, fontSize: 34, color: "#FFFFFF", style: "caption", timelineStart: c.timelineStart + ch.start / speedOf(c), trimStart: 0, trimEnd: Math.max(0.3, (ch.end - ch.start) / speedOf(c)), maxDuration: 3600, opacity: 100, trackRow: 0 });
@@ -1308,20 +1309,21 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       snapshot();
       setTextLayers((p) => [...p, ...layers]);
       toast.success(`${layers.length} captions added · ${spent} credits. Edit any of them in the inspector.`);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't make captions."); }
+    } catch (e) { if (signal.aborted) toast.info(AI_STOPPED); else toast.error(e instanceof Error ? e.message : "Couldn't make captions."); }
     finally { setAiBusy(null); }
   }
 
   async function findShorts(source: { url: string; name: string; duration: number }) {
-    setAiBusy("Watching the whole video for the best moments…");
+    const signal = aiStart("Watching the whole video for the best moments…");
     setShorts(null);
     try {
       const audioUrl = await extractAudioToStorage(source.url, 0, source.duration);
-      const r = await transcribe({ mode: "highlights", audioUrl, seconds: source.duration, count: 3, target: shortTarget });
+      if (signal.aborted) throw new Error(AI_STOPPED);
+      const r = await transcribe({ mode: "highlights", audioUrl, seconds: source.duration, count: 3, target: shortTarget }, signal);
       setShorts({ source, highlights: r.highlights ?? [], segments: r.segments, credits: r.credits });
       if (r.note) toast.info(r.note);
       else toast.success(`Found ${r.highlights?.length ?? 0} moments · ${r.credits} credits.`);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't find the moments."); }
+    } catch (e) { if (signal.aborted) toast.info(AI_STOPPED); else toast.error(e instanceof Error ? e.message : "Couldn't find the moments."); }
     finally { setAiBusy(null); }
   }
   function applyShort(h: Highlight) {
@@ -1433,7 +1435,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
               </>
             ) : rail === "ai" ? (
               <>
-                <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}</div>
+                <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}
+                  {aiBusy && <button className="s-btn sm ml-auto" onClick={() => aiStop.current?.abort()} aria-label="Stop" title="Stop: the step that's running isn't charged"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}</div>
                 <div className="grid gap-2.5 px-3 pb-3">
                   {aiLocked && <div className="ve-card ai text-[12px]" style={{ color: "var(--s-soft)" }}><span>{AI_NEEDS_CREDITS}</span><a href="/studio/account/billing" className="s-btn ai sm justify-center">Get credits</a></div>}
                   <div className="ve-card ai">

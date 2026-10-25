@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Clapperboard, Copy, Film, ImageIcon, Link2, Loader2, RefreshCw, Scissors, Sparkles, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clapperboard, Copy, Film, ImageIcon, Link2, Loader2, RefreshCw, Scissors, Sparkles, Square, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useCredits } from "@/components/studio/hooks";
@@ -44,8 +44,14 @@ export function VideoInspo() {
   const [frames, setFrames] = useState<Array<string | null>>([]);
   const [framing, setFraming] = useState<number[]>([]);
   const FRAME_CREDITS = IMAGE_ENGINE_REGISTRY.nb2.creditCost;
+  // Stop (2026-10-25): reading, planning and frames each end on Stop; what wasn't delivered isn't charged.
+  const readStop = useRef<AbortController | null>(null);
+  const motionStop = useRef<AbortController | null>(null);
+  const framesStop = useRef<AbortController | null>(null);
   async function makeFrame(i: number) {
     if (!plan || !reading || !clientId || !activeBrand || !kit) return;
+    if (!framesStop.current || framesStop.current.signal.aborted) framesStop.current = new AbortController();
+    const signal = framesStop.current.signal;
     const sc = plan.scenes[i];
     const shot = reading.shots[Math.min(reading.shots.length - 1, sc.shot - 1)];
     setFraming((f) => [...f, i]);
@@ -62,10 +68,10 @@ export function VideoInspo() {
         clientId, brandId: activeBrand.id, kit, plain: true, save: false, style: "plain", engine: "nb2", caption: "",
         prompt: `First frame: ${sc.what || sc.prompt}`.slice(0, 300),
         assembledPrompt: keyframePrompt({ brand: kit.name || name, industry: kit.industry, description: kit.description, colours: [kit.primaryColor, kit.secondaryColor], what: sc.prompt || sc.what, cast: plan.cast, motion: plan.kind === "motion", products: productUrls.length }),
-        references: [still, ...productUrls], aspect: nearestImageAspect(`${reading.width || 9}:${reading.height || 16}`),
+        references: [still, ...productUrls], aspect: nearestImageAspect(`${reading.width || 9}:${reading.height || 16}`), signal,
       });
       setFrames((f) => { const n = [...f]; n[i] = made.url; return n; });
-    } catch (e) { toast.error(`Scene ${i + 1}: ${generationErrorMessage(e)}`); }
+    } catch (e) { if (!signal.aborted) toast.error(`Scene ${i + 1}: ${generationErrorMessage(e)}`); }
     finally { setFraming((f) => f.filter((x) => x !== i)); void refresh?.(); }
   }
   async function makeAllFrames() {
@@ -73,7 +79,13 @@ export function VideoInspo() {
     const todo = plan.scenes.map((_, i) => i).filter((i) => !frames[i]);
     if (balance !== null && balance < todo.length * FRAME_CREDITS) { toast.error(`The ${todo.length} first frames are ${todo.length * FRAME_CREDITS} credits and you have ${balance}. Get more in Billing.`); return; }
     // A moment apart, like the Storyboard, so the image service isn't hit all at once.
-    await Promise.all(todo.map((i, k) => new Promise((r) => setTimeout(r, k * 1500)).then(() => makeFrame(i))));
+    framesStop.current = new AbortController();
+    const signal = framesStop.current.signal;
+    await Promise.all(todo.map((i, k) => new Promise((r) => setTimeout(r, k * 1500)).then(() => (signal.aborted ? undefined : makeFrame(i)))));
+  }
+  function stopFrames() {
+    framesStop.current?.abort();
+    toast.info("Stopped. Frames that weren't finished cost nothing.");
   }
 
   useEffect(() => () => { if (src?.url.startsWith("blob:")) URL.revokeObjectURL(src.url); }, [src]);
@@ -105,22 +117,26 @@ export function VideoInspo() {
 
   async function run() {
     if (!src || !activeBrand) return;
+    const ac = new AbortController();
+    readStop.current = ac;
     try {
       setStage("reading"); setProgress(0);
       const r = reading ?? await readVideo(src.url, setProgress);
       setReading(r);
+      if (ac.signal.aborted) throw new Error("stopped");
       setStage("thinking");
       const res = await fetch("/api/inspo/video", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "remake", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand.id, purpose }),
+        signal: ac.signal,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.plan) throw new Error(data.error || "Couldn't read that video.");
       setPlan(data.plan); setCredits(data.credits ?? 0); setFrames([]);
       void refresh?.();
       toast.success(`Read ${r.shots.length} shot${r.shots.length === 1 ? "" : "s"} · ${data.credits} credits`);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't read that video."); }
-    finally { setStage(null); }
+    } catch (e) { if (ac.signal.aborted) toast.info("Stopped. Nothing was charged."); else toast.error(e instanceof Error ? e.message : "Couldn't read that video."); }
+    finally { setStage(null); readStop.current = null; }
   }
 
   // Motion graphics from the same reading (2026-10-21): the beats, layout and shapes in BlinkSpot's motion kit.
@@ -128,10 +144,13 @@ export function VideoInspo() {
   async function toMotion() {
     if (!reading || !activeBrand) return;
     setMotionBusy(true);
+    const ac = new AbortController();
+    motionStop.current = ac;
     try {
       const res = await fetch("/api/inspo/video", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "motion", shots: reading.shots.map(({ start, end, data }) => ({ start, end, data })), duration: reading.duration, width: reading.width, height: reading.height, brandId: activeBrand.id, purpose }),
+        signal: ac.signal,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.spec) throw new Error(data.error || "Couldn't make it as motion graphics.");
@@ -139,8 +158,8 @@ export function VideoInspo() {
       void refresh?.();
       toast.success(`Motion graphics planned · ${data.credits} credits`);
       router.push("/studio/motion?from=inspo");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't make it as motion graphics."); }
-    finally { setMotionBusy(false); }
+    } catch (e) { if (ac.signal.aborted) toast.info("Stopped. Nothing was charged."); else toast.error(e instanceof Error ? e.message : "Couldn't make it as motion graphics."); }
+    finally { setMotionBusy(false); motionStop.current = null; }
   }
 
   function toStoryboard() {
@@ -209,6 +228,7 @@ export function VideoInspo() {
               : stage === "thinking" ? <><Loader2 className="h-4 w-4 animate-spin" /> Planning it for {name}…</>
               : <><Sparkles className="h-4 w-4" /> {plan ? "Read it again" : `Remake it for ${name}`} <span className="cost">up to 30 cr</span></>}
           </button>
+          {stage && <button className="s-btn w-full" onClick={() => readStop.current?.abort()} title="Stop: nothing is charged"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
           <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>{balance !== null && balance < 30 ? "You need a few more credits for this: get more in Billing." : "Charged for what the reading costs, usually 5-15 credits. Your inspo is a reference only: the result uses your brand, never their logo, faces or words."}</p>
         </div>
       </div>
@@ -228,6 +248,7 @@ export function VideoInspo() {
             <div className="s-card p-4 grid gap-2" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 40%, var(--s-line))" }}>
               <b className="text-[14px] flex items-center gap-2"><Sparkles className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> This one is motion graphics</b>
               <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>AI video can&apos;t spell, and it won&apos;t keep shapes clean. Make it as motion graphics instead: the same beats, layout and shapes, your words exact, in {name}&apos;s colours. Your photos go in; where none fits, it leaves a space to add one.</p>
+              {motionBusy && <button className="s-btn justify-self-start" onClick={() => motionStop.current?.abort()} title="Stop: nothing is charged"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
               <button className="s-btn ai justify-self-start" disabled={motionBusy} onClick={toMotion}>{motionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clapperboard className="h-4 w-4" />} Make it as motion graphics <span className="cost">up to 30 cr</span></button>
             </div>
           )}
@@ -266,6 +287,7 @@ export function VideoInspo() {
               <button className="s-btn ai" disabled={!!framing.length || !kit || frames.filter(Boolean).length === plan.scenes.length} onClick={() => void makeAllFrames()}>
                 {framing.length ? <><Loader2 className="h-4 w-4 animate-spin" /> Making frames…</> : <><Sparkles className="h-4 w-4" /> Make the first frames</>} <span className="cost">{plan.scenes.filter((_, i) => !frames[i]).length * FRAME_CREDITS} cr</span>
               </button>
+              {framing.length > 0 && <button className="s-btn" onClick={stopFrames} title="Stop: frames that aren't finished cost nothing"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
             </div>
             <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
               {plan.scenes.map((sc, i) => {

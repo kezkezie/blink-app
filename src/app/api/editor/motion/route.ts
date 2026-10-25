@@ -81,7 +81,8 @@ export async function POST(request: NextRequest) {
       system: [{ type: "text", text: MOTION_SYSTEM, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: [...screens.flatMap((x) => [{ type: "text", text: `Screenshot ${x.ref} (${x.width} x ${x.height} px):` }, { type: "image", source: { type: "base64", media_type: x.media, data: x.data } }]), { type: "text", text: motionUserPrompt(kit.brief({ prompt, shape, screens: screens.map(({ ref, width, height }) => ({ ref, width, height })), source: source || null })) }] }],
     }),
-    signal: AbortSignal.timeout(70_000),
+    // Stop in the browser ends the call here too, and the credits come back (2026-10-25).
+    signal: AbortSignal.any([request.signal, AbortSignal.timeout(70_000)]),
   }).catch(() => null);
   if (!res?.ok) return refund("Couldn't plan the motion just now. Try again in a minute.");
   const data = await res.json().catch(() => null);
@@ -91,8 +92,9 @@ export async function POST(request: NextRequest) {
   const spec = validateMotionSpec(raw, { shape, brand: kit.brand, images: [...pictures.map((p) => p.ref), ...screens.map((x) => x.url)] });
   const usd = data ? estimateUsd(model, { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0, cacheRead: data.usage?.cache_read_input_tokens ?? 0, cacheWrite: data.usage?.cache_creation_input_tokens ?? 0 }) : null;
   console.info("motion usage", JSON.stringify({ brand: brandId, model, ok: !!spec, usd: usd === null ? null : Number(usd.toFixed(4)) }));
-  logAiUsage({ feature: "motion", provider: provider.name, model, clientId: ws.clientId, userId: auth.value, brandId, usage: data ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens, cacheRead: data.usage?.cache_read_input_tokens, cacheWrite: data.usage?.cache_creation_input_tokens } : null, usd, credits: spec ? MOTION_CREDITS : 0, ok: !!spec, meta: { screens: screens.length } });
+  logAiUsage({ feature: "motion", provider: provider.name, model, clientId: ws.clientId, userId: auth.value, brandId, usage: data ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens, cacheRead: data.usage?.cache_read_input_tokens, cacheWrite: data.usage?.cache_creation_input_tokens } : null, usd, credits: spec && !request.signal.aborted ? MOTION_CREDITS : 0, ok: !!spec, meta: { screens: screens.length } });
   if (!spec) return refund("The motion plan came back unclear. Try saying it another way.");
+  if (request.signal.aborted) return refund("Stopped.", 499);
   // Picture refs become our URLs.
   placePictures(spec, pictures);
   // The handed-off picture plays as the background (the words and shapes animate over it).

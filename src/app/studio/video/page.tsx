@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Check, ChevronRight, Clapperboard, Film, Loader2, Mic, RotateCcw, Scissors, Shirt, ShoppingBag, Sparkles, UserCircle, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Clapperboard, Film, Loader2, Mic, RotateCcw, Scissors, Shirt, ShoppingBag, Sparkles, Square, UserCircle, X } from "lucide-react";
+import { stopPosts } from "@/components/studio/stop";
 import {
   AUTO_VIDEO_MODEL,
   VIDEO_MODEL_REGISTRY,
@@ -349,6 +350,7 @@ function RenderView({ v, renderStartedAt }: { v: VideoStudio; renderStartedAt: R
     v.setIsGenerating(false);
   };
   const story = v.selectedMode === "storytelling";
+  const [stopping, setStopping] = useState(false);
   return (
     <div className="max-w-[880px] mx-auto">
       {v.generationError ? (
@@ -369,7 +371,18 @@ function RenderView({ v, renderStartedAt }: { v: VideoStudio; renderStartedAt: R
               <b className="text-[15px] font-semibold" role="status" aria-live="polite">{v.progressText}</b>
               <p className="text-xs mt-1" style={{ color: "var(--s-mute)" }}>{story ? "Your scenes render in parallel. " : ""}Usually 3 to 10 minutes. You can leave this page; it lands in your Library.</p>
             </div>
-            <Link href="/studio/library" className="s-btn ghost">Library</Link>
+            <div className="flex gap-2">
+              {/* Stop it (2026-10-25): what's being made is removed and its credits come back. */}
+              {v.runPostIds().length > 0 && (
+                <button className="s-btn" disabled={stopping} title="Stop: it's removed and your credits come back" onClick={async () => {
+                  setStopping(true);
+                  const ids = v.runPostIds();
+                  const out = await stopPosts(ids).finally(() => setStopping(false));
+                  if (out && out.stopped.length && !out.starting.length && out.stopped.length + out.notStopped.length >= ids.length) reset();
+                }}>{stopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-3.5 w-3.5" fill="currentColor" />} Stop</button>
+              )}
+              <Link href="/studio/library" className="s-btn ghost">Library</Link>
+            </div>
           </div>
           <div className="h-1 rounded mt-4 overflow-hidden" style={{ background: "var(--s-line)" }}><i className="block h-full w-1/3 animate-pulse" style={{ background: "var(--s-accent)" }} /></div>
         </div>

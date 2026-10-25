@@ -64,8 +64,11 @@ export async function POST(request: NextRequest) {
     form.append("response_format", "verbose_json");
     form.append("timestamp_granularities[]", "segment");
     if (hint) form.append("prompt", hint);
-    const tr = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(240_000) }).catch(() => null);
+    // Stop in the browser ends the calls here too, and the credits come back (2026-10-25).
+    const stopped = () => request.signal.aborted;
+    const tr = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.any([request.signal, AbortSignal.timeout(240_000)]) }).catch(() => null);
     const data = (await tr?.json().catch(() => ({}))) as { segments?: Array<{ start: number; end: number; text: string }>; duration?: number; error?: { message?: string } } | undefined;
+    if (stopped()) { await refund(); return NextResponse.json({ error: "Stopped. Your credits were refunded." }, { status: 499 }); }
     if (!tr || !tr.ok || !Array.isArray(data?.segments)) {
       console.error("highlights transcribe failed", tr?.status, data?.error?.message);
       await refund();
@@ -96,8 +99,9 @@ export async function POST(request: NextRequest) {
         messages: [{ role: "user", content: `${brandLine}\nVideo length: ${duration.toFixed(0)} s. Pick ${count} moment${count === 1 ? "" : "s"}, each about ${target} seconds (between ${Math.round(target * 0.6)} and ${Math.round(target * 1.6)}).\n\nTranscript:\n${transcriptForModel(segments)}` }],
         ...(provider.name === "anthropic" ? { output_config: { effort: "low" } } : {}),
       }),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
     }).catch(() => null);
+    if (stopped()) { await refund(); return NextResponse.json({ error: "Stopped. Your credits were refunded." }, { status: 499 }); }
     const out = (await res?.json().catch(() => ({}))) as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } } | undefined;
     const usd = estimateUsd(model, { input: out?.usage?.input_tokens ?? 0, output: out?.usage?.output_tokens ?? 0 });
     console.info("highlights usage", JSON.stringify({ client: client.id, seconds, credits, model, usd: usd === null ? null : Number(usd.toFixed(4)) }));

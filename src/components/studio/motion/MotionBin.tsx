@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Clapperboard, FileText, Film, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
+import { Clapperboard, FileText, Film, ImagePlus, Loader2, Sparkles, Square, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -103,16 +103,20 @@ export function MotionBin({ clientId, shape, initialPrompt, initialScreens, init
   // things in the brand"): the video is read here, shot by shot; only one still per shot is sent.
   const videoRef = useRef<HTMLInputElement>(null);
   const [copying, setCopying] = useState<number | null>(null);
+  // Stop (2026-10-25): ends the request; the server stops its call and nothing is charged.
+  const stopRef = useRef<AbortController | null>(null);
   async function copyVideo(f: File | undefined) {
     if (!f || !activeBrand) return;
     if (!f.type.startsWith("video/")) { toast.error("That isn't a video file."); return; }
     if (f.size > 150 * 1024 * 1024) { toast.error("That video is over 150 MB. Trim it first."); return; }
     const url = URL.createObjectURL(f);
     setCopying(0);
+    const ac = new AbortController();
+    stopRef.current = ac;
     try {
       const r = await readVideo(url, (p) => setCopying(Math.min(0.99, p)));
       setCopying(1);
-      const res = await fetch("/api/inspo/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "motion", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand.id, purpose: prompt.trim().slice(0, 300), shape }) });
+      const res = await fetch("/api/inspo/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "motion", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand.id, purpose: prompt.trim().slice(0, 300), shape }), signal: ac.signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.spec) throw new Error(data.error || "Couldn't copy that video.");
       const plan = data.spec as MotionSpec;
@@ -121,22 +125,24 @@ export function MotionBin({ clientId, shape, initialPrompt, initialScreens, init
       if (data.concept && prompt.trim().length < 3) setPrompt(String(data.concept));
       track("motion_inspo", { shots: r.shots.length, scenes: plan.scenes.length, placeholders: toAdd });
       toast.success(`Made like your video: ${plan.scenes.length} scenes · ${data.credits} credits${toAdd ? ` · ${toAdd} photo${toAdd === 1 ? "" : "s"} to add` : ""}`, { duration: 8000 });
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't copy that video."); }
-    finally { URL.revokeObjectURL(url); setCopying(null); }
+    } catch (e) { if (ac.signal.aborted) toast.info("Stopped. Nothing was charged."); else toast.error(e instanceof Error ? e.message : "Couldn't copy that video."); }
+    finally { URL.revokeObjectURL(url); setCopying(null); stopRef.current = null; }
   }
   const [picture, setPicture] = useState<string | null>(pictureId ?? null);
   async function write(text = prompt) {
     if (!activeBrand || text.trim().length < 3) { toast.info("Say what it's for first, e.g. a 6 second intro for our launch."); return; }
     setBusy(true);
+    const ac = new AbortController();
+    stopRef.current = ac;
     try {
       const brief = text;
-      const res = await fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, prompt: brief.slice(0, 600), shape, ...(picture ? { pictureId: picture } : {}), ...(screens.length ? { screens } : {}), ...(source.trim() ? { source: source.trim().slice(0, 8000) } : {}) }) });
+      const res = await fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, prompt: brief.slice(0, 600), shape, ...(picture ? { pictureId: picture } : {}), ...(screens.length ? { screens } : {}), ...(source.trim() ? { source: source.trim().slice(0, 8000) } : {}) }), signal: ac.signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't plan the motion.");
       setSpec(data.spec); setPictures(data.pictures ?? []); setOpen(true);
       track("motion_planned", { screens: screens.length, source: !!source.trim() });
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't plan the motion."); }
-    finally { setBusy(false); }
+    } catch (e) { if (ac.signal.aborted) toast.info(`Stopped. Your ${MOTION_CREDITS} credits are back.`); else toast.error(e instanceof Error ? e.message : "Couldn't plan the motion."); }
+    finally { setBusy(false); stopRef.current = null; }
   }
 
   const brand = { name: kit?.name || activeBrand?.brand_name || "Brand", font: kit?.primaryFont ?? null, logoUrl: kit?.logoUrl ?? null, primary: kit?.primaryColor ?? null, secondary: kit?.secondaryColor ?? null };
@@ -188,9 +194,12 @@ export function MotionBin({ clientId, shape, initialPrompt, initialScreens, init
           <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>The same beats, layout and shapes, in your colours and words. Your photos go in; where none fits, it leaves a space to add one. From TikTok or Instagram: Share, Save video, then pick the file.</span>
         </div>
         {picture && <span className="text-[11.5px] flex items-center gap-1" style={{ color: "var(--s-soft)" }}>Using the picture you picked <button className="underline" onClick={() => setPicture(null)}>(clear)</button></span>}
-        <button className="s-btn ai justify-between" disabled={busy || !activeBrand || prompt.trim().length < 3} onClick={() => write()}>
-          <span className="flex items-center gap-2">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {busy ? "Planning it…" : "Write it"}</span><span className="cost">{MOTION_CREDITS} cr</span>
-        </button>
+        <div className="flex gap-2">
+          <button className="s-btn ai justify-between flex-1" disabled={busy || !activeBrand || prompt.trim().length < 3} onClick={() => write()}>
+            <span className="flex items-center gap-2">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {busy ? "Planning it…" : "Write it"}</span><span className="cost">{MOTION_CREDITS} cr</span>
+          </button>
+          {(busy || copying !== null) && <button className="s-btn" onClick={() => stopRef.current?.abort()} aria-label="Stop" title="Stop: nothing is charged"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
+        </div>
         <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{standalone ? `Shape: ${shape}.` : `Shape follows the editor (${shape}).`} The preview and any changes after that are free.</span>
         {spec && !open && <button className="s-btn sm justify-start" onClick={() => setOpen(true)}><Clapperboard className="h-3.5 w-3.5" /> Back to your motion</button>}
         {made.length > 0 && (
