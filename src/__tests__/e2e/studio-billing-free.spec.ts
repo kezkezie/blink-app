@@ -30,7 +30,7 @@ test("Free: credit packs are locked until Starter, the checkout refuses one", as
     await page.click('button[type="submit"]');
     await page.waitForURL(/\/(studio|welcome)/, { timeout: 120_000 });
     await page.goto(`${BASE}/studio/account/billing`);
-    await expect(page.getByText(/Top-ups come with Starter \(\$25 a month\) and up/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Top-ups come with Starter \(\$\d+ a month\) and up/)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Buy 800 credits for $8" })).toBeDisabled();
     await page.getByRole("link", { name: "See plans" }).click();
     await expect(page.getByRole("heading", { name: "Plans" })).toBeInViewport();

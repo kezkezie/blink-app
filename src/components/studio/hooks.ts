@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { isSharedBrand, useBrandStore, type BrandProfile } from "@/app/store/useBrandStore";
@@ -116,23 +117,31 @@ function watchSpends() {
   };
 }
 
+// The last balance seen, per brand (a shared brand shows its owner's): a panel opened later starts
+// from it, not from "unknown", while its own request is on the way.
+const knownBalance = new Map<string, number>();
+
 /** The live credit balance. Refreshes on focus, on every page, and after anything that may spend. */
 export function useCredits() {
-  const [balance, setBalance] = useState<number | null>(null);
+  const brandId = useBrandStore((s) => s.activeBrand?.id);
+  const [balance, setBalance] = useState<number | null>(() => knownBalance.get(brandId ?? "") ?? null);
   const [plan, setPlan] = useState<string | null>(null);
   const taskCount = useWorkflowStore((s) => s.activeTasks.length);
   const pathname = usePathname();
 
   const refresh = useCallback(() => {
     // State is only set when the response arrives (never synchronously inside an effect).
+    const key = useBrandStore.getState().activeBrand?.id ?? "";
     return fetch("/api/credits/balance", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!data) return;
-        if (typeof data.balance === "number") setBalance(data.balance);
+        if (!data) return null;
         if (typeof data.plan_tier === "string") setPlan(data.plan_tier);
+        if (typeof data.balance !== "number") return null;
+        knownBalance.set(key, data.balance); setBalance(data.balance);
+        return data.balance as number;
       })
-      .catch(() => { /* offline or signed out: keep the last known value */ });
+      .catch(() => null /* offline or signed out: keep the last known value */);
   }, []);
 
   useEffect(() => {
@@ -150,7 +159,6 @@ export function useCredits() {
 
   // A new page shows the current balance, not the one from when the tab opened. Switching to or
   // from a shared brand switches whose credits are shown.
-  const brandId = useBrandStore((s) => s.activeBrand?.id);
   useEffect(() => { void refresh(); }, [pathname, brandId, refresh]);
 
   // After a spend: once soon, once more for charges n8n makes a few seconds later.
@@ -166,6 +174,19 @@ export function useCredits() {
   }, [refresh]);
 
   return { balance, plan, refresh };
+}
+
+/**
+ * Before a paid start (launch sweep, 2026-10-25): a balance that can't cover it says so straight
+ * away, instead of a minute of "Studying references…" ending in a refusal. Pass the balance from
+ * useCredits, or `?? await refresh()` when it hasn't arrived; still unknown: go on, the server checks.
+ */
+export function shortOfCredits(balance: number | null, cost: number, what: string) {
+  if (balance === null || balance >= cost) return false;
+  toast.error(`${what} is ${cost} credit${cost === 1 ? "" : "s"} and you have ${formatCredits(balance)}.`, {
+    action: { label: "Top up", onClick: () => { window.location.href = "/studio/account/billing"; } },
+  });
+  return true;
 }
 
 export function formatCredits(n: number | null | undefined) {

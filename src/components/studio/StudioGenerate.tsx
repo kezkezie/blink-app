@@ -17,6 +17,7 @@ import type { VisualRefs } from "@/lib/visual-refs";
 import { thumbUrl } from "./media";
 import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage, type ImageEngine } from "./generate-image";
 import { SensitiveGuide } from "./SensitiveGuide";
+import { shortOfCredits, useCredits } from "./hooks";
 import { useKept } from "@/lib/drafts";
 import { sensitiveKind } from "@/lib/sensitive-subjects";
 
@@ -88,6 +89,7 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
   const engineFor = (q: Quality): ImageEngine => q === "best" ? "nb2" : q === "draft" ? "z-image" : attached ? "gpt-image-2-image-to-image" : "gpt-image-2-text-to-image";
   const engine = engineFor(pick);
   const cost = IMAGE_ENGINE_REGISTRY[engine].creditCost * count;
+  const { balance, refresh: refreshCredits } = useCredits();
   const ready = brief.trim().length >= 8;
 
   // The kept reference board, if this brand has one (free, never starts a study).
@@ -223,6 +225,7 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
   async function generate(override?: string) {
     const text = override ?? brief;
     if (!clientId || !activeBrand || !kit || text.trim().length < 8) return;
+    if (shortOfCredits(balance ?? await refreshCredits(), cost, count > 1 ? `${count} images` : "This image")) return;
     setBusy(true);
     const ac = new AbortController();
     stopRef.current = ac;

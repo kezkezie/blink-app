@@ -141,9 +141,10 @@ test("studio v2: every page renders inside the new shell, classic stays reachabl
   await expect(page.getByLabel("Layer name")).toHaveCount(2);
   console.log("EDITOR layers:", await page.getByLabel("Layer name").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value).join(", ")));
   await page.screenshot({ path: testInfo.outputPath("image-editor.png") });
-  await page.getByRole("button", { name: /Export/ }).hover();
+  // Export opens a menu (round 23).
+  await page.getByRole("button", { name: /Export/ }).click();
   const download = page.waitForEvent("download", { timeout: 60_000 });
-  await page.getByRole("button", { name: /PNG \(transparent ok\)/ }).click();
+  await page.getByRole("menuitem", { name: /PNG \(transparent ok\)/ }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/\.png$/);
   console.log("EDITOR export ok: " + file.suggestedFilename());

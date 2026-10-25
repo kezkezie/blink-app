@@ -104,7 +104,7 @@ test("brand sharing: link and email invites, editor spends the owner's credits, 
     await expect(bar).toContainText(`is shared with you by ${owner.name}`, { timeout: 30_000 });
     await expect(bar).toContainText("uses their credits");
     // The header shows the owner's balance, the one this work spends (the studio sends the brand).
-    await expect(ep.getByTitle("Credit balance")).toContainText("60", { timeout: 30_000 });
+    await expect(ep.getByRole("link", { name: /^60 credits/ })).toBeVisible({ timeout: 30_000 });
     await ep.getByRole("button", { name: "Switch brand" }).click();
     await expect(ep.getByText("Shared with you", { exact: true })).toBeVisible();
     await expect(ep.getByText("No brand of your own yet.")).toBeVisible();
@@ -177,7 +177,7 @@ test("brand sharing: link and email invites, editor spends the owner's credits, 
     await vp.waitForURL(/\/studio(\?|$)/, { timeout: 60_000 });
     await expect(vp.getByTestId("shared-brand-bar")).toContainText("You can look, not change anything", { timeout: 30_000 });
     // A viewer spends nothing of the owner's, so the header shows their own balance.
-    await expect(vp.getByTitle("Credit balance")).toContainText("7", { timeout: 30_000 });
+    await expect(vp.getByRole("link", { name: /^7 credits/ })).toBeVisible({ timeout: 30_000 });
     await vp.goto(`${BASE}/studio/image`);
     await expect(vp.getByText(`You can view ${shared.name}, not make things for it`)).toBeVisible({ timeout: 30_000 });
     const viewerGen = await post(vp.request, "/api/workflows?path=blink-generate-images", {

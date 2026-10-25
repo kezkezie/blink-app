@@ -11,6 +11,7 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { remixPrompt } from "@/lib/inspo";
 import { ImagePicker } from "./ImagePicker";
+import { shortOfCredits, useCredits } from "./hooks";
 import { thumbUrl } from "./media";
 import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage } from "./generate-image";
 import { SENSITIVE, SENSITIVE_FAILURE } from "@/lib/ai-safe-text";
@@ -47,6 +48,7 @@ export function InspoRemix() {
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const cost = IMAGE_ENGINE_REGISTRY[engine].creditCost;
+  const { balance, refresh: refreshCredits } = useCredits();
 
   useEffect(() => {
     if (!busy) return;
@@ -80,6 +82,7 @@ export function InspoRemix() {
   const stopRef = useRef<AbortController | null>(null);
   async function remix() {
     if (!inspo || !clientId || !activeBrand || !kit) return;
+    if (shortOfCredits(balance ?? await refreshCredits(), cost, "A remix")) return;
     setBusy(true);
     const ac = new AbortController();
     stopRef.current = ac;

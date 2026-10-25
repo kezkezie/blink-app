@@ -40,6 +40,11 @@
 
 import { test, expect, Page, APIRequestContext } from '@playwright/test';
 
+// Retired 2026-10-25: the classic /dashboard flow (its sign-up predates the agreement box, its
+// generate page is the old one). The studio covers it: live-sweep (generate), studio-no-credits
+// (no credits, nothing charged), stop (refunds), studio-billing-free and studio-plan-post (billing).
+test.skip(true, "classic dashboard suite, replaced by the studio specs");
+
 // ── Environment ───────────────────────────────────────────────────────────────
 
 const SUPABASE_URL =
