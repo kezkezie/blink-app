@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { RESEARCH_SYSTEM, jsonFrom, researchPrompt, validateResearch, type BrandResearch } from "@/lib/brand-research";
 import { logAiUsage } from "@/lib/ai-usage";
 
@@ -32,7 +32,7 @@ export async function runBrandResearch(brandId: string, clientId: string, refres
   const { data: products } = await supabaseAdmin.from("products").select("name").eq("brand_id", brandId).eq("client_id", clientId).limit(8);
   const dna = (brand.dna ?? {}) as { audience?: string; location?: string };
   const model = assistantModelFor("chat", provider.name);
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({

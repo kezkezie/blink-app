@@ -3,7 +3,7 @@ import { safeFetchBytes } from "@/lib/safe-fetch";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { brandArg } from "@/lib/credits-meter";
 import { imageSize } from "@/lib/upscale";
-import { ASSISTANT_MODEL, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { ASSISTANT_MODEL, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { jsonFrom } from "@/lib/brand-research";
 import {
   EDIT_CREDITS, EDIT_ENGINES, MAX_SWAPS, SCAN_CREDITS, aspectFor, boxesToThousandths, buildEditPrompt, changeCount, keptScan,
@@ -77,7 +77,7 @@ export async function scanPost(clientId: string, contentId: string, refresh = fa
   if (!isDeductionSuccessful(deducted, deductError)) return fail(402, `A scan is ${SCAN_CREDITS} credits and your balance is lower. Get more in Billing.`);
 
   const model = provider.name === "anthropic" ? SCAN_MODEL : ASSISTANT_MODEL;
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({

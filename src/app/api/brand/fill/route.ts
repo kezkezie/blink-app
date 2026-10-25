@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { extractSite, instagramHandle, normaliseWebsite, verifiedContact, type SiteFacts } from "@/lib/brand-autofill";
 import { brandBrief, cleanDna, CTAS, INDUSTRIES, LANGUAGES, PERSONALITY, PHOTO_VIBES } from "@/lib/brand-dna";
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       ].filter(Boolean).join("\n\n")
     : `The brand so far:\n${brandLines}`;
 
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({ model, max_tokens: 1800, system, messages: [{ role: "user", content: user }] }),

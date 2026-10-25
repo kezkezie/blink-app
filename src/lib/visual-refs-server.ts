@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { safeFetchBytes, safeFetchText } from "@/lib/safe-fetch";
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { jsonFrom, validateResearch } from "@/lib/brand-research";
 import { bestPinImage, pinterestPinId } from "@/lib/inspo";
 import {
@@ -48,7 +48,7 @@ export async function runVisualRefs(brandId: string, clientId: string, refresh =
   const name = brand.brand_name || brand.company_name || "the brand";
   const research = validateResearch(brand.research);
   const call = async (body: object, timeout: number) => {
-    const res = await fetch(provider.url, { method: "POST", headers: { ...provider.headers, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) }).catch(() => null);
+    const res = await claudeFetch(provider, { method: "POST", headers: { ...provider.headers, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) }).catch(() => null);
     return res?.ok ? res.json().catch(() => null) : null;
   };
   const textOf = (d: { content?: Array<{ type: string; text?: string }> } | null) => (d?.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");

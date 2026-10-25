@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { loadBrandBrain, retrieve } from "@/lib/sites/brain";
 import { placeImages, slugify, validateSections, validateSpec, validateTheme, type SiteSection, type SiteSpec } from "@/lib/sites/spec";
 import { playbookFor } from "@/lib/sites/playbooks";
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     { type: "image", source: { type: "url", url: thumb(im.url) } },
   ]) : [];
   const content = looks.length ? [...looks, { type: "text", text: user }] : user;
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: mode === "full" ? 5000 : 1500, system, messages: [{ role: "user", content }] }),

@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { safeFetchText } from "@/lib/safe-fetch";
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { jsonFrom, validateResearch } from "@/lib/brand-research";
 import { extractInspiration } from "./inspiration";
 import { PATTERNS_SYSTEM, SITE_SEARCH_SYSTEM, patternsPrompt, siteSearchPrompt, validatePatterns, validateSiteRefs, validateSites, type SiteRefs } from "./site-refs";
@@ -34,7 +34,7 @@ export async function runSiteRefs(brandId: string, clientId: string, opts: { ref
   const industry = research?.industry || brand.industry;
   let usd = 0;
   const call = async (body: object, timeout: number) => {
-    const res = await fetch(provider.url, { method: "POST", headers: { ...provider.headers, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) }).catch(() => null);
+    const res = await claudeFetch(provider, { method: "POST", headers: { ...provider.headers, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) }).catch(() => null);
     const d = res?.ok ? await res.json().catch(() => null) : null;
     usd += (estimateUsd(model, { input: d?.usage?.input_tokens ?? 0, output: d?.usage?.output_tokens ?? 0 }) ?? 0) + (d?.usage?.server_tool_use?.web_search_requests ?? 0) * 0.01;
     return ((d?.content ?? []) as Array<{ type: string; text?: string }>).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");

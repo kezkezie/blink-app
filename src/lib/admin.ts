@@ -1,3 +1,5 @@
+import { CREDIT_PACKS } from "@/lib/plans";
+
 /**
  * The owner's admin dashboard (Kezie, 2026-10-23: "a simple dashboard that would tell me how many
  * people are logged into the website ... what if we have so many people and I will not be able to
@@ -55,4 +57,31 @@ export function summarizePresence(state: Record<string, PresenceMeta[]>) {
   const bySection: Record<string, number> = {};
   for (const m of metas) bySection[m.p] = (bySection[m.p] ?? 0) + 1;
   return { people: people.size, looking: looking.size, tabs: metas.length, bySection };
+}
+
+/**
+ * Is every credit making money? (Kezie, 2026-10-25: "make sure I'm making a margin, where people can
+ * buy as much as they want".) Per feature, what the AI really cost per credit charged, against the
+ * cheapest credit sold (the biggest pack) after the dearest Paystack fee (3.8%, foreign cards).
+ * Free steps (no credits charged) are listed by what they cost, since nothing pays for them.
+ */
+export const CHEAPEST_CREDIT_USD = Math.min(...CREDIT_PACKS.map((p) => p.usd / p.credits));
+export const WORST_FEE = 0.038;
+export type FeatureMargin = { feature: string; runs: number; costPerCredit: number | null; margin: number | null; freeUsd: number; level: "ok" | "thin" | "loss" | "free" };
+export function marginByFeature(rows: Array<{ feature: unknown; usd: unknown; credits_charged: unknown; ok?: unknown }>): FeatureMargin[] {
+  const by: Record<string, { runs: number; paidUsd: number; credits: number; freeUsd: number }> = {};
+  for (const r of rows) {
+    if (r.ok === false) continue;
+    const b = (by[String(r.feature)] ??= { runs: 0, paidUsd: 0, credits: 0, freeUsd: 0 });
+    const usd = Number(r.usd) || 0, credits = Number(r.credits_charged) || 0;
+    b.runs += 1;
+    if (credits > 0) { b.paidUsd += usd; b.credits += credits; } else b.freeUsd += usd;
+  }
+  const net = CHEAPEST_CREDIT_USD * (1 - WORST_FEE);
+  return Object.entries(by).map(([feature, b]) => {
+    const costPerCredit = b.credits ? b.paidUsd / b.credits : null;
+    const margin = costPerCredit === null ? null : (net - costPerCredit) / CHEAPEST_CREDIT_USD;
+    const level: FeatureMargin["level"] = margin === null ? "free" : margin < 0 ? "loss" : margin < 0.15 ? "thin" : "ok";
+    return { feature, runs: b.runs, costPerCredit: costPerCredit === null ? null : Math.round(costPerCredit * 100000) / 100000, margin: margin === null ? null : Math.round(margin * 1000) / 1000, freeUsd: Math.round(b.freeUsd * 1000) / 1000, level };
+  }).sort((a, b) => (a.margin ?? 9) - (b.margin ?? 9) || b.freeUsd - a.freeUsd);
 }

@@ -55,3 +55,21 @@ test("no account without agreeing, and the agreement is recorded", async ({ page
     }
   }
 });
+
+test("Continue with Google waits for the agreement, then opens Google's sign-in", async ({ page }) => {
+  await page.goto(`${BASE}/get-started`, { waitUntil: "domcontentloaded" });
+  const google = page.getByRole("button", { name: "Continue with Google" });
+  await expect(google).toBeDisabled();
+  await page.getByRole("checkbox", { name: /I agree to BlinkSpot/ }).check();
+  await expect(google).toBeEnabled();
+  await google.click();
+  await page.waitForURL(/accounts\.google\.com/, { timeout: 30_000, waitUntil: "commit" });
+  const url = new URL(page.url());
+  // Google sends people back through Supabase, which then returns them to our callback.
+  expect(decodeURIComponent(url.toString())).toContain("supabase.co/auth/v1/callback");
+
+  // The sign-in page has it too, with the agreement line.
+  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeEnabled();
+  await expect(page.getByText(/Continuing with Google means you agree/)).toBeVisible();
+});

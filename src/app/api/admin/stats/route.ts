@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { requireAdmin } from "@/lib/admin-server";
-import { isTestEmail, nairobiDayStart, nairobiMonthStart } from "@/lib/admin";
+import { isTestEmail, nairobiDayStart, nairobiMonthStart, marginByFeature } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   const [clientsQ, usageQ, runningQ, stuckQ, failedQ, txQ, paidQ, disputesQ] = await Promise.all([
     supabaseAdmin.from("clients").select("id, contact_email, company_name, plan_tier, created_at").order("created_at", { ascending: false }).limit(5000),
-    supabaseAdmin.from("ai_usage").select("client_id, feature, usd, ok, created_at").gte("created_at", month).limit(20000),
+    supabaseAdmin.from("ai_usage").select("client_id, feature, usd, credits_charged, ok, created_at").gte("created_at", month).limit(20000),
     supabaseAdmin.from("content").select("id, client_id, content_type", { count: "exact" }).in("generation_state", ["queued", "preparing", "generating"]).gte("updated_at", halfHourAgo).limit(500),
     supabaseAdmin.from("content").select("id", { count: "exact", head: true }).in("generation_state", ["queued", "preparing", "generating"]).lt("updated_at", halfHourAgo),
     supabaseAdmin.from("content").select("id, client_id, content_type, generation_error_code", { count: "exact" }).eq("generation_state", "failed").gte("updated_at", hourAgo).limit(500),
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       failedHour: (failedQ.data ?? []).filter((r) => isReal(r.client_id)).length, failedHourAll: failedQ.count ?? 0,
       failureCodes: Object.entries((failedQ.data ?? []).reduce<Record<string, number>>((m, r) => { const k = String(r.generation_error_code ?? "unknown"); m[k] = (m[k] ?? 0) + 1; return m; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 5) },
     credits: { spentToday: -sum(tx.filter((t) => t.operation === "debit" || Number(t.amount) < 0).map((t) => Math.min(0, Number(t.amount)))), refundedToday: sum(tx.filter((t) => t.operation === "refund").map((t) => Math.abs(Number(t.amount)))) },
-    ai: { usdToday: Number(usdToday.toFixed(2)), usdMonth: Number(usdMonth.toFixed(2)), features: Object.entries(features).sort((a, b) => b[1].usd - a[1].usd).slice(0, 8).map(([k, v]) => ({ feature: k, ...v, usd: Number(v.usd.toFixed(3)) })) },
+    ai: { margins: marginByFeature(usage), usdToday: Number(usdToday.toFixed(2)), usdMonth: Number(usdMonth.toFixed(2)), features: Object.entries(features).sort((a, b) => b[1].usd - a[1].usd).slice(0, 8).map(([k, v]) => ({ feature: k, ...v, usd: Number(v.usd.toFixed(3)) })) },
     revenue: { currency, today: sum(paidToday.map((p) => Number(p.amount_minor) / 100)), month: sum(paid.map((p) => Number(p.amount_minor) / 100)), paymentsMonth: paid.length },
     disputes: (disputesQ.data ?? []).map((d) => ({ reference: d.reference, amount: Number(d.amount_minor) / 100, currency: d.currency, email: d.customer_email, note: d.failure, at: d.paid_at })),
   });

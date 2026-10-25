@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
-import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
 import { GOOGLE_FONTS_REGISTRY } from "@/lib/fonts";
 import { validateLayers } from "@/lib/editor/layers";
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: e instanceof AssistantUnavailableError ? e.message : "The AI isn't available." }, { status: 503 });
   }
   const model = assistantModelFor("chat", provider.name);
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({

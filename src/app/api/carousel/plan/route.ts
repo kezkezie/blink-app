@@ -5,7 +5,7 @@ import { workspaceFor } from "@/lib/brand-access";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { brandArg } from "@/lib/credits-meter";
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { jsonFrom, validateResearch } from "@/lib/brand-research";
 import { MAX_SLIDES, PLAN_CREDITS, TOPIC_SYSTEM, topicPrompt, validateTopicCarousel } from "@/lib/carousel";
 import { logAiUsage } from "@/lib/ai-usage";
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   const handle = typeof brand.social_urls === "string" ? brand.social_urls.match(/instagram\.com\/([A-Za-z0-9_.]{2,30})/i)?.[1] : undefined;
   const research = validateResearch(brand.research);
   const model = assistantModelFor("chat", provider.name);
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST", headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({
       model, max_tokens: 4000,

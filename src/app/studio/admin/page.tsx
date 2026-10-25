@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Activity, AlertTriangle, CreditCard, Loader2, RefreshCw, Sparkles, Users, Zap } from "lucide-react";
 import { useLivePresence } from "@/components/studio/presence";
-import { LOAD_LINE, loadLevel, type Load } from "@/lib/admin";
+import { CHEAPEST_CREDIT_USD, LOAD_LINE, loadLevel, type FeatureMargin, type Load } from "@/lib/admin";
 
 /**
  * The owner's dashboard (Kezie, 2026-10-23: "a simple dashboard that would tell me how many people
@@ -17,7 +17,7 @@ type Stats = {
   active: { day: number; month: number };
   work: { running: number; runningAll: number; stuck: number; failedHour: number; failedHourAll: number; failureCodes: Array<[string, number]> };
   credits: { spentToday: number; refundedToday: number };
-  ai: { usdToday: number; usdMonth: number; features: Array<{ feature: string; calls: number; usd: number; failed: number }> };
+  ai: { usdToday: number; usdMonth: number; features: Array<{ feature: string; calls: number; usd: number; failed: number }>; margins?: FeatureMargin[] };
   revenue: { currency: string; today: number; month: number; paymentsMonth: number };
   disputes: Array<{ reference: string; amount: number; currency: string; email: string | null; note: string; at: string | null }>;
 };
@@ -115,6 +115,22 @@ export default function AdminPage() {
                 <div key={f.feature} className="flex items-center gap-2 text-[12.5px]"><span className="flex-1 min-w-0 truncate">{f.feature}</span><span style={{ color: "var(--s-mute)" }}>{n(f.calls)} calls{f.failed ? ` · ${f.failed} failed` : ""}</span><b className="mono">${f.usd.toFixed(2)}</b></div>
               )) : <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Nothing yet today.</span>}
             </div>
+          </div>
+
+          {/* Is every credit making money? (2026-10-25) What the AI cost per credit charged, this month. */}
+          <div className="s-card p-4 grid gap-2" role="region" aria-label="Margin per credit">
+            <b className="text-[13px] flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5" /> Margin per credit, this month</b>
+            <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Against the cheapest credit you sell (${CHEAPEST_CREDIT_USD.toFixed(3)} in the biggest pack) after a 3.8% card fee. Plans sell credits at about twice that, so their margin is higher. Red means a feature costs more than it earns.</span>
+            {(stats.ai.margins ?? []).filter((m) => m.level !== "free").map((m) => (
+              <div key={m.feature} className="flex items-center gap-2 text-[12.5px]">
+                <span className="flex-1 min-w-0 truncate">{m.feature}</span>
+                <span style={{ color: "var(--s-mute)" }}>{n(m.runs)} runs · ${m.costPerCredit!.toFixed(4)} a credit</span>
+                <span className={`s-badge ${m.level === "ok" ? "ok" : m.level === "thin" ? "warn" : "danger"}`}>{Math.round(m.margin! * 100)}%</span>
+              </div>
+            ))}
+            {(stats.ai.margins ?? []).some((m) => m.level === "free" && m.freeUsd > 0) && (
+              <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Free to people (no credits): {(stats.ai.margins ?? []).filter((m) => m.level === "free" && m.freeUsd > 0).slice(0, 6).map((m) => `${m.feature} $${m.freeUsd.toFixed(2)}`).join(" · ")}</span>
+            )}
           </div>
 
           <div className="s-card p-4 grid gap-2">

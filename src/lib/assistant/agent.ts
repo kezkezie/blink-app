@@ -66,6 +66,44 @@ export function assistantProvider(): { name: "anthropic" | "kie"; url: string; h
   throw new AssistantUnavailableError("The assistant is not configured (set ANTHROPIC_API_KEY or KIE_API_TOKEN).");
 }
 
+/**
+ * Claude with a spare (Kezie, 2026-10-25): every Claude call goes to Anthropic first. If Anthropic is
+ * down (5xx, 529 overloaded, no connection) or the account's monthly spend cap is reached (a 429
+ * saying so), the same request goes once to the same model through OpenRouter's Anthropic-compatible
+ * endpoint (same per-token price; OpenRouter takes 5.5% when its credit is bought). Ordinary rate
+ * limits and bad requests are not sent there: they would fail the same way or be paid twice. Our
+ * own time limit running out isn't either.
+ */
+export const OPENROUTER_MESSAGES_URL = "https://openrouter.ai/api/v1/messages";
+/** claude-opus-5-5 → anthropic/claude-opus-5.5 (OpenRouter's names). */
+export const openRouterModel = (model: string) => `anthropic/${model.replace(/^(claude-[a-z]+)-(\d+)-(\d+)$/, "$1-$2.$3")}`;
+
+export async function claudeFetch(provider: { name: string; url: string; headers: Record<string, string> }, init: RequestInit, fetchImpl: typeof fetch = fetch): Promise<Response> {
+  const spare = process.env.OPENROUTER_API_KEY;
+  const ownTimeUp = () => !!init.signal?.aborted;
+  let first: Response | null = null, failure: unknown = null;
+  try { first = await fetchImpl(provider.url, init); } catch (e) { failure = e; }
+  if (provider.name !== "anthropic" || !spare || typeof init.body !== "string") {
+    if (first) return first;
+    throw failure;
+  }
+  let why = "";
+  if (!first) why = ownTimeUp() ? "" : "no connection";
+  else if (first.status >= 500) why = `anthropic ${first.status}`;
+  else if (first.status === 429) {
+    const text = await first.clone().text().catch(() => "");
+    if (/enforced_spend_limit_reached|usage limits/i.test(text)) why = "anthropic spend cap";
+  }
+  if (!why) { if (first) return first; throw failure; }
+  let body: Record<string, unknown>;
+  try { body = JSON.parse(init.body) as Record<string, unknown>; } catch { if (first) return first; throw failure; }
+  if (typeof body.model === "string") body.model = openRouterModel(body.model);
+  const headers = { ...(init.headers as Record<string, string> | undefined) };
+  delete headers["x-api-key"]; delete headers["anthropic-workspace-id"];
+  console.warn("claude via openrouter", JSON.stringify({ why, model: body.model }));
+  return fetchImpl(OPENROUTER_MESSAGES_URL, { ...init, headers: { ...headers, Authorization: `Bearer ${spare}`, "anthropic-version": "2023-06-01" }, body: JSON.stringify(body) });
+}
+
 type TextBlock = { type: "text"; text: string };
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: "image/jpeg"; data: string } };
 type ToolUseBlock = { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
@@ -185,7 +223,7 @@ export async function runAssistant(
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     if (turn > 0 && Date.now() - started > (effort === "max" || effort === "xhigh" ? 250_000 : TURN_BUDGET_MS)) break;
     if (ctx.signal?.aborted) throw new Error("stopped");
-    const res = await fetchImpl(provider.url, {
+    const res = await claudeFetch(provider, {
       method: "POST",
       headers: { ...provider.headers, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -194,7 +232,7 @@ export async function runAssistant(
         ...(provider.name === "anthropic" ? { output_config: { effort } } : {}),
       }),
       signal: ctx.signal ? AbortSignal.any([AbortSignal.timeout(callTimeout), ctx.signal]) : AbortSignal.timeout(callTimeout),
-    });
+    }, fetchImpl);
     const data = (await res.json().catch(() => ({}))) as MessagesResponse;
     if (!res.ok || !Array.isArray(data.content)) {
       const detail = typeof data.error === "string" ? data.error : data.error?.message;

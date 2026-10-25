@@ -3,7 +3,7 @@ import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { requestWorkspace } from "@/lib/brand-access";
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { brandArg } from "@/lib/credits-meter";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   const images = brain?.images.slice(0, 16) ?? [];
   let usd = 0;
   const ask = async (system: string, prompt: string, maxTokens: number) => {
-    const res = await fetch(provider.url, {
+    const res = await claudeFetch(provider, {
       method: "POST", headers: { ...provider.headers, "Content-Type": "application/json" },
       body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: prompt }] }),
       signal: AbortSignal.timeout(240_000),

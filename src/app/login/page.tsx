@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { AuthField, AuthShell } from "@/components/auth/AuthShell";
+import { GoogleButton, OrLine } from "@/components/auth/GoogleButton";
 
 /** Where to go after signing in: back to the page they were sent from, or into the studio. */
 function nextPath(redirect: string | null, onboarded: boolean) {
@@ -41,6 +42,11 @@ function LoginForm() {
 
   return (
     <form onSubmit={handleLogin} className="grid gap-4">
+      <GoogleButton next={redirect && redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/studio"} onError={setError} />
+      <p className="text-[11.5px] -mt-2 text-center" style={{ color: "var(--s-mute)" }}>
+        New here? Continuing with Google means you agree to our <Link href="/terms" target="_blank" className="underline">Terms</Link>, <Link href="/privacy" target="_blank" className="underline">Privacy Policy</Link> and <Link href="/acceptable-use" target="_blank" className="underline">Acceptable Use Policy</Link>.
+      </p>
+      <OrLine />
       <AuthField label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@business.com" autoComplete="email" />
       <AuthField label="Password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" />
       <Link href="/forgot-password" className="text-[13px] justify-self-end -mt-2 underline" style={{ color: "var(--s-soft)" }}>Forgot your password?</Link>

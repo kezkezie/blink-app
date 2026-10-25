@@ -238,9 +238,11 @@ export function BrandBuilder() {
           <div className="min-w-0"><label className="s-label" htmlFor="bb-col">Colours you like (optional)</label><input id="bb-col" className="s-input" value={colors} onChange={(e) => setColors(e.target.value)} placeholder="e.g. green and cream" /></div>
         </div>
         <div>
-          <span className="s-label">The feel</span>
-          <div className="flex flex-wrap gap-1.5">
-            {FEELS.map((f) => <button key={f} className="s-chip" aria-pressed={vibe.includes(f)} onClick={() => setVibe((v) => (v.includes(f) ? v.filter((x) => x !== f) : [...v, f].slice(0, 4)))}>{f}</button>)}
+          <span className="s-label !mb-0">The feel</span>
+          {/* Kezie, 2026-10-25: say that several can be mixed (it always took up to four). */}
+          <p className="text-[12px] mt-0.5 mb-1.5" style={{ color: "var(--s-mute)" }}>Pick as many as fit, up to 4. Mixing works: bold, minimal and playful together, for example.{vibe.length ? ` ${vibe.length} of 4 picked.` : ""}</p>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="The feel (pick up to 4)">
+            {FEELS.map((f) => <button key={f} className="s-chip" aria-pressed={vibe.includes(f)} onClick={() => setVibe((v) => (v.includes(f) ? v.filter((x) => x !== f) : [...v, f].slice(-4)))}>{f}</button>)}
           </div>
         </div>
         <div className="flex items-center gap-2">

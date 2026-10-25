@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/execution-security";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
-import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { runAssistantTool } from "@/lib/assistant/tools";
 import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
 import { validatePlan, validateRecipe } from "@/lib/video-inspo/plan";
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     }),
   ];
   const model = assistantModelFor("chat", provider.name);
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({ model, max_tokens: 4000, system: mode === "edit" ? EDIT : mode === "motion" ? MOTION_INSPO : REMAKE, messages: [{ role: "user", content }], ...(provider.name === "anthropic" ? { output_config: { effort: "medium" } } : {}) }),

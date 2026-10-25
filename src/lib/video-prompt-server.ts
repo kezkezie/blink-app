@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { softenForAi } from "@/lib/ai-safe-text";
 import type { BrandCreativeContext } from "@/lib/brand-creative-context";
 import { VIDEO_PROMPT_SYSTEM, fallbackVideoPrompt, validVideoPrompt, videoPromptUser } from "@/lib/video-prompt";
@@ -32,7 +32,7 @@ export async function writeVideoPrompt(i: {
   const text = videoPromptUser({ scene: softenForAi(i.scene), brand, onBrand: i.onBrand, seconds: i.seconds, hasStartFrame: !!i.startFrame, aspect: i.aspect });
   const ask = async (withFrame: boolean) => {
     const content = withFrame && i.startFrame ? [{ type: "image", source: { type: "url", url: i.startFrame } }, { type: "text", text }] : text;
-    const res = await fetch(provider.url, {
+    const res = await claudeFetch(provider, {
       method: "POST", headers: { ...provider.headers, "Content-Type": "application/json" },
       body: JSON.stringify({ model, max_tokens: 500, system: VIDEO_PROMPT_SYSTEM, messages: [{ role: "user", content }] }),
       signal: AbortSignal.timeout(30_000),

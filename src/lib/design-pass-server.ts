@@ -1,4 +1,4 @@
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { DESIGN_SYSTEM, designUserPrompt, validateDesign } from "@/lib/design-pass";
 import { jsonFrom } from "@/lib/brand-research";
 import { logAiUsage } from "@/lib/ai-usage";
@@ -15,7 +15,7 @@ export async function designPrompt(i: { look: DesignLook; requirements: string; 
   let provider;
   try { provider = assistantProvider(); } catch { return null; }
   const model = assistantModelFor("chat", provider.name);
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { AuthField, AuthShell } from "@/components/auth/AuthShell";
 import { LEAKED_PASSWORD_MESSAGE, pwnedCount } from "@/lib/pwned-password";
 import { LEGAL_DOCS, consentRecord } from "@/lib/legal";
+import { GoogleButton, OrLine } from "@/components/auth/GoogleButton";
 
 /** Only a path on this site (e.g. an invite at /join/…); anything else starts at brand set-up. */
 function safeRedirect(v: string | null) {
@@ -88,6 +89,9 @@ function GetStarted() {
         <button type="submit" className="s-btn primary justify-center mt-2" style={{ height: 46, fontSize: 15 }} disabled={submitting || !agreed}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Create account <ArrowRight className="h-4 w-4" />
         </button>
+        <OrLine />
+        <GoogleButton next={redirect ?? "/welcome"} disabled={!agreed} onError={(text) => setMessage({ tone: "error", text })} />
+        {!agreed && <p className="text-[11.5px] -mt-2 text-center" style={{ color: "var(--s-mute)" }}>Tick the agreement above to use Google too.</p>}
         <p className="text-[12px] text-center" style={{ color: "var(--s-mute)" }}>Free to start. No card needed.</p>
       </form>
     </AuthShell>

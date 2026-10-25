@@ -7,7 +7,7 @@ import { safeFetchBytes } from "@/lib/safe-fetch";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { brandArg } from "@/lib/credits-meter";
 import { renderEdit } from "@/lib/ai-edit-server";
-import { assistantProvider } from "@/lib/assistant/agent";
+import { assistantProvider, claudeFetch } from "@/lib/assistant/agent";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { seamlessPlan, seamlessPrompt, type SlideShape } from "@/lib/carousel";
 import { stampIfFree } from "@/lib/stamp-server";
@@ -25,7 +25,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function continuity(url: string): Promise<number> {
   let provider;
   try { provider = assistantProvider(); } catch { return 10; }
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST", headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 600, messages: [{ role: "user", content: [
       { type: "image", source: { type: "url", url } },

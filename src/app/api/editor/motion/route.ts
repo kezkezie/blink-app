@@ -5,7 +5,7 @@ import { workspaceFor } from "@/lib/brand-access";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { brandArg } from "@/lib/credits-meter";
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { jsonFrom } from "@/lib/brand-research";
 import { motionContext, placePictures } from "@/lib/motion/context-server";
 import { MOTION_CREDITS, MOTION_SYSTEM, motionUserPrompt, placeScreens, validateMotionSpec, type MotionShape } from "@/lib/motion/spec";
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
   }).then(() => NextResponse.json({ error: `${why} Your ${MOTION_CREDITS} credits were refunded.` }, { status }), () => NextResponse.json({ error: why }, { status }));
 
   const model = assistantModelFor("chat", provider.name);
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({

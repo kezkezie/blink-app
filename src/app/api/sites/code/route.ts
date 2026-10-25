@@ -3,7 +3,7 @@ import { authenticateExecutionRequest, isExecutionBodySizeAllowed } from "@/lib/
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { requestWorkspace } from "@/lib/brand-access";
-import { assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { brandArg } from "@/lib/credits-meter";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
   const pictures = images.flatMap((im, n) => [{ type: "text", text: `Picture ${n + 1}:` }, image(thumb(im.url))]);
   const designs = inspiration.flatMap((u, n) => [{ type: "text", text: `Design ${designLetter(n)} (a design the owner likes, not a picture for the page):` }, image(thumb(u, 1200))]);
   const glimpses = film ? filmGlimpses(film).flatMap((u, n) => [{ type: "text", text: `Film frame (${["start", "middle", "end"][n]}):` }, image(u)] ) : [];
-  const ask = (content: unknown) => fetch(provider.url, {
+  const ask = (content: unknown) => claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({ model, max_tokens: 24000, stream: true, system: CODE_SYSTEM, messages: [{ role: "user", content }] }),

@@ -3,7 +3,7 @@ import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { chargeCredits, creditBalance, meteredCredits, NOT_ENOUGH_CREDITS } from "@/lib/credits-meter";
-import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { ASSISTANT_MODEL, AssistantUnavailableError, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { requestWorkspace } from "@/lib/brand-access";
 import { logAiUsage } from "@/lib/ai-usage";
 
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     if (e instanceof AssistantUnavailableError) return NextResponse.json({ error: e.message }, { status: 503 });
     throw e;
   }
-  const res = await fetch(provider.url, {
+  const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
     body: JSON.stringify({ model: ASSISTANT_MODEL, max_tokens: 6000, system: SYSTEM, messages: [{ role: "user", content: [brandLine, fontLine, style, `Draw: ${prompt}`].filter(Boolean).join("\n") }] }),

@@ -5,7 +5,7 @@ import { verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
-import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd } from "@/lib/assistant/agent";
+import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
 import { transcribeCredits, transcriptForModel, validateHighlights, type Segment } from "@/lib/editor/highlights";
 import { requestWorkspace } from "@/lib/brand-access";
 import { brandArg } from "@/lib/credits-meter";
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: e instanceof AssistantUnavailableError ? e.message : "The AI isn't available." }, { status: 503 });
     }
     const model = assistantModelFor("chat", provider.name);
-    const res = await fetch(provider.url, {
+    const res = await claudeFetch(provider, {
       method: "POST",
       headers: { ...provider.headers, "Content-Type": "application/json" },
       body: JSON.stringify({
