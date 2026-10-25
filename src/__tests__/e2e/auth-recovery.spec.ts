@@ -69,14 +69,14 @@ test("authentication recovery: login, session, logout, protected endpoint, no cl
   await page.fill('input[type="email"]', email!);
   await page.fill('input[type="password"]', password!);
   await page.click('button[type="submit"]');
-  await page.waitForURL(/\/dashboard/, { timeout: 120_000 });
+  await page.waitForURL(/\/(studio|dashboard)/, { timeout: 120_000 });
   console.log("LOGIN ok -> " + page.url());
   await page.screenshot({ path: testInfo.outputPath("logged-in.png"), fullPage: false });
 
   // ── 3. Session persists across a full reload ──
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3000);
-  expect(page.url()).toMatch(/\/dashboard/);
+  expect(page.url()).toMatch(/\/(studio|dashboard)/);
   console.log("SESSION persisted after reload -> " + page.url());
 
   // ── 4. Authenticated request to the protected endpoint ──
@@ -125,7 +125,7 @@ test("authentication recovery: login, session, logout, protected endpoint, no cl
   else console.log("LOGOUT control not found in UI — will verify by session invalidation instead");
 
   await page.waitForTimeout(4000);
-  await page.goto(`${BASE}/dashboard/video`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/studio/video`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3000);
   const afterLogout = page.url();
   console.log("AFTER LOGOUT url -> " + afterLogout);

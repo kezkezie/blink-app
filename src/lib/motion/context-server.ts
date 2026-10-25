@@ -60,6 +60,7 @@ export function placePictures(spec: MotionSpec, pictures: MotionPicture[]) {
   for (const s of spec.scenes) {
     if (s.template === "product-reveal" && s.image) s.image = byRef.get(s.image);
     if (s.template === "story" && s.picture) s.picture = byRef.get(s.picture);
+    if (s.template === "showcase") s.images = s.images.map((u) => byRef.get(u) ?? u).filter((u) => /^https:\/\//.test(u));
   }
   return spec;
 }

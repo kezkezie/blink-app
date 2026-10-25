@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { AbsoluteFill, Easing, Img, Series, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { MOTION_FPS, contrast, sceneFrames, type MotionScene, type MotionSpec, type Palette } from "@/lib/motion/spec";
+import { MOTION_FPS, contrast, markAt, sceneFrames, type MotionScene, type MotionSpec, type Palette } from "@/lib/motion/spec";
 import { arrival, type MotionLayer } from "@/lib/motion/layers";
 import { lookById, type Look, type Texture } from "@/lib/motion/looks";
 import { stampBox } from "@/lib/stamp";
@@ -64,6 +64,7 @@ export function settleFrame(scene: MotionScene) {
       case "compare": return Math.round(n * 0.62) + 10;
       case "points": { const k = scene.points.length; return 12 + (k - 1) * Math.max(8, Math.min(22, (n * 0.6) / k)) + 15; }
       case "story": { const k = Math.max(1, scene.lines.length); return Math.max(19, 6 + (k - 1) * Math.max(5, Math.min(14, (n * 0.45) / k)) + 12); }
+      case "showcase": return 26 + (scene.images.length - 1) * 5 + 16;
     }
   })();
   return Math.max(0, Math.min(n - EXIT - 2, Math.round(t)));
@@ -215,6 +216,13 @@ function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<Mot
   const bar = interpolate(frame, [allIn, allIn + 14], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
   const subIn = interpolate(frame, [allIn + 6, allIn + 20], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const part = usePart(scene);
+  // The marker (2026-10-25): sweeps in behind the marked words once every word has arrived.
+  const marked = new Set<number>();
+  if (scene.mark) {
+    const at = markAt(words, scene.mark);
+    if (at >= 0) scene.mark.split(" ").forEach((_, k) => marked.add(at + k));
+  }
+  const markIn = interpolate(frame, [allIn, allIn + 12], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: `0 ${u * 9}px`, opacity: 1 - exit, transform: `translateY(${-exit * u * 6}px)` }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: u * 1.2, maxWidth: "100%" }}>
@@ -227,14 +235,25 @@ function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<Mot
               const style: CSSProperties = scene.enter === "slam"
                 ? { opacity: Math.min(1, p * 1.4), transform: `scale(${interpolate(p, [0, 1], [1.8, 1])})` }
                 : { opacity: Math.min(1, p * 1.3), transform: `translateY(${interpolate(p, [0, 1], [size * 0.6, 0])}px)` };
+              if (marked.has(i)) {
+                const gap = size * 0.14;
+                return (
+                  <span key={i} style={{ ...style, display: "inline-block", position: "relative", fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.12, paddingBottom: size * 0.06, letterSpacing: -size * 0.02 }}>
+                    <span style={{ position: "absolute", left: marked.has(i - 1) ? -gap - 1 : -gap * 0.6, right: marked.has(i + 1) ? -gap - 1 : -gap * 0.6, top: size * 0.1, bottom: size * 0.02, background: palette.accent, borderRadius: marked.has(i - 1) || marked.has(i + 1) ? 0 : size * 0.08, transform: `scaleX(${markIn})`, transformOrigin: "0% 50%" }} />
+                    <span style={{ position: "relative", color: markIn > 0.5 ? readableOn(palette.accent) : palette.text }}>{w}</span>
+                  </span>
+                );
+              }
               return <span key={i} style={{ ...style, display: "inline-block", fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.12, paddingBottom: size * 0.06, letterSpacing: -size * 0.02, color: palette.text }}>{w}</span>;
             })}
           </div>
         ))}
         </div>
-        <div {...part("bar", { alignSelf: "stretch", display: "flex", justifyContent: "center", marginTop: u * 1.5 })}>
-          <div style={{ height: u * 1.4, width: `${bar * 100}%`, background: palette.accent, borderRadius: u }} />
-        </div>
+        {!marked.size && (
+          <div {...part("bar", { alignSelf: "stretch", display: "flex", justifyContent: "center", marginTop: u * 1.5 })}>
+            <div style={{ height: u * 1.4, width: `${bar * 100}%`, background: palette.accent, borderRadius: u }} />
+          </div>
+        )}
         {scene.sub && <div {...part("sub", { opacity: subIn, transform: `translateY(${(1 - subIn) * u * 2}px)`, fontFamily: fontStack(brand.font), fontWeight: 500, fontSize: Math.max(u * 4.6, size * 0.3), color: palette.text, marginTop: u * 1.2, textAlign: "center" })}>{scene.sub}</div>}
       </div>
     </AbsoluteFill>
@@ -427,7 +446,12 @@ function Screen({ scene, palette, brand, frames }: { scene: Extract<MotionScene,
         </div>
         <div style={{ position: "absolute", left: bezel + bx * devW - u * 0.8 / s, top: bezel + by * devH - u * 0.8 / s, width: bw * devW + u * 1.6 / s, height: bh * devH + u * 1.6 / s, borderRadius: u * 1.4 / s, border: `${u * 0.6 / s}px solid ${palette.accent}`, opacity: ring * (1 - ripple * 0.35), transform: `scale(${interpolate(ring, [0, 1], [1.15, 1])})` }} />
         <div style={{ position: "absolute", left: bezel + (bx + bw / 2) * devW - dot * 1.5 * ripple, top: bezel + (by + bh / 2) * devH - dot * 1.5 * ripple, width: dot * 3 * ripple, height: dot * 3 * ripple, borderRadius: "50%", border: `${u * 0.5 / s}px solid ${palette.accent}`, opacity: ripple > 0 ? 1 - ripple : 0 }} />
-        <div style={{ position: "absolute", left: bezel + (bx + bw / 2) * devW - dot / 2 + (1 - tap) * devW * 0.35, top: bezel + (by + bh / 2) * devH - dot / 2 + (1 - tap) * devH * 0.35, width: dot, height: dot, borderRadius: "50%", background: "rgba(255,255,255,0.92)", border: `${u * 0.45 / s}px solid #111111`, opacity: tap, transform: `scale(${press})`, boxShadow: `0 ${u * 0.6 / s}px ${u * 2 / s}px rgba(0,0,0,0.35)` }} />
+        {scene.device === "phone" ? (
+          <div style={{ position: "absolute", left: bezel + (bx + bw / 2) * devW - dot / 2 + (1 - tap) * devW * 0.35, top: bezel + (by + bh / 2) * devH - dot / 2 + (1 - tap) * devH * 0.35, width: dot, height: dot, borderRadius: "50%", background: "rgba(255,255,255,0.92)", border: `${u * 0.45 / s}px solid #111111`, opacity: tap, transform: `scale(${press})`, boxShadow: `0 ${u * 0.6 / s}px ${u * 2 / s}px rgba(0,0,0,0.35)` }} />
+        ) : (
+          // On a laptop (or no frame): a real pointer glides in and clicks, its tip on the spot.
+          <Img src={CURSOR} style={{ position: "absolute", left: bezel + (bx + bw / 2) * devW - (dot * 1.3) * (3 / 24) + (1 - tap) * devW * 0.3, top: bezel + (by + bh / 2) * devH - (dot * 1.3) * (2 / 24) + (1 - tap) * devH * 0.25, width: dot * 1.3, height: dot * 1.3, opacity: tap, transform: `scale(${press})`, transformOrigin: "12% 8%" }} />
+        )}
       </div>
       <div style={{ position: "absolute", left: width * 0.08, right: width * 0.08, top: below ? labelY : undefined, bottom: below ? undefined : height - labelY, display: "flex", justifyContent: "center", opacity: Math.min(1, label * 1.4), transform: `translateY(${(1 - label) * u * (below ? 3 : -3)}px)` }}>
         <div {...part("label", { display: "flex", flexDirection: "column", alignItems: "center", gap: u * 0.8, padding: `${u * 2.4}px ${u * 4.4}px`, borderRadius: u * 3, background: palette.background, border: `${u * 0.4}px solid ${palette.accent}`, maxWidth: "100%", boxShadow: `0 ${u * 1.5}px ${u * 4}px rgba(0,0,0,0.3)` })}>
@@ -612,6 +636,69 @@ function Story({ scene, palette, brand, frames }: { scene: Extract<MotionScene, 
   );
 }
 
+/** A pointer arrow (an SVG picture: the web renderer draws pictures, not SVG elements). */
+const CURSOR = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="96" height="96"><path d="M3 2 L10.6 21.2 L13.2 13.6 L20.8 11 Z" fill="#FFFFFF" stroke="#111111" stroke-width="1.5" stroke-linejoin="round"/></svg>')}`;
+
+/**
+ * Showcase (2026-10-25): the main picture in front, up to four behind it in the corners, each
+ * floating at its own pace while the whole set pushes in slowly; the title and a small corner label.
+ * After the floating-screen product films Kezie collected (Rico, Cosmos, the laptop plinth).
+ */
+function Showcase({ scene, palette, brand, frames }: { scene: Extract<MotionScene, { template: "showcase" }>; palette: Palette; brand: MotionBrand; frames: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { u, width: W, height: H, tall, wide } = useUnit();
+  const exit = useExit(frames);
+  const part = usePart(scene);
+  const [hero, ...rest] = scene.images;
+  const push = interpolate(frame, [0, frames], [1, 1.06]);
+  const heroW = W * (wide ? 0.52 : tall ? 0.84 : 0.7), heroH = heroW / 1.6;
+  const heroCy = H * (wide ? 0.53 : tall ? 0.47 : 0.48);
+  // Corners, behind the main picture (partly off the frame, like a real shoot).
+  const spots = wide
+    ? [[0.14, 0.3], [0.86, 0.27], [0.17, 0.76], [0.84, 0.74]]
+    : tall ? [[0.17, 0.2], [0.85, 0.24], [0.16, 0.7], [0.84, 0.67]] : [[0.16, 0.2], [0.85, 0.22], [0.17, 0.8], [0.84, 0.78]];
+  const satW = W * (wide ? 0.24 : tall ? 0.46 : 0.36), satH = satW * 0.72;
+  const card = (src: string, i: number, w: number, h: number, cx: number, cy: number, depth: number) => {
+    const p = pop(frame, fps, i * 5, 15);
+    const fx = Math.cos((frame + i * 47) / 55) * u * 0.7 * depth, fy = Math.sin((frame + i * 31) / 48) * u * 1.3 * depth;
+    return {
+      position: "absolute" as const, left: cx - w / 2, top: cy - h / 2, width: w, height: h, borderRadius: u * 2, overflow: "hidden" as const,
+      background: shade(palette.background, 0.14), opacity: Math.min(1, p * 1.4) * (depth > 1 ? 0.9 : 1),
+      transform: `translate(${fx}px, ${fy + (1 - p) * H * 0.05}px) scale(${interpolate(p, [0, 1], [0.9, 1])})`,
+      boxShadow: `0 ${u * 3}px ${u * 9}px rgba(0,0,0,${depth > 1 ? 0.45 : 0.55})`,
+      ...(depth > 1 ? { filter: `blur(${u * 0.12}px)` } : {}),
+      key: `${i}-${src}`,
+    };
+  };
+  const titleIn = interpolate(frame, [18, 34], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  const titleTop = wide ? H * 0.06 : undefined;
+  return (
+    <AbsoluteFill style={{ opacity: 1 - exit }}>
+      <AbsoluteFill style={{ transform: `scale(${push})` }}>
+        {rest.slice(0, 4).map((src, i) => {
+          const [x, y] = spots[i];
+          const { key, ...style } = card(src, i + 1, satW, satH, W * x, H * y, 1.6);
+          return <div key={key} style={style}><Img src={src} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>;
+        })}
+        {hero && (() => {
+          const { key, ...style } = card(hero, 0, heroW, heroH, W / 2, heroCy, 0.6);
+          return <div key={key} {...part("hero", { ...style, border: `${Math.max(1, u * 0.12)}px solid rgba(255,255,255,0.14)` })}><Img src={hero} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>;
+        })()}
+      </AbsoluteFill>
+      {/* Under the words only: a tall frame keeps its lower pictures clear of it. */}
+      {!wide && (scene.title || scene.sub) && <AbsoluteFill style={{ background: `linear-gradient(180deg, ${rgba(palette.background, 0)} ${tall ? 70 : 58}%, ${rgba(palette.background, 0.92)} ${tall ? 86 : 82}%, ${palette.background} 100%)` }} />}
+      {scene.label && <div {...part("label", { position: "absolute", left: u * 5, top: u * 5, fontFamily: `"Geist Mono", ui-monospace, Menlo, monospace`, fontSize: u * 2.4, letterSpacing: u * 0.12, textTransform: "uppercase", color: palette.text, opacity: 0.7 * titleIn })}>{scene.label}</div>}
+      {(scene.title || scene.sub) && (
+        <AbsoluteFill style={{ justifyContent: wide ? "flex-start" : "flex-end", alignItems: "center", paddingTop: titleTop, paddingBottom: wide ? 0 : H * 0.07, paddingLeft: u * 7, paddingRight: u * 7 }}>
+          {scene.title && <div {...part("title", { fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * (tall ? 6.6 : 5.4), lineHeight: 1.1, paddingBottom: u * 0.4, letterSpacing: -u * 0.08, color: palette.text, textAlign: "center", opacity: titleIn, transform: `translateY(${(1 - titleIn) * u * 3}px)` })}>{scene.title}</div>}
+          {scene.sub && <div {...part("sub", { fontFamily: fontStack(brand.font), fontWeight: 500, fontSize: u * (tall ? 3.6 : 3), lineHeight: 1.3, color: palette.text, opacity: 0.75 * titleIn, textAlign: "center", marginTop: u * 1.4, maxWidth: u * 120 })}>{scene.sub}</div>}
+        </AbsoluteFill>
+      )}
+    </AbsoluteFill>
+  );
+}
+
 function Scene({ scene, palette, brand }: { scene: MotionScene; palette: Palette; brand: MotionBrand }) {
   const frames = sceneFrames(scene);
   return (
@@ -635,6 +722,7 @@ function TemplateScene({ scene, palette, brand, frames }: { scene: MotionScene; 
     case "compare": return <Compare scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "points": return <Points scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "story": return <Story scene={scene} palette={palette} brand={brand} frames={frames} />;
+    case "showcase": return <Showcase scene={scene} palette={palette} brand={brand} frames={frames} />;
   }
 }
 

@@ -123,7 +123,6 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
   const view = live ?? spec;
   const abort = useRef<AbortController | null>(null);
   const { width, height } = sizeFor(view.shape);
-  const tall = height > width;
   const frames = Math.max(1, totalFrames(view));
   // The free plan's clips carry the BlinkSpot stamp, in the preview and the render (lib/stamp.ts).
   const { plan } = useCredits();
@@ -192,7 +191,10 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
   };
   const remove = (i: number) => { if (spec.scenes.length <= 1) return; onSpec({ ...spec, scenes: spec.scenes.filter((_, j) => j !== i) }); setSceneIx(Math.max(0, i - 1)); setLayerId(null); };
   const duplicateScene = (i: number) => { const s = spec.scenes[i]; const copy = { ...s, layers: s.layers?.map(duplicateLayer) } as MotionScene; const next = [...spec.scenes]; next.splice(i + 1, 0, copy); onSpec({ ...spec, scenes: next }); setSceneIx(i + 1); };
-  const addScene = (template: (typeof ADDABLE_TEMPLATES)[number]) => { const next = [...spec.scenes]; next.splice(si + 1, 0, blankScene(template, brand.name)); onSpec({ ...spec, scenes: next }); setSceneIx(si + 1); setLayerId(null); setAdding(false); };
+  const addScene = (template: (typeof ADDABLE_TEMPLATES)[number]) => {
+    if (template === "showcase" && !allPictures.length) { toast.info("A showcase floats your pictures: add some first (upload one, or make pictures in Create)."); return; }
+    const next = [...spec.scenes]; next.splice(si + 1, 0, blankScene(template, brand.name, allPictures.map((p) => p.url))); onSpec({ ...spec, scenes: next }); setSceneIx(si + 1); setLayerId(null); setAdding(false);
+  };
   const [adding, setAdding] = useState(false);
   const setColour = (k: keyof MotionSpec["palette"], v: string) => onSpec({ ...spec, palette: paletteFor({ ...spec.palette, [k]: v }, { primary: brand.primary, secondary: brand.secondary }) });
 
@@ -460,7 +462,27 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
               {s.template === "kinetic-headline" && (<>
                 {field("Words", s.words, (v) => setScene(i, { words: v }), { area: true })}
                 {field("Smaller line", s.sub, (v) => setScene(i, { sub: v || undefined }), { placeholder: "Optional" })}
+                {field("Highlight", s.mark, (v) => setScene(i, { mark: v.trim() ? v : undefined }), { placeholder: "1 to 3 words from the headline, e.g. working" })}
                 <div className="s-seg" role="group" aria-label="How words arrive">{(["word", "line", "slam"] as const).map((e) => <button key={e} aria-pressed={s.enter === e} onClick={() => setScene(i, { enter: e })}>{e === "word" ? "Word by word" : e === "line" ? "Line by line" : "Slam"}</button>)}</div>
+              </>)}
+              {s.template === "showcase" && (<>
+                {field("Title", s.title, (v) => setScene(i, { title: v || undefined }), { placeholder: "Optional" })}
+                {field("Smaller line", s.sub, (v) => setScene(i, { sub: v || undefined }), { placeholder: "Optional" })}
+                {field("Corner label", s.label, (v) => setScene(i, { label: v || undefined }), { placeholder: "e.g. Website studio" })}
+                <span className="text-[11.5px]" style={{ color: "var(--s-soft)" }}>Pictures (up to 5, the first in front). Tap to add or take out.</span>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Showcase pictures">
+                  {[...new Set([...s.images, ...allPictures.map((p) => p.url)])].slice(0, 15).map((url) => {
+                    const at = s.images.indexOf(url);
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <button key={url} type="button" aria-pressed={at >= 0} title={at >= 0 ? `Picture ${at + 1}: take it out` : "Add it"} className="relative h-11 w-11 rounded-lg overflow-hidden" style={{ border: `2px solid ${at >= 0 ? "var(--s-ai)" : "var(--s-line)"}` }}
+                        onClick={() => setScene(i, { images: at >= 0 ? (s.images.length > 1 ? s.images.filter((x) => x !== url) : s.images) : [...s.images, url].slice(0, 5) })}>
+                        <img src={url} alt="" className="h-full w-full object-cover" />
+                        {at >= 0 && <span className="absolute top-0.5 left-0.5 text-[10px] font-bold px-1 rounded" style={{ background: "var(--s-ai)", color: "#fff" }}>{at + 1}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
               </>)}
               {s.template === "stat" && (<>
                 <div className="grid grid-cols-[70px_minmax(0,1fr)_70px] gap-2">
@@ -640,7 +662,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
           {/* Canvas */}
           <div className="ms-stage">
             <div className="ms-canvas-wrap">
-              <div className="ms-canvas" style={{ aspectRatio: `${width} / ${height}`, ...(tall ? { height: "100%" } : { width: "100%" }), background: view.kind === "overlay" ? "linear-gradient(135deg,#3a4250,#1b1f26)" : "#000" }}>
+              <div className="ms-canvas" style={{ aspectRatio: `${width} / ${height}`, width: `min(100cqw, calc(100cqh * ${width / height}))`, background: view.kind === "overlay" ? "linear-gradient(135deg,#3a4250,#1b1f26)" : "#000" }}>
                 {/* Only the picture is clipped to the frame; a layer hanging off the edge keeps its handles. */}
                 <div className="ms-frame" ref={frameEl}>
                   <Player

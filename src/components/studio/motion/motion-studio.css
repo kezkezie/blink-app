@@ -11,7 +11,8 @@
 .ms-pop.up { left: 0; top: auto; bottom: calc(100% + 6px); width: 270px; max-height: 340px; overflow: auto; gap: 2px; padding: 4px; }
 
 .ms-stage { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; min-width: 0; min-height: 0; padding: 12px; gap: 8px; background: var(--s-bg); }
-.ms-canvas-wrap { min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 8px; }
+/* A size container, so the canvas fits both ways (a square at width 100% ran under the play bar). */
+.ms-canvas-wrap { min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 8px; container-type: size; }
 .ms-canvas { position: relative; max-width: 100%; max-height: 100%; border-radius: 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, .4); }
 .ms-frame { position: absolute; inset: 0; border-radius: 12px; overflow: hidden; }
 .ms-overlay { position: absolute; inset: 0; z-index: 2; }
