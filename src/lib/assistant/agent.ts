@@ -30,7 +30,10 @@ export function assistantModelFor(kind: "chat" | "canvas" | "editor", provider: 
 /** List prices, USD per million tokens, for the cost line in the logs. */
 const PRICE: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
   "claude-opus-5-5": { in: 4, out: 20, cacheRead: 0.2, cacheWrite: 5 },
-  "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+  // Cache reads are $0.20 on Sonnet 5.5 too (was logged at $0.10 until 2026-10-25).
+  "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  // For simple steps if they move to Haiku (prompts up to 100K tokens; $0.50 / $2.50 beyond).
+  "claude-haiku-5-5": { in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
 };
 export function estimateUsd(model: string, u: { input: number; output: number; cacheRead?: number; cacheWrite?: number }) {
   const p = PRICE[model];
