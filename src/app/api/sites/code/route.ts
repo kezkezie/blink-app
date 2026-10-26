@@ -7,7 +7,7 @@ import { assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "
 import { brandArg } from "@/lib/credits-meter";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
-import { runSiteRefs } from "@/lib/sites/site-refs-server";
+import { keptSiteRefs } from "@/lib/sites/site-refs-server";
 import { CODE_SYSTEM, MAX_INSPIRATION, SITE_LOOKS, SITE_PAGE_CREDITS, checkHtml, codeUserPrompt, designLetter, extractHtml, fillImages, lookOf, pageTitle } from "@/lib/sites/code";
 import { FILM_PROMPT, addFilm, filmGlimpses, filmUrls, parseFilm } from "@/lib/sites/scroll-film";
 import { parseInspirationImageUrl, verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
@@ -78,10 +78,10 @@ export async function POST(request: NextRequest) {
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `A page is ${SITE_PAGE_CREDITS} credits and your balance is lower. Get more in Billing.` }, { status: 402 });
   const refund = (why: string) => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: SITE_PAGE_CREDITS, p_operation: "refund", p_description: `Refund: ${why}`, ...brandArg(brandId) }).then(() => {}, () => {});
 
-  const refs = await runSiteRefs(brandId, client.id, { cachedOnly: true }).catch(() => null);
+  const refs = await keptSiteRefs(brandId, client.id).catch(() => null);
   const images = brain.images.slice(0, MAX_PICTURES);
   const prompt = (designs: boolean) => codeUserPrompt({
-    brand: brain, look, brief, patterns: refs?.ok ? refs.value.patterns : null,
+    brand: brain, look, brief, patterns: refs?.patterns ?? null,
     captions: brain.chunks.filter((c) => c.kind === "post").map((c) => c.text),
     inspiration: designs ? inspiration.length : 0, film: film ? FILM_PROMPT : undefined,
   });

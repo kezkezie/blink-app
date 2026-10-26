@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Code2, Copy, Download, ExternalLink, Eye, Globe, LayoutList, Laptop, Loader2, Maximize2, RefreshCw, Search, Smartphone, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { ArrowLeft, Check, Code2, Copy, Download, ExternalLink, Eye, Globe, LayoutList, Laptop, Loader2, Maximize2, RefreshCw, Smartphone, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { MAX_LOOKS, SITE_CHANGE_CREDITS, SITE_LOOKS, SITE_PAGE_CREDITS, cleanSlug, downloadName, type SiteLook } from "@/lib/sites/code";
@@ -11,7 +11,7 @@ import type { FilmInput } from "@/lib/sites/scroll-film";
 import { useKept } from "@/lib/drafts";
 import { useClient } from "@/hooks/useClient";
 import { Modal } from "../Modal";
-import { FilmBox, InspirationBox } from "./DesignInputs";
+import { FilmBox, InspirationBox, SitesYouLikeBox, type SitesYouLike } from "./DesignInputs";
 import { SiteFullscreen, SitePreview, SiteThumb } from "./SitePreview";
 import { SectionsEditor } from "./SectionsEditor";
 import { track } from "@/lib/analytics";
@@ -31,7 +31,6 @@ type Page = { id: string; brand_id: string; name: string; html: string; brief: s
 /** What a page is written from besides the brief: designs the owner likes and a scroll film (2026-10-23). */
 type Extras = { inspiration: string[]; film: FilmInput | null };
 type Job = { key: string; look: SiteLook; code: string; error?: string; text: string; extras: Extras };
-type Refs = { sites: Array<{ url: string; name: string; why: string; host: string }>; patterns: string; at: string };
 type View = { kind: "gallery" } | { kind: "page"; id: string } | { kind: "job"; key: string };
 
 const lookLabel = (v: string | null) => SITE_LOOKS.find((l) => l.id === v)?.label ?? "Page";
@@ -67,10 +66,8 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
   });
   const [brief, setBrief] = useState(initialBrief?.slice(0, 1500) ?? "");
   const autoStarted = useRef(false);
-  const [refs, setRefs] = useState<Refs | null>(null);
+  const [refs, setRefs] = useState<SitesYouLike | null>(null);
   const [studying, setStudying] = useState(false);
-  const [studyFirst, setStudyFirst] = useState(true);
-  const [showPatterns, setShowPatterns] = useState(false);
   const [fullPage, setFullPage] = useState<{ html: string; title: string } | null>(null);
   const codes = useRef(new Map<string, string>());
   const flushAt = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,20 +76,11 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
     if (!brandId) return;
     let alive = true;
     void fetch(`/api/sites/pages?brandId=${brandId}`).then((r) => r.json()).then((d) => { if (alive) setPages(Array.isArray(d.pages) ? d.pages : []); }).catch(() => { if (alive) setPages([]); });
-    void fetch("/api/sites/refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, cachedOnly: true }) })
-      .then((r) => r.json()).then((d) => { if (alive && Array.isArray(d.sites)) setRefs(d); }).catch(() => {});
+    setRefs(null);
+    void fetch("/api/sites/refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId }) })
+      .then((r) => r.json()).then((d) => { if (alive) setRefs(Array.isArray(d.sites) ? { sites: d.sites, patterns: d.patterns ?? "" } : { sites: [], patterns: "" }); })
+      .catch(() => { if (alive) setRefs({ sites: [], patterns: "" }); });
     return () => { alive = false; };
-  }, [brandId]);
-
-  const study = useCallback(async (refresh = false) => {
-    if (!brandId) return null;
-    setStudying(true);
-    try {
-      const r = await fetch("/api/sites/refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, refresh }) });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !Array.isArray(d.sites)) { toast.error(d.error || "Couldn't study sites just now."); return null; }
-      setRefs(d); return d as Refs;
-    } finally { setStudying(false); }
   }, [brandId]);
 
   // Streamed code arrives token by token; the screen catches up a few times a second.
@@ -141,8 +129,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
   }, [brandId]);
 
   async function write() {
-    if (!brandId || !looks.length || filmBusy) return;
-    if (!refs && studyFirst) await study();
+    if (!brandId || !looks.length || filmBusy || studying) return;
     const text = brief.trim();
     const extras: Extras = { inspiration, film };
     const started: Job[] = looks.map((look) => ({ key: `${look}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, look, code: "", text, extras }));
@@ -196,6 +183,8 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
   }
 
   const n = looks.length;
+  const sitesLiked = refs?.sites.length ?? 0;
+  const uses = [inspiration.length ? `${inspiration.length} design${inspiration.length === 1 ? "" : "s"} you like` : "", sitesLiked ? `${sitesLiked} website${sitesLiked === 1 ? "" : "s"} you like` : "", film ? "your scroll film" : ""].filter(Boolean);
   return (
     <div className="max-w-[1180px] mx-auto pt-2 md:pt-6 pb-10">
       {fullPage && <SiteFullscreen html={fullPage.html} title={fullPage.title} onClose={() => setFullPage(null)} />}
@@ -229,13 +218,13 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
             <FilmBox film={film} setFilm={setFilm} clientId={clientId} brandId={activeBrand.id} busy={filmBusy} setBusy={setFilmBusy} />
           </div>
         </div>
-        <ResearchStrip refs={refs} studying={studying} studyFirst={studyFirst} setStudyFirst={setStudyFirst} showPatterns={showPatterns} setShowPatterns={setShowPatterns} onStudy={() => void study(!!refs)} />
+        <SitesYouLikeBox key={activeBrand.id} brandId={activeBrand.id} refs={refs} setRefs={setRefs} setBusy={setStudying} />
         <div className="flex flex-wrap items-center gap-3">
           <button className="s-btn primary" disabled={!n || studying || filmBusy} onClick={() => void write()}>
             {studying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {studying ? "Studying sites like yours…" : `Write ${n === 1 ? "the page" : `${n} pages`}`} <span className="cost">{n * SITE_PAGE_CREDITS} cr</span>
+            {studying ? "Studying your websites…" : `Write ${n === 1 ? "the page" : `${n} pages`}`} <span className="cost">{n * SITE_PAGE_CREDITS} cr</span>
           </button>
-          <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{filmBusy ? "Waiting for the film's frames…" : `About 1 to 3 minutes. Watch the code come in on each card.${inspiration.length || film ? ` Using ${[inspiration.length ? `${inspiration.length} design${inspiration.length === 1 ? "" : "s"} you like` : "", film ? "your scroll film" : ""].filter(Boolean).join(" and ")}.` : ""}`}</span>
+          <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{filmBusy ? "Waiting for the film's frames…" : `About 1 to 3 minutes. Watch the code come in on each card.${uses.length ? ` Using ${uses.join(", ").replace(/, ([^,]*)$/, " and $1")}.` : ""}`}</span>
         </div>
       </div>
 
@@ -279,31 +268,6 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
           })}
         </div>
       )}
-    </div>
-  );
-}
-
-function ResearchStrip({ refs, studying, studyFirst, setStudyFirst, showPatterns, setShowPatterns, onStudy }: {
-  refs: Refs | null; studying: boolean; studyFirst: boolean; setStudyFirst: (v: boolean) => void; showPatterns: boolean; setShowPatterns: (v: boolean) => void; onStudy: () => void;
-}) {
-  if (!refs) {
-    return (
-      <label className="flex items-start gap-2 text-[13px] cursor-pointer rounded-xl p-3" style={{ background: "var(--s-bg)" }}>
-        <input type="checkbox" className="mt-0.5" checked={studyFirst} onChange={(e) => setStudyFirst(e.target.checked)} />
-        <span><b>Study well-designed sites like yours first</b><span className="block text-[12px]" style={{ color: "var(--s-mute)" }}>BlinkSpot finds strong websites in your category and follows their structure (never their words or pictures). Free, about a minute, kept for 30 days.</span></span>
-      </label>
-    );
-  }
-  return (
-    <div className="rounded-xl p-3 grid gap-2" style={{ background: "var(--s-bg)" }}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Search className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} />
-        <span className="text-[12.5px] font-medium mr-1">Following {refs.sites.length} sites like yours:</span>
-        {refs.sites.map((s) => <a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer" className="s-chip" title={s.why}>{s.host}</a>)}
-        <button type="button" className="s-btn ghost sm" onClick={() => setShowPatterns(!showPatterns)} aria-expanded={showPatterns}>{showPatterns ? "Hide" : "What we learned"}</button>
-        <button type="button" className="s-btn ghost sm" onClick={onStudy} disabled={studying}>{studying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Study again</button>
-      </div>
-      {showPatterns && <pre className="text-[12px] whitespace-pre-wrap leading-relaxed m-0" style={{ color: "var(--s-soft)", fontFamily: "inherit" }}>{refs.patterns}</pre>}
     </div>
   );
 }

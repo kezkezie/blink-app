@@ -3,7 +3,7 @@ import {
   PAGE_CSP, PUBLISHED_CSP, SLUG, applyEdits, brandLinks, checkHtml, cleanSlug, codeUserPrompt, downloadName, extractHtml, fillImages, lookOf, pageTitle, previewDoc, webImage,
   type BrandForCode,
 } from "@/lib/sites/code";
-import { validatePatterns, validateSiteRefs, validateSites } from "@/lib/sites/site-refs";
+import { MAX_SITES_YOU_LIKE, cleanSiteAddress, cleanSiteList, validatePatterns, validateSiteRefs } from "@/lib/sites/site-refs";
 
 /** Website studio (2026-10-16): one-file pages, edit blocks, sandboxed preview, website research. */
 const page = `<!doctype html>
@@ -57,7 +57,7 @@ describe("website studio pages", () => {
     expect(text).toContain("WhatsApp: https://wa.me/254700111222?text=");
     expect(text).toContain("1. Runner on concrete");
     expect(text).toContain("Look: Bold:");
-    expect(text).toContain("patterns only, never copy them");
+    expect(text).toContain("What the websites the owner likes do (follow their patterns, never copy their words, names or pictures)");
     expect(brandLinks({ ...brand, contact: {} })).toEqual([]);
     expect(lookOf("cinematic")).toBe("cinematic");
     expect(lookOf("<script>")).toBeNull();
@@ -99,25 +99,37 @@ describe("website studio pages", () => {
   });
 });
 
-describe("website research", () => {
-  it("keeps brand websites, one per domain, never galleries or social", () => {
-    const sites = validateSites({ sites: [
-      { url: "https://www.awwwards.com/sites/x", name: "Gallery" },
-      { url: "https://www.kith.com/", name: "Kith", why: "editorial hero" },
-      { url: "https://kith.com/collections", name: "Kith again" },
-      { url: "http://insecure.example", name: "No" },
-      { url: "https://www.instagram.com/brand", name: "IG" },
-      { url: "https://aimeleondore.com", name: "ALD", why: "serif type" },
-    ] });
-    expect(sites.map((s) => s.name)).toEqual(["Kith", "ALD"]);
+describe("websites you like (2026-10-27: picked by the owner, never searched for them)", () => {
+  it("takes addresses as people paste them and makes them https", () => {
+    expect(cleanSiteAddress("stripe.com")).toEqual({ url: "https://stripe.com/", host: "stripe.com" });
+    expect(cleanSiteAddress("  http://www.Kith.com/pages/about#top ")).toEqual({ url: "https://www.kith.com/pages/about", host: "kith.com" });
+    expect(cleanSiteAddress("https://aimeleondore.com")).toEqual({ url: "https://aimeleondore.com/", host: "aimeleondore.com" });
+  });
+
+  it("refuses what isn't one brand's website", () => {
+    for (const bad of ["", "not a site", "ftp://files.example.com", "http://192.168.1.10", "localhost:3000", "javascript:alert(1)"]) expect(cleanSiteAddress(bad)).toHaveProperty("error");
+    for (const gallery of ["https://www.awwwards.com/sites/kith", "pinterest.com/pin/1", "https://www.instagram.com/kith"]) expect((cleanSiteAddress(gallery) as { error: string }).error).toMatch(/not a gallery or social page/);
+  });
+
+  it("keeps one per domain, up to the limit, and stops at the first bad one", () => {
+    expect(cleanSiteList(["kith.com", "https://www.kith.com/shop", "stripe.com"])).toEqual({ sites: [{ url: "https://kith.com/", host: "kith.com" }, { url: "https://stripe.com/", host: "stripe.com" }] });
+    expect(cleanSiteList(["kith.com", "nope"])).toHaveProperty("error");
+    expect(cleanSiteList(Array.from({ length: MAX_SITES_YOU_LIKE + 1 }, (_, n) => `site${n}.com`))).toHaveProperty("error");
+    expect(cleanSiteList([])).toEqual({ sites: [] });
   });
 
   it("keeps the patterns as short dashed lines", () => {
     expect(validatePatterns({ patterns: "1. Hero with one big product photo and a single CTA\n- Dark pages with one accent colour\n• Serif headlines with a clean sans body\nok" }))
       .toBe("- Hero with one big product photo and a single CTA\n- Dark pages with one accent colour\n- Serif headlines with a clean sans body");
     expect(validatePatterns({ patterns: "too short" })).toBeNull();
+    // A long line ends on a whole word.
+    const long = validatePatterns({ patterns: `- ${"Use only our own photography ".repeat(14)}\n- Dark pages with one accent colour\n- Serif headlines with a clean sans body` })!.split("\n")[0];
+    expect(long.length).toBeLessThanOrEqual(323);
+    expect(long).toMatch(/(own|only|Use|photography)…$/);
     const kept = validateSiteRefs({ sites: [{ url: "https://kith.com/", name: "Kith", host: "kith.com", dark: false, fonts: ["Inter"] }], patterns: "- a\n- b", at: "2026-10-16T00:00:00Z" });
     expect(kept?.sites[0].host).toBe("kith.com");
     expect(validateSiteRefs({ sites: [], patterns: "x" })).toBeNull();
+    expect(kept?.picked).toBeUndefined(); // an older automatic find: not shown, not followed
+    expect(validateSiteRefs({ sites: [{ url: "https://kith.com/", host: "kith.com" }], patterns: "- a", picked: true })?.picked).toBe(true);
   });
 });

@@ -1,24 +1,97 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Clapperboard, ImagePlus, Link2, Loader2, Palette, Upload, X } from "lucide-react";
+import { Clapperboard, ExternalLink, Globe, ImagePlus, Link2, Loader2, Palette, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { MAX_INSPIRATION } from "@/lib/sites/code";
 import type { FilmInput } from "@/lib/sites/scroll-film";
+import { MAX_SITES_YOU_LIKE, SITE_GALLERIES, cleanSiteAddress, type SiteRefs } from "@/lib/sites/site-refs";
 import type { Content } from "@/types/database";
 import { ImagePicker } from "../ImagePicker";
 import { PART_TYPES, cleanCaption, resolveMedia, thumbUrl } from "../media";
 import { filmFrameUrl, makeFilm, type FilmProgress } from "./film-frames";
 
 /**
- * The website studio's two extra inputs (Kezie, 2026-10-23):
+ * The website studio's extra inputs (Kezie, 2026-10-23; websites you like, 2026-10-27):
  * - Designs you like: "for people to put up a design that they really want, you know, from
  *   Pinterest". Uploads, Pinterest pins (imported to the owner's storage) or Library pictures;
  *   Claude follows them (app/api/sites/code).
  * - Scroll film: "we split the video into a sequence, and as we're scrolling... the video plays
  *   back", as on the Nuf Farms site. A Library video or an upload, cut into frames here.
  */
+
+/** The sites the owner likes, as the studio shows them (lib/sites/site-refs.ts). */
+export type SitesYouLike = Pick<SiteRefs, "sites" | "patterns">;
+
+/**
+ * Websites you like (Kezie, 2026-10-27: "let them go look for those particular type of websites
+ * then pick the websites and give us as inspiration"): links to galleries to browse, then the
+ * addresses they paste. Each change studies the whole list again (a few seconds, free); the pages
+ * follow what was learned. Nothing is searched for them any more.
+ */
+export function SitesYouLikeBox({ brandId, refs, setRefs, setBusy }: { brandId: string; refs: SitesYouLike | null; setRefs: (r: SitesYouLike) => void; setBusy: (b: boolean) => void }) {
+  const [link, setLink] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
+  const [showPatterns, setShowPatterns] = useState(false);
+  const sites = refs?.sites ?? [];
+  const room = MAX_SITES_YOU_LIKE - sites.length;
+
+  async function study(next: string[], adding?: string) {
+    setPending(adding ?? ""); setBusy(true);
+    try {
+      const r = await fetch("/api/sites/refs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, sites: next }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !Array.isArray(d.sites)) { toast.error(d.error || "Couldn't study those websites just now."); return false; }
+      setRefs({ sites: d.sites, patterns: d.patterns ?? "" });
+      if (Array.isArray(d.skipped) && d.skipped.length) toast(`Couldn't open ${d.skipped.join(", ")}, so it's left out. Some sites block visitors like us.`);
+      return true;
+    } catch { toast.error("Couldn't study those websites just now."); return false; }
+    finally { setPending(null); setBusy(false); }
+  }
+
+  async function add() {
+    const c = cleanSiteAddress(link);
+    if ("error" in c) { toast.error(c.error); return; }
+    if (sites.some((x) => x.host === c.host)) { toast("That website is already on your list."); setLink(""); return; }
+    if (await study([...sites.map((x) => x.url), c.url], c.host)) setLink("");
+  }
+
+  return (
+    <div className="rounded-xl p-3 grid gap-2.5" style={{ background: "var(--s-bg)" }} role="group" aria-label="Websites you like">
+      <div className="flex items-start gap-2">
+        <Globe className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--s-ai)" }} />
+        <span className="text-[13px]"><b>Websites you like</b> <span style={{ color: "var(--s-mute)" }}>(optional, up to {MAX_SITES_YOU_LIKE})</span>
+          <span className="block text-[12px]" style={{ color: "var(--s-mute)" }}>
+            Find sites you love, then paste their address. The page follows how they&apos;re built (sections, type, light or dark), in your colours, words and pictures, never theirs.{" "}
+            Browse: {SITE_GALLERIES.map((g, n) => <span key={g.url}>{n ? ", " : ""}<a href={g.url} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--s-soft)" }}>{g.name}</a></span>)}.
+          </span></span>
+      </div>
+      {(sites.length > 0 || pending) && (
+        <div className="flex flex-wrap items-center gap-1.5" aria-label="Your websites">
+          {sites.map((x) => (
+            <span key={x.url} className="s-chip inline-flex items-center gap-1" style={{ paddingRight: 4 }}>
+              <a href={x.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" title={`Open ${x.host}`}>{x.host}<ExternalLink className="h-3 w-3 opacity-60" /></a>
+              <button type="button" aria-label={`Remove ${x.host}`} disabled={pending !== null} onClick={() => void study(sites.filter((y) => y.url !== x.url).map((y) => y.url))}
+                className="grid place-items-center h-5 w-5 rounded-full" style={{ color: "var(--s-mute)" }}><X className="h-3 w-3" /></button>
+            </span>
+          ))}
+          {pending !== null && <span className="s-chip inline-flex items-center gap-1.5" style={{ color: "var(--s-mute)" }}><Loader2 className="h-3 w-3 animate-spin" /> {pending ? `Studying ${pending}…` : "Updating…"}</span>}
+          {sites.length > 0 && pending === null && <button type="button" className="s-btn ghost sm" onClick={() => setShowPatterns(!showPatterns)} aria-expanded={showPatterns}>{showPatterns ? "Hide" : "What we learned"}</button>}
+        </div>
+      )}
+      {showPatterns && refs?.patterns && <pre className="text-[12px] whitespace-pre-wrap leading-relaxed m-0" style={{ color: "var(--s-soft)", fontFamily: "inherit" }}>{refs.patterns}</pre>}
+      {room > 0 && (
+        <div className="flex items-center gap-1.5 max-w-[560px]">
+          <Link2 className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--s-mute)" }} />
+          <input className="s-input min-w-0 flex-1" style={{ height: 34 }} value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
+            placeholder="Paste a website address, e.g. stripe.com" aria-label="Website address" disabled={!refs || pending !== null} />
+          <button type="button" className="s-btn sm" disabled={!link.trim() || pending !== null || !refs} onClick={() => void add()}>Add</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** A picture no larger than 1600 px as a JPEG (Claude reads pictures up to 5 MB). */
 async function shrink(file: File): Promise<Blob> {

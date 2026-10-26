@@ -103,8 +103,6 @@ test("designs you like and a scroll film, cut in the browser", async ({ page }) 
 
     if (writing) {
       await page.getByRole("button", { name: /^Editorial/ }).click();
-      const study = page.getByRole("checkbox", { name: /Study well-designed sites/ });
-      if (await study.isVisible()) await study.uncheck();
       await page.getByRole("button", { name: /Write the page/ }).click();
       await expect(page.getByText(/page ready/)).toBeVisible({ timeout: 330_000 });
       const { data: rows } = await sb.from("site_pages").select("id, html").eq("client_id", clientId);

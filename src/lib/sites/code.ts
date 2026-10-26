@@ -110,7 +110,7 @@ export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?:
     `Colours: primary ${t.primary}, secondary ${t.secondary}, accent ${t.accent}, background ${t.background}. Fonts: headings ${t.headingFont}, body ${t.bodyFont}.`,
     links.length ? `Real links:\n${links.join("\n")}` : "Real links: none on file, so the buttons go to #sections.",
     i.captions?.length ? `Past post captions (for the voice):\n${i.captions.slice(0, 8).map((c) => `- ${c}`).join("\n")}` : "",
-    i.patterns ? `What strong websites in this category do (patterns only, never copy them):\n${i.patterns}` : "",
+    i.patterns ? `What the websites the owner likes do (follow their patterns, never copy their words, names or pictures):\n${i.patterns}` : "",
     `Look: ${look.direction}`,
     i.inspiration ? inspirationPrompt(Math.min(MAX_INSPIRATION, i.inspiration)) : "",
     i.film ?? "",

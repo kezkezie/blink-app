@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Website studio (Kezie, 2026-10-16). LIVE on a throwaway account: research sites like the brand,
+ * Website studio (Kezie, 2026-10-16). LIVE on a throwaway account: a website the owner likes,
  * one page written with its code streaming in, a hand edit in the code, an AI change (version 2),
  * download, publish at /w/<slug> (sandboxed: opaque origin, CSP), the gallery card, take offline,
  * and the phone layout. Everything deleted after.
@@ -20,7 +20,7 @@ async function signIn(page: Page, email: string, password: string) {
   await page.waitForURL(/\/(studio|welcome)/, { timeout: 120_000 });
 }
 
-test("website studio: research, write, edit, change, publish, download", async ({ page, context }) => {
+test("website studio: a site you like, write, edit, change, publish, download", async ({ page, context }) => {
   test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY, "needs the service key");
   test.setTimeout(900_000);
   const sb: SupabaseClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -53,8 +53,12 @@ test("website studio: research, write, edit, change, publish, download", async (
     await expect(page.getByRole("heading", { name: "Websites you can edit by sections or as code" })).toBeVisible({ timeout: 60_000 });
     await page.getByRole("button", { name: /^Cinematic/ }).click(); // leaves Editorial
     await page.getByLabel("What the site is for").fill("A launch page for our Runner 01 sneaker with a WhatsApp order button");
+    // A website the owner likes (2026-10-27: picked, never searched for them); the page follows it.
+    const liked = page.getByRole("group", { name: "Websites you like" });
+    await liked.getByLabel("Website address").fill("kith.com");
+    await liked.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(liked.getByRole("link", { name: /kith\.com/ })).toBeVisible({ timeout: 120_000 });
     await page.getByRole("button", { name: /Write the page/ }).click();
-    await expect(page.getByText(/Following \d+ sites like yours/)).toBeVisible({ timeout: 240_000 });
     const card = page.getByRole("button", { name: "Editorial page, writing" });
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.getByText(/Writing… \d+ KB/)).toBeVisible({ timeout: 90_000 });
