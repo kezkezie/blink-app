@@ -1304,8 +1304,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     const targets = (selectedElement?.type === "video" ? videoClips.filter((c) => c.id === selectedElement.id) : videoClips).filter((c) => c.type === "video");
     if (!targets.length) { toast.info("Add a video with talking in it first."); return; }
     const signal = aiStart("Listening to what's said…");
+    // Captions already made (and paid for) stay when the rest is stopped.
+    const layers: TextLayer[] = [];
     try {
-      const layers: TextLayer[] = [];
       let spent = 0;
       for (const c of targets) {
         const len = c.trimEnd - c.trimStart; // seconds of the source file
@@ -1321,7 +1322,11 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       snapshot();
       setTextLayers((p) => [...p, ...layers]);
       toast.success(`${layers.length} captions added · ${spent} credits. Edit any of them in the inspector.`);
-    } catch (e) { if (signal.aborted) toast.info(AI_STOPPED); else toast.error(e instanceof Error ? e.message : "Couldn't make captions."); }
+    } catch (e) {
+      if (signal.aborted && layers.length) { snapshot(); setTextLayers((p) => [...p, ...layers]); toast.info(`Stopped. The ${layers.length} captions already made are on the timeline.`); }
+      else if (signal.aborted) toast.info(AI_STOPPED);
+      else toast.error(e instanceof Error ? e.message : "Couldn't make captions.");
+    }
     finally { setAiBusy(null); }
   }
 
