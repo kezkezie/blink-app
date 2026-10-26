@@ -2,12 +2,14 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { PUBLISHED_CSP } from "@/lib/sites/code";
 import { workspaceNeedsStamp } from "@/lib/stamp-server";
 import { withSiteBadge } from "@/lib/stamp";
+import { throughOurFonts } from "@/lib/google-fonts";
 
 /**
  * A published website studio page: blinkspot.io/w/<slug>. Served as the owner wrote it, inside a
  * CSP sandbox: it runs as an opaque origin (no access to blinkspot.io cookies or storage), can't
  * call out, post forms or frame anything (lib/sites/code.ts PAGE_CSP). A free account's page carries
  * a small "Made with BlinkSpot" badge (lib/stamp.ts), added here, so upgrading removes it within a minute.
+ * Google Fonts links go through blinkspot.io (lib/google-fonts.ts), pages published before that too.
  */
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       status: 404, headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": PUBLISHED_CSP },
     });
   }
-  const html = (await workspaceNeedsStamp(page.client_id as string)) ? withSiteBadge(page.html as string) : (page.html as string);
+  const own = throughOurFonts(page.html as string);
+  const html = (await workspaceNeedsStamp(page.client_id as string)) ? withSiteBadge(own) : own;
   return new Response(html, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",

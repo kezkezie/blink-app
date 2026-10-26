@@ -20,6 +20,7 @@ import { track } from "@/lib/analytics";
 import { needsStamp } from "@/lib/stamp";
 import { useCredits } from "../hooks";
 import "./motion-studio.css";
+import { fontsCss } from "@/lib/google-fonts";
 
 /**
  * The motion studio, rebuilt as a canvas editor (2026-10-23; Kezie: "enlarging images, or placing
@@ -43,7 +44,7 @@ export function ensureMotionFont(family: string | null | undefined, clientId: st
     await new Promise<void>((resolve) => {
       const link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@400;500;600;700;800&display=swap`;
+      link.href = fontsCss(`family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@400;500;600;700;800&display=swap`);
       link.onload = () => resolve();
       link.onerror = () => resolve();
       document.head.appendChild(link);

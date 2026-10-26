@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { UI_COOKIE, studioPathFor } from "@/lib/studio-routes";
+import { REGION_COOKIE, needsConsentFor } from "@/lib/consent";
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -81,11 +82,16 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
   }
+  // Cookie consent (lib/consent.ts): whether this visitor must be asked, from Vercel's country header.
+  const region = needsConsentFor(request.headers.get("x-vercel-ip-country")) ? "eu" : "other";
+  if (request.cookies.get(REGION_COOKIE)?.value !== region) {
+    response.cookies.set(REGION_COOKIE, region, { path: "/", maxAge: 60 * 60 * 24, sameSite: "lax", secure: request.nextUrl.protocol === "https:" });
+  }
   return response;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|ingest/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|ingest/|gstatic/|api/gfonts/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?|ttf|otf)$).*)",
   ],
 };

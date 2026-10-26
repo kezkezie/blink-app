@@ -1,6 +1,7 @@
 import "./sites.css";
 import type { CSSProperties } from "react";
 import { whatsappLink, type SiteImage, type SiteProduct, type SiteSection, type SiteSpec } from "@/lib/sites/spec";
+import { fontsCssAbsolute } from "@/lib/google-fonts";
 
 /**
  * Renders a SiteSpec (the AI's plan, edited by the owner) as a finished landing page. No hooks,
@@ -53,7 +54,7 @@ function themeVars(spec: SiteSpec): CSSProperties {
 
 function fontsHref(spec: SiteSpec) {
   const fams = [...new Set([spec.theme.headingFont, spec.theme.bodyFont])].map((f) => `family=${f.trim().replace(/\s+/g, "+")}:wght@400;500;600;700;800`);
-  return `https://fonts.googleapis.com/css2?${fams.join("&")}&display=swap`;
+  return fontsCssAbsolute(`${fams.join("&")}&display=swap`);
 }
 
 function primaryAction(spec: SiteSpec, label?: string, product?: string) {

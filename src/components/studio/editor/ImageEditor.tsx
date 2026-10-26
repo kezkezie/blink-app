@@ -41,6 +41,7 @@ import {
 
 import { Overlay } from "../Modal";
 import { track } from "@/lib/analytics";
+import { fontsCss } from "@/lib/google-fonts";
 /**
  * The image Editor: Photoshop/Pixlr-style layers on a canvas. Shapes, pen, brush and eraser, real
  * text, photos, and AI on the canvas (remove background, swap a face, edit with words, turn a photo
@@ -95,7 +96,7 @@ function ensureFont(family: string): Promise<void> {
     const reg = GOOGLE_FONTS_REGISTRY.find((f) => f.family === family);
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@${reg?.weights?.join(";") || "400;700"}&display=swap`;
+    link.href = fontsCss(`family=${encodeURIComponent(family).replace(/%20/g, "+")}:wght@${reg?.weights?.join(";") || "400;700"}&display=swap`);
     link.onload = () => resolve();
     link.onerror = () => resolve(); // an uploaded or system font: nothing to fetch
     document.head.appendChild(link);

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CookieSettingsLink } from "@/components/CookieSettingsLink";
 
 export function Footer() {
     return (
@@ -29,6 +30,7 @@ export function Footer() {
                     >
                         Cookie Policy
                     </Link>
+                    <CookieSettingsLink className="text-xs text-[#989DAA] hover:text-[#C5BAC4] transition-colors font-medium" />
                     <Link
                         href="/acceptable-use"
                         className="text-xs text-[#989DAA] hover:text-[#C5BAC4] transition-colors font-medium"

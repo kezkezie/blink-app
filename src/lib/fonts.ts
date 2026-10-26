@@ -1,3 +1,5 @@
+import { fontsCss } from "@/lib/google-fonts";
+
 export interface BrandFontConfig {
   family: string;
   category: 'sans-serif' | 'serif' | 'display' | 'monospace' | 'handwriting';
@@ -447,7 +449,7 @@ export function injectGoogleFont(fontFamily: string) {
   const link = document.createElement('link');
   link.id = id;
   link.rel = 'stylesheet';
-  link.href = `https://fonts.googleapis.com/css2?family=${fontFamily.replace(/\s+/g, '+')}:wght@400;500;600;700;800&display=swap`;
+  link.href = fontsCss(`family=${fontFamily.replace(/\s+/g, '+')}:wght@400;500;600;700;800&display=swap`);
   document.head.appendChild(link);
 }
 

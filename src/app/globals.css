@@ -1,5 +1,5 @@
-/* Google Fonts: Inter (body), DM Sans (headings) */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Inter (body), DM Sans (headings), JetBrains Mono: linked in app/layout.tsx through our own domain
+   (lib/google-fonts.ts), so visitors never contact Google. */
 
 @import "tailwindcss";
 @import "tw-animate-css";

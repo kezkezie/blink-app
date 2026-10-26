@@ -14,7 +14,8 @@ export type BlinkEvent =
 
 export function track(event: BlinkEvent, props: Record<string, string | number | boolean | null | undefined> = {}) {
   try {
-    if (typeof window === "undefined" || !process.env.NEXT_PUBLIC_POSTHOG_KEY) return;
+    // Not started yet means no consent (PostHogProvider): nothing is sent.
+    if (typeof window === "undefined" || !process.env.NEXT_PUBLIC_POSTHOG_KEY || !posthog.__loaded) return;
     posthog.capture(event, props);
   } catch { /* analytics never gets in the way */ }
 }

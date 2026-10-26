@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { PostHogProvider } from '@/providers/PostHogProvider';
 import { Toaster } from "sonner";
 import "./globals.css";
+import { CookieConsent } from "@/components/CookieConsent";
+import { APP_FONTS, fontsCss } from "@/lib/google-fonts";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,7 +54,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-
+      <head>
+        <link rel="stylesheet" href={fontsCss(APP_FONTS)} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#191D23] text-[#DEDCDC] selection:bg-[#C5BAC4] selection:text-[#191D23]`}
         suppressHydrationWarning
@@ -71,6 +75,8 @@ export default function RootLayout({
             theme="dark"
             toastOptions={{ style: { background: "#2A2F38", color: "#DEDCDC", border: "1px solid rgba(87,112,122,0.4)" } }}
           />
+          {/* Cookie consent for visitors who must be asked (EU, EEA, UK, Switzerland; lib/consent.ts). */}
+          <CookieConsent />
         </PostHogProvider>
       </body>
     </html>

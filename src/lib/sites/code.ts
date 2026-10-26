@@ -9,6 +9,7 @@
  */
 import type { SiteContact, SiteImage, SiteProduct, SiteTheme } from "./spec";
 import { whatsappLink } from "./spec";
+import { APP_ORIGIN, throughOurFonts } from "@/lib/google-fonts";
 
 export const SITE_PAGE_CREDITS = 30;
 export const SITE_CHANGE_CREDITS = 6;
@@ -174,14 +175,14 @@ export function applyEdits(html: string, reply: string): { ok: true; html: strin
 
 /**
  * What a page may do, in the preview and when published: run its own inline script and GSAP from
- * cdnjs, load Google Fonts and https pictures; never call out (connect-src), post a form or change
+ * cdnjs, load Google Fonts through blinkspot.io (never from Google itself: throughOurFonts) and https pictures; never call out (connect-src), post a form or change
  * the base. Published pages add the sandbox, so they run as an opaque origin with no access to
  * blinkspot.io's cookies or storage.
  */
 export const PAGE_CSP = [
   "default-src 'none'",
   "script-src 'unsafe-inline' https://cdnjs.cloudflare.com",
-  "style-src 'unsafe-inline' https://fonts.googleapis.com",
+  `style-src 'unsafe-inline' ${APP_ORIGIN}`,
   "font-src https: data:",
   "img-src https: data: blob:",
   "media-src https: blob:",
@@ -215,7 +216,8 @@ document.addEventListener("submit",function(e){e.preventDefault()},true);
 })();`;
 
 /** The page for the in-app preview: the same CSP as a meta tag (the iframe adds the sandbox), and links kept on the page. */
-export function previewDoc(html: string) {
+export function previewDoc(page: string) {
+  const html = throughOurFonts(page);
   const meta = `<meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}"><script>${PREVIEW_SCRIPT}</script>`;
   if (/<head(\s[^>]*)?>/i.test(html)) return html.replace(/<head(\s[^>]*)?>/i, (m) => `${m}${meta}`);
   if (/<html(\s[^>]*)?>/i.test(html)) return html.replace(/<html(\s[^>]*)?>/i, (m) => `${m}<head>${meta}</head>`);

@@ -1,3 +1,4 @@
+import { fontsCssAbsolute } from "@/lib/google-fonts";
 /**
  * Sections mode for website studio pages (Kezie, 2026-10-17: "whatever we create in the web studio
  * we should also be able to edit in the section builder... people who don't know HTML do the
@@ -188,7 +189,7 @@ export function themeOf(html: string): ThemeVar[] {
   return out.slice(0, 12);
 }
 
-const fontsHref = (families: string[]) => `https://fonts.googleapis.com/css2?${[...new Set(families)].map((f) => `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@400;500;600;700;800`).join("&")}&display=swap`;
+const fontsHref = (families: string[]) => fontsCssAbsolute(`${[...new Set(families)].map((f) => `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@400;500;600;700;800`).join("&")}&display=swap`);
 
 /** One theme value changed, in the :root block (a font also goes into the Google Fonts link). */
 export function setTheme(html: string, name: string, value: string): string {

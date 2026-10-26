@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/ingest/static/:path*", destination: "https://us-assets.i.posthog.com/static/:path*" },
       { source: "/ingest/:path*", destination: "https://us.i.posthog.com/:path*" },
+      // Google Fonts' files through our domain (lib/google-fonts.ts): visitors never contact Google.
+      { source: "/gstatic/:path*", destination: "https://fonts.gstatic.com/:path*" },
     ];
   },
   skipTrailingSlashRedirect: true,
