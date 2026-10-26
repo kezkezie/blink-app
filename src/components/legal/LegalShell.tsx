@@ -13,6 +13,25 @@ const PAGES = [
   { href: "/contact", label: "Contact" },
 ];
 
+/** Who runs BlinkSpot, the same on every legal page. */
+export const COMPANY = {
+  name: "Mubia Investment Limited",
+  address: "P.O. Box 621 - G.P.O, Nairobi 00100, Kenya",
+  email: "info@blinkspot.io",
+} as const;
+
+/** The contact block at the end of each legal page. */
+export function LegalContact({ intro }: { intro?: string }) {
+  return (
+    <div className="mt-12 p-6 rounded-xl" style={{ background: "var(--s-panel)", border: "1px solid var(--s-line)" }}>
+      <p className="font-medium mb-2" style={{ color: "var(--s-text)" }}>Contact us</p>
+      {intro && <p className="text-sm mb-4" style={{ color: "var(--s-mute)" }}>{intro}</p>}
+      <p className="text-sm" style={{ color: "var(--s-soft)" }}>{COMPANY.name} (trading as BlinkSpot)<br />{COMPANY.address}</p>
+      <p className="text-sm mt-3">Email: <a href={`mailto:${COMPANY.email}`} className="underline" style={{ color: "var(--s-accent)" }}>{COMPANY.email}</a></p>
+    </div>
+  );
+}
+
 /** Privacy, terms, cookies, acceptable use and contact, in the homepage's look. */
 export function LegalShell({ title, updated, current, children }: { title: string; updated?: string; current: string; children: React.ReactNode }) {
   return (

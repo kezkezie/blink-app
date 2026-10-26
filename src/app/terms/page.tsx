@@ -1,298 +1,147 @@
 import Link from "next/link";
-import { LegalShell } from "@/components/legal/LegalShell";
+import { COMPANY, LegalContact, LegalShell } from "@/components/legal/LegalShell";
 
 export const metadata = {
-    title: "Terms of Service | Blinkspot",
-    description: "Read our terms of service for using the Blinkspot platform.",
+    title: "Terms of Service | BlinkSpot",
+    description: "The terms for using BlinkSpot: accounts, credits and plans, your content, AI, and our responsibilities.",
 };
 
+/**
+ * Rewritten 2026-10-26 (Kezie: "go check all my legals"): the April template took a perpetual right
+ * to sell users' content (while another section said they own it), banned automated use (which the
+ * API and "Connect Claude" are), allowed 13-year-olds (the privacy policy said 18), said nothing about
+ * credits, Stop or the free-plan stamp, and had no consumer-law carve-outs. Bump lib/legal.ts with it.
+ */
 export default function TermsPage() {
     return (
-        <LegalShell title="Terms of Service" updated="Last updated April 13, 2026" current="/terms">
+        <LegalShell title="Terms of Service" updated="Last updated October 26, 2026" current="/terms">
             <div className="legal-body">
+                <p>
+                    These terms are an agreement between you and <strong>{COMPANY.name}</strong>, trading as BlinkSpot (&quot;we&quot;, &quot;us&quot;), a company registered in Kenya at {COMPANY.address}. They cover <a href="https://www.blinkspot.io">blinkspot.io</a>, the BlinkSpot app, websites you publish with it, and BlinkSpot&apos;s API and AI-app connections (together, the &quot;Services&quot;). By creating an account or using the Services you agree to them, to our <Link href="/acceptable-use">Acceptable Use Policy</Link>, and to how we handle data in our <Link href="/privacy">Privacy Policy</Link>. If you use BlinkSpot for a business, you agree for that business.
+                </p>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">AGREEMENT TO OUR LEGAL TERMS</h2>
-                    <p>
-                        We are <strong>Mubia Investment Limited</strong>, doing business as <strong>Blinkspot</strong> (&apos;Company&apos;, &apos;we&apos;, &apos;us&apos;, or &apos;our&apos;), a company registered in Kenya at P.O. Box 621 - G.P.O, Nairobi 00100.
-                    </p>
-                    <p>
-                        We operate the website <a href="https://www.blinkspot.io" className="text-[#C5BAC4] hover:underline">https://www.blinkspot.io</a> (the &apos;Site&apos;), as well as any other related products and services that refer or link to these legal terms (the &apos;Legal Terms&apos;) (collectively, the &apos;Services&apos;).
-                    </p>
-                    <p>
-                        Blinkspot is a software platform that enables users to create, manage, and schedule social media content across multiple platforms. The service includes tools for content planning, automated posting, media creation using artificial intelligence, and a built-in editor for images and videos. Users can upload and organize digital assets, define brand preferences, and generate content aligned with their brand identity.
-                    </p>
-                    <p>
-                        You can contact us by email at <a href="mailto:info@blinkspot.io" className="text-[#C5BAC4] hover:underline">info@blinkspot.io</a> or by mail to P.O. Box 621 - G.P.O, Nairobi 00100, Kenya.
-                    </p>
-                    <p>
-                        These Legal Terms constitute a legally binding agreement made between you, whether personally or on behalf of an entity (&apos;you&apos;), and Mubia Investment Limited, concerning your access to and use of the Services. You agree that by accessing the Services, you have read, understood, and agreed to be bound by all of these Legal Terms. IF YOU DO NOT AGREE WITH ALL OF THESE LEGAL TERMS, THEN YOU ARE EXPRESSLY PROHIBITED FROM USING THE SERVICES AND YOU MUST DISCONTINUE USE IMMEDIATELY.
-                    </p>
-                    <p>
-                        We will indicate updates by revising the &apos;Last updated&apos; date at the top of the Legal Terms. If we make material changes to these Legal Terms, we may notify you either by prominently posting a notice of such changes on our platform or by directly sending you an email notification.
-                    </p>
-                    <p>
-                        The Services are intended for users who are at least 13 years of age. All users who are minors in the jurisdiction in which they reside (generally under the age of 18) must have the permission of, and be directly supervised by, their parent or guardian to use the Services. If you are a minor, you must have your parent or guardian read and agree to these Legal Terms prior to you using the Services.
-                    </p>
-                    <p>We recommend that you print a copy of these Legal Terms for your records.</p>
+                <h2>1. What BlinkSpot is</h2>
+                <p>
+                    BlinkSpot helps you create, edit, plan and publish social media content for your brands: AI pictures, videos, carousels, motion graphics, captions, voiceovers and websites, editors for images and video, and scheduling and posting to your connected social accounts.
+                </p>
 
-                    {/* TABLE OF CONTENTS */}
-                    <div className="bg-[#2A2F38] border border-[#57707A]/30 p-6 rounded-xl my-10">
-                        <h2 className="text-lg font-bold text-[#DEDCDC] mb-4">TABLE OF CONTENTS</h2>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-[#989DAA]">
-                            <p>1. OUR SERVICES</p>
-                            <p>2. INTELLECTUAL PROPERTY RIGHTS</p>
-                            <p>3. USER REPRESENTATIONS</p>
-                            <p>4. USER REGISTRATION</p>
-                            <p>5. PURCHASES AND PAYMENT</p>
-                            <p>6. SUBSCRIPTIONS</p>
-                            <p>7. PROHIBITED ACTIVITIES</p>
-                            <p>8. USER GENERATED CONTRIBUTIONS</p>
-                            <p>9. CONTRIBUTION LICENCE</p>
-                            <p>10. SOCIAL MEDIA</p>
-                            <p>11. THIRD-PARTY WEBSITES AND CONTENT</p>
-                            <p>12. SERVICES MANAGEMENT</p>
-                            <p>13. PRIVACY POLICY</p>
-                            <p>14. DMCA NOTICE AND POLICY</p>
-                            <p>15. TERM AND TERMINATION</p>
-                            <p>16. MODIFICATIONS AND INTERRUPTIONS</p>
-                            <p>17. GOVERNING LAW</p>
-                            <p>18. DISPUTE RESOLUTION</p>
-                            <p>19. CORRECTIONS</p>
-                            <p>20. DISCLAIMER</p>
-                            <p>21. LIMITATIONS OF LIABILITY</p>
-                            <p>22. INDEMNIFICATION</p>
-                            <p>27. AI-GENERATED CONTENT DISCLAIMER</p>
-                            <p>28. USER CONTENT RESPONSIBILITY</p>
-                            <p>29. THIRD-PARTY PLATFORM DISCLAIMER</p>
-                            <p>30. AUTOMATED POSTING DISCLAIMER</p>
-                            <p>31. CONTENT OWNERSHIP AND LICENSE</p>
-                            <p>32. SERVICE AVAILABILITY</p>
-                            <p>33. CONTACT US</p>
-                        </div>
-                    </div>
+                <h2>2. Your account</h2>
+                <ul>
+                    <li>You must be 18 or over, and able to enter a contract where you live.</li>
+                    <li>Give accurate details, keep your password safe, and tell us at <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a> if you think someone else got in. You&apos;re responsible for what happens in your account, including by people you share a brand with and AI apps or API keys you connect.</li>
+                    <li>One person or business per account; don&apos;t make extra accounts to get more free credits or get around limits.</li>
+                </ul>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">1. OUR SERVICES</h2>
-                    <p>
-                        The information provided when using the Services is not intended for distribution to or use by any person or entity in any jurisdiction or country where such distribution or use would be contrary to law or regulation or which would subject us to any registration requirement within such jurisdiction or country. Accordingly, those persons who choose to access the Services from other locations do so on their own initiative and are solely responsible for compliance with local laws, if and to the extent local laws are applicable.
-                    </p>
+                <h2>3. Plans, credits and payments</h2>
+                <ul>
+                    <li><strong>Plans.</strong> Free, Starter, Pro and Agency, billed weekly or monthly, with the brands, credits and features shown on our pricing page when you buy. Paid plans renew automatically and add their credits each time a payment goes through, until you cancel.</li>
+                    <li><strong>Credits.</strong> AI features use credits, at the price shown before you start. Credits have no cash value, can&apos;t be transferred or exchanged for money, and end when your account closes. Free accounts get sign-up credits once; credit packs are available on paid plans.</li>
+                    <li><strong>When AI fails or you stop it.</strong> If an AI job fails, its credits come back. If you press Stop, the part the AI service hasn&apos;t already charged us for comes back; the part it already charged stays used. The app shows what came back.</li>
+                    <li><strong>Payment.</strong> Paystack handles payments on its own secure page (cards, bank or mobile money, depending on your country). Prices are in US dollars; Paystack may charge the equivalent in your local currency, and your bank may add fees.</li>
+                    <li><strong>Cancelling.</strong> Cancel any time in Billing &gt; Manage subscription. You keep your plan until the end of the period you paid for, then move to Free. Credits already in your account stay usable while the account is open.</li>
+                    <li><strong>Price changes.</strong> We&apos;ll tell you before a new price applies to your plan. It applies from your next renewal; if you don&apos;t want it, cancel before then.</li>
+                    <li><strong>Refunds.</strong> Payments aren&apos;t refundable, except as set out in these terms or where the law gives you a right to one. If we make a billing mistake, we fix it.</li>
+                </ul>
+                <p>
+                    <strong>If you&apos;re a consumer in the EU, EEA or UK:</strong> you can withdraw from a purchase within 14 days of buying it by emailing us. Because BlinkSpot starts at once when you buy (your plan and credits are ready straight away, at your request), if you withdraw we refund the part you haven&apos;t used, and the part you used is not refunded.
+                </p>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">2. INTELLECTUAL PROPERTY RIGHTS</h2>
-                    <h3 className="text-lg font-bold text-[#DEDCDC] mt-8 mb-2">Our intellectual property</h3>
-                    <p>
-                        We are the owner or the licensee of all intellectual property rights in our Services, including all source code, databases, functionality, software, website designs, audio, video, text, photographs, and graphics in the Services (collectively, the &apos;Content&apos;), as well as the trademarks, service marks, and logos contained therein (the &apos;Marks&apos;).
-                    </p>
-                    <p>
-                        Our Content and Marks are protected by copyright and trademark laws (and various other intellectual property rights and unfair competition laws) and treaties in the United States and around the world.
-                    </p>
-                    <p>
-                        The Content and Marks are provided in or through the Services &apos;AS IS&apos; for your personal, non-commercial use or internal business purpose only.
-                    </p>
+                <h2>4. Your content</h2>
+                <ul>
+                    <li><strong>You own it.</strong> What you upload (logos, photos, footage, text) and what you make with BlinkSpot is yours, as far as the law allows. We claim no ownership.</li>
+                    <li><strong>What you let us do with it.</strong> You give us a worldwide, royalty-free licence to host, store, copy, process, change the format of and display your content, and to send it to our service providers and to the places you publish it, only to run and improve the Services for you. It ends when you delete the content or close your account, except for copies we must keep by law or that are in backups until they roll off.</li>
+                    <li><strong>Your responsibility.</strong> You need the rights to what you upload, including permission from people who appear in it, and you&apos;re responsible for what you publish. Don&apos;t upload or make anything the Acceptable Use Policy forbids.</li>
+                    <li><strong>Feedback.</strong> If you send ideas or suggestions, we may use them freely, without owing you anything.</li>
+                    <li>We may remove content or limit features where content breaks these terms or the law, or a valid complaint is made.</li>
+                </ul>
 
-                    <h3 className="text-lg font-bold text-[#DEDCDC] mt-8 mb-2">Your use of our Services</h3>
-                    <p>
-                        Subject to your compliance with these Legal Terms, including the &apos;PROHIBITED ACTIVITIES&apos; section below, we grant you a non-exclusive, non-transferable, revocable licence to: access the Services; and download or print a copy of any portion of the Content to which you have properly gained access, solely for your personal, non-commercial use or internal business purpose.
-                    </p>
-                    <p>
-                        Except as set out in this section or elsewhere in our Legal Terms, no part of the Services and no Content or Marks may be copied, reproduced, aggregated, republished, uploaded, posted, publicly displayed, encoded, translated, transmitted, distributed, sold, licensed, or otherwise exploited for any commercial purpose whatsoever, without our express prior written permission.
-                    </p>
-                    <p>
-                        If you wish to make any use of the Services, Content, or Marks other than as set out in this section or elsewhere in our Legal Terms, please address your request to: info@blinkspot.io. If we ever grant you the permission to post, reproduce, or publicly display any part of our Services or Content, you must identify us as the owners or licensors of the Services, Content, or Marks and ensure that any copyright or proprietary notice appears or is visible on posting, reproducing, or displaying our Content.
-                    </p>
+                <h2>5. AI-generated content</h2>
+                <ul>
+                    <li>AI can be wrong, make things that look like existing work, or make something unsuitable. Review everything before you use or post it; you decide what gets published.</li>
+                    <li>Results aren&apos;t guaranteed to be unique; someone else may get something similar.</li>
+                    <li>AI features run on third-party models (listed in our Privacy Policy). Don&apos;t use them in ways those providers forbid.</li>
+                    <li>Where a platform or the law requires it (for example, realistic AI images or video of real people or events), label AI-made content as AI-made.</li>
+                </ul>
 
-                    <h3 className="text-lg font-bold text-[#DEDCDC] mt-8 mb-2">Your submissions and contributions</h3>
-                    <p>
-                        Please review this section and the &apos;PROHIBITED ACTIVITIES&apos; section carefully prior to using our Services to understand the (a) rights you give us and (b) obligations you have when you post or upload any content through the Services.
-                    </p>
-                    <p>
-                        <strong>Submissions:</strong> By directly sending us any question, comment, suggestion, idea, feedback, or other information about the Services (&apos;Submissions&apos;), you agree to assign to us all intellectual property rights in such Submission. You agree that we shall own this Submission and be entitled to its unrestricted use and dissemination for any lawful purpose, commercial or otherwise, without acknowledgment or compensation to you.
-                    </p>
-                    <p>
-                        <strong>Contributions:</strong> The Services may invite you to chat, contribute to, or participate in blogs, message boards, online forums, and other functionality during which you may create, submit, post, display, transmit, publish, distribute, or broadcast content and materials to us or through the Services, including but not limited to text, writings, video, audio, photographs, music, graphics, comments, reviews, rating suggestions, personal information, or other material (&apos;Contributions&apos;). Any Submission that is publicly posted shall also be treated as a Contribution.
-                    </p>
-                    <p>
-                        You understand that Contributions may be viewable by other users of the Services and possibly through third-party websites.
-                    </p>
-                    <p>
-                        <strong>When you post Contributions, you grant us a licence (including use of your name, trademarks, and logos):</strong> By posting any Contributions, you grant us an unrestricted, unlimited, irrevocable, perpetual, non-exclusive, transferable, royalty-free, fully-paid, worldwide right, and licence to: use, copy, reproduce, distribute, sell, resell, publish, broadcast, retitle, store, publicly perform, publicly display, reformat, translate, excerpt (in whole or in part), and exploit your Contributions (including, without limitation, your image, name, and voice) for any purpose, commercial, advertising, or otherwise, to prepare derivative works of, or incorporate into other works, your Contributions, and to sublicence the licences granted in this section. Our use and distribution may occur in any media formats and through any media channels.
-                    </p>
+                <h2>6. Free plan stamp</h2>
+                <p>
+                    On the Free plan, pictures and videos you make carry a small &quot;Made with BlinkSpot&quot; mark, and websites you publish carry a small BlinkSpot badge. Work made on a paid plan has no mark, and the website badge goes away when you upgrade.
+                </p>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">3. USER REPRESENTATIONS</h2>
-                    <p>
-                        By using the Services, you represent and warrant that: (1) all registration information you submit will be true, accurate, current, and complete; (2) you will maintain the accuracy of such information and promptly update such registration information as necessary; (3) you have the legal capacity and you agree to comply with these Legal Terms; (4) you are not under the age of 13; (5) you are not a minor in the jurisdiction in which you reside, or if a minor, you have received parental permission to use the Services; (6) you will not access the Services through automated or non-human means, whether through a bot, script or otherwise; (7) you will not use the Services for any illegal or unauthorised purpose; and (8) your use of the Services will not violate any applicable law or regulation.
-                    </p>
+                <h2>7. Social accounts and posting</h2>
+                <ul>
+                    <li>When you connect a social account, you confirm you&apos;re allowed to, and you let BlinkSpot post the content you schedule or approve to it. Each network&apos;s own terms apply to what you post there.</li>
+                    <li>We work hard to post on time, but networks change, go down or reject posts. We can&apos;t guarantee a post goes out at the exact time or at all, and we&apos;re not responsible for what a network does (like removing a post, limiting reach or suspending an account).</li>
+                    <li>Check scheduled posts before they go out. You can disconnect an account any time.</li>
+                </ul>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">4. USER REGISTRATION</h2>
-                    <p>
-                        You may be required to register to use the Services. You agree to keep your password confidential and will be responsible for all use of your account and password. We reserve the right to remove, reclaim, or change a username you select if we determine, in our sole discretion, that such username is inappropriate, obscene, or otherwise objectionable.
-                    </p>
+                <h2>8. AI apps, API keys and websites</h2>
+                <ul>
+                    <li>You can connect Claude or another AI app to BlinkSpot, or make an API key. It can act only on the brands and with the permissions you allowed, and spends your credits up to the budget you set. What it does counts as done by you. You can revoke it any time in Settings &gt; AI connections.</li>
+                    <li>Don&apos;t share keys, and don&apos;t use them to go around limits or overload the Services. We may limit or revoke keys that are misused.</li>
+                    <li>Websites you publish with BlinkSpot are public at their link. Keep what&apos;s on them lawful and accurate; you&apos;re responsible for them as the site&apos;s owner.</li>
+                </ul>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">5. PURCHASES AND PAYMENT</h2>
-                    <p>We process all payments securely through <strong>Paystack</strong>, which supports cards (Visa, Mastercard), bank transfers, and mobile money where available.</p>
-                    <p>
-                        You agree to provide current, complete, and accurate purchase and account information for all purchases made via the Services. You further agree to promptly update account and payment information, including email address, payment method, and payment card expiration date, so that we can complete your transactions and contact you as needed. We may change prices at any time. All payments are processed in the currency displayed at checkout.
-                    </p>
-                    <p>
-                        You agree to pay all charges at the prices then in effect for your purchases and any applicable shipping fees, and you authorise us to charge your chosen payment provider for any such amounts upon placing your order. We reserve the right to correct any errors or mistakes in pricing, even if we have already requested or received payment.
-                    </p>
+                <h2>9. Sharing brands</h2>
+                <p>
+                    You can invite people to work on a brand, within your plan&apos;s seats. They can see and change the brand&apos;s content and may spend credits as the brand allows. Remove them any time.
+                </p>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">6. SUBSCRIPTIONS</h2>
-                    <p>
-                        <strong>Billing and Renewal:</strong> Your subscription will continue and automatically renew unless cancelled. You consent to our charging your payment method on a recurring basis without requiring your prior approval for each recurring charge, until such time as you cancel the applicable order. The length of your billing cycle is monthly.
-                    </p>
-                    <p>
-                        <strong>Cancellation:</strong> All purchases are non-refundable. You can cancel your subscription at any time by contacting us using the contact information provided below. Your cancellation will take effect at the end of the current paid term. If you have any questions or are unsatisfied with our Services, please email us at info@blinkspot.io.
-                    </p>
+                <h2>10. Our Services and intellectual property</h2>
+                <ul>
+                    <li>BlinkSpot itself (the software, design, templates we provide, and our name and logo) belongs to us or our licensors. We give you a personal, non-transferable right to use it under these terms. Don&apos;t copy, resell or reverse engineer the Services except where the law allows it.</li>
+                    <li>We keep improving BlinkSpot, so features may change. If we remove something important from a paid plan, we&apos;ll tell you in advance.</li>
+                    <li>We aim to keep BlinkSpot available, but it may sometimes be down for maintenance or because of a provider we rely on.</li>
+                </ul>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">7. PROHIBITED ACTIVITIES</h2>
-                    <p>As a user of the Services, you agree not to:</p>
-                    <ul className="list-disc pl-6 space-y-2">
-                        <li>Systematically retrieve data or other content from the Services to create or compile, directly or indirectly, a collection, compilation, database, or directory without written permission from us.</li>
-                        <li>Trick, defraud, or mislead us and other users, especially in any attempt to learn sensitive account information such as user passwords.</li>
-                        <li>Circumvent, disable, or otherwise interfere with security-related features of the Services.</li>
-                        <li>Disparage, tarnish, or otherwise harm, in our opinion, us and/or the Services.</li>
-                        <li>Use any information obtained from the Services in order to harass, abuse, or harm another person.</li>
-                        <li>Upload or transmit viruses, Trojan horses, or other material, including excessive use of capital letters and spamming.</li>
-                        <li>Engage in any automated use of the system, such as using scripts to send comments or messages, or using any data mining, robots, or similar data gathering and extraction tools.</li>
-                        <li>Attempt to impersonate another user or person or use the username of another user.</li>
-                        <li><strong>Spam & Automation Abuse:</strong> Using the Services to engage in spam, mass unsolicited posting, or abusive automation practices across social media platforms.</li>
-                        <li><strong>Illegal / Harmful Content:</strong> Using the Services to create, upload, or distribute content that is unlawful, harmful, abusive, harassing, hateful, or otherwise objectionable.</li>
-                        <li><strong>Intellectual Property Abuse:</strong> Uploading, generating, or distributing content that infringes on the intellectual property rights of others, including copyrights, trademarks, or proprietary content without proper authorization.</li>
-                        <li><strong>Platform Circumvention:</strong> Attempting to bypass, disable, or interfere with security features, usage limits, or restrictions of the Services.</li>
-                        <li><strong>Account Abuse / Reselling:</strong> Sharing, selling, or transferring access to accounts without authorization, or using the Services for unauthorized commercial resale purposes.</li>
-                        <li><strong>AI Content Misuse:</strong> Using the Services to generate, upload, or distribute content that is misleading, deceptive, harmful, defamatory, or intended to impersonate any individual, brand, or entity without authorization.</li>
-                    </ul>
+                <h2>11. Copyright complaints</h2>
+                <p>
+                    If you think something on BlinkSpot infringes your copyright, email <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a> with what it is, where it is, your contact details, and a statement that you own the rights or act for the owner. We&apos;ll look at it promptly and remove it if appropriate. We close accounts that infringe repeatedly.
+                </p>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">8. USER GENERATED CONTRIBUTIONS</h2>
-                    <p>When you create or make available any Contributions, you thereby represent and warrant that:</p>
-                    <ul className="list-disc pl-6 space-y-2">
-                        <li>The creation, distribution, transmission, public display, or performance, and the accessing, downloading, or copying of your Contributions do not and will not infringe the proprietary rights of any third party.</li>
-                        <li>You are the creator and owner of or have the necessary licences, rights, consents, releases, and permissions to use your Contributions.</li>
-                        <li>Your Contributions are not false, inaccurate, or misleading.</li>
-                        <li>Your Contributions are not unsolicited or unauthorised advertising, promotional materials, pyramid schemes, chain letters, spam, mass mailings, or other forms of solicitation.</li>
-                        <li>Your Contributions are not obscene, lewd, lascivious, filthy, violent, harassing, libellous, slanderous, or otherwise objectionable.</li>
-                        <li>Your Contributions do not ridicule, mock, disparage, intimidate, or abuse anyone.</li>
-                    </ul>
+                <h2>12. Ending your account</h2>
+                <ul>
+                    <li>You can stop using BlinkSpot and ask us to close your account any time.</li>
+                    <li>We may suspend or close an account that breaks these terms, the Acceptable Use Policy or the law, that puts other users or BlinkSpot at risk, or when the law requires it. Where we can, we tell you why and give you a chance to fix it.</li>
+                    <li>If we close a paid account for no such reason, we tell you in advance and refund the unused part of what you paid.</li>
+                    <li>When an account closes, its content is deleted as our Privacy Policy describes. Download what you want to keep first.</li>
+                </ul>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">9. CONTRIBUTION LICENCE</h2>
-                    <p>
-                        By posting your Contributions to any part of the Services or making Contributions accessible to the Services by linking your account from the Services to any of your social networking accounts, you automatically grant, and you represent and warrant that you have the right to grant, to us an unrestricted, unlimited, irrevocable, perpetual, non-exclusive, transferable, royalty-free, fully-paid, worldwide right, and licence to host, use, copy, reproduce, disclose, sell, resell, publish, broadcast, retitle, archive, store, cache, publicly perform, publicly display, reformat, translate, transmit, excerpt, and distribute such Contributions.
-                    </p>
+                <h2>13. Disclaimers</h2>
+                <p>
+                    Apart from what these terms promise, the Services are provided &quot;as is&quot; and &quot;as available&quot;. To the extent the law allows, we don&apos;t give other warranties, for example that the Services will meet a particular need, be uninterrupted or error-free, or that AI output will be accurate.
+                </p>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">10. SOCIAL MEDIA</h2>
-                    <p>
-                        As part of the functionality of the Services, you may link your account with online accounts you have with third-party service providers. You represent and warrant that you are entitled to disclose your Third-Party Account login information to us and/or grant us access to your Third-Party Account, without breach by you of any of the terms and conditions that govern your use of the applicable Third-Party Account.
-                    </p>
+                <h2>14. Our liability</h2>
+                <ul>
+                    <li>To the extent the law allows, we&apos;re not liable for indirect or consequential losses (such as lost profits, revenue, data or business opportunities), or for what third-party platforms and providers do.</li>
+                    <li>To the extent the law allows, our total liability to you for all claims is limited to the greater of what you paid us in the 6 months before the claim and US$100.</li>
+                    <li>Nothing in these terms limits liability that can&apos;t legally be limited, such as for death or personal injury caused by negligence, for fraud, or your rights as a consumer under the law where you live.</li>
+                </ul>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">11. THIRD-PARTY WEBSITES AND CONTENT</h2>
-                    <p>
-                        The Services may contain links to other websites (&apos;Third-Party Websites&apos;) as well as articles, photographs, text, graphics, pictures, designs, music, sound, video, information, applications, software, and other content or items belonging to or originating from third parties. Such Third-Party Websites and Third-Party Content are not investigated, monitored, or checked for accuracy, appropriateness, or completeness by us, and we are not responsible for any Third-Party Websites accessed through the Services.
-                    </p>
+                <h2>15. Indemnity</h2>
+                <p>
+                    If you use BlinkSpot for a business, you&apos;ll cover our reasonable costs (including legal fees) from third-party claims caused by your content, how you used the Services, or your breaking these terms or the law.
+                </p>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">12. SERVICES MANAGEMENT</h2>
-                    <p>
-                        We reserve the right, but not the obligation, to: (1) monitor the Services for violations of these Legal Terms; (2) take appropriate legal action against anyone who, in our sole discretion, violates the law or these Legal Terms; (3) in our sole discretion and without limitation, refuse, restrict access to, limit the availability of, or disable any of your Contributions; and (4) otherwise manage the Services in a manner designed to protect our rights and property and to facilitate the proper functioning of the Services.
-                    </p>
+                <h2>16. Law and disputes</h2>
+                <ul>
+                    <li>Kenyan law governs these terms. Please contact us first; most things can be fixed quickly.</li>
+                    <li>If we can&apos;t resolve it, a business customer&apos;s dispute will be decided by arbitration seated in Nairobi, in English.</li>
+                    <li>If you&apos;re a consumer, you keep the protection of the mandatory laws of the country where you live, and you can bring a claim in your local courts.</li>
+                </ul>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">13. PRIVACY POLICY</h2>
-                    <p>
-                        We care about data privacy and security. Please review our Privacy Policy: <Link href="/privacy" className="text-[#C5BAC4] hover:underline">https://www.blinkspot.io/privacy</Link>. By using the Services, you agree to be bound by our Privacy Policy, which is incorporated into these Legal Terms.
-                    </p>
+                <h2>17. Changes to these terms</h2>
+                <p>
+                    We may update these terms as BlinkSpot changes. We&apos;ll update the date at the top and, for important changes, tell you by email or in the app at least 14 days before they apply. If you don&apos;t agree, you can cancel before then; continuing to use BlinkSpot after that means you accept them.
+                </p>
 
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">14. DIGITAL MILLENNIUM COPYRIGHT ACT (DMCA) NOTICE</h2>
-                    <p>
-                        We respect the intellectual property rights of others. If you believe that any material available on or through the Services infringes upon any copyright you own or control, please immediately notify our Designated Copyright Agent at <strong>info@blinkspot.io</strong>.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">15. TERM AND TERMINATION</h2>
-                    <p>
-                        These Legal Terms shall remain in full force and effect while you use the Services. WE RESERVE THE RIGHT TO, IN OUR SOLE DISCRETION AND WITHOUT NOTICE OR LIABILITY, DENY ACCESS TO AND USE OF THE SERVICES (INCLUDING BLOCKING CERTAIN IP ADDRESSES), TO ANY PERSON FOR ANY REASON OR FOR NO REASON.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">16. MODIFICATIONS AND INTERRUPTIONS</h2>
-                    <p>
-                        We reserve the right to change, modify, or remove the contents of the Services at any time or for any reason at our sole discretion without notice. We will not be liable to you or any third party for any modification, price change, suspension, or discontinuance of the Services.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">17. GOVERNING LAW</h2>
-                    <p>
-                        These Legal Terms shall be governed by and defined following the laws of Kenya. Mubia Investment Limited and yourself irrevocably consent that the courts of Kenya shall have exclusive jurisdiction to resolve any dispute which may arise in connection with these Legal Terms.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">18. DISPUTE RESOLUTION</h2>
-                    <p>
-                        Any dispute arising out of or in connection with these Legal Terms, including any question regarding its existence, validity, or termination, shall be referred to and finally resolved by arbitration. The seat, or legal place, of arbitration shall be Kenya. The language of the proceedings shall be English.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">19. CORRECTIONS</h2>
-                    <p>
-                        There may be information on the Services that contains typographical errors, inaccuracies, or omissions, including descriptions, pricing, availability, and various other information. We reserve the right to correct any errors, inaccuracies, or omissions.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">20. DISCLAIMER</h2>
-                    <p>
-                        THE SERVICES ARE PROVIDED ON AN AS-IS AND AS-AVAILABLE BASIS. YOU AGREE THAT YOUR USE OF THE SERVICES WILL BE AT YOUR SOLE RISK. TO THE FULLEST EXTENT PERMITTED BY LAW, WE DISCLAIM ALL WARRANTIES, EXPRESS OR IMPLIED, IN CONNECTION WITH THE SERVICES AND YOUR USE THEREOF.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">21. LIMITATIONS OF LIABILITY</h2>
-                    <p>
-                        IN NO EVENT WILL WE OR OUR DIRECTORS, EMPLOYEES, OR AGENTS BE LIABLE TO YOU OR ANY THIRD PARTY FOR ANY DIRECT, INDIRECT, CONSEQUENTIAL, EXEMPLARY, INCIDENTAL, SPECIAL, OR PUNITIVE DAMAGES, INCLUDING LOST PROFIT, LOST REVENUE, LOSS OF DATA, OR OTHER DAMAGES ARISING FROM YOUR USE OF THE SERVICES. OUR LIABILITY TO YOU FOR ANY CAUSE WHATSOEVER WILL AT ALL TIMES BE LIMITED TO THE LESSER OF THE AMOUNT PAID BY YOU TO US DURING THE SIX (6) MONTH PERIOD PRIOR TO ANY CAUSE OF ACTION ARISING OR $100.00 USD.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">22. INDEMNIFICATION</h2>
-                    <p>
-                        You agree to defend, indemnify, and hold us harmless, including our subsidiaries, affiliates, and all of our respective officers, agents, partners, and employees, from and against any loss, damage, liability, claim, or demand, including reasonable attorneys&apos; fees and expenses, made by any third party due to or arising out of your Contributions, use of the Services, or breach of these Legal Terms.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">27. AI-GENERATED CONTENT DISCLAIMER</h2>
-                    <p>
-                        Blinkspot provides AI-powered tools that generate text, images, videos, and other content based on user inputs. You acknowledge that AI-generated content may be inaccurate, incomplete, misleading, or inappropriate for your intended use. Blinkspot does not guarantee the accuracy, reliability, or quality of any generated content. You are solely responsible for reviewing, editing, and approving all content before use or publication.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">28. USER CONTENT RESPONSIBILITY</h2>
-                    <p>
-                        You are solely responsible for all content you create, upload, generate, schedule, or publish using Blinkspot. You agree not to use the Services to create or distribute unlawful, harmful, misleading, defamatory, or infringing content. Blinkspot does not monitor or control user content and shall not be held liable for any content posted or shared on the platform.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">29. THIRD-PARTY PLATFORM DISCLAIMER</h2>
-                    <p>
-                        Blinkspot integrates with third-party platforms, including but not limited to social media networks. Blinkspot does not control and is not responsible for the policies, actions, or decisions of such third-party platforms. You acknowledge that your use of these platforms is subject to their respective terms and policies. Blinkspot shall not be liable for account suspensions, content removal, reduced reach, or any other actions taken by third-party platforms.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">30. AUTOMATED POSTING AND SCHEDULING DISCLAIMER</h2>
-                    <p>
-                        Blinkspot provides automated scheduling and posting features for user convenience. While we strive to ensure reliability, Blinkspot does not guarantee that scheduled content will be published at the exact specified time or at all. You are responsible for reviewing all scheduled content prior to publication. Blinkspot shall not be liable for missed posts, delayed publishing, duplicate posts, or any resulting damages.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">31. CONTENT OWNERSHIP AND LICENSE</h2>
-                    <p>
-                        You retain ownership of any content you upload or create using Blinkspot. By using the Services, you grant Blinkspot a non-exclusive, worldwide, royalty-free license to use, store, process, and display your content solely for the purpose of operating, improving, and providing the Services. Blinkspot does not claim ownership over your content but may use aggregated and anonymized data to enhance platform performance.
-                    </p>
-
-                    <h2 className="text-xl font-bold text-[#C5BAC4] mt-10 mb-4">32. SERVICE AVAILABILITY AND NO GUARANTEE</h2>
-                    <p>
-                        Blinkspot is provided on an &quot;as is&quot; and &quot;as available&quot; basis. We do not guarantee that the Services will be uninterrupted, error-free, or secure at all times. You acknowledge that technical issues, maintenance, or third-party dependencies may result in temporary interruptions. Blinkspot shall not be liable for any loss of data, revenue, or business resulting from service disruptions or downtime.
-                    </p>
-
-                </div>
-
-                {/* Corporate Shield Contact Block */}
-                <div className="mt-12 p-6 bg-[#2A2F38] border border-[#57707A]/30 rounded-xl">
-                    <p className="text-[#DEDCDC] font-medium mb-2">33. CONTACT US</p>
-                    <p className="text-sm text-[#989DAA] mb-4">
-                        In order to resolve a complaint regarding the Services or to receive further information regarding use of the Services, please contact us at:
-                    </p>
-                    <p className="text-sm">
-                        Registered Entity: <span className="text-[#DEDCDC]">Mubia Investment Limited</span>
-                    </p>
-                    <p className="text-sm mt-1 text-[#989DAA]">
-                        P.O. Box 621 - G.P.O<br />
-                        Nairobi 00100<br />
-                        Kenya
-                    </p>
-                    <p className="text-sm mt-4">
-                        Email: <a href="mailto:info@blinkspot.io" className="text-[#C5BAC4] hover:underline">info@blinkspot.io</a>
-                    </p>
+                <h2>18. General</h2>
+                <p>
+                    If part of these terms can&apos;t be enforced, the rest still applies. If we don&apos;t enforce something straight away, we can still do it later. You can&apos;t transfer these terms without our OK; we may transfer them to a company that takes over BlinkSpot, and your rights stay the same. These terms, with the policies they mention, are the whole agreement between us about the Services.
+                </p>
             </div>
+            <LegalContact intro="Questions about these terms, or a complaint? Write to us." />
         </LegalShell>
     );
 }

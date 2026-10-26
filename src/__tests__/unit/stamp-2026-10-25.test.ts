@@ -93,7 +93,7 @@ describe("the agreement at sign-up (2026-10-25)", () => {
   it("records when and which versions", () => {
     const r = consentRecord(new Date("2026-10-25T08:00:00Z"));
     expect(r).toEqual({ terms_accepted_at: "2026-10-25T08:00:00.000Z", terms_version: LEGAL_VERSION });
-    expect(LEGAL_VERSION).toBe("terms@2026-04-13,privacy@2026-04-13,acceptable-use@2026-04-14");
+    expect(LEGAL_VERSION).toBe("terms@2026-10-26,privacy@2026-10-26,acceptable-use@2026-10-26");
     expect(agreedToTerms(true)).toBe(true);
     for (const v of [false, "true", 1, undefined, null]) expect(agreedToTerms(v)).toBe(false);
   });

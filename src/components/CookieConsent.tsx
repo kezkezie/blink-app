@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { SETTINGS_EVENT, mustAsk, readConsent, saveConsent } from "@/lib/consent";
+import { SETTINGS_EVENT, analyticsAllowed, mustAsk, readConsent, saveConsent } from "@/lib/consent";
 
 /**
  * The cookie choice (lib/consent.ts). Shown to visitors who must be asked until they choose, and to
@@ -16,7 +16,8 @@ export function CookieConsent() {
   useEffect(() => {
     // After the first paint, so the page never waits on it.
     const t = setTimeout(() => { if (mustAsk() && !readConsent()) setOpen(true); }, 300);
-    const settings = () => { setAnalytics(readConsent()?.analytics ?? false); setDetails(true); setOpen(true); };
+    // Settings shows what runs now: outside the asked regions analytics is on until they say no.
+    const settings = () => { setAnalytics(analyticsAllowed()); setDetails(true); setOpen(true); };
     window.addEventListener(SETTINGS_EVENT, settings);
     return () => { clearTimeout(t); window.removeEventListener(SETTINGS_EVENT, settings); };
   }, []);

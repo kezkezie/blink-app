@@ -13,3 +13,5 @@
 .legal-body table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .legal-body th, .legal-body td { border: 1px solid var(--s-line); padding: 10px 12px; text-align: left; vertical-align: top; }
 .legal-body th { color: var(--s-text); background: var(--s-panel); font-weight: 600; }
+/* "Cookie settings" inside the policy text reads as a link (it's a button that opens the choice). */
+.legal-body .cookie-link { color: var(--s-accent) !important; text-decoration: underline !important; text-underline-offset: 3px; }

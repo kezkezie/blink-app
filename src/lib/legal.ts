@@ -4,9 +4,9 @@
  * pages; when one changes, change it here too, so each account records which text it agreed to.
  */
 export const LEGAL_DOCS = [
-  { id: "terms", label: "Terms of Service", href: "/terms", version: "2026-04-13" },
-  { id: "privacy", label: "Privacy Policy", href: "/privacy", version: "2026-04-13" },
-  { id: "acceptable-use", label: "Acceptable Use Policy", href: "/acceptable-use", version: "2026-04-14" },
+  { id: "terms", label: "Terms of Service", href: "/terms", version: "2026-10-26" },
+  { id: "privacy", label: "Privacy Policy", href: "/privacy", version: "2026-10-26" },
+  { id: "acceptable-use", label: "Acceptable Use Policy", href: "/acceptable-use", version: "2026-10-26" },
 ] as const;
 
 export const LEGAL_VERSION = LEGAL_DOCS.map((d) => `${d.id}@${d.version}`).join(",");

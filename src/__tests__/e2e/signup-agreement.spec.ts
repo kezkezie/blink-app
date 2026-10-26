@@ -36,7 +36,7 @@ test("no account without agreeing, and the agreement is recorded", async ({ page
     const { data: list } = await sb.auth.admin.listUsers({ perPage: 1000 });
     const found = list.users.find((x) => x.email === email);
     const { data: user } = await sb.auth.admin.getUserById(found!.id);
-    expect(user.user?.user_metadata?.terms_version).toBe("terms@2026-04-13,privacy@2026-04-13,acceptable-use@2026-04-14");
+    expect(user.user?.user_metadata?.terms_version).toBe("terms@2026-10-26,privacy@2026-10-26,acceptable-use@2026-10-26");
     expect(Date.now() - new Date(user.user?.user_metadata?.terms_accepted_at).getTime()).toBeLessThan(5 * 60_000);
     expect(errors).toEqual([]);
   } finally {
