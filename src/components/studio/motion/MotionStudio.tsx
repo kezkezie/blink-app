@@ -463,7 +463,7 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                 {field("Words", s.words, (v) => setScene(i, { words: v }), { area: true })}
                 {field("Smaller line", s.sub, (v) => setScene(i, { sub: v || undefined }), { placeholder: "Optional" })}
                 {field("Highlight", s.mark, (v) => setScene(i, { mark: v.trim() ? v : undefined }), { placeholder: "1 to 3 words from the headline, e.g. working" })}
-                <div className="s-seg" role="group" aria-label="How words arrive">{(["word", "line", "slam"] as const).map((e) => <button key={e} aria-pressed={s.enter === e} onClick={() => setScene(i, { enter: e })}>{e === "word" ? "Word by word" : e === "line" ? "Line by line" : "Slam"}</button>)}</div>
+                <div className="s-seg" role="group" aria-label="How words arrive">{(["word", "line", "slam", "focus"] as const).map((e) => <button key={e} aria-pressed={s.enter === e} onClick={() => setScene(i, { enter: e })}>{e === "word" ? "Word by word" : e === "line" ? "Line by line" : e === "slam" ? "Slam" : "Focus"}</button>)}</div>
               </>)}
               {s.template === "showcase" && (<>
                 {field("Title", s.title, (v) => setScene(i, { title: v || undefined }), { placeholder: "Optional" })}

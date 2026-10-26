@@ -9,7 +9,7 @@ import type { LayerEnter } from "./layers";
  * look changes how they're dressed. The brand's colour goes in as the accent by default, so every
  * look stays on brand.
  */
-export type Texture = "grid" | "glow" | "paper" | "grain" | "halftone" | "scanlines" | "deco";
+export type Texture = "grid" | "glow" | "paper" | "grain" | "halftone" | "scanlines" | "deco" | "spot";
 export type Look = {
   id: string; name: string; from: string; line: string;
   palette: Required<Palette>; font: string; textures: Texture[]; enter: LayerEnter;
@@ -20,6 +20,10 @@ export type Look = {
 export const LOOKS: Look[] = [
   { id: "swiss", name: "Swiss Motion", from: "Swiss Motion Graphics", line: "A strict grid, one typeface, one signal colour. Exact, no bounce.",
     palette: { background: "#EAE9E5", text: "#111111", accent: "#E30613", second: "#B9B7B1" }, font: "Archivo", textures: ["grid"], enter: "wipe", lineColor: "#111111" },
+  // Kezie, 2026-10-26: "Apple style type of motion graphics": pure black, one soft spotlight, big
+  // clean type that sharpens into focus (kinetic headline enter "focus"), the brand colour for one word.
+  { id: "launch", name: "Launch Film", from: "Product launch film", line: "Pure black, one soft spotlight, big clean type that sharpens into focus.",
+    palette: { background: "#000000", text: "#F5F5F7", accent: "#2997FF", second: "#86868B" }, font: "Inter Tight", textures: ["spot"], enter: "fade", lineColor: "#FFFFFF" },
   { id: "keynote", name: "Dark Keynote", from: "Dark Tech Keynote", line: "A launch-event stage: near-black, a soft glow, one luminous accent.",
     palette: { background: "#0B0D12", text: "#F2F4F8", accent: "#B7F34A", second: "#8B93A7" }, font: "Inter Tight", textures: ["glow", "grid"], enter: "rise", lineColor: "#FFFFFF" },
   { id: "risograph", name: "Risograph", from: "Risograph Print", line: "Two spot inks on warm paper, halftone dots and grain, like a print.",

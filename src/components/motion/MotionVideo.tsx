@@ -53,7 +53,7 @@ export function settleFrame(scene: MotionScene) {
   const n = sceneFrames(scene);
   const t = (() => {
     switch (scene.template) {
-      case "kinetic-headline": { const w = scene.words.split(" ").length; const allIn = (w - 1) * (scene.enter === "slam" ? 6 : 4) + 14; return scene.sub ? allIn + 20 : allIn + 14; }
+      case "kinetic-headline": { const w = scene.words.split(" ").length; const allIn = (w - 1) * (scene.enter === "slam" ? 6 : scene.enter === "focus" ? 5 : 4) + (scene.enter === "focus" ? 18 : 14); return scene.sub ? allIn + 20 : allIn + 14; }
       case "stat": return Math.max(20, n * 0.6) + 8;
       case "product-reveal": return 42;
       case "logo-sting": return 36;
@@ -89,7 +89,7 @@ function Frame({ palette, transparent, background, look, children }: { palette: 
  * paper, grain, halftone dots and scanlines are all SVG. Grid, glow, paper and deco lines sit behind
  * the content; grain, halftone and scanlines lie over it, like film or print.
  */
-const BACK_TEXTURES = new Set<Texture>(["grid", "glow", "paper", "deco"]);
+const BACK_TEXTURES = new Set<Texture>(["grid", "glow", "paper", "deco", "spot"]);
 function TextureLayer({ texture, look, palette }: { texture: Texture; look: Look; palette: Palette }) {
   const { width: W, height: H } = useVideoConfig();
   const u = Math.min(W, H) / 100;
@@ -102,6 +102,9 @@ function TextureLayer({ texture, look, palette }: { texture: Texture; look: Look
       }
       case "glow":
         return `<defs><radialGradient id="r" cx="50%" cy="28%" r="70%"><stop offset="0" stop-color="${palette.accent}" stop-opacity="0.16"/><stop offset="0.55" stop-color="${palette.accent}" stop-opacity="0.03"/><stop offset="1" stop-color="#000" stop-opacity="0.45"/></radialGradient></defs><rect width="100%" height="100%" fill="url(#r)"/>`;
+      case "spot":
+        // A soft light from above and a faint floor (the Launch Film look): a stage, nothing more.
+        return `<defs><radialGradient id="l" cx="50%" cy="-8%" r="78%"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.13"/><stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.035"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient><radialGradient id="f" cx="50%" cy="112%" r="62%"><stop offset="0" stop-color="${palette.accent}" stop-opacity="0.10"/><stop offset="1" stop-color="${palette.accent}" stop-opacity="0"/></radialGradient></defs><rect width="100%" height="100%" fill="url(#l)"/><rect width="100%" height="100%" fill="url(#f)"/>`;
       case "paper":
         return `<filter id="p"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4"/><feColorMatrix values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.09 0"/></filter><rect width="100%" height="100%" filter="url(#p)"/>`;
       case "grain":
@@ -205,14 +208,18 @@ function shade(hex: string, amount: number) {
 function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<MotionScene, { template: "kinetic-headline" }>; palette: Palette; brand: MotionBrand; frames: number }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const { u, tall } = useUnit();
+  const { u, tall, width: W } = useUnit();
   const exit = useExit(frames);
   const words = scene.words.split(" ");
-  const size = u * (words.length <= 3 ? (tall ? 22 : 19) : words.length <= 6 ? (tall ? 16.5 : 14) : tall ? 13 : 11);
+  // The longest word always fits across (a bold letter is about 0.62 of the size wide): "BlinkSpot."
+  // at the 3-word size ran off both sides of a 9:16 frame (2026-10-26).
+  const longest = Math.max(1, ...words.map((w) => w.length));
+  const size = Math.min(u * (words.length <= 3 ? (tall ? 22 : 19) : words.length <= 6 ? (tall ? 16.5 : 14) : tall ? 13 : 11), (W - u * 18) / (longest * 0.62));
   const lines = scene.enter === "line" ? splitLines(words, words.length <= 4 ? 2 : 3) : [words];
-  const stagger = scene.enter === "slam" ? 6 : 4;
+  const focus = scene.enter === "focus";
+  const stagger = scene.enter === "slam" ? 6 : focus ? 5 : 4;
   let index = 0;
-  const allIn = (words.length - 1) * stagger + 14;
+  const allIn = (words.length - 1) * stagger + (focus ? 18 : 14);
   const bar = interpolate(frame, [allIn, allIn + 14], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
   const subIn = interpolate(frame, [allIn + 6, allIn + 20], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const part = usePart(scene);
@@ -231,10 +238,28 @@ function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<Mot
           <div key={li} style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", columnGap: size * 0.28, rowGap: size * 0.05 }}>
             {line.map((w) => {
               const i = index++;
-              const p = pop(frame, fps, i * stagger, scene.enter === "slam" ? 9 : 14);
+              const p = focus
+                ? interpolate(frame, [i * stagger, i * stagger + 18], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) })
+                : pop(frame, fps, i * stagger, scene.enter === "slam" ? 9 : 14);
               const style: CSSProperties = scene.enter === "slam"
                 ? { opacity: Math.min(1, p * 1.4), transform: `scale(${interpolate(p, [0, 1], [1.8, 1])})` }
-                : { opacity: Math.min(1, p * 1.3), transform: `translateY(${interpolate(p, [0, 1], [size * 0.6, 0])}px)` };
+                : focus
+                  ? { opacity: p, transform: `translateY(${(1 - p) * size * 0.16}px) scale(${1.05 - 0.05 * p})` }
+                  : { opacity: Math.min(1, p * 1.3), transform: `translateY(${interpolate(p, [0, 1], [size * 0.6, 0])}px)` };
+              // Focus: the renderer draws no CSS blur, so a word sharpens as faint copies of it close in.
+              const ghosts = focus && p < 1 ? [[-1, 0], [1, 0], [0, -1], [0, 1]].map(([dx, dy], g) => (
+                <span key={g} aria-hidden style={{ position: "absolute", left: 0, top: 0, opacity: (1 - p) * 0.28, transform: `translate(${dx * (1 - p) * size * 0.07}px, ${dy * (1 - p) * size * 0.07}px)` }}>{w}</span>
+              )) : null;
+              const colorMark = scene.markStyle === "color" && marked.has(i);
+              if (colorMark || (focus && ghosts)) {
+                return (
+                  <span key={i} style={{ ...style, display: "inline-block", position: "relative", fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.12, paddingBottom: size * 0.06, letterSpacing: -size * 0.02, color: palette.text }}>
+                    {ghosts}
+                    <span style={{ position: "relative" }}>{w}</span>
+                    {colorMark && <span aria-hidden style={{ position: "absolute", left: 0, top: 0, color: palette.accent, opacity: markIn }}>{w}</span>}
+                  </span>
+                );
+              }
               if (marked.has(i)) {
                 const gap = size * 0.14;
                 return (
@@ -249,7 +274,7 @@ function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<Mot
           </div>
         ))}
         </div>
-        {!marked.size && (
+        {!marked.size && !focus && (
           <div {...part("bar", { alignSelf: "stretch", display: "flex", justifyContent: "center", marginTop: u * 1.5 })}>
             <div style={{ height: u * 1.4, width: `${bar * 100}%`, background: palette.accent, borderRadius: u }} />
           </div>

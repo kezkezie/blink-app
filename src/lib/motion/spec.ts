@@ -19,7 +19,12 @@ export const MOTION_INSPO_HANDOFF_KEY = "blink-motion-inspo-plan";
 export type Palette = { background: string; text: string; accent: string; second?: string };
 
 /** mark (2026-10-25, after Matt Loui's "Here's what's working."): a word or two of the headline a marker sweeps behind. */
-export type KineticHeadline = { template: "kinetic-headline"; seconds: number; words: string; sub?: string; enter: "word" | "line" | "slam"; mark?: string };
+/**
+ * enter "focus" (Kezie, 2026-10-26: "Apple style"): each word sharpens into place, calm and premium,
+ * like a product launch film. markStyle "color": the marked words turn the accent colour instead of
+ * a marker box behind them.
+ */
+export type KineticHeadline = { template: "kinetic-headline"; seconds: number; words: string; sub?: string; enter: "word" | "line" | "slam" | "focus"; mark?: string; markStyle?: "box" | "color" };
 /**
  * A showcase (2026-10-25, after the floating-screen product films Kezie collected): up to five
  * screenshots or pictures float in depth around an optional headline, the main one in front, the
@@ -175,7 +180,7 @@ function scene(raw: unknown, images: Set<string>): MotionScene | null {
       // The marked words must be in the headline, in order (at most three).
       const m = words(text(r.mark, 40), 3).replace(/[.,!?;:]+$/, "");
       const mark = m && markAt(w.split(" "), m) >= 0 ? m : undefined;
-      return { template: t.id, seconds, words: w, sub: opt(r.sub, 60), enter: r.enter === "line" || r.enter === "slam" ? r.enter : "word", ...(mark ? { mark } : {}) };
+      return { template: t.id, seconds, words: w, sub: opt(r.sub, 60), enter: r.enter === "line" || r.enter === "slam" || r.enter === "focus" ? r.enter : "word", ...(mark ? { mark, ...(r.markStyle === "color" ? { markStyle: "color" as const } : {}) } : {}) };
     }
     case "stat": {
       const value = Number(r.value);
@@ -383,7 +388,7 @@ export type MotionBrief = {
 export const MOTION_SYSTEM = `You are BlinkSpot's motion designer. You plan short brand motion graphics from a fixed kit of animated templates. You never write code: reply with JSON only, matching this shape:
 {"kind":"full" | "overlay","palette":{"background":"#RRGGBB","text":"#RRGGBB","accent":"#RRGGBB"},"scenes":[ ...scenes in order... ]}
 Templates (each scene is one of these; "seconds" within the range):
-- {"template":"kinetic-headline","seconds":2.5-6,"words":"up to 10 words","sub":"optional, up to 8 words","enter":"word" | "line" | "slam","mark":"optional: the 1 to 3 words of the headline that matter, exactly as written; a marker sweeps behind them"}
+- {"template":"kinetic-headline","seconds":2.5-6,"words":"up to 10 words","sub":"optional, up to 8 words","enter":"word" | "line" | "slam" | "focus","mark":"optional: the 1 to 3 words of the headline that matter, exactly as written; a marker sweeps behind them","markStyle":"optional: color (the marked words turn the accent colour, no marker box)"} ("focus": each word sharpens into place, calm and premium, like a product launch film; use it with the Launch Film look, short lines and markStyle color)
 - {"template":"stat","seconds":2.5-5,"value":12.5,"decimals":0-2,"prefix":"only for money, e.g. $","suffix":"only for a unit, e.g. % or k","label":"up to 8 words"} (a plain count like 200 pairs has neither: put the unit in the label)
 - {"template":"product-reveal","seconds":3-6,"image":"one of the given picture refs, optional","name":"product name","price":"optional, as written","tagline":"optional, up to 8 words"}
 - {"template":"logo-sting","seconds":2-4,"tagline":"optional, up to 6 words"}

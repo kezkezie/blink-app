@@ -48,9 +48,9 @@ describe("free layers on motion scenes (2026-10-23)", () => {
 
 describe("looks adapted from Lemo-Opuscar (2026-10-23)", () => {
   const spec: MotionSpec = { kind: "full", shape: "9:16", palette: { background: "#111111", text: "#FFFFFF", accent: "#E4572E" }, scenes: [{ template: "kinetic-headline", seconds: 3, words: "Hi", enter: "word" }] };
-  it("has twelve looks, each with readable ink on its page", () => {
-    expect(LOOKS.length).toBe(12);
-    expect(new Set(LOOKS.map((l) => l.id)).size).toBe(12);
+  it("has thirteen looks (twelve from Lemo-Opuscar, plus Launch Film), each with readable ink on its page", () => {
+    expect(LOOKS.length).toBe(13);
+    expect(new Set(LOOKS.map((l) => l.id)).size).toBe(13);
     for (const l of LOOKS) expect(contrast(l.palette.text, l.palette.background), l.id).toBeGreaterThanOrEqual(4.5);
   });
   it("applies a look's page, ink and font, with the brand colour as the accent", () => {

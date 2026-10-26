@@ -18,6 +18,17 @@ describe("showcase and the highlighter (2026-10-25)", () => {
     expect((partial.scenes[0] as { mark?: string }).mark).toBeUndefined();
   });
 
+  it("the Launch Film headline: focus arrives, the highlight can be the brand colour (2026-10-26)", () => {
+    const spec = plan([{ template: "kinetic-headline", seconds: 3, words: "Meet BlinkSpot.", enter: "focus", mark: "BlinkSpot", markStyle: "color" }])!;
+    expect(spec.scenes[0]).toMatchObject({ enter: "focus", mark: "BlinkSpot", markStyle: "color" });
+    // A colour with nothing to colour isn't kept; an unknown entrance falls back to word by word.
+    const bare = plan([{ template: "kinetic-headline", seconds: 3, words: "Meet BlinkSpot.", enter: "zoom", markStyle: "color" }])!;
+    expect(bare.scenes[0]).toMatchObject({ enter: "word" });
+    expect((bare.scenes[0] as { markStyle?: string }).markStyle).toBeUndefined();
+    const s = { template: "kinetic-headline", seconds: 3, words: "Meet BlinkSpot.", enter: "focus" } as MotionScene;
+    expect(settleFrame(s)).toBe(5 + 18 + 14);
+  });
+
   it("a showcase only floats pictures it was offered, up to five, no repeats", () => {
     const spec = plan([{ template: "showcase", seconds: 5, images: ["P1", "P1", "https://evil.example/x.png", shot, "P2"], title: "Made with BlinkSpot", label: "BLINKSPOT" }])!;
     expect(spec.scenes[0]).toMatchObject({ template: "showcase", images: ["P1", shot, "P2"], title: "Made with BlinkSpot", label: "BLINKSPOT" });
