@@ -7,6 +7,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  *   PLAYWRIGHT_BASE_URL=https://www.blinkspot.io npx playwright test stop --workers=1
  */
 const BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+// What a stop keeps (lib/stop-refund.ts): the provider's bill at $0.005 a credit, paid by credits
+// valued at the least one sells for ($0.008 in the 5,000 pack, after a 3.8% card fee).
+const keptFor = (charged: number, usd = charged * 0.005) => Math.min(charged, Math.ceil(usd / (0.008 * 0.962) - 1e-9));
+
 
 async function signIn(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`);
@@ -42,16 +46,18 @@ test("Stop: an image being made is removed with its credits back; Ask stops mid-
     await expect(page.getByText("Making it…")).toBeVisible({ timeout: 90_000 });
     await expect.poll(async () => (await sb.from("content").select("id", { count: "exact", head: true }).eq("client_id", clientId!).eq("content_type", "post_image")).count, { timeout: 20_000 }).toBe(1);
     await page.getByRole("button", { name: "Stop" }).click();
-    await expect(page.getByText("Stopped. Your credits are back.")).toBeVisible({ timeout: 20_000 });
+    // A Fast picture is 6 credits; the image service had started, so its bill is kept (2026-10-26).
+    const kept = keptFor(6);
+    await expect(page.getByText(`Stopped. ${6 - kept} credit${6 - kept === 1 ? "" : "s"} back; ${kept} credits paid the AI service, which had already started.`)).toBeVisible({ timeout: 20_000 });
     await expect.poll(async () => (await sb.from("content").select("id", { count: "exact", head: true }).eq("client_id", clientId!).eq("content_type", "post_image")).count, { timeout: 20_000 }).toBe(0);
     // n8n may charge just before or just after the stop: either way the balance comes back level.
     const t0 = Date.now();
-    await expect.poll(balance, { timeout: 300_000, intervals: [5000] }).toBe(start);
+    await expect.poll(balance, { timeout: 300_000, intervals: [5000] }).toBe(start - kept);
     console.log(`credits back ${Math.round((Date.now() - t0) / 1000)} s after the stop`);
     // And a picture that arrives later lands nowhere.
     await page.waitForTimeout(45_000);
     expect((await sb.from("content").select("id", { count: "exact", head: true }).eq("client_id", clientId!).eq("content_type", "post_image")).count).toBe(0);
-    expect(await balance()).toBe(start);
+    expect(await balance()).toBe(start - kept);
 
     // 2. Ask BlinkSpot, stopped mid-answer.
     const panel = page.getByRole("dialog", { name: "Ask BlinkSpot" });

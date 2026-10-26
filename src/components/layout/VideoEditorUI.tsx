@@ -12,7 +12,7 @@ import { inspoPatternKey, type EditRecipe, type InspoPattern } from "@/lib/video
 import { VOICES, voiceoverCredits } from "@/lib/voiceover";
 import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
-import { canvasSize, drawtextFilter, frameAt, normalizeFilter, overlayFilter, overlayStep, webmDecoder, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
+import { PIECE_AUDIO_ARGS, PIECE_VIDEO_ARGS, canvasSize, drawtextFilter, frameAt, normalizeFilter, overlayFilter, overlayStep, pieceAudioFilter, pieceSilence, webmDecoder, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
 import { SPEEDS, sourceAt, span, speedLabel, speedOf, withSpeed } from "@/lib/editor/speed";
 import { commit, emptyHistory, isRedoKey, isUndoKey, redoStep, undoStep, type History } from "@/lib/editor/history";
 import "./video-editor.css";
@@ -540,13 +540,14 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
 
       const inputArgs: string[] = [];
       const filterSteps: string[] = [];
-      let concatStreams = "";
 
       // Each file is fetched and written once (a beat cut reuses the same clips many times), and photos
       // are shrunk to about the export size first: a looped 4K PNG was decoded 30 times a second.
       const written = new Map<string, string>();
+      // The base track piece by piece, each with its own sound, then joined (lib/editor/export-graph.ts).
+      const pieces: string[] = [];
       for (let i = 0; i < orderedVideos.length; i++) {
-        setRenderStatusText(`Processing visual media ${i + 1} of ${orderedVideos.length}...`);
+        setRenderStatusText(`Preparing clip ${i + 1} of ${orderedVideos.length}...`);
         const clip = orderedVideos[i];
         const isImg = clip.type === 'image';
         const duration = span(clip); // on the timeline
@@ -561,21 +562,25 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
           }
           written.set(clip.url, fileName);
         }
-
-        if (isImg) {
-          inputArgs.push('-loop', '1', '-framerate', '30', '-t', String(duration), '-i', fileName);
-        } else {
-          inputArgs.push('-ss', String(clip.trimStart), '-t', String(source), '-i', fileName);
-        }
-
-        filterSteps.push(normalizeFilter(i, W, H, fitMode, isImg ? 1 : speedOf(clip)));
-        concatStreams += `[v${i}]`;
-
-        setRenderProgress(15 + Math.floor((i / orderedVideos.length) * 30));
+        const piece = `piece_${i}.mp4`;
+        const video = normalizeFilter(0, W, H, fitMode, isImg ? 1 : speedOf(clip)).replace(/\[v0\]$/, "[v]");
+        const input = isImg ? ['-loop', '1', '-framerate', '30', '-t', String(duration), '-i', fileName] : ['-ss', String(clip.trimStart), '-t', String(source), '-i', fileName];
+        const run = (sound: boolean) => ffmpeg.exec([...input, '-filter_complex', `${video};${sound ? pieceAudioFilter(speedOf(clip), clip.volume ?? 100) : pieceSilence(duration)}`,
+          '-map', '[v]', '-map', '[a]', '-t', String(duration), ...PIECE_VIDEO_ARGS, ...PIECE_AUDIO_ARGS, '-y', piece]);
+        // A photo, or a clip with no sound track, gets silence of the same length.
+        let code = isImg ? 1 : await run(true);
+        if (code !== 0) code = await run(false);
+        if (code !== 0) throw new Error(`Couldn't prepare clip ${i + 1} of ${orderedVideos.length}.`);
+        pieces.push(piece);
+        setRenderProgress(15 + Math.floor(((i + 1) / orderedVideos.length) * 40));
       }
 
       setRenderStatusText("Stitching sequence...");
-      filterSteps.push(`${concatStreams}concat=n=${orderedVideos.length}:v=1:a=0[outv]`);
+      await ffmpeg.writeFile('pieces.txt', pieces.map((p) => `file '${p}'`).join('\n'));
+      if ((await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'pieces.txt', '-c', 'copy', '-y', 'base.mp4'])) !== 0) throw new Error("Couldn't join the clips.");
+      for (const f of [...pieces, ...written.values()]) await ffmpeg.deleteFile(f).catch(() => {});
+      inputArgs.push('-i', 'base.mp4');
+      filterSteps.push('[0:v]null[outv]');
 
       let finalVideoMap = '[outv]';
 
@@ -583,7 +588,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       for (let j = 0; j < overlays.length; j++) {
         setRenderStatusText(`Layering ${j + 1} of ${overlays.length}...`);
         const clip = overlays[j];
-        const index = orderedVideos.length + j;
+        const index = 1 + j; // after the joined base
         const duration = span(clip); // on the timeline
         const isImg = clip.type === 'image';
         const source = isImg ? duration : clip.trimEnd - clip.trimStart;
@@ -614,56 +619,36 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
         }
       }
 
-      let hasAudio = false;
-      if (audioClips.length > 0) {
+      // The clips' own sound (in base.mp4), with the audio track's music and voiceovers mixed in.
+      const hasAudio = true;
+      if (audioClips.length === 0) filterSteps.push('[0:a]anull[outa]');
+      else {
         setRenderStatusText("Mixing and syncing audio layers...");
-
-        if (audioClips.length === 1) {
-          const clip = audioClips[0];
+        let audioMixStr = "[0:a]";
+        for (let i = 0; i < audioClips.length; i++) {
+          const clip = audioClips[i];
           const extMatch = clip.url.match(/\.([a-zA-Z0-9]+)(?:[\?#]|$)/);
           const rawExt = extMatch ? extMatch[1].toLowerCase() : 'mp3';
           const safeExt = ['mp4', 'mp3', 'wav', 'mov', 'webm', 'aac'].includes(rawExt) ? rawExt : 'mp3';
-
-          const fileName = `audio_0.${safeExt}`;
+          const fileName = `audio_${i}.${safeExt}`;
           const duration = span(clip);
           await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
-
           inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
-
           const delayMs = Math.floor(clip.timelineStart * 1000);
-          const audioInputIndex = orderedVideos.length + overlays.length;
-          filterSteps.push(`[${audioInputIndex}:a]adelay=${delayMs}|${delayMs}[outa]`);
-          hasAudio = true;
-        } else {
-          let audioMixStr = "";
-          for (let i = 0; i < audioClips.length; i++) {
-            const clip = audioClips[i];
-            const extMatch = clip.url.match(/\.([a-zA-Z0-9]+)(?:[\?#]|$)/);
-            const rawExt = extMatch ? extMatch[1].toLowerCase() : 'mp3';
-            const safeExt = ['mp4', 'mp3', 'wav', 'mov', 'webm', 'aac'].includes(rawExt) ? rawExt : 'mp3';
-
-            const fileName = `audio_${i}.${safeExt}`;
-            const duration = span(clip);
-            await ffmpeg.writeFile(fileName, await fetchFile(getProxyUrl(clip.url)));
-
-            inputArgs.push('-ss', String(clip.trimStart), '-t', String(duration), '-i', fileName);
-
-            const delayMs = Math.floor(clip.timelineStart * 1000);
-            const audioInputIndex = orderedVideos.length + overlays.length + i;
-            filterSteps.push(`[${audioInputIndex}:a]adelay=${delayMs}|${delayMs}[a${i}]`);
-            audioMixStr += `[a${i}]`;
-            hasAudio = true;
-            setRenderProgress(40 + Math.floor((i / audioClips.length) * 20));
-          }
-          filterSteps.push(`${audioMixStr}amix=inputs=${audioClips.length}:duration=longest:dropout_transition=0[outa]`);
+          const audioInputIndex = 1 + overlays.length + i;
+          filterSteps.push(`[${audioInputIndex}:a]volume=${((clip.volume ?? 100) / 100).toFixed(2)},adelay=${delayMs}|${delayMs}[a${i}]`);
+          audioMixStr += `[a${i}]`;
+          setRenderProgress(55 + Math.floor((i / audioClips.length) * 10));
         }
+        // Each at its own level (amix halves everything by default), held under clipping.
+        filterSteps.push(`${audioMixStr}amix=inputs=${audioClips.length + 1}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[outa]`);
       }
 
       if (stampExport) {
         // Last input: the stamp picture, laid over the finished picture for the whole video.
         const b = stampBox(W, H);
         await ffmpeg.writeFile('stamp.png', await fetchFile('/brand/stamp.png'));
-        const stampIndex = orderedVideos.length + overlays.length + audioClips.length;
+        const stampIndex = 1 + overlays.length + audioClips.length;
         inputArgs.push('-i', 'stamp.png');
         filterSteps.push(`[${stampIndex}:v]scale=${b.width}:${b.height}[stampimg]`);
         filterSteps.push(`${finalVideoMap}[stampimg]overlay=${b.left}:${b.top}:eof_action=repeat[stamped]`);

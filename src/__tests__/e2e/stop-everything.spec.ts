@@ -13,6 +13,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  *   PLAYWRIGHT_BASE_URL=http://localhost:3000 npx playwright test stop-everything --workers=1
  */
 const BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+// What a stop keeps (lib/stop-refund.ts): the provider's bill at $0.005 a credit, paid by credits
+// valued at the least one sells for ($0.008 in the 5,000 pack, after a 3.8% card fee).
+const keptFor = (charged: number, usd = charged * 0.005) => Math.min(charged, Math.ceil(usd / (0.008 * 0.962) - 1e-9));
+
 const PICTURE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/examples/kasi-poster.jpg`;
 const VIDEO = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/assets/examples/oud-noir-push.mp4`;
 
@@ -61,17 +65,18 @@ test("stop: a video n8n is making, a motion plan, a video upscale and an AI edit
     await page.goto(`${BASE}/studio/library`);
     const card = page.locator(".s-media").filter({ hasText: "Stop test video" });
     await card.getByRole("button", { name: "Stop", exact: true }).click({ timeout: 60_000 });
-    await expect(page.getByText(`Stopped. ${charged} credits are back.`)).toBeVisible({ timeout: 30_000 });
+    const kept1 = keptFor(charged);
+    await expect(page.getByText(`Stopped. ${charged - kept1} credits back; ${kept1} credits paid the AI service, which had already started.`)).toBeVisible({ timeout: 30_000 });
     await expect(card).toHaveCount(0);
-    expect(await balance()).toBe(start1);
+    expect(await balance()).toBe(start1 - kept1);
     // n8n finishes its run on its own: nothing is saved, nothing is refunded twice.
     await making;
     await page.waitForTimeout(10_000);
     expect((await sb.from("content").select("id").eq("id", vid)).data ?? []).toEqual([]);
     const net = (await ledgerFor(`[vid:${vid}]`)).reduce((n, r) => n + r.amount, 0);
     console.log("video ledger", JSON.stringify(await ledgerFor(`[vid:${vid}]`)));
-    expect(net).toBe(0);
-    expect(await balance()).toBe(start1);
+    expect(net).toBe(-kept1);
+    expect(await balance()).toBe(start1 - kept1);
     }
 
     // ── 2. The motion planner, stopped from the browser ──
@@ -86,7 +91,7 @@ test("stop: a video n8n is making, a motion plan, a video upscale and an AI edit
     await expect.poll(balance, { timeout: 30_000, intervals: [500] }).toBe(start2 - 4);
     const aborted = await page.evaluate(() => { const w = window as unknown as { __stop: AbortController; __motion: Promise<string> }; w.__stop.abort(); return w.__motion; });
     expect(aborted).toBe("aborted");
-    await expect.poll(balance, { timeout: 60_000, intervals: [2000] }).toBe(start2);
+    await expect.poll(balance, { timeout: 60_000, intervals: [2000] }).toBe(start2 - keptFor(4, 0.015));
     console.log("motion plan stopped, balance back to", start2);
     }
 
@@ -103,7 +108,8 @@ test("stop: a video n8n is making, a motion plan, a video upscale and an AI edit
     const stopped3 = await stop3.json();
     expect(stopped3.state).toBe("failed");
     expect(stopped3.error).toMatch(/^Stopped\./);
-    expect(await balance()).toBe(start3);
+    // Still queued at Replicate: all back; already running: its bill is kept.
+    expect([start3, start3 - keptFor(job.credits)]).toContain(await balance());
     const { data: uj } = await sb.from("upscale_jobs").select("prediction_id").eq("id", job.id).single();
     if (uj?.prediction_id && process.env.REPLICATE_API_TOKEN) {
       const pr = await (await fetch(`https://api.replicate.com/v1/predictions/${uj.prediction_id}`, { headers: { Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}` } })).json();
@@ -129,12 +135,12 @@ test("stop: a video n8n is making, a motion plan, a video upscale and an AI edit
     const stop4 = await (await page.request.delete(`${BASE}/api/jobs?ids=${placeholder}`)).json();
     console.log("edit stop", JSON.stringify(stop4));
     expect(stop4.stopped).toContain(placeholder);
-    expect(await balance()).toBe(start4);
+    expect(await balance()).toBe(start4 - keptFor(18));
     const done4 = await applying;
     console.log("edit apply ended", done4.status, JSON.stringify(done4.body));
     expect(done4.status).toBe(499);
     expect((await sb.from("content").select("id").eq("id", placeholder)).data ?? []).toEqual([]);
-    expect(await balance()).toBe(start4);
+    expect(await balance()).toBe(start4 - keptFor(18));
     }
     expect(errors).toEqual([]);
   } finally {

@@ -24,6 +24,34 @@ export function normalizeFilter(index: number, W: number, H: number, fit: FitMod
   return `[${index}:v]${stretch}${size},setsar=1,fps=30,format=yuv420p[v${index}]`;
 }
 
+/**
+ * The base track is exported piece by piece (2026-10-26): every piece is rendered on its own at the
+ * export size, with its own sound, then the pieces are joined without re-encoding. ffmpeg used to open
+ * every piece of the timeline at once, and a 40-cut edit of 4K phone clips ran out of memory ("Engine
+ * failed"); the clips' own sound was also dropped. Every piece is encoded the same way so they join.
+ */
+export const PIECE_VIDEO_ARGS = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-pix_fmt", "yuv420p", "-r", "30"];
+export const PIECE_AUDIO_ARGS = ["-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2"];
+
+/** atempo takes 0.5 to 2 per step, so a 0.25x slow-mo is two halvings. */
+export function atempoChain(speed: number): string {
+  let s = speedOf({ speed });
+  const steps: string[] = [];
+  while (s < 0.5 - 1e-9) { steps.push("atempo=0.5"); s /= 0.5; }
+  while (s > 2 + 1e-9) { steps.push("atempo=2"); s /= 2; }
+  if (Math.abs(s - 1) > 1e-6) steps.push(`atempo=${s.toFixed(4)}`);
+  return steps.join(",");
+}
+
+/** A piece's own sound, at its speed and volume, in the one format every piece shares. */
+export function pieceAudioFilter(speed: number, volume = 100): string {
+  const chain = [atempoChain(speed), `volume=${(Math.max(0, Math.min(100, volume)) / 100).toFixed(2)}`, "aresample=44100", "aformat=sample_fmts=fltp:channel_layouts=stereo"].filter(Boolean);
+  return `[0:a]${chain.join(",")}[a]`;
+}
+
+/** Silence as long as a piece (a photo, or a clip with no sound). */
+export const pieceSilence = (seconds: number) => `anullsrc=r=44100:cl=stereo,atrim=duration=${Math.max(0.05, seconds).toFixed(3)}[a]`;
+
 export type ExportText = { text: string; x: number; y: number; fontSize: number; color: string; timelineStart: number; trimStart: number; trimEnd: number; style?: "plain" | "caption" };
 
 /**
