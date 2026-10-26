@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { createContext, useContext, type CSSProperties, type ReactNode } from "react";
 import { AbsoluteFill, Easing, Img, Series, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { MOTION_FPS, contrast, markAt, sceneFrames, type MotionScene, type MotionSpec, type Palette } from "@/lib/motion/spec";
 import { arrival, type MotionLayer } from "@/lib/motion/layers";
@@ -65,6 +65,7 @@ export function settleFrame(scene: MotionScene) {
       case "points": { const k = scene.points.length; return 12 + (k - 1) * Math.max(8, Math.min(22, (n * 0.6) / k)) + 15; }
       case "story": { const k = Math.max(1, scene.lines.length); return Math.max(19, 6 + (k - 1) * Math.max(5, Math.min(14, (n * 0.45) / k)) + 12); }
       case "showcase": return 26 + (scene.images.length - 1) * 5 + 16;
+      case "tiles": return 10 + (scene.tiles.length - 1) * Math.max(4, Math.min(9, (n * 0.4) / scene.tiles.length)) + 18;
     }
   })();
   return Math.max(0, Math.min(n - EXIT - 2, Math.round(t)));
@@ -76,7 +77,7 @@ function Frame({ palette, transparent, background, look, children }: { palette: 
   return (
     <AbsoluteFill style={{ background: transparent ? "transparent" : look ? palette.background : `linear-gradient(160deg, ${palette.background} 0%, ${palette.background} 55%, ${shade(palette.background, 0.12)} 100%)` }}>
       {background && <Backdrop src={background} palette={palette} />}
-      {back.map((t) => <TextureLayer key={t} texture={t} look={look!} palette={palette} />)}
+      {back.map((t) => t === "neon" ? <NeonLights key={t} look={look!} palette={palette} /> : <TextureLayer key={t} texture={t} look={look!} palette={palette} />)}
       {children}
       {front.map((t) => <TextureLayer key={t} texture={t} look={look!} palette={palette} />)}
     </AbsoluteFill>
@@ -89,7 +90,7 @@ function Frame({ palette, transparent, background, look, children }: { palette: 
  * paper, grain, halftone dots and scanlines are all SVG. Grid, glow, paper and deco lines sit behind
  * the content; grain, halftone and scanlines lie over it, like film or print.
  */
-const BACK_TEXTURES = new Set<Texture>(["grid", "glow", "paper", "deco", "spot"]);
+const BACK_TEXTURES = new Set<Texture>(["grid", "glow", "paper", "deco", "spot", "neon"]);
 function TextureLayer({ texture, look, palette }: { texture: Texture; look: Look; palette: Palette }) {
   const { width: W, height: H } = useVideoConfig();
   const u = Math.min(W, H) / 100;
@@ -117,6 +118,7 @@ function TextureLayer({ texture, look, palette }: { texture: Texture; look: Look
         const gap = Math.max(3, Math.round(H / 360));
         return `<pattern id="s" width="4" height="${gap}" patternUnits="userSpaceOnUse"><rect width="4" height="${Math.max(1, gap / 2)}" fill="#000" fill-opacity="0.28"/></pattern><rect width="100%" height="100%" fill="url(#s)"/>`;
       }
+      case "neon": return ""; // drawn by NeonLights, which moves
       case "deco": {
         const cx = W / 2, cy = H * 1.05, rays = Array.from({ length: 13 }, (_, i) => { const a = Math.PI * (0.18 + (0.64 * i) / 12); return `<line x1="${cx}" y1="${cy}" x2="${cx - Math.cos(a) * H * 1.4}" y2="${cy - Math.sin(a) * H * 1.4}" stroke="${line}" stroke-opacity="0.13" stroke-width="${u * 0.25}"/>`; }).join("");
         const m = u * 3.2;
@@ -126,6 +128,76 @@ function TextureLayer({ texture, look, palette }: { texture: Texture; look: Look
   })();
   const src = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>`)}`;
   return <Img src={src} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
+}
+
+/** The clip's look, for templates that dress differently in it (the Neon Glass look's panels). */
+const LookContext = createContext<Look | null>(null);
+
+/**
+ * Frosted glass (the Neon Glass look, Kezie 2026-10-26: "glasses are translucent but you can see
+ * through"): a translucent fill with a diagonal sheen, a bright rim and a lit top edge (edge(), as
+ * the panel's last child). The renderer has no backdrop blur, so the soft neon behind shows through
+ * the fill as it is, which reads as frosted glass. "smoke" is darker, for words over a picture.
+ * glow() is a neon text or box shadow in a colour. Null outside the look.
+ */
+function useGlass() {
+  const look = useContext(LookContext);
+  const { u } = useUnit();
+  if (!look?.glass) return null;
+  const bg = look.palette.background;
+  return {
+    panel: (radius: number, tone: "clear" | "smoke" = "clear"): CSSProperties => ({
+      position: "relative", overflow: "hidden", borderRadius: radius,
+      background: tone === "smoke"
+        ? `linear-gradient(140deg, ${rgba(shade(bg, 0.3), 0.84)} 0%, ${rgba(bg, 0.72)} 40%, ${rgba(bg, 0.68)} 66%, ${rgba(shade(bg, 0.24), 0.8)} 100%)`
+        : "linear-gradient(140deg, rgba(255,255,255,0.17) 0%, rgba(255,255,255,0.07) 34%, rgba(255,255,255,0.035) 64%, rgba(255,255,255,0.1) 100%)",
+      border: `${Math.max(1, u * 0.16)}px solid rgba(255,255,255,0.26)`,
+      boxShadow: `0 ${u * 2.4}px ${u * 7}px rgba(0,0,0,0.4)`,
+    }),
+    edge: (radius: number): CSSProperties => ({ position: "absolute", left: radius * 0.7, right: radius * 0.7, top: 0, height: Math.max(1, u * 0.22), background: "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.85) 50%, rgba(255,255,255,0) 100%)" }),
+    glow: (color: string, k = 1) => `0 0 ${u * 1.1 * k}px ${rgba(color, 0.85)}, 0 0 ${u * 4 * k}px ${rgba(color, 0.5)}`,
+  };
+}
+
+/** One soft light: a radial-gradient circle as a picture (the renderer draws pictures, not radial CSS), made once per colour. */
+const lights = new Map<string, string>();
+function lightPicture(color: string) {
+  let src = lights.get(color);
+  if (!src) {
+    src = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><defs><radialGradient id="b"><stop offset="0" stop-color="${color}" stop-opacity="0.95"/><stop offset="0.35" stop-color="${color}" stop-opacity="0.55"/><stop offset="0.7" stop-color="${color}" stop-opacity="0.12"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></radialGradient></defs><circle cx="200" cy="200" r="200" fill="url(#b)"/></svg>`)}`;
+    lights.set(color, src);
+  }
+  return src;
+}
+
+/**
+ * The Neon Glass light (2026-10-26): big soft lights in the look's neon and the brand's colour,
+ * drifting slowly across the whole clip, under a dark veil so words stay readable. The same four
+ * pictures every frame, only moved, so it renders as fast as a still.
+ */
+function NeonLights({ look, palette }: { look: Look; palette: Palette }) {
+  const frame = useCurrentFrame();
+  const { width: W, height: H } = useVideoConfig();
+  const m = Math.max(W, H);
+  const n = look.neon ?? [];
+  // Behind the middle of the frame, where the panels sit, so the light shows through the glass.
+  const set = [
+    { c: n[0] ?? palette.accent, x: 0.24, y: 0.34, d: 0.9, sx: 0.08, sy: 0.05, p: 0, o: 0.95 },
+    { c: n[2] ?? palette.accent, x: 0.8, y: 0.56, d: 0.78, sx: 0.06, sy: 0.06, p: 2.1, o: 0.85 },
+    { c: n[1] ?? palette.second ?? palette.accent, x: 0.34, y: 0.8, d: 0.8, sx: 0.07, sy: 0.04, p: 4.2, o: 0.85 },
+    { c: palette.accent, x: 0.72, y: 0.16, d: 0.46, sx: 0.05, sy: 0.04, p: 1.3, o: 0.4 },
+  ];
+  return (
+    <>
+      {set.map((l, i) => {
+        const t = frame / 90 + l.p;
+        const d = m * l.d;
+        const cx = W * (l.x + Math.sin(t) * l.sx), cy = H * (l.y + Math.cos(t * 0.8) * l.sy);
+        return <Img key={i} src={lightPicture(l.c)} style={{ position: "absolute", left: cx - d / 2, top: cy - d / 2, width: d, height: d, opacity: l.o, transform: `scale(${1 + Math.sin(t * 1.3) * 0.06})` }} />;
+      })}
+      <AbsoluteFill style={{ background: `linear-gradient(180deg, ${rgba(palette.background, 0.3)} 0%, ${rgba(palette.background, 0.38)} 50%, ${rgba(palette.background, 0.3)} 100%)` }} />
+    </>
+  );
 }
 
 /**
@@ -230,6 +302,7 @@ function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<Mot
     if (at >= 0) scene.mark.split(" ").forEach((_, k) => marked.add(at + k));
   }
   const markIn = interpolate(frame, [allIn, allIn + 12], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  const glass = useGlass();
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: `0 ${u * 9}px`, opacity: 1 - exit, transform: `translateY(${-exit * u * 6}px)` }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: u * 1.2, maxWidth: "100%" }}>
@@ -256,7 +329,7 @@ function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<Mot
                   <span key={i} style={{ ...style, display: "inline-block", position: "relative", fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.12, paddingBottom: size * 0.06, letterSpacing: -size * 0.02, color: palette.text }}>
                     {ghosts}
                     <span style={{ position: "relative" }}>{w}</span>
-                    {colorMark && <span aria-hidden style={{ position: "absolute", left: 0, top: 0, color: palette.accent, opacity: markIn }}>{w}</span>}
+                    {colorMark && <span aria-hidden style={{ position: "absolute", left: 0, top: 0, color: palette.accent, opacity: markIn, textShadow: glass?.glow(palette.accent, size / (u * 14)) }}>{w}</span>}
                   </span>
                 );
               }
@@ -264,7 +337,7 @@ function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<Mot
                 const gap = size * 0.14;
                 return (
                   <span key={i} style={{ ...style, display: "inline-block", position: "relative", fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.12, paddingBottom: size * 0.06, letterSpacing: -size * 0.02 }}>
-                    <span style={{ position: "absolute", left: marked.has(i - 1) ? -gap - 1 : -gap * 0.6, right: marked.has(i + 1) ? -gap - 1 : -gap * 0.6, top: size * 0.1, bottom: size * 0.02, background: palette.accent, borderRadius: marked.has(i - 1) || marked.has(i + 1) ? 0 : size * 0.08, transform: `scaleX(${markIn})`, transformOrigin: "0% 50%" }} />
+                    <span style={{ position: "absolute", left: marked.has(i - 1) ? -gap - 1 : -gap * 0.6, right: marked.has(i + 1) ? -gap - 1 : -gap * 0.6, top: size * 0.1, bottom: size * 0.02, background: palette.accent, borderRadius: marked.has(i - 1) || marked.has(i + 1) ? 0 : size * 0.08, transform: `scaleX(${markIn})`, transformOrigin: "0% 50%", boxShadow: glass?.glow(palette.accent) }} />
                     <span style={{ position: "relative", color: markIn > 0.5 ? readableOn(palette.accent) : palette.text }}>{w}</span>
                   </span>
                 );
@@ -276,7 +349,7 @@ function KineticHeadline({ scene, palette, brand, frames }: { scene: Extract<Mot
         </div>
         {!marked.size && !focus && (
           <div {...part("bar", { alignSelf: "stretch", display: "flex", justifyContent: "center", marginTop: u * 1.5 })}>
-            <div style={{ height: u * 1.4, width: `${bar * 100}%`, background: palette.accent, borderRadius: u }} />
+            <div style={{ height: u * 1.4, width: `${bar * 100}%`, background: palette.accent, borderRadius: u, boxShadow: glass?.glow(palette.accent) }} />
           </div>
         )}
         {scene.sub && <div {...part("sub", { opacity: subIn, transform: `translateY(${(1 - subIn) * u * 2}px)`, fontFamily: fontStack(brand.font), fontWeight: 500, fontSize: Math.max(u * 4.6, size * 0.3), color: palette.text, marginTop: u * 1.2, textAlign: "center" })}>{scene.sub}</div>}
@@ -306,12 +379,13 @@ function Stat({ scene, palette, brand, frames }: { scene: Extract<MotionScene, {
   const enter = pop(frame, fps, 0);
   const label = interpolate(frame, [Math.max(20, frames * 0.6) - 6, Math.max(20, frames * 0.6) + 8], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const part = usePart(scene);
+  const glass = useGlass();
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity: 1 - exit, transform: `scale(${1 - exit * 0.06})` }}>
-      <div {...part("bar", { width: u * 70, height: u * 1.6, borderRadius: u, background: shade(palette.background, 0.18), marginBottom: u * 5, overflow: "hidden" })}>
-        <div style={{ width: `${count * 100}%`, height: "100%", background: palette.accent }} />
+      <div {...part("bar", { width: u * 70, height: u * 1.6, borderRadius: u, background: glass ? "rgba(255,255,255,0.12)" : shade(palette.background, 0.18), marginBottom: u * 5, overflow: "hidden" })}>
+        <div style={{ width: `${count * 100}%`, height: "100%", background: palette.accent, boxShadow: glass?.glow(palette.accent) }} />
       </div>
-      <div {...part("number", { opacity: enter, transform: `translateY(${(1 - enter) * u * 4}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.1, paddingBottom: size * 0.05, letterSpacing: -size * 0.03, color: palette.accent })}>{shown}</div>
+      <div {...part("number", { opacity: enter, transform: `translateY(${(1 - enter) * u * 4}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.1, paddingBottom: size * 0.05, letterSpacing: -size * 0.03, color: palette.accent, textShadow: glass?.glow(palette.accent, 1.6) })}>{shown}</div>
       <div {...part("label", { opacity: label, transform: `translateY(${(1 - label) * u * 2}px)`, fontFamily: fontStack(brand.font), fontWeight: 600, fontSize: u * 5.2, color: palette.text, marginTop: u * 3.5, textAlign: "center", maxWidth: u * 80 })}>{scene.label}</div>
     </AbsoluteFill>
   );
@@ -328,10 +402,11 @@ function ProductReveal({ scene, palette, brand, frames }: { scene: Extract<Motio
   const tag = pop(frame, fps, 26, 10);
   const side = wide;
   const part = usePart(scene);
+  const glass = useGlass();
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity: 1 - exit }}>
-      <div {...part("card", { display: "flex", flexDirection: side ? "row" : "column", alignItems: "center", gap: u * 5, width: side ? "82%" : "80%", padding: u * 5, borderRadius: u * 5, background: shade(palette.background, 0.1), transform: `translateY(${(1 - card) * u * 30}px)`, opacity: Math.min(1, card * 1.5) })}>
-        <div {...part("picture", { width: side ? u * 46 : "100%", height: side ? u * 46 : u * 62, borderRadius: u * 3.5, background: shade(palette.background, 0.2), overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "center", transform: `scale(${interpolate(pic, [0, 1], [0.85, 1])})` })}>
+      <div {...part("card", { display: "flex", flexDirection: side ? "row" : "column", alignItems: "center", gap: u * 5, width: side ? "82%" : "80%", padding: u * 5, borderRadius: u * 5, background: shade(palette.background, 0.1), ...(glass ? glass.panel(u * 5) : {}), transform: `translateY(${(1 - card) * u * 30}px)`, opacity: Math.min(1, card * 1.5) })}>
+        <div {...part("picture", { width: side ? u * 46 : "100%", height: side ? u * 46 : u * 62, borderRadius: u * 3.5, background: glass ? "rgba(255,255,255,0.08)" : shade(palette.background, 0.2), overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "center", transform: `scale(${interpolate(pic, [0, 1], [0.85, 1])})` })}>
           {scene.image
             ? <Img src={scene.image} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             : <div style={{ fontFamily: fontStack(brand.font), lineHeight: 1.3, paddingBottom: u * 0.4, fontWeight: 800, fontSize: u * 14, color: palette.accent }}>{scene.name.slice(0, 1)}</div>}
@@ -339,8 +414,9 @@ function ProductReveal({ scene, palette, brand, frames }: { scene: Extract<Motio
         <div style={{ display: "flex", flexDirection: "column", alignItems: side ? "flex-start" : "center", gap: u * 1.6, opacity: info, transform: `translateY(${(1 - info) * u * 3}px)` }}>
           <div {...part("name", { fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 7.5, lineHeight: 1.15, paddingBottom: u * 0.5, color: palette.text, textAlign: side ? "left" : "center" })}>{scene.name}</div>
           {scene.tagline && <div {...part("tagline", { fontFamily: fontStack(brand.font), lineHeight: 1.3, paddingBottom: u * 0.4, fontWeight: 500, fontSize: u * 4.2, color: palette.text, opacity: 0.85, textAlign: side ? "left" : "center" })}>{scene.tagline}</div>}
-          {scene.price && <div {...part("price", { marginTop: u * 1.5, padding: `${u * 1.4}px ${u * 3.6}px`, borderRadius: u * 10, background: palette.accent, color: readableOn(palette.accent), fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 5, transform: `scale(${tag})` })}>{scene.price}</div>}
+          {scene.price && <div {...part("price", { marginTop: u * 1.5, padding: `${u * 1.4}px ${u * 3.6}px`, borderRadius: u * 10, background: palette.accent, color: readableOn(palette.accent), fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 5, transform: `scale(${tag})`, boxShadow: glass?.glow(palette.accent) })}>{scene.price}</div>}
         </div>
+        {glass && <div style={glass.edge(u * 5)} />}
       </div>
     </AbsoluteFill>
   );
@@ -385,11 +461,12 @@ function LowerThird({ scene, palette, brand, frames }: { scene: Extract<MotionSc
   const reveal = open * (1 - close);
   const textIn = interpolate(frame, [8, 20], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) * (1 - close);
   const part = usePart(scene);
+  const glass = useGlass();
   return (
     <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "flex-start", padding: `0 ${u * 9}px ${height * (tall ? 0.21 : 0.1)}px` }}>
-      <div {...part("bar", { display: "flex", alignItems: "stretch", clipPath: `inset(0 ${(1 - reveal) * 100}% 0 0)` })}>
-        <div style={{ width: u * 1.6, background: palette.accent }} />
-        <div style={{ display: "flex", flexDirection: "column", gap: u * 0.6, padding: `${u * 2.2}px ${u * 4}px`, background: palette.background }}>
+      <div {...part("bar", { display: "flex", alignItems: "stretch", clipPath: `inset(0 ${(1 - reveal) * 100}% 0 0)`, ...(glass ? { ...glass.panel(u * 2, "smoke"), borderRadius: u * 2 } : {}) })}>
+        <div style={{ width: u * 1.6, background: palette.accent, boxShadow: glass?.glow(palette.accent) }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: u * 0.6, padding: `${u * 2.2}px ${u * 4}px`, background: glass ? "transparent" : palette.background }}>
           <div style={{ opacity: textIn, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 5.6, lineHeight: 1.2, paddingBottom: u * 0.4, color: palette.text }}>{scene.title}</div>
           {scene.subtitle && <div style={{ opacity: textIn, fontFamily: fontStack(brand.font), lineHeight: 1.3, paddingBottom: u * 0.4, fontWeight: 500, fontSize: u * 3.6, color: palette.text }}>{scene.subtitle}</div>}
         </div>
@@ -407,11 +484,16 @@ function EndCard({ scene, palette, brand, frames }: { scene: Extract<MotionScene
   const cta = pop(frame, fps, 8, 11);
   const meta = interpolate(frame, [20, 34], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const part = usePart(scene);
+  const glass = useGlass();
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", gap: u * 6, opacity: 1 - exit }}>
       {scene.logo && brand.logoUrl && <Img src={brand.logoUrl} crossOrigin="anonymous" {...part("logo", { width: u * 22, height: u * 22, objectFit: "contain", opacity: logo, transform: `translateY(${(1 - logo) * u * 3}px)` })} />}
       {scene.logo && !brand.logoUrl && <div {...part("logo", { fontFamily: fontStack(brand.font), lineHeight: 1.3, paddingBottom: u * 0.4, fontWeight: 800, fontSize: u * 7, color: palette.text, opacity: logo })}>{brand.name}</div>}
-      <div {...part("button", { padding: `${u * 3}px ${u * 7}px`, borderRadius: u * 12, background: palette.accent, color: readableOn(palette.accent), fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 6.4, textAlign: "center", maxWidth: u * 86, transform: `scale(${cta})` })}>{scene.cta}</div>
+      <div {...part("button", { padding: `${u * 3}px ${u * 7}px`, borderRadius: u * 12, background: palette.accent, color: readableOn(palette.accent), fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 6.4, textAlign: "center", maxWidth: u * 86, transform: `scale(${cta})`,
+        ...(glass ? { position: "relative", overflow: "hidden", background: `linear-gradient(180deg, ${shade(palette.accent, 0.28)} 0%, ${palette.accent} 55%, ${palette.accent} 100%)`, border: `${Math.max(1, u * 0.16)}px solid rgba(255,255,255,0.45)`, boxShadow: glass.glow(palette.accent, 2) } : {}) })}>
+        {scene.cta}
+        {glass && <div style={{ ...glass.edge(u * 12), left: u * 4, right: u * 4 }} />}
+      </div>
       <div {...part("details", { display: "flex", flexDirection: "column", alignItems: "center", gap: u * 1.2, opacity: meta })}>
         {scene.handle && <div style={{ fontFamily: fontStack(brand.font), lineHeight: 1.3, paddingBottom: u * 0.4, fontWeight: 700, fontSize: u * 4.4, color: palette.text }}>{scene.handle}</div>}
         {scene.website && <div style={{ fontFamily: fontStack(brand.font), lineHeight: 1.3, paddingBottom: u * 0.4, fontWeight: 500, fontSize: u * 3.8, color: palette.text, opacity: 0.85 }}>{scene.website}</div>}
@@ -462,10 +544,11 @@ function Screen({ scene, palette, brand, frames }: { scene: Extract<MotionScene,
   const label = pop(frame, fps, 52, 13);
   const dot = u * 7 / s;
   const part = usePart(scene);
+  const glass = useGlass();
   return (
     <AbsoluteFill style={{ opacity: (1 - exit) * Math.min(1, enter * 1.4) }}>
       <div {...part("device", { position: "absolute", left: width / 2 - devW / 2 - bezel, top: cy - devH / 2 - bezel, width: devW + bezel * 2, height: devH + bezel * 2, transform: `translate(${tx}px, ${ty}px) scale(${s * interpolate(enter, [0, 1], [0.94, 1])})`, transformOrigin: "50% 50%" })}>
-        <div style={{ position: "absolute", inset: 0, borderRadius: scene.device === "phone" ? u * 7 : scene.device === "laptop" ? u * 2 : u * 2.5, background: scene.device === "none" ? "transparent" : "#0B0C0F", boxShadow: `0 ${u * 3}px ${u * 8}px rgba(0,0,0,0.35)` }} />
+        <div style={{ position: "absolute", inset: 0, borderRadius: scene.device === "phone" ? u * 7 : scene.device === "laptop" ? u * 2 : u * 2.5, background: scene.device === "none" ? "transparent" : "#0B0C0F", boxShadow: `0 ${u * 3}px ${u * 8}px rgba(0,0,0,0.35)`, ...(glass && scene.device !== "none" ? { border: `${Math.max(1, u * 0.2)}px solid rgba(255,255,255,0.3)`, boxShadow: `0 ${u * 3}px ${u * 8}px rgba(0,0,0,0.45), ${glass.glow(palette.accent, 3)}` } : {}) }} />
         <div style={{ position: "absolute", left: bezel, top: bezel, width: devW, height: devH, borderRadius: scene.device === "phone" ? u * 5.4 : u * 1.2, overflow: "hidden", background: "#FFFFFF" }}>
           <Img src={scene.image} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         </div>
@@ -479,9 +562,10 @@ function Screen({ scene, palette, brand, frames }: { scene: Extract<MotionScene,
         )}
       </div>
       <div style={{ position: "absolute", left: width * 0.08, right: width * 0.08, top: below ? labelY : undefined, bottom: below ? undefined : height - labelY, display: "flex", justifyContent: "center", opacity: Math.min(1, label * 1.4), transform: `translateY(${(1 - label) * u * (below ? 3 : -3)}px)` }}>
-        <div {...part("label", { display: "flex", flexDirection: "column", alignItems: "center", gap: u * 0.8, padding: `${u * 2.4}px ${u * 4.4}px`, borderRadius: u * 3, background: palette.background, border: `${u * 0.4}px solid ${palette.accent}`, maxWidth: "100%", boxShadow: `0 ${u * 1.5}px ${u * 4}px rgba(0,0,0,0.3)` })}>
+        <div {...part("label", { display: "flex", flexDirection: "column", alignItems: "center", gap: u * 0.8, padding: `${u * 2.4}px ${u * 4.4}px`, borderRadius: u * 3, background: palette.background, border: `${u * 0.4}px solid ${palette.accent}`, maxWidth: "100%", boxShadow: `0 ${u * 1.5}px ${u * 4}px rgba(0,0,0,0.3)`, ...(glass ? glass.panel(u * 3, "smoke") : {}) })}>
           <div style={{ fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 5.6, lineHeight: 1.2, paddingBottom: u * 0.3, color: palette.text, textAlign: "center" }}>{scene.label}</div>
           {scene.sub && <div style={{ fontFamily: fontStack(brand.font), fontWeight: 500, fontSize: u * 3.8, lineHeight: 1.3, paddingBottom: u * 0.3, color: palette.text, opacity: 0.85, textAlign: "center" }}>{scene.sub}</div>}
+          {glass && <div style={glass.edge(u * 3)} />}
         </div>
       </div>
     </AbsoluteFill>
@@ -502,6 +586,12 @@ function Bars({ scene, palette, brand, frames }: { scene: Extract<MotionScene, {
   const per = Math.max(4, Math.min(10, (frames * 0.55) / n));
   const labelSize = Math.min(u * 3.6, barW * 0.22);
   const part = usePart(scene);
+  const glass = useGlass();
+  // In the glass look the lit bars glow and the rest are glass.
+  const barFill = (lit: boolean): CSSProperties => !glass
+    ? { background: lit ? palette.accent : shade(palette.background, 0.28) }
+    : lit ? { background: `linear-gradient(180deg, ${shade(palette.accent, 0.3)} 0%, ${palette.accent} 40%, ${rgba(palette.accent, 0.7)} 100%)`, boxShadow: glass.glow(palette.accent) }
+      : { background: "linear-gradient(180deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.07) 100%)", border: `${Math.max(1, u * 0.14)}px solid rgba(255,255,255,0.24)` };
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity: 1 - exit, transform: `translateY(${-exit * u * 4}px)` }}>
       <div {...part("title", { opacity: title, transform: `translateY(${(1 - title) * u * 3}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * (tall ? 7 : 6), lineHeight: 1.15, paddingBottom: u * 0.4, color: palette.text, textAlign: "center", maxWidth: chartW, marginBottom: u * 5 })}>{scene.title}</div>
@@ -513,7 +603,7 @@ function Bars({ scene, palette, brand, frames }: { scene: Extract<MotionScene, {
           return (
             <div key={i} style={{ width: barW, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }}>
               <div style={{ fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: labelSize * 1.15, lineHeight: 1.2, color: hot ? palette.accent : palette.text, opacity: Math.min(1, grow * 1.5), marginBottom: u * 1 }}>{`${scene.prefix ?? ""}${formatNumber(b.value * grow, scene.decimals)}${scene.suffix ?? ""}`}</div>
-              <div style={{ width: "100%", height: h, borderRadius: `${u * 1.2}px ${u * 1.2}px ${u * 0.4}px ${u * 0.4}px`, background: hot || scene.highlight === undefined ? palette.accent : shade(palette.background, 0.28) }} />
+              <div style={{ width: "100%", height: h, borderRadius: `${u * 1.2}px ${u * 1.2}px ${u * 0.4}px ${u * 0.4}px`, ...barFill(hot || scene.highlight === undefined) }} />
               <div style={{ fontFamily: fontStack(brand.font), fontWeight: 600, fontSize: labelSize, lineHeight: 1.25, color: palette.text, opacity: 0.85, marginTop: u * 1.2, textAlign: "center", width: "100%" }}>{b.label}</div>
             </div>
           );
@@ -538,13 +628,14 @@ function Compare({ scene, palette, brand, frames }: { scene: Extract<MotionScene
   const down = scene.to < scene.from;
   const tag = interpolate(frame, [Math.round(frames * 0.62), Math.round(frames * 0.62) + 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const part = usePart(scene);
+  const glass = useGlass();
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity: 1 - exit, transform: `scale(${1 - exit * 0.05})` }}>
       <div {...part("label", { opacity: enter * 0.9, fontFamily: fontStack(brand.font), fontWeight: 600, fontSize: u * 5.4, color: palette.text, marginBottom: u * 2.5, textAlign: "center", maxWidth: u * 84 })}>{scene.label}</div>
-      <div {...part("number", { opacity: enter, transform: `translateY(${(1 - enter) * u * 4}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.1, paddingBottom: size * 0.05, letterSpacing: -size * 0.03, color: turn > 0.98 ? palette.accent : palette.text })}>{fmt(value)}</div>
+      <div {...part("number", { opacity: enter, transform: `translateY(${(1 - enter) * u * 4}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: size, lineHeight: 1.1, paddingBottom: size * 0.05, letterSpacing: -size * 0.03, color: turn > 0.98 ? palette.accent : palette.text, textShadow: turn > 0.98 ? glass?.glow(palette.accent, 1.6) : undefined })}>{fmt(value)}</div>
       <div {...part("change", { display: "flex", alignItems: "center", gap: u * 2, marginTop: u * 3, opacity: tag, transform: `translateY(${(1 - tag) * u * 2}px)` })}>
         <span style={{ fontFamily: fontStack(brand.font), fontWeight: 600, fontSize: u * 3.8, color: palette.text, opacity: 0.6, textDecoration: "line-through" }}>{scene.fromLabel ? `${scene.fromLabel}: ` : ""}{fmt(scene.from)}</span>
-        <span style={{ fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 3.8, padding: `${u * 0.6}px ${u * 1.8}px`, borderRadius: u * 3, background: palette.accent, color: readableOn(palette.accent) }}>{down ? "▼" : "▲"} {scene.toLabel ?? fmt(Math.abs(scene.to - scene.from))}</span>
+        <span style={{ fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 3.8, padding: `${u * 0.6}px ${u * 1.8}px`, borderRadius: u * 3, background: palette.accent, color: readableOn(palette.accent), boxShadow: glass?.glow(palette.accent) }}>{down ? "▼" : "▲"} {scene.toLabel ?? fmt(Math.abs(scene.to - scene.from))}</span>
       </div>
     </AbsoluteFill>
   );
@@ -559,6 +650,7 @@ function Points({ scene, palette, brand, frames }: { scene: Extract<MotionScene,
   const title = pop(frame, fps, 0);
   const per = Math.max(8, Math.min(22, (frames * 0.6) / scene.points.length));
   const part = usePart(scene);
+  const glass = useGlass();
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: `0 ${u * 8}px`, opacity: 1 - exit, transform: `translateY(${-exit * u * 4}px)` }}>
       <div style={{ width: Math.min(width * 0.86, u * 150), display: "flex", flexDirection: "column", gap: u * (tall ? 2.6 : 2) }}>
@@ -567,9 +659,10 @@ function Points({ scene, palette, brand, frames }: { scene: Extract<MotionScene,
         {scene.points.map((p, i) => {
           const inn = pop(frame, fps, 12 + i * per, 15);
           return (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: u * 2.4, opacity: Math.min(1, inn * 1.3), transform: `translateX(${(1 - inn) * u * 10}px)`, padding: `${u * 2.2}px ${u * 2.8}px`, borderRadius: u * 2.4, background: shade(palette.background, 0.1) }}>
-              <div style={{ width: u * 5.4, height: u * 5.4, borderRadius: u * 2.7, background: palette.accent, color: readableOn(palette.accent), display: "flex", alignItems: "center", justifyContent: "center", fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 3, flexShrink: 0 }}>{i + 1}</div>
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: u * 2.4, opacity: Math.min(1, inn * 1.3), transform: `translateX(${(1 - inn) * u * 10}px)`, padding: `${u * 2.2}px ${u * 2.8}px`, borderRadius: u * 2.4, background: shade(palette.background, 0.1), ...(glass ? glass.panel(u * 2.4) : {}) }}>
+              <div style={{ width: u * 5.4, height: u * 5.4, borderRadius: u * 2.7, background: palette.accent, color: readableOn(palette.accent), display: "flex", alignItems: "center", justifyContent: "center", fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: u * 3, flexShrink: 0, boxShadow: glass?.glow(palette.accent) }}>{i + 1}</div>
               <div style={{ fontFamily: fontStack(brand.font), fontWeight: 700, fontSize: u * (tall ? 4.6 : 4), lineHeight: 1.25, paddingBottom: u * 0.2, color: palette.text }}>{p}</div>
+              {glass && <div style={glass.edge(u * 2.4)} />}
             </div>
           );
         })}
@@ -675,6 +768,7 @@ function Showcase({ scene, palette, brand, frames }: { scene: Extract<MotionScen
   const { u, width: W, height: H, tall, wide } = useUnit();
   const exit = useExit(frames);
   const part = usePart(scene);
+  const glass = useGlass();
   const [hero, ...rest] = scene.images;
   const push = interpolate(frame, [0, frames], [1, 1.06]);
   const heroW = W * (wide ? 0.52 : tall ? 0.84 : 0.7), heroH = heroW / 1.6;
@@ -693,6 +787,7 @@ function Showcase({ scene, palette, brand, frames }: { scene: Extract<MotionScen
       transform: `translate(${fx}px, ${fy + (1 - p) * H * 0.05}px) scale(${interpolate(p, [0, 1], [0.9, 1])})`,
       boxShadow: `0 ${u * 3}px ${u * 9}px rgba(0,0,0,${depth > 1 ? 0.45 : 0.55})`,
       ...(depth > 1 ? { filter: `blur(${u * 0.12}px)` } : {}),
+      ...(glass ? { border: `${Math.max(1, u * (depth > 1 ? 0.14 : 0.22))}px solid rgba(255,255,255,${depth > 1 ? 0.22 : 0.38})`, boxShadow: `0 ${u * 3}px ${u * 9}px rgba(0,0,0,0.5)${depth > 1 ? "" : `, ${glass.glow(palette.accent, 3)}`}` } : {}),
       key: `${i}-${src}`,
     };
   };
@@ -708,7 +803,7 @@ function Showcase({ scene, palette, brand, frames }: { scene: Extract<MotionScen
         })}
         {hero && (() => {
           const { key, ...style } = card(hero, 0, heroW, heroH, W / 2, heroCy, 0.6);
-          return <div key={key} {...part("hero", { ...style, border: `${Math.max(1, u * 0.12)}px solid rgba(255,255,255,0.14)` })}><Img src={hero} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>;
+          return <div key={key} {...part("hero", { ...style, ...(glass ? {} : { border: `${Math.max(1, u * 0.12)}px solid rgba(255,255,255,0.14)` }) })}><Img src={hero} crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover" }} />{glass && <div style={{ position: "absolute", inset: 0, background: "linear-gradient(150deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 38%)" }} />}</div>;
         })()}
       </AbsoluteFill>
       {/* Under the words only: a tall frame keeps its lower pictures clear of it. */}
@@ -720,6 +815,52 @@ function Showcase({ scene, palette, brand, frames }: { scene: Extract<MotionScen
           {scene.sub && <div {...part("sub", { fontFamily: fontStack(brand.font), fontWeight: 500, fontSize: u * (tall ? 3.6 : 3), lineHeight: 1.3, color: palette.text, opacity: 0.75 * titleIn, textAlign: "center", marginTop: u * 1.4, maxWidth: u * 120 })}>{scene.sub}</div>}
         </AbsoluteFill>
       )}
+    </AbsoluteFill>
+  );
+}
+
+/**
+ * Tiles (2026-10-26, a feature grid like a launch page's bento): a title, then two to six tiles
+ * arriving one after another, each with an optional big value, a short title and a line. On two
+ * columns an odd count lets the first tile span the row. Frosted glass in the Neon Glass look.
+ */
+function Tiles({ scene, palette, brand, frames }: { scene: Extract<MotionScene, { template: "tiles" }>; palette: Palette; brand: MotionBrand; frames: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { u, width: W, height: H, tall, wide } = useUnit();
+  const exit = useExit(frames);
+  const part = usePart(scene);
+  const glass = useGlass();
+  const n = scene.tiles.length;
+  const cols = wide ? Math.min(3, n) : 2;
+  const heroSpan = cols === 2 && n % 2 === 1;
+  const rows = Math.ceil((n + (heroSpan ? 1 : 0)) / cols);
+  const gridW = W * (wide ? 0.84 : 0.86), gap = u * 2.4;
+  const titleSize = u * (tall ? 7.4 : 6);
+  const titleRoom = scene.title ? titleSize * 2.6 : 0;
+  const gridH = Math.min(H * (tall ? 0.62 : 0.7), H * 0.88 - titleRoom);
+  const cellH = (gridH - gap * (rows - 1)) / rows, cellW = (gridW - gap * (cols - 1)) / cols;
+  const per = Math.max(4, Math.min(9, (frames * 0.4) / n));
+  const titleIn = pop(frame, fps, 0, 15);
+  const radius = u * 3.2, pad = u * (tall ? 3.4 : 2.8);
+  return (
+    <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity: 1 - exit, transform: `scale(${1 - exit * 0.04})` }}>
+      {scene.title && <div {...part("title", { opacity: titleIn, transform: `translateY(${(1 - titleIn) * u * 3}px)`, fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: titleSize, lineHeight: 1.12, paddingBottom: u * 0.5, letterSpacing: -titleSize * 0.02, color: palette.text, textAlign: "center", maxWidth: gridW, marginBottom: u * 4 })}>{scene.title}</div>}
+      <div {...part("tiles", { width: gridW, display: "flex", flexWrap: "wrap", gap })}>
+        {scene.tiles.map((t, i) => {
+          const w = heroSpan && i === 0 ? gridW : cellW;
+          const p = interpolate(frame, [10 + i * per, 10 + i * per + 16], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+          const valueSize = t.value ? Math.min(u * (tall ? 11 : 9), cellH * 0.34, (w - pad * 2) / Math.max(2, t.value.length * 0.6)) : 0;
+          return (
+            <div key={i} style={{ width: w, height: cellH, padding: pad, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: u * 0.8, borderRadius: radius, background: shade(palette.background, 0.1), ...(glass ? glass.panel(radius) : {}), opacity: p, transform: `translateY(${(1 - p) * u * 5}px) scale(${0.96 + 0.04 * p})` }}>
+              {t.value && <div style={{ fontFamily: fontStack(brand.font), fontWeight: 800, fontSize: valueSize, lineHeight: 1.05, paddingBottom: valueSize * 0.05, letterSpacing: -valueSize * 0.03, color: palette.accent, textShadow: glass?.glow(palette.accent, valueSize / (u * 9)) }}>{t.value}</div>}
+              <div style={{ fontFamily: fontStack(brand.font), fontWeight: 700, fontSize: u * (tall ? 4.6 : 3.8), lineHeight: 1.18, paddingBottom: u * 0.2, color: palette.text }}>{t.title}</div>
+              {t.line && <div style={{ fontFamily: fontStack(brand.font), fontWeight: 500, fontSize: u * (tall ? 3.3 : 2.8), lineHeight: 1.3, paddingBottom: u * 0.2, color: palette.text, opacity: 0.74 }}>{t.line}</div>}
+              {glass && <div style={glass.edge(radius)} />}
+            </div>
+          );
+        })}
+      </div>
     </AbsoluteFill>
   );
 }
@@ -748,6 +889,7 @@ function TemplateScene({ scene, palette, brand, frames }: { scene: MotionScene; 
     case "points": return <Points scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "story": return <Story scene={scene} palette={palette} brand={brand} frames={frames} />;
     case "showcase": return <Showcase scene={scene} palette={palette} brand={brand} frames={frames} />;
+    case "tiles": return <Tiles scene={scene} palette={palette} brand={brand} frames={frames} />;
   }
 }
 
@@ -761,9 +903,11 @@ function StampMark() {
 export function MotionVideo({ spec, brand: brandIn }: MotionProps) {
   // A look brings its typeface (and the user can pick another): it is the font every template uses.
   const brand = spec.font ? { ...brandIn, font: spec.font } : brandIn;
+  const look = lookById(spec.look);
   return (
+    <LookContext.Provider value={look}>
     <AbsoluteFill>
-      <Frame palette={spec.palette} transparent={spec.kind === "overlay"} background={spec.kind === "overlay" ? undefined : spec.background} look={lookById(spec.look)}>
+      <Frame palette={spec.palette} transparent={spec.kind === "overlay"} background={spec.kind === "overlay" ? undefined : spec.background} look={look}>
         <Series>
           {spec.scenes.map((s, i) => (
             <Series.Sequence key={i} durationInFrames={sceneFrames(s)}>
@@ -774,6 +918,7 @@ export function MotionVideo({ spec, brand: brandIn }: MotionProps) {
       </Frame>
       {brand.stamp && <StampMark />}
     </AbsoluteFill>
+    </LookContext.Provider>
   );
 }
 

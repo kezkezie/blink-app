@@ -525,6 +525,23 @@ export function MotionStudio({ open, onClose, spec, onSpec, brand, pictures, cli
                 {field("Title", s.title, (v) => setScene(i, { title: v }))}
                 {s.points.map((pt, j) => <div key={j}>{field(`Point ${j + 1}`, pt, (v) => setScene(i, { points: s.points.map((x, k) => (k === j ? v : x)) }))}</div>)}
               </>)}
+              {s.template === "tiles" && (<>
+                {field("Title", s.title, (v) => setScene(i, { title: v || undefined }), { placeholder: "Optional" })}
+                {s.tiles.map((t, j) => {
+                  const setTile = (patch: Partial<typeof t>) => setScene(i, { tiles: s.tiles.map((x, k) => (k === j ? { ...x, ...patch } : x)) });
+                  return (
+                    <div key={j} className="grid gap-1.5 rounded-lg p-2" style={{ border: "1px solid var(--s-line)" }}>
+                      <div className="flex gap-1.5 items-end">
+                        <div className="flex-1 min-w-0">{field(`Tile ${j + 1}`, t.title, (v) => setTile({ title: v }))}</div>
+                        <div className="w-[84px]">{field("Big", t.value, (v) => setTile({ value: v || undefined }), { placeholder: "4K" })}</div>
+                        {s.tiles.length > 2 && <button className="s-btn ghost sm" onClick={() => setScene(i, { tiles: s.tiles.filter((_, k) => k !== j) })} aria-label={`Remove tile ${j + 1}`}><X className="h-3.5 w-3.5" /></button>}
+                      </div>
+                      {field("Line", t.line, (v) => setTile({ line: v || undefined }), { placeholder: "Optional" })}
+                    </div>
+                  );
+                })}
+                {s.tiles.length < 6 && <button className="s-btn ghost sm justify-self-start" onClick={() => setScene(i, { tiles: [...s.tiles, { title: "New tile" }] })}>+ Tile</button>}
+              </>)}
               {s.template === "product-reveal" && (<>
                 {field("Name", s.name, (v) => setScene(i, { name: v }))}
                 <div className="grid grid-cols-2 gap-2">{field("Price", s.price, (v) => setScene(i, { price: v || undefined }), { placeholder: "Optional" })}{field("Line", s.tagline, (v) => setScene(i, { tagline: v || undefined }), { placeholder: "Optional" })}</div>
@@ -972,7 +989,7 @@ function LooksModal({ open, onClose, spec, brand, clientId, onUse }: {
             <small style={{ color: "#A9AEB6" }}>Your colours and font, as planned.</small>
           </button>
           {LOOKS.map((l) => (
-            <button key={l.id} type="button" role="option" aria-selected={pick === l.id} onClick={() => setPick(l.id)} className={`ms-look${pick === l.id ? " sel" : ""}`} style={{ background: l.palette.background }}>
+            <button key={l.id} type="button" role="option" aria-selected={pick === l.id} onClick={() => setPick(l.id)} className={`ms-look${pick === l.id ? " sel" : ""}`} style={{ background: l.neon ? `linear-gradient(140deg, ${l.neon[0]}66 0%, ${l.palette.background} 48%, ${l.neon[1]}55 100%)` : l.palette.background }}>
               <b style={{ color: l.palette.text, fontFamily: `"${l.font}", Inter, sans-serif` }}>{l.name}</b>
               <span className="flex gap-1">{[l.palette.text, brandAccent && brand.primary ? brand.primary : l.palette.accent, l.palette.second].map((c, k) => <i key={k} style={{ background: c }} />)}</span>
               <small style={{ color: l.palette.text, opacity: 0.75 }}>{l.line}</small>
@@ -986,7 +1003,7 @@ function LooksModal({ open, onClose, spec, brand, clientId, onUse }: {
             </div>
           </div>
           <label className="flex items-center gap-2 text-[12px]" style={{ color: "var(--s-soft)" }}><input type="checkbox" checked={brandAccent} onChange={(e) => setBrandAccent(e.target.checked)} /> Use my brand colour as the accent</label>
-          {pick && <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>Adapted from the {lookById(pick)?.from} style in Lemo-Opuscar by LemoLab (MIT).</span>}
+          {pick && !lookById(pick)?.ours && <span className="text-[11px]" style={{ color: "var(--s-mute)" }}>Adapted from the {lookById(pick)?.from} style in Lemo-Opuscar by LemoLab (MIT).</span>}
           <button className="s-btn primary justify-center" onClick={() => onUse(applyLook(spec, pick, brand, brandAccent))}>{pick ? `Use ${lookById(pick)?.name}` : "Use my brand look"}</button>
         </div>
       </div>

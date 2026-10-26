@@ -31,6 +31,12 @@ export type KineticHeadline = { template: "kinetic-headline"; seconds: number; w
  * rest behind it drifting at their own pace; a small label in the corner like a studio's.
  */
 export type Showcase = { template: "showcase"; seconds: number; images: string[]; title?: string; sub?: string; label?: string };
+/**
+ * Tiles (2026-10-26, with the Neon Glass look): a feature grid like a launch page's bento, two to
+ * six tiles, each a short title with an optional big value ("4K", "Free") and a line.
+ */
+export type Tile = { title: string; line?: string; value?: string };
+export type Tiles = { template: "tiles"; seconds: number; title?: string; tiles: Tile[] };
 export type Stat = { template: "stat"; seconds: number; value: number; decimals: number; prefix?: string; suffix?: string; label: string };
 export type ProductReveal = { template: "product-reveal"; seconds: number; image?: string; name: string; price?: string; tagline?: string };
 export type LogoSting = { template: "logo-sting"; seconds: number; tagline?: string };
@@ -65,7 +71,7 @@ export type Story = { template: "story"; seconds: number; lines: StoryLine[]; pl
  * of the template's own layout and animation. Each template names its parts in PART_NAMES.
  */
 export type PartNudge = { dx: number; dy: number; scale: number };
-export type MotionScene = (KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points | Story | Showcase) & { layers?: MotionLayer[]; parts?: Record<string, PartNudge> };
+export type MotionScene = (KineticHeadline | Stat | ProductReveal | LogoSting | LowerThird | EndCard | ScreenStep | Bars | Compare | Points | Story | Showcase | Tiles) & { layers?: MotionLayer[]; parts?: Record<string, PartNudge> };
 export type MotionTemplate = MotionScene["template"];
 
 /** The parts of each template that can be moved and resized, with their names in the studio. */
@@ -82,6 +88,7 @@ export const PART_NAMES: Record<MotionTemplate, Record<string, string>> = {
   points: { title: "Title", points: "Points" },
   story: { picture: "Picture", words: "Words" },
   showcase: { hero: "Main picture", title: "Title", sub: "Smaller line", label: "Corner label" },
+  tiles: { title: "Title", tiles: "Tiles" },
 };
 
 /** The moves kept for a scene: known parts only, within the frame's reach, and none that does nothing. */
@@ -124,6 +131,7 @@ export const MOTION_TEMPLATES: Array<{ id: MotionTemplate; label: string; line: 
   { id: "points", label: "Key points", line: "Points arrive one by one, from a post or notes", seconds: [4, 10] },
   { id: "story", label: "Story card", line: "Stacked words, soft shapes and a picture, like a motion quote", seconds: [2, 7] },
   { id: "showcase", label: "Showcase", line: "Your screens or pictures float in depth around a headline", seconds: [3, 8] },
+  { id: "tiles", label: "Feature tiles", line: "Two to six features arrive as tiles, like a launch page", seconds: [3.5, 8] },
 ];
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -255,6 +263,18 @@ function scene(raw: unknown, images: Set<string>): MotionScene | null {
       if (!list.length) return null;
       return { template: t.id, seconds, images: list, title: opt(words(text(r.title, 70), 8), 70), sub: opt(words(text(r.sub, 90), 12), 90), label: opt(words(text(r.label, 32), 5), 32) };
     }
+    case "tiles": {
+      const tiles = (Array.isArray(r.tiles) ? r.tiles : []).slice(0, 6).map((x) => {
+        const o = (x && typeof x === "object" ? x : { title: x }) as Record<string, unknown>;
+        // Whole words only; a "value" is short (4K, Free, $3) or it isn't one.
+        const title = words(text(o.title, 60), 5);
+        const line = words(text(o.line, 120), 12);
+        const value = text(o.value, 40);
+        return title ? { title, ...(line ? { line } : {}), ...(value && value.length <= 10 ? { value } : {}) } : null;
+      }).filter((x): x is Tile => !!x);
+      if (tiles.length < 2) return null;
+      return { template: t.id, seconds, ...(opt(words(text(r.title, 70), 9), 70) ? { title: words(text(r.title, 70), 9) } : {}), tiles };
+    }
     case "screen": {
       const image = typeof r.image === "string" && images.has(r.image) ? r.image : null;
       const label = words(text(r.label, 70), 10);
@@ -369,7 +389,7 @@ export function sizeFor(shape: MotionShape) {
 /** A short name for the Library and the timeline. */
 export function motionTitle(spec: MotionSpec) {
   const s = spec.scenes[0];
-  const words = s.template === "kinetic-headline" ? s.words : s.template === "stat" ? s.label : s.template === "product-reveal" ? s.name : s.template === "lower-third" ? s.title : s.template === "end-card" ? s.cta : s.template === "screen" ? s.label : s.template === "bars" || s.template === "points" ? s.title : s.template === "compare" ? s.label : s.template === "story" ? (s.lines.map((l) => l.text).join(" ") || s.placeholder || "Story") : s.template === "showcase" ? (s.title || s.label || "Showcase") : s.tagline || "Logo";
+  const words = s.template === "kinetic-headline" ? s.words : s.template === "stat" ? s.label : s.template === "product-reveal" ? s.name : s.template === "lower-third" ? s.title : s.template === "end-card" ? s.cta : s.template === "screen" ? s.label : s.template === "bars" || s.template === "points" ? s.title : s.template === "compare" ? s.label : s.template === "story" ? (s.lines.map((l) => l.text).join(" ") || s.placeholder || "Story") : s.template === "showcase" ? (s.title || s.label || "Showcase") : s.template === "tiles" ? (s.title || s.tiles.map((x) => x.title).join(", ")) : s.tagline || "Logo";
   return `Motion · ${words}`.slice(0, 80);
 }
 
@@ -399,6 +419,7 @@ Templates (each scene is one of these; "seconds" within the range):
 - {"template":"points","seconds":4-10,"title":"up to 10 words","points":["2 to 5 points, each up to 10 words"]}
 - {"template":"story","seconds":2-7,"lines":[{"text":"1 to 5 words","size":"s|m|l|xl","accent":true|false,"align":"left|center|right"}, ...0 to 6 lines, top to bottom],"place":"top|center|bottom","backdrop":"plain|dots|hill|sunrise","picture":"optional picture ref","placeholder":"only when no given picture fits: the photo to add here, up to 8 words","frame":"circle|card|none","enter":"blur|rise|pop"}
 - {"template":"showcase","seconds":3-8,"images":["1 to 5 picture refs or screenshot refs, the main one first"],"title":"optional, up to 8 words","sub":"optional, up to 12 words","label":"optional small corner label, up to 5 words, e.g. the product or section name"}
+- {"template":"tiles","seconds":3.5-8,"title":"optional, up to 9 words","tiles":[{"title":"up to 5 words","line":"optional, up to 12 words","value":"optional, up to 10 characters, e.g. 4K, Free, $3, 30s"}, ...2 to 6 tiles]}
 - {"template":"screen","seconds":3-7,"image":"a screenshot ref (S1...)","box":[x, y, width, height],"label":"what to do or see there, up to 10 words","sub":"optional, up to 10 words","device":"phone" | "laptop" | "none"}
 Palette may also have "second": a supporting colour for shapes (the sun, a picture's circle).
 Rules:
@@ -412,6 +433,7 @@ Rules:
 - Numbers given (a table, a list, results, a CSV): use bars for 2 to 8 values, compare for a before and after, stat for one number. Only the numbers given; never invent one.
 - A post, article or notes given: pull out the 3 to 5 points that matter most, in the order they appear, in short words (points), with a headline first and an end-card last.
 - Story cards are for motion quotes and kinetic stories: small connecting words (size s or m) around one or two key words (l or xl, accent), stacked and offset left and right, one thought per card. Backdrops: dots (soft floating circles), hill (a big accent hill rises from the bottom; words on it with place "bottom"), sunrise (a sun in the second colour rises behind the hill). A picture shows in a circle (frame circle), a card, or as it is (none); a poster or any picture with words on it (its title says so) goes in a card, never a circle, which would crop its words.
+- Tiles show several features or benefits at once, like a launch page: one short title each, a line only when it adds something, a value only when one was given (a number, a price, a size). Great after a hook headline.
 - A showcase floats several pictures or screenshots at once for a premium product moment: a great opener or closer before the end-card, never two in a row. Mark one or two words of a headline when one idea matters most (not on every headline).
 - Screenshots given (an app or website walkthrough, a tutorial, "how it works", "what this button does"): one "screen" scene per step, in the order of the steps, using up to 6 scenes plus an optional opening kinetic-headline and a closing end-card (up to 8 scenes, 30 s). "box" is the rectangle around the exact button, field or area that step is about, in PIXELS of that screenshot (its size is given): look at it carefully and make the box fit the element snugly. The label is an instruction or the benefit, e.g. "Tap Generate to make your poster". "phone" for tall screenshots, "laptop" for wide ones.`;
 
@@ -435,7 +457,7 @@ export function motionUserPrompt(b: MotionBrief) {
  * A new scene for "+ Scene" in the studio (2026-10-23): a ready-to-edit default for each template
  * (a walkthrough step needs a screenshot and a lower third its own clip, so those aren't offered).
  */
-export const ADDABLE_TEMPLATES: MotionTemplate[] = ["kinetic-headline", "showcase", "story", "points", "stat", "bars", "compare", "product-reveal", "logo-sting", "end-card"];
+export const ADDABLE_TEMPLATES: MotionTemplate[] = ["kinetic-headline", "showcase", "tiles", "story", "points", "stat", "bars", "compare", "product-reveal", "logo-sting", "end-card"];
 export function blankScene(template: MotionTemplate, brandName = "your brand", pictures: string[] = []): MotionScene {
   switch (template) {
     case "showcase": return { template, seconds: 5, images: pictures.slice(0, 4), title: brandName, label: brandName };
@@ -443,6 +465,7 @@ export function blankScene(template: MotionTemplate, brandName = "your brand", p
     case "bars": return { template, seconds: 5, title: "This year", bars: [{ label: "Q1", value: 40 }, { label: "Q2", value: 65 }, { label: "Q3", value: 90 }], decimals: 0 };
     case "compare": return { template, seconds: 4, label: "Orders a week", from: 120, to: 480, decimals: 0, fromLabel: "Before", toLabel: "Now" };
     case "points": return { template, seconds: 6, title: `Why ${brandName}`, points: ["Fast delivery", "Fair prices", "Made with care"] };
+    case "tiles": return { template, seconds: 5, title: `Why ${brandName}`, tiles: [{ title: "Fast delivery", line: "At your door in a day" }, { title: "Fair prices", value: "$9" }, { title: "Made with care" }, { title: "Loved by locals", value: "4.9" }] };
     case "product-reveal": return { template, seconds: 4, name: "Your product", tagline: "Made for you" };
     case "logo-sting": return { template, seconds: 3, tagline: brandName };
     case "end-card": return { template, seconds: 3.5, cta: "Shop now", logo: true };

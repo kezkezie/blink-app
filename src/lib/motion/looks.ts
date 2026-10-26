@@ -9,12 +9,18 @@ import type { LayerEnter } from "./layers";
  * look changes how they're dressed. The brand's colour goes in as the accent by default, so every
  * look stays on brand.
  */
-export type Texture = "grid" | "glow" | "paper" | "grain" | "halftone" | "scanlines" | "deco" | "spot";
+export type Texture = "grid" | "glow" | "paper" | "grain" | "halftone" | "scanlines" | "deco" | "spot" | "neon";
 export type Look = {
   id: string; name: string; from: string; line: string;
   palette: Required<Palette>; font: string; textures: Texture[]; enter: LayerEnter;
   /** Lines and grids are drawn in this colour (light on dark, dark on light). */
   lineColor: string;
+  /** Panels are frosted glass over the light (the Neon Glass look); words in the accent glow. */
+  glass?: boolean;
+  /** The neon lights behind the glass, with the accent (the brand's colour). */
+  neon?: string[];
+  /** Made by BlinkSpot, not adapted from Lemo-Opuscar. */
+  ours?: boolean;
 };
 
 export const LOOKS: Look[] = [
@@ -23,7 +29,13 @@ export const LOOKS: Look[] = [
   // Kezie, 2026-10-26: "Apple style type of motion graphics": pure black, one soft spotlight, big
   // clean type that sharpens into focus (kinetic headline enter "focus"), the brand colour for one word.
   { id: "launch", name: "Launch Film", from: "Product launch film", line: "Pure black, one soft spotlight, big clean type that sharpens into focus.",
-    palette: { background: "#000000", text: "#F5F5F7", accent: "#2997FF", second: "#86868B" }, font: "Inter Tight", textures: ["spot"], enter: "fade", lineColor: "#FFFFFF" },
+    palette: { background: "#000000", text: "#F5F5F7", accent: "#2997FF", second: "#86868B" }, font: "Inter Tight", textures: ["spot"], enter: "fade", lineColor: "#FFFFFF", ours: true },
+  // Kezie, 2026-10-26: "the Apple style where there's this neon-like color and this glossy glass
+  // effect where the glasses are translucent but you can see through". Soft neon light drifts
+  // behind; cards, labels and buttons are frosted glass with a glossy edge; accent words glow.
+  { id: "glass", name: "Neon Glass", from: "Apple-style glass and neon", line: "Neon light drifting behind frosted, see-through glass with a glossy edge.",
+    palette: { background: "#05050B", text: "#F5F7FF", accent: "#8B5CF6", second: "#22D3EE" }, font: "Inter Tight", textures: ["neon"], enter: "rise", lineColor: "#FFFFFF",
+    glass: true, neon: ["#7C3AED", "#06B6D4", "#EC4899"], ours: true },
   { id: "keynote", name: "Dark Keynote", from: "Dark Tech Keynote", line: "A launch-event stage: near-black, a soft glow, one luminous accent.",
     palette: { background: "#0B0D12", text: "#F2F4F8", accent: "#B7F34A", second: "#8B93A7" }, font: "Inter Tight", textures: ["glow", "grid"], enter: "rise", lineColor: "#FFFFFF" },
   { id: "risograph", name: "Risograph", from: "Risograph Print", line: "Two spot inks on warm paper, halftone dots and grain, like a print.",
