@@ -11,6 +11,7 @@ import { useAskStore } from "@/components/studio/ask-store";
 import { Modal } from "@/components/studio/Modal";
 import { MediaThumb, NOT_STORYBOARD_FRAME, PART_TYPES, STATUS_LABEL, cleanCaption, resolveMedia } from "@/components/studio/media";
 import { PlatformGlyph } from "./PlatformGlyph";
+import { VIDEO_ONLY, VIDEO_ONLY_LINE } from "@/lib/social-media-rules";
 import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, savePlatforms, takeOffCalendar, toLocalInput, whenLabel, type CalRow, type PlaceResult, type PostState } from "./schedule";
 import "./calendar.css";
 import { CalendarSkeleton } from "@/components/studio/Skeletons";
@@ -107,7 +108,8 @@ export function Calendar() {
   function report(r: PlaceResult, iso: string, item: CalRow) {
     if (!r.ok) { toast.error(r.error || "Couldn't schedule it."); return; }
     const platforms = enabledPlatforms(item.target_platforms);
-    if (r.queued) toast.success(`Scheduled for ${whenLabel(iso)} on ${platforms.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}.`);
+    const sent = platforms.filter((p) => !(r.note && VIDEO_ONLY.has(p) && !resolveMedia(item).isVideo));
+    if (r.queued) toast.success(`Scheduled for ${whenLabel(iso)} on ${sent.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}.${r.note ? ` ${r.note}` : ""}`, { duration: r.note ? 9000 : 4000 });
     else if (!platforms.length) toast(`On the calendar for ${whenLabel(iso)}. Pick where it posts so it goes out.`, { action: { label: "Pick platforms", onClick: () => openPlatforms({ ...item, scheduled_at: iso }) } });
     else if (r.code === "needs_caption") toast.error(`On the calendar, but not queued: ${r.error}`, { duration: 12000, action: { label: "Write it", onClick: () => { window.location.href = `/studio/library/${item.id}`; } } });
     else toast.error(`On the calendar, but not queued: ${r.error}`, { duration: 9000 });
@@ -134,7 +136,8 @@ export function Calendar() {
   }
   const [confirmOff, setConfirmOff] = useState<string | null>(null);
   function openWhen(item: CalRow) { setWhenFor(item); setWhenValue(toLocalInput(item.scheduled_at)); }
-  function openPlatforms(item: CalRow) { setPlatformsFor(item); setPicked(enabledPlatforms(item.target_platforms).filter((p) => connected.includes(p))); }
+  // A picture can't go to YouTube (videos only), so it isn't picked for one.
+  function openPlatforms(item: CalRow) { const video = resolveMedia(item).isVideo; setPlatformsFor(item); setPicked(enabledPlatforms(item.target_platforms).filter((p) => connected.includes(p) && (video || !VIDEO_ONLY.has(p)))); }
   async function savePicked() {
     if (!clientId || !platformsFor) return;
     const item = platformsFor;
@@ -143,7 +146,7 @@ export function Calendar() {
     setBusy(null);
     setPlatformsFor(null);
     if (!r.ok) toast.error(r.error || "Couldn't save the platforms.");
-    else if (item.scheduled_at && r.queued) toast.success(`Queued for ${whenLabel(item.scheduled_at)}.`);
+    else if (item.scheduled_at && r.queued) toast.success(`Queued for ${whenLabel(item.scheduled_at)}.${r.note ? ` ${r.note}` : ""}`, { duration: r.note ? 9000 : 4000 });
     else if (item.scheduled_at && r.error) toast.error(`Saved, but not queued: ${r.error}`, { duration: 9000, ...(r.code === "needs_caption" ? { action: { label: "Write it", onClick: () => { window.location.href = `/studio/library/${item.id}`; } } } : {}) });
     else toast.success("Platforms saved.");
     await load();
@@ -342,9 +345,10 @@ export function Calendar() {
           <div className="grid gap-2">
             {connected.map((p) => {
               const on = picked.includes(p);
+              const videosOnly = VIDEO_ONLY.has(p) && !!platformsFor && !resolveMedia(platformsFor).isVideo;
               return (
-                <button key={p} className="flex items-center gap-3 rounded-xl px-3 h-11 text-left" style={{ background: on ? "var(--s-raised)" : "var(--s-bg)", border: `1px solid ${on ? "var(--s-text)" : "var(--s-line-2)"}` }} aria-pressed={on} onClick={() => setPicked((x) => (on ? x.filter((y) => y !== p) : [...x, p]))}>
-                  <PlatformGlyph platform={p} size={16} /><span className="text-[13px] flex-1">{PLATFORM_LABEL[p] ?? p}</span>
+                <button key={p} className="flex items-center gap-3 rounded-xl px-3 h-11 text-left" style={{ background: on ? "var(--s-raised)" : "var(--s-bg)", border: `1px solid ${on ? "var(--s-text)" : "var(--s-line-2)"}`, opacity: videosOnly ? 0.55 : 1 }} aria-pressed={on} disabled={videosOnly} title={videosOnly ? `${PLATFORM_LABEL[p] ?? p} only takes videos, and this post is a picture.` : undefined} onClick={() => setPicked((x) => (on ? x.filter((y) => y !== p) : [...x, p]))}>
+                  <PlatformGlyph platform={p} size={16} /><span className="text-[13px] flex-1">{PLATFORM_LABEL[p] ?? p}{videosOnly && <span className="text-[11.5px] ml-1.5" style={{ color: "var(--s-mute)" }}>· {VIDEO_ONLY_LINE}</span>}</span>
                   <span className="h-4 w-4 rounded grid place-items-center" style={{ background: on ? "var(--s-accent)" : "transparent", border: `1px solid ${on ? "var(--s-accent)" : "var(--s-line-2)"}` }}>{on && <span className="block h-1.5 w-1.5 rounded-sm" style={{ background: "var(--s-accent-ink)" }} />}</span>
                 </button>
               );

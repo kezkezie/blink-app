@@ -18,6 +18,7 @@ import { InstagramTroubleshootModal } from "@/components/publishing/InstagramTro
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, publishNow, settingsFor, takeOffCalendar, toLocalInput, whenLabel, type CalRow } from "@/components/studio/plan/schedule";
 import { UpscaleButton } from "./Upscale";
+import { VIDEO_ONLY, VIDEO_ONLY_LINE, platformLabel, postResults, resultLine, skippedLine } from "@/lib/social-media-rules";
 import { DetailSkeleton } from "@/components/studio/Skeletons";
 
 /**
@@ -164,7 +165,8 @@ export function PostDetail({ id }: { id: string }) {
     setBusy(null);
     if (!r.ok) { toast.error(r.error || "Couldn't publish it."); await load(); return; }
     const ig = platforms.includes("instagram");
-    toast.success(`Sent to ${platforms.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}.${ig ? " If it doesn't show on Instagram in 5 minutes, check the account's status." : ""}`, { duration: 8000 });
+    const sent = platforms.filter((p) => isVideo || !VIDEO_ONLY.has(p));
+    toast.success(`Sent to ${sent.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}.${r.note ? ` ${r.note}` : ""}${ig ? " If it doesn't show on Instagram in 5 minutes, check the account's status." : ""}`, { duration: 8000 });
     await load();
   }
   async function doSchedule() {
@@ -178,7 +180,7 @@ export function PostDetail({ id }: { id: string }) {
     const r = await placeOnCalendar(clientId, { id: post.id, target_platforms: settingsFor(platforms), postforme_tracking_id: post.postforme_tracking_id }, iso, { captionChoice: choice });
     setBusy(null);
     if (!r.ok) toast.error(r.error || "Couldn't schedule it.");
-    else if (r.queued) toast.success(`Scheduled for ${whenLabel(iso)}.`);
+    else if (r.queued) toast.success(`Scheduled for ${whenLabel(iso)}.${r.note ? ` ${r.note}` : ""}`, { duration: r.note ? 9000 : 4000 });
     else if (!platforms.length) toast(`On the calendar for ${whenLabel(iso)}. Pick where it posts so it goes out.`);
     else toast.error(`On the calendar, but not queued: ${r.error}`, { duration: 9000 });
     await load();
@@ -252,6 +254,7 @@ export function PostDetail({ id }: { id: string }) {
   const image = !isVideo ? media?.url ?? null : null;
   const title = cleanCaption(short || caption).split("\n")[0].slice(0, 80) || (isVideo ? "Video" : "Image");
   const canEdit = post.status !== "posted";
+  const results = postResults(post);
   const viewOnly = isSharedBrand(activeBrand) && activeBrand.role === "viewer";
 
   return (
@@ -349,14 +352,27 @@ export function PostDetail({ id }: { id: string }) {
               <div className="flex flex-wrap gap-1.5">
                 {connected.map((p) => {
                   const on = platforms.includes(p);
-                  return <button key={p} className="s-chip" aria-pressed={on} disabled={!canEdit} onClick={() => edit(setPlatforms)(on ? platforms.filter((x) => x !== p) : [...platforms, p])}><PlatformGlyph platform={p} /> {PLATFORM_LABEL[p] ?? p}</button>;
+                  // YouTube takes videos only (lib/social-media-rules.ts): a picture can't be sent there.
+                  const videosOnly = VIDEO_ONLY.has(p) && !isVideo;
+                  return <button key={p} className="s-chip" aria-pressed={on && !videosOnly} disabled={!canEdit || (videosOnly && !on)} title={videosOnly ? `${PLATFORM_LABEL[p] ?? p} only takes videos, and this post is a picture.` : undefined} style={videosOnly ? { opacity: 0.55 } : undefined} onClick={() => edit(setPlatforms)(on ? platforms.filter((x) => x !== p) : [...platforms, p])}><PlatformGlyph platform={p} /> {PLATFORM_LABEL[p] ?? p}{videosOnly && <span style={{ color: "var(--s-mute)" }}> · {VIDEO_ONLY_LINE}</span>}</button>;
                 })}
               </div>
             )}
+            {!isVideo && platforms.some((p) => VIDEO_ONLY.has(p)) && <p className="text-[12px]" style={{ color: "var(--s-warn)" }}>{skippedLine(platforms.filter((p) => VIDEO_ONLY.has(p)), platformLabel)} Tap it to take it off.</p>}
           </section>
 
           <section className="s-card p-4 grid gap-3">
             <span className="s-label" style={{ margin: 0 }}>When</span>
+            {results.length > 0 && (
+              <ul className="grid gap-1 text-[12.5px]" aria-label="What each platform said">
+                {results.map((r) => (
+                  <li key={`${r.platform}-${r.at}`} className="flex items-start gap-1.5" style={{ color: r.ok ? "var(--s-ok)" : "var(--s-danger)" }}>
+                    {r.ok ? <Check className="h-3.5 w-3.5 mt-0.5 shrink-0" /> : <X className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+                    <span>{r.ok ? <>Posted on {platformLabel(r.platform)}{r.url && <> · <a href={r.url} target="_blank" rel="noopener noreferrer" className="underline">open</a></>}</> : resultLine(r, platformLabel)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             {post.status === "posted" ? (
               <p className="text-[13px] flex items-center gap-1.5" style={{ color: "var(--s-ok)" }}><Check className="h-4 w-4" /> Posted{post.scheduled_at ? ` · ${whenLabel(post.scheduled_at)}` : ""}</p>
             ) : scheduledFuture && st ? (

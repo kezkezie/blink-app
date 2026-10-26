@@ -14,10 +14,7 @@ import { track } from "@/lib/analytics";
 export type PublishSettings = Record<string, { enabled: boolean; format: string }>;
 export type SchedulablePost = { id: string; target_platforms?: unknown; postforme_tracking_id?: string | null };
 
-export const PLATFORM_LABEL: Record<string, string> = {
-  instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", facebook: "Facebook", twitter: "X", linkedin: "LinkedIn",
-  pinterest: "Pinterest", threads: "Threads", bluesky: "Bluesky",
-};
+export { PLATFORM_LABEL } from "@/lib/social-media-rules";
 /** The one format PostForMe's current tier accepts for each platform (others are commented out in the classic UI). */
 export const DEFAULT_FORMAT: Record<string, string> = { tiktok: "post", instagram: "feed", youtube: "standard" };
 
@@ -44,11 +41,12 @@ export function settingsFor(platforms: string[]): PublishSettings {
 
 async function post(path: string, body: Record<string, unknown>) {
   const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
-  return { ok: res.ok, error: data.error, code: data.code };
+  const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string; note?: string };
+  return { ok: res.ok, error: data.error, code: data.code, note: data.note };
 }
 
-export type PlaceResult = { ok: boolean; queued: boolean; error?: string; code?: string };
+/** note: a platform was skipped (YouTube takes videos only, lib/social-media-rules.ts). */
+export type PlaceResult = { ok: boolean; queued: boolean; error?: string; code?: string; note?: string };
 
 /** Put a post on the calendar at `iso` (and queue it if it has platforms). */
 export async function placeOnCalendar(clientId: string, item: SchedulablePost, iso: string, opts: { captionChoice?: "long" | "short" } = {}): Promise<PlaceResult> {
@@ -63,7 +61,7 @@ export async function placeOnCalendar(clientId: string, item: SchedulablePost, i
   if (error) return { ok: false, queued: false, error: "Couldn't save the date." };
   if (!platforms.length) return { ok: true, queued: false };
   const queued = await post("/api/social-posts/schedule", { contentId: item.id, clientId, scheduledAt: iso, ...(opts.captionChoice ? { captionChoice: opts.captionChoice } : {}) });
-  return { ok: true, queued: queued.ok, error: queued.ok ? undefined : queued.error || "Couldn't queue it with your social accounts.", code: queued.ok ? undefined : queued.code };
+  return { ok: true, queued: queued.ok, error: queued.ok ? undefined : queued.error || "Couldn't queue it with your social accounts.", code: queued.ok ? undefined : queued.code, note: queued.note };
 }
 
 /** Take a post off the calendar, cancelling its queued PostForMe post. evenIfPosted: one that went out leaves the calendar too (it stays on the platform). */
@@ -112,6 +110,7 @@ export function postState(p: CalRow): PostState {
   const at = p.scheduled_at ? new Date(p.scheduled_at).getTime() : null;
   const platforms = enabledPlatforms(p.target_platforms);
   if (p.status === "posted") return { tone: "ok", label: "Posted" };
+  if (p.status === "failed") return { tone: "danger", label: "Didn't post" };
   if (at !== null && at < Date.now()) return p.postforme_tracking_id ? { tone: "ok", label: "Sent" } : { tone: "danger", label: "Not sent" };
   if (p.postforme_tracking_id) return { tone: "ok", label: "Queued" };
   if (!platforms.length) return { tone: "warn", label: "Pick platforms" };

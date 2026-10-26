@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { accountsForPost, cancelPendingPost, pfmApiKey, pickCaption } from "@/lib/social-schedule";
+import { isAiVideo, platformLabel, platformsFor, postMedia, skippedLine, youtubeTitle } from "@/lib/social-media-rules";
 
 /**
  * Sending one post to Post For Me (2026-10-21: moved out of /api/social-posts/schedule so the MCP's
@@ -52,19 +53,10 @@ export async function sendPost(workspaceId: string, i: { contentId: string; sche
       await supabaseAdmin.from("content").update({ caption_choice: early.choice }).eq("id", contentId).eq("client_id", workspaceId);
     }
 
-    // 2. Collect media URLs (image_urls first, then video_urls)
-    const parseJsonArray = (raw: unknown): string[] => {
-      if (Array.isArray(raw)) return raw.filter(Boolean);
-      if (typeof raw === "string") {
-        try { return JSON.parse(raw); } catch { return [raw]; }
-      }
-      return [];
-    };
-
-    let mediaUrls: string[] = parseJsonArray(content.image_urls);
-    if (mediaUrls.length === 0) {
-      mediaUrls = parseJsonArray(content.video_urls);
-    }
+    // 2. The media: the video when the post has one (a video's cover picture went out instead
+    // before, 2026-10-27), else its pictures (lib/social-media-rules.ts).
+    const media = postMedia(content);
+    const mediaUrls = media.urls;
     if (mediaUrls.length === 0) {
       throw new Error("No media found on this post to publish.");
     }
@@ -96,14 +88,21 @@ export async function sendPost(workspaceId: string, i: { contentId: string; sche
       }
     }
 
-    const activePlatforms = Object.keys(publishSettings).filter(
+    const chosen = Object.keys(publishSettings).filter(
       (p) => publishSettings[p]?.enabled
     );
 
-    if (activePlatforms.length === 0) {
+    if (chosen.length === 0) {
       throw new Error(
         "No target platforms selected. Open this post in the Calendar to add platforms."
       );
+    }
+
+    // YouTube takes videos only: a picture goes to the other platforms and says so, or nowhere.
+    const { send: activePlatforms, skipped } = platformsFor(chosen, media.kind);
+    const label = platformLabel;
+    if (!activePlatforms.length) {
+      return reply({ error: `${skipped.map(label).join(" and ")} only ${skipped.length > 1 ? "take" : "takes"} videos, and this post is a picture. Pick another platform, or post a video.`, code: "needs_video" }, 400);
     }
 
     // 4. Fetch connected social account IDs
@@ -144,12 +143,22 @@ export async function sendPost(workspaceId: string, i: { contentId: string; sche
 
     // Our own storage holds PNG and WebP: those get a JPEG copy (lib/image-refs.ts).
     const { jpegForPosting } = await import("@/lib/image-refs");
-    const postMedia = await Promise.all(mediaUrls.map(async (url) => (url.includes("res.cloudinary.com") ? ensureJpeg(url) : await jpegForPosting(workspaceId, url))));
+    const sendMedia = media.kind === "video" ? mediaUrls : await Promise.all(mediaUrls.map(async (url) => (url.includes("res.cloudinary.com") ? ensureJpeg(url) : await jpegForPosting(workspaceId, url))));
     const postPayload: Record<string, unknown> = {
       social_accounts: accountIds,
       caption: finalCaption,
-      media: postMedia.map((url) => ({ url })),
+      media: (media.kind === "video" ? mediaUrls : sendMedia).map((url) => ({ url })),
+      // Our post, so PostForMe's results (webhooks/postforme) can always find it.
+      external_id: contentId,
     };
+    // YouTube's own fields (accepted on our PostForMe project, checked with a draft 2026-10-27):
+    // a real title (the caption used to become one, cut off past 100 characters), public, not for
+    // kids, and the label YouTube asks for on realistic AI video.
+    if (activePlatforms.includes("youtube")) {
+      postPayload.platform_configurations = {
+        youtube: { title: youtubeTitle(content.caption_short || finalCaption), privacy_status: "public", made_for_kids: false, ...(isAiVideo(content.ai_model) ? { contains_synthetic_media: true } : {}) },
+      };
+    }
 
     // Validate and attach scheduled_at
     if (scheduledAt) {
@@ -208,13 +217,16 @@ export async function sendPost(workspaceId: string, i: { contentId: string; sche
       return reply({ error: msg, pfmRaw: pfmData }, pfmRes.status);
     }
 
-    // 9. Update content status
+    // 9. Update content status. The networks' answers come later (webhooks/postforme): which ones
+    // it went to is kept so a post every one of them refused can be shown as failed.
+    const meta = (content.creation_metadata && typeof content.creation_metadata === "object" ? content.creation_metadata : {}) as Record<string, unknown>;
     await supabaseAdmin
       .from("content")
       .update({
         status: scheduledAt ? "approved" : "posted",
         postforme_tracking_id: pfmData?.id || null,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+        creation_metadata: { ...meta, post_sent: { id: pfmData?.id ?? null, platforms: activePlatforms, accounts: accountIds.length, skipped, at: new Date().toISOString() }, post_results: {} },
       } as Record<string, unknown>)
       .eq("id", contentId)
       .eq("client_id", workspaceId);
@@ -222,6 +234,7 @@ export async function sendPost(workspaceId: string, i: { contentId: string; sche
     return reply({
       success: true,
       message: scheduledAt ? "Post scheduled successfully" : "Post published successfully",
+      ...(skipped.length ? { skipped, note: skippedLine(skipped, label) } : {}),
       data: pfmData,
     }, 200);
   } catch (error) {
