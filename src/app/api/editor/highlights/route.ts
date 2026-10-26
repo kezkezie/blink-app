@@ -6,7 +6,7 @@ import { safeFetchBytes } from "@/lib/safe-fetch";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { consumeAiLimits } from "@/lib/ai-rate-limit";
 import { AssistantUnavailableError, assistantModelFor, assistantProvider, estimateUsd, claudeFetch } from "@/lib/assistant/agent";
-import { transcribeCredits, transcriptForModel, validateHighlights, type Segment } from "@/lib/editor/highlights";
+import { realSpeech, transcribeCredits, transcriptForModel, validateHighlights, type Segment } from "@/lib/editor/highlights";
 import { requestWorkspace } from "@/lib/brand-access";
 import { brandArg } from "@/lib/credits-meter";
 import { stopGuard } from "@/lib/stop-server";
@@ -75,14 +75,15 @@ export async function POST(request: NextRequest) {
     // Stop in the browser ends the calls here too, and the credits come back (2026-10-25).
     const stopped = () => guard.stopped;
     const tr = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.any([request.signal, AbortSignal.timeout(240_000)]) }).catch(() => null);
-    const data = (await tr?.json().catch(() => ({}))) as { segments?: Array<{ start: number; end: number; text: string }>; duration?: number; error?: { message?: string } } | undefined;
+    const data = (await tr?.json().catch(() => ({}))) as { segments?: Array<{ start: number; end: number; text: string; no_speech_prob?: number; avg_logprob?: number }>; duration?: number; error?: { message?: string } } | undefined;
     if (stopped()) return NextResponse.json({ error: "Stopped." }, { status: 499 }); // the stop already settled it
     if (!tr || !tr.ok || !Array.isArray(data?.segments)) {
       console.error("highlights transcribe failed", tr?.status, data?.error?.message);
       await refund();
       return NextResponse.json({ error: "Couldn't transcribe it. Your credits were refunded." }, { status: 502 });
     }
-    const segments: Segment[] = data.segments.map((s) => ({ start: Math.round(s.start * 100) / 100, end: Math.round(s.end * 100) / 100, text: String(s.text || "").trim() })).filter((s) => s.text && s.end > s.start);
+    // Whisper's invented lines over music or silence are dropped (lib/editor/highlights.ts realSpeech).
+    const segments: Segment[] = realSpeech(data.segments.map((s) => ({ ...s, start: Math.round(s.start * 100) / 100, end: Math.round(s.end * 100) / 100, text: String(s.text || "").trim() })).filter((s) => s.text && s.end > s.start));
     const duration = Number(data.duration) || seconds;
     if (mode === "captions") return guard.done() ? NextResponse.json({ segments, duration, credits }) : NextResponse.json({ error: "Stopped." }, { status: 499 });
     if (!segments.length) return guard.done() ? NextResponse.json({ segments, duration, credits, highlights: [], note: "Nobody speaks in this video, so there are no moments to pick from the words. Try Cut to the beat instead." }) : NextResponse.json({ error: "Stopped." }, { status: 499 });

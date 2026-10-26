@@ -8,6 +8,22 @@ export type Segment = { start: number; end: number; text: string };
 export type Highlight = { title: string; start: number; end: number; hook: string; caption: string };
 export type CaptionChunk = { start: number; end: number; text: string };
 
+/**
+ * Speech Whisper invents over music or silence (2026-10-26: Kezie's party clip came back as "Thanks for
+ * watching!"). A segment goes when Whisper itself thinks there's no speech and isn't sure of the words
+ * (OpenAI's own rule), or when it's one of Whisper's stock lines over near-silence.
+ */
+export type HeardSegment = Segment & { no_speech_prob?: number; avg_logprob?: number };
+const STOCK_LINES = /^(thanks|thank you)( so much)? for watching|^(please )?(like and )?subscribe|^subtitles? by|^captions? by|^(thank you|you|bye)\.?!?$/i;
+export function realSpeech(segments: HeardSegment[]): Segment[] {
+  return segments.filter((s) => {
+    const quiet = (s.no_speech_prob ?? 0) > 0.6;
+    if (quiet && (s.avg_logprob ?? 0) < -1) return false;
+    if ((s.no_speech_prob ?? 0) > 0.5 && STOCK_LINES.test(s.text.trim())) return false;
+    return true;
+  }).map(({ start, end, text }) => ({ start, end, text }));
+}
+
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 /** Keep only moments inside the video, 5 to 90 s long, not overlapping, snapped to segment edges. */
