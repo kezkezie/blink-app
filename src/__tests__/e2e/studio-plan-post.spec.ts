@@ -75,6 +75,9 @@ test("calendar: schedule and take off a post; the post page saves captions; bill
     await page.goto(`${BASE}/studio/library/${id}`);
     await expect(page.getByLabel("Long caption")).toHaveValue(caption, { timeout: 20_000 });
     await expect(page.getByRole("button", { name: /Post now/ })).toBeDisabled();
+    // Short and Long are tabs (2026-10-27): only the one you're on shows.
+    await expect(page.getByLabel("Short caption")).toHaveCount(0);
+    await page.getByRole("tab", { name: "Short" }).click();
     await page.getByLabel("Short caption").fill("Fresh this weekend");
     await expect(page.getByText("Unsaved changes")).toBeVisible();
     await page.getByRole("button", { name: /^Save$/ }).click();

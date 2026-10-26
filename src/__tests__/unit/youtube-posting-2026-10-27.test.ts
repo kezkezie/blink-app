@@ -152,3 +152,19 @@ describe("PostForMe's webhook", () => {
     expect(JSON.stringify(db)).toBe(before);
   });
 });
+
+describe("caption tabs (Kezie, 2026-10-27: \"for the short tab, we just see the short tab's input\")", () => {
+  it("never posts the working title, even after only the short caption was written", async () => {
+    const { pickCaption, workingTitleOf } = await import("@/lib/social-schedule");
+    const fresh = { caption: "A launch poster for our mango juice", caption_written: false };
+    expect(workingTitleOf(fresh)).toBe("A launch poster for our mango juice");
+    // The short one written with AI; the long one is still the working title.
+    const shortOnly = { caption: "A launch poster for our mango juice", caption_short: "Mango season is here.", caption_written: true, creation_metadata: { working_title: "A launch poster for our mango juice" } };
+    expect(pickCaption(shortOnly, "short")).toMatchObject({ ok: true, text: "Mango season is here." });
+    expect(pickCaption(shortOnly, "long")).toMatchObject({ ok: false, code: "needs_caption" });
+    // Once the long one is real, both post.
+    const both = { ...shortOnly, caption: "Pressed this morning from Kenyan mangoes.", creation_metadata: { working_title: null } };
+    expect(pickCaption(both, "long")).toMatchObject({ ok: true, text: "Pressed this morning from Kenyan mangoes." });
+    expect(workingTitleOf(both)).toBeNull();
+  });
+});

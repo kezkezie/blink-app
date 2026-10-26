@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarPlus, ChevronLeft, ChevronRight, Clock, ExternalLink, Loader2, MessageCircle, Send, X } from "lucide-react";
+import { ArrowLeft, CalendarPlus, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, Loader2, MessageCircle, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -347,14 +347,16 @@ export function Calendar() {
               const on = picked.includes(p);
               const videosOnly = VIDEO_ONLY.has(p) && !!platformsFor && !resolveMedia(platformsFor).isVideo;
               return (
-                <button key={p} className="flex items-center gap-3 rounded-xl px-3 h-11 text-left" style={{ background: on ? "var(--s-raised)" : "var(--s-bg)", border: `1px solid ${on ? "var(--s-text)" : "var(--s-line-2)"}`, opacity: videosOnly ? 0.55 : 1 }} aria-pressed={on} disabled={videosOnly} title={videosOnly ? `${PLATFORM_LABEL[p] ?? p} only takes videos, and this post is a picture.` : undefined} onClick={() => setPicked((x) => (on ? x.filter((y) => y !== p) : [...x, p]))}>
+                <button key={p} role="checkbox" aria-checked={on} className="flex items-center gap-3 rounded-xl px-3 h-11 text-left" style={{ background: on ? "color-mix(in oklab, var(--s-accent) 9%, var(--s-bg))" : "var(--s-bg)", border: `1px solid ${on ? "var(--s-accent)" : "var(--s-line-2)"}`, opacity: videosOnly ? 0.55 : 1 }} disabled={videosOnly} title={videosOnly ? `${PLATFORM_LABEL[p] ?? p} only takes videos, and this post is a picture.` : undefined} onClick={() => setPicked((x) => (on ? x.filter((y) => y !== p) : [...x, p]))}>
                   <PlatformGlyph platform={p} size={16} /><span className="text-[13px] flex-1">{PLATFORM_LABEL[p] ?? p}{videosOnly && <span className="text-[11.5px] ml-1.5" style={{ color: "var(--s-mute)" }}>· {VIDEO_ONLY_LINE}</span>}</span>
-                  <span className="h-4 w-4 rounded grid place-items-center" style={{ background: on ? "var(--s-accent)" : "transparent", border: `1px solid ${on ? "var(--s-accent)" : "var(--s-line-2)"}` }}>{on && <span className="block h-1.5 w-1.5 rounded-sm" style={{ background: "var(--s-accent-ink)" }} />}</span>
+                  <span aria-hidden className="h-5 w-5 rounded-md grid place-items-center" style={{ background: on ? "var(--s-accent)" : "transparent", border: `1.5px solid ${on ? "var(--s-accent)" : "var(--s-line-2)"}` }}>{on && <Check className="h-3.5 w-3.5" style={{ color: "var(--s-accent-ink)" }} />}</span>
                 </button>
               );
             })}
           </div>
         )}
+        {/* What the ticks add up to (Kezie, 2026-10-27: picked only YouTube, saw every account on the post). */}
+        {connected.length > 0 && <p className="text-[12.5px] mt-3" style={{ color: picked.length ? "var(--s-soft)" : "var(--s-warn)" }}>{picked.length ? <>Posts to <b style={{ color: "var(--s-text)" }}>{picked.map((x) => PLATFORM_LABEL[x] ?? x).join(", ").replace(/, ([^,]*)$/, " and $1")}{picked.length === 1 && connected.length > 1 ? " only" : ""}</b>.</> : "Nothing ticked: it goes on the calendar but won't post."}</p>}
         <div className="flex justify-end gap-2 mt-4">
           <button className="s-btn ghost sm" onClick={() => setPlatformsFor(null)}>Cancel</button>
           <button className="s-btn primary sm" disabled={!connected.length || busy === platformsFor?.id} onClick={savePicked}>{platformsFor?.scheduled_at ? "Save and queue" : "Save"}</button>

@@ -18,7 +18,7 @@ import { InstagramTroubleshootModal } from "@/components/publishing/InstagramTro
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, publishNow, settingsFor, takeOffCalendar, toLocalInput, whenLabel, type CalRow } from "@/components/studio/plan/schedule";
 import { UpscaleButton } from "./Upscale";
-import { VIDEO_ONLY, VIDEO_ONLY_LINE, platformLabel, postResults, resultLine, skippedLine } from "@/lib/social-media-rules";
+import { VIDEO_ONLY, VIDEO_ONLY_LINE, platformLabel, postResults, resultLine, skippedLine, workingTitleOf } from "@/lib/social-media-rules";
 import { DetailSkeleton } from "@/components/studio/Skeletons";
 
 /**
@@ -27,7 +27,7 @@ import { DetailSkeleton } from "@/components/studio/Skeletons";
  * post now or schedule, approvals, remake the image, delete. Plus: schedule a date right here
  * instead of "drag it on the calendar", and an honest queued / not queued state.
  */
-type Post = CalRow & { caption_choice?: string | null; caption_written?: boolean | null; caption_short?: string | null; hashtags?: string | null; call_to_action?: string | null; rejection_reason?: string | null; ai_model?: string | null; image_prompt_used?: string | null };
+type Post = CalRow & { caption_choice?: string | null; caption_written?: boolean | null; caption_short?: string | null; hashtags?: string | null; call_to_action?: string | null; rejection_reason?: string | null; ai_model?: string | null; image_prompt_used?: string | null; creation_metadata?: unknown };
 
 const ENGINES: Array<{ id: ImageEngine; label: string; cost: number }> = [
   { id: "nb2", label: "Best quality", cost: 18 },
@@ -47,6 +47,9 @@ export function PostDetail({ id }: { id: string }) {
   const [choice, setChoice] = useState<"long" | "short">("long");
   // A real caption (typed or written by the AI), not the working title the post was made with.
   const [written, setWritten] = useState(false);
+  // The working title while it's still in the long caption (only the short one written yet):
+  // posting it is refused (lib/social-schedule.ts workingTitleOf), and the Long tab says so.
+  const [titleLeft, setTitleLeft] = useState<string | null>(null);
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -80,6 +83,7 @@ export function PostDetail({ id }: { id: string }) {
     if (!row) return;
     setCaption(row.caption ?? ""); setShort(row.caption_short ?? ""); setHashtags(row.hashtags ?? "");
     setChoice(row.caption_choice === "short" ? "short" : "long"); setWritten(!!row.caption_written);
+    setTitleLeft(workingTitleOf(row));
     setPlatforms(enabledPlatforms(row.target_platforms));
     setDirty(false);
     if (row.brand_id) {
@@ -109,12 +113,17 @@ export function PostDetail({ id }: { id: string }) {
     if (!post || !clientId) return false;
     // Editing either caption makes it a real one; the working title alone isn't.
     const isWritten = written || caption !== (post.caption ?? "") || short !== (post.caption_short ?? "");
+    // The working title stays known while it's still the long caption, so it can't post as one.
+    const left = titleLeft && caption.trim() === titleLeft ? titleLeft : null;
+    const meta = (post.creation_metadata && typeof post.creation_metadata === "object" ? post.creation_metadata : {}) as Record<string, unknown>;
+    const metaChange = (meta.working_title ?? null) !== left ? { creation_metadata: { ...meta, working_title: left } } : {};
     const { error } = await supabase.from("content").update({
-      caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms), caption_choice: choice, caption_written: isWritten,
+      caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms), caption_choice: choice, caption_written: isWritten, ...metaChange,
     } as Record<string, unknown>).eq("id", post.id).eq("client_id", clientId);
     if (error) { toast.error("Couldn't save your changes."); return false; }
     setWritten(isWritten);
-    setPost({ ...post, caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms), caption_choice: choice, caption_written: isWritten });
+    setPost({ ...post, caption, caption_short: short, hashtags, target_platforms: settingsFor(platforms), caption_choice: choice, caption_written: isWritten, ...metaChange } as Post);
+    setTitleLeft(left);
     setDirty(false);
     if (!quiet) toast.success("Saved.");
     return true;
@@ -137,20 +146,19 @@ export function PostDetail({ id }: { id: string }) {
       const res = await fetch("/api/content/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clientId, contentId: post.id, brandId: post.brand_id, mediaUrl, mediaType: mediaUrl && !imgs[0] && isVideo ? "video/mp4" : "image/jpeg", lengthPreference: length,
+          clientId, contentId: post.id, brandId: post.brand_id, mediaUrl, mediaType: mediaUrl && !imgs[0] && isVideo ? "video/mp4" : "image/jpeg", lengthPreference: length, only: true,
           brandContext: kit ? { name: kit.name, industry: kit.industry, description: kit.description, imageStyle: kit.imageStyle, brandVoice: kit.brandVoice, logoUrl: kit.logoUrl, websiteUrl: kit.websiteUrl } : null,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't write the caption.");
-      // The one asked for is replaced; the other is filled only when empty (same message, so the pair matches).
-      const working = !written;
-      if (length === "long" || working || !caption.trim()) { if (data.caption_long) setCaption(data.caption_long); }
-      if (length === "short" || working || !short.trim()) { if (data.caption_short) setShort(data.caption_short); }
-      if (data.hashtags && !hashtags.trim()) setHashtags(data.hashtags);
+      // Only the tab you're on, and the hashtags (Kezie, 2026-10-27).
+      if (length === "long" && data.caption_long) { setCaption(data.caption_long); setTitleLeft(null); }
+      if (length === "short" && data.caption_short) setShort(data.caption_short);
+      if (data.hashtags) setHashtags(data.hashtags);
       setWritten(true);
       setDirty(true);
-      toast.success("Written · 1 credit. Check it, then Save.");
+      toast.success(`${length === "long" ? "Long" : "Short"} caption and hashtags written · 1 credit. Check them, then Save.`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't write the caption."); }
     finally { setWriting(null); }
   }
@@ -257,35 +265,37 @@ export function PostDetail({ id }: { id: string }) {
   const results = postResults(post);
   const viewOnly = isSharedBrand(activeBrand) && activeBrand.role === "viewer";
 
+  // Where it posts, in words: what you'll see happen when you press the button.
+  // In the order of the rows below, and only accounts that are connected (others can't post).
+  const sending = connected.filter((p) => platforms.includes(p) && (isVideo || !VIDEO_ONLY.has(p)));
+  const sendingLine = sending.length ? `${sending.map(platformLabel).join(", ").replace(/, ([^,]*)$/, " and $1")}${sending.length === 1 && connected.length > 1 ? " only" : ""}` : "";
+  const shortLeft = 120 - short.trim().length;
+  const tabNote = choice === "long" && canEdit && caption.trim() && titleLeft && caption.trim() === titleLeft;
+  const Step = ({ n, children }: { n: number; children: React.ReactNode }) => (
+    <span className="flex items-center gap-2 text-[13px] font-semibold"><span className="grid place-items-center h-5 w-5 rounded-full text-[11px]" style={{ background: "var(--s-raised)", color: "var(--s-soft)", border: "1px solid var(--s-line-2)" }}>{n}</span>{children}</span>
+  );
+
   return (
-    <div className="grid gap-5 s-reading">
+    <div className="grid gap-5 max-w-[1240px] mx-auto w-full">
       <div className="flex flex-wrap items-center gap-2">
         <Link href="/studio/library" className="s-btn ghost sm -ml-2"><ArrowLeft className="h-3.5 w-3.5" /> Library</Link>
-        <h2 className="text-[16px] font-semibold truncate max-w-[52ch]" title={title}>{title}</h2>
+        <h2 className="text-[17px] font-semibold truncate min-w-0 max-w-[60ch]" title={title}>{title}</h2>
         <span className={`s-badge ${status.tone ?? ""}`}>{status.label}</span>
         <div className="flex-1" />
-        {image && (
-          <>
-            <Link href={`/studio/image?mode=design&content=${post.id}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> Open in Editor</Link>
-            <Link href={`/studio/library/${post.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>
-            <Link href={`/studio/motion?picture=${post.id}&brief=${encodeURIComponent(`Animate this picture${post.caption ? `: ${cleanCaption(post.caption).slice(0, 120)}` : ""}`)}`} className="s-btn sm" title="Animate this picture: your words and brand shapes move over it"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>
-            <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>
-          </>
-        )}
-        {media?.url && !viewOnly && <UpscaleButton contentId={post.id} mediaUrl={media.url} isVideo={isVideo} />}
-        <button className="s-btn ghost sm" onClick={() => setDeleteOpen(true)} aria-label="Delete"><Trash2 className="h-3.5 w-3.5" style={{ color: "var(--s-danger)" }} /></button>
+        <button className="s-btn ghost sm" onClick={() => setDeleteOpen(true)} aria-label="Delete"><Trash2 className="h-3.5 w-3.5" style={{ color: "var(--s-danger)" }} /> Delete</button>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,1fr)] items-start">
-        <div className="grid gap-3">
-          <div className="relative rounded-2xl overflow-hidden grid place-items-center" style={{ background: "#000", border: "1px solid var(--s-line)", minHeight: 320, maxHeight: "74dvh" }}>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(360px,1fr)] items-start">
+        {/* The picture or video, with what you can do to it. */}
+        <div className="grid gap-3 lg:sticky lg:top-20">
+          <div className="relative rounded-2xl overflow-hidden grid place-items-center" style={{ background: "#000", border: "1px solid var(--s-line)", minHeight: 320, maxHeight: "72dvh" }}>
             {media?.url ? (
               isVideo ? (
-                <video src={cloudinaryStreamUrl(media.url)} poster={cloudinaryVideoPoster(media.url)} controls playsInline preload="metadata" className="w-full h-full object-contain" style={{ maxHeight: "74dvh" }} />
+                <video src={cloudinaryStreamUrl(media.url)} poster={cloudinaryVideoPoster(media.url)} controls playsInline preload="metadata" className="w-full h-full object-contain" style={{ maxHeight: "72dvh" }} />
               ) : (
                 <button className="group relative w-full h-full grid place-items-center" onClick={() => setZoom(true)} aria-label="View full size">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={thumbUrl(media.url, 1600)} alt={title} className="max-w-full object-contain" style={{ maxHeight: "74dvh" }} />
+                  <img src={thumbUrl(media.url, 1600)} alt={title} className="max-w-full object-contain" style={{ maxHeight: "72dvh" }} />
                   <span className="s-pill absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"><ZoomIn className="h-3.5 w-3.5" /> Full size</span>
                 </button>
               )
@@ -296,15 +306,27 @@ export function PostDetail({ id }: { id: string }) {
               </div>
             )}
           </div>
+          {(image || (media?.url && !viewOnly)) && (
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Edit the media">
+              {image && (
+                <>
+                  <Link href={`/studio/library/${post.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>
+                  <Link href={`/studio/image?mode=design&content=${post.id}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> Open in Editor</Link>
+                  <Link href={`/studio/motion?picture=${post.id}&brief=${encodeURIComponent(`Animate this picture${post.caption ? `: ${cleanCaption(post.caption).slice(0, 120)}` : ""}`)}`} className="s-btn sm" title="Animate this picture: your words and brand shapes move over it"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>
+                  <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>
+                </>
+              )}
+              {media?.url && !viewOnly && <UpscaleButton contentId={post.id} mediaUrl={media.url} isVideo={isVideo} />}
+              {image && canEdit && <button className="s-btn ai sm" disabled={!!busy} onClick={openRemake}><RefreshCw className="h-3.5 w-3.5" /> Remake</button>}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-[12px] mono" style={{ color: "var(--s-mute)" }}>
-            <span>{post.content_type.replace(/_/g, " ")}</span>·<span>made {new Date(post.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+            <span>{isVideo ? "Video" : "Picture"}</span>·<span>made {new Date(post.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
             {post.ai_model && <>·<span>{post.ai_model}</span></>}
-            <div className="flex-1" />
-            {image && canEdit && <button className="s-btn ai sm" disabled={!!busy} onClick={openRemake}><RefreshCw className="h-3.5 w-3.5" /> Remake the image</button>}
           </div>
         </div>
 
-        <div className="grid gap-3">
+        <div className="grid gap-3 min-w-0">
           {post.status === "rejected" && (
             <div className="s-card p-4 grid gap-2" style={{ borderColor: "color-mix(in oklab, var(--s-danger) 40%, var(--s-line))" }}>
               <b className="text-[13px] flex items-center gap-1.5"><MessageSquareWarning className="h-4 w-4" style={{ color: "var(--s-danger)" }} /> Changes asked for</b>
@@ -313,56 +335,81 @@ export function PostDetail({ id }: { id: string }) {
             </div>
           )}
 
-          <section className="s-card p-4 grid gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="s-label" style={{ margin: 0 }}>Caption</span>
-              <div className="s-seg" role="group" aria-label="Which caption to post">
-                <button aria-pressed={choice === "long"} disabled={!canEdit} onClick={() => void pickCaption("long")}>Post long</button>
-                <button aria-pressed={choice === "short"} disabled={!canEdit} onClick={() => void pickCaption("short")}>Post short</button>
+          {/* 1. The caption: one tab each, the tab you're on is the one that posts (Kezie, 2026-10-27). */}
+          <section className="s-card p-4 grid gap-3" aria-label="Caption">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <Step n={1}>Caption</Step>
+              <div className="s-seg" role="tablist" aria-label="Caption length">
+                {(["short", "long"] as const).map((t) => (
+                  <button key={t} role="tab" id={`tab-${t}`} aria-controls="caption-panel" aria-selected={choice === t} onClick={() => void pickCaption(t)}>{t === "short" ? "Short" : "Long"}</button>
+                ))}
               </div>
             </div>
-            {canEdit && !written && (
-              <div role="note" className="rounded-lg p-2.5 text-[12.5px] grid gap-1.5" style={{ background: "var(--s-raised)", color: "var(--s-soft)" }}>
-                <span>{caption.trim() ? <>&ldquo;{caption.trim().slice(0, 60)}{caption.trim().length > 60 ? "…" : ""}&rdquo; is this post&apos;s working title, not a caption. Write one with AI or type your own before it posts.</> : "No caption yet. Write one with AI or type your own before it posts."}</span>
-                {caption.trim() && <button className="s-btn sm justify-self-start" onClick={() => { setWritten(true); setDirty(true); }}>Use it as the caption</button>}
+            <div id="caption-panel" role="tabpanel" aria-labelledby={`tab-${choice}`} className="grid gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{choice === "short" ? "One or two lines." : "A few short paragraphs and a call to action."} This one posts.</span>
+                <button className="s-btn ai sm shrink-0" disabled={!!writing || !canEdit} onClick={() => writeCaption(choice)}>{writing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write {choice} with AI <span className="cost">1 cr</span></button>
               </div>
-            )}
-            <div className="grid gap-1.5">
-              <div className="flex items-center justify-between"><span className="text-[12px]" style={{ color: choice === "long" ? "var(--s-text)" : "var(--s-mute)" }}>Long{choice === "long" && " · this one posts"}</span>
-                <button className="s-btn ai sm" disabled={!!writing || !canEdit} onClick={() => writeCaption("long")}>{writing === "long" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write with AI <span className="cost">1 cr</span></button></div>
-              <textarea className="s-input" rows={6} value={caption} onChange={(e) => edit(setCaption)(e.target.value)} disabled={!canEdit} placeholder="What should people read under this post?" aria-label="Long caption" />
+              {tabNote && (
+                <div role="note" className="rounded-lg p-2.5 text-[12.5px] grid gap-1.5" style={{ background: "var(--s-raised)", color: "var(--s-soft)" }}>
+                  <span>&ldquo;{caption.trim().slice(0, 60)}{caption.trim().length > 60 ? "…" : ""}&rdquo; is this post&apos;s working title, not a caption. Write one with AI or type your own before it posts.</span>
+                  <button className="s-btn sm justify-self-start" onClick={() => { setTitleLeft(null); setWritten(true); setDirty(true); }}>Use it as the caption</button>
+                </div>
+              )}
+              {choice === "long" ? (
+                <textarea className="s-input" rows={8} value={caption} onChange={(e) => edit(setCaption)(e.target.value)} disabled={!canEdit} placeholder="What should people read under this post?" aria-label="Long caption" />
+              ) : (
+                <>
+                  <textarea className="s-input" rows={3} value={short} onChange={(e) => edit(setShort)(e.target.value)} disabled={!canEdit} placeholder="A one or two line hook" aria-label="Short caption" />
+                  <span className="text-[11.5px] justify-self-end" style={{ color: shortLeft < 0 ? "var(--s-warn)" : "var(--s-mute)" }}>{shortLeft >= 0 ? `${shortLeft} characters left` : `${-shortLeft} over the 120 that read best`}</span>
+                  {!short.trim() && caption.trim() && !(titleLeft && caption.trim() === titleLeft) && <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Empty, so the long caption posts instead.</span>}
+                </>
+              )}
             </div>
-            <div className="grid gap-1.5">
-              <div className="flex items-center justify-between"><span className="text-[12px]" style={{ color: choice === "short" ? "var(--s-text)" : "var(--s-mute)" }}>Short{choice === "short" && " · this one posts"}</span>
-                <button className="s-btn ai sm" disabled={!!writing || !canEdit} onClick={() => writeCaption("short")}>{writing === "short" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Write with AI <span className="cost">1 cr</span></button></div>
-              <input className="s-input" value={short} onChange={(e) => edit(setShort)(e.target.value)} disabled={!canEdit} placeholder="A one-line hook" aria-label="Short caption" />
-              {choice === "short" && !short.trim() && caption.trim() && <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Empty, so the long one posts.</span>}
-            </div>
-            <div className="grid gap-1.5">
-              <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>Hashtags</span>
+            <label className="grid gap-1.5">
+              <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>Hashtags · added under the caption</span>
               <input className="s-input" value={hashtags} onChange={(e) => edit(setHashtags)(e.target.value)} disabled={!canEdit} placeholder="#nairobi #freshjuice" aria-label="Hashtags" />
-            </div>
+            </label>
           </section>
 
-          <section className="s-card p-4 grid gap-3">
-            <span className="s-label" style={{ margin: 0 }}>Where it posts</span>
+          {/* 2. Where it posts: one clear row per account, ticked or not, and what that adds up to. */}
+          <section className="s-card p-4 grid gap-3" aria-label="Where it posts">
+            <div className="flex items-center justify-between gap-2">
+              <Step n={2}>Where it posts</Step>
+              <Link href="/studio/account/settings" className="text-[12px] underline" style={{ color: "var(--s-mute)" }}>Manage accounts</Link>
+            </div>
             {connected.length === 0 ? (
               <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>No social accounts connected for this brand. <Link href="/studio/account/settings" className="underline" style={{ color: "var(--s-text)" }}>Connect them in Settings</Link>.</p>
             ) : (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="grid gap-1.5" role="group" aria-label="Platforms">
                 {connected.map((p) => {
                   const on = platforms.includes(p);
                   // YouTube takes videos only (lib/social-media-rules.ts): a picture can't be sent there.
                   const videosOnly = VIDEO_ONLY.has(p) && !isVideo;
-                  return <button key={p} className="s-chip" aria-pressed={on && !videosOnly} disabled={!canEdit || (videosOnly && !on)} title={videosOnly ? `${PLATFORM_LABEL[p] ?? p} only takes videos, and this post is a picture.` : undefined} style={videosOnly ? { opacity: 0.55 } : undefined} onClick={() => edit(setPlatforms)(on ? platforms.filter((x) => x !== p) : [...platforms, p])}><PlatformGlyph platform={p} /> {PLATFORM_LABEL[p] ?? p}{videosOnly && <span style={{ color: "var(--s-mute)" }}> · {VIDEO_ONLY_LINE}</span>}</button>;
+                  const ticked = on && !videosOnly;
+                  return (
+                    <button key={p} type="button" role="checkbox" aria-checked={ticked} disabled={!canEdit || (videosOnly && !on)}
+                      title={videosOnly ? `${platformLabel(p)} only takes videos, and this post is a picture.` : undefined}
+                      onClick={() => edit(setPlatforms)(on ? platforms.filter((x) => x !== p) : [...platforms, p])}
+                      className="flex items-center gap-3 rounded-xl px-3 h-11 text-left transition-colors"
+                      style={{ background: ticked ? "color-mix(in oklab, var(--s-accent) 9%, var(--s-bg))" : "var(--s-bg)", border: `1px solid ${ticked ? "var(--s-accent)" : "var(--s-line)"}`, opacity: videosOnly ? 0.55 : 1 }}>
+                      <PlatformGlyph platform={p} size={16} />
+                      <span className="text-[13.5px] flex-1">{platformLabel(p)}{videosOnly && <span className="text-[12px] ml-1.5" style={{ color: "var(--s-mute)" }}>· {VIDEO_ONLY_LINE}</span>}</span>
+                      <span aria-hidden className="h-5 w-5 rounded-md grid place-items-center" style={{ background: ticked ? "var(--s-accent)" : "transparent", border: `1.5px solid ${ticked ? "var(--s-accent)" : "var(--s-line-2)"}` }}>{ticked && <Check className="h-3.5 w-3.5" style={{ color: "var(--s-accent-ink)" }} />}</span>
+                    </button>
+                  );
                 })}
               </div>
+            )}
+            {connected.length > 0 && (
+              <p className="text-[12.5px]" style={{ color: sending.length ? "var(--s-soft)" : "var(--s-warn)" }}>{sending.length ? <>Posts to <b style={{ color: "var(--s-text)" }}>{sendingLine}</b>.</> : "Nothing picked yet: tick where it should post."}</p>
             )}
             {!isVideo && platforms.some((p) => VIDEO_ONLY.has(p)) && <p className="text-[12px]" style={{ color: "var(--s-warn)" }}>{skippedLine(platforms.filter((p) => VIDEO_ONLY.has(p)), platformLabel)} Tap it to take it off.</p>}
           </section>
 
-          <section className="s-card p-4 grid gap-3">
-            <span className="s-label" style={{ margin: 0 }}>When</span>
+          {/* 3. When: what each network said, then post now or schedule. */}
+          <section className="s-card p-4 grid gap-3" aria-label="When">
+            <Step n={3}>When</Step>
             {results.length > 0 && (
               <ul className="grid gap-1 text-[12.5px]" aria-label="What each platform said">
                 {results.map((r) => (
@@ -381,18 +428,20 @@ export function PostDetail({ id }: { id: string }) {
                   <Clock className="h-4 w-4" style={{ color: "var(--s-soft)" }} /><b className="text-[14px]">{whenLabel(post.scheduled_at!)}</b>
                   <span className={`s-badge ${st.tone === "ok" ? "ok" : st.tone === "danger" ? "danger" : "warn"}`}>{st.label}</span>
                 </div>
-                {st.label !== "Queued" && <p className="text-[12px]" style={{ color: "var(--s-warn)" }}>{platforms.length ? "It's on the calendar but not queued with your accounts yet. Press Change time and save to try again." : "Pick where it posts above and Save, so it actually goes out."}</p>}
+                {st.label !== "Queued" && <p className="text-[12px]" style={{ color: "var(--s-warn)" }}>{platforms.length ? "It's on the calendar but not queued with your accounts yet. Press Change time and save to try again." : "Tick where it posts above and Save, so it actually goes out."}</p>}
                 <div className="flex flex-wrap gap-1.5">
                   <button className="s-btn sm" disabled={!!busy} onClick={() => { setWhenValue(toLocalInput(post.scheduled_at)); setWhenOpen(true); }}><Clock className="h-3.5 w-3.5" /> Change time</button>
-                  <button className="s-btn sm" disabled={!!busy || !platforms.length} onClick={doPublishNow}>{busy === "publish" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />} Post now instead</button>
+                  <button className="s-btn sm" disabled={!!busy || !sending.length} onClick={doPublishNow}>{busy === "publish" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />} Post now instead</button>
                   <button className="s-btn ghost sm" disabled={!!busy} onClick={unschedule}>{busy === "unschedule" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />} Take off the calendar</button>
                 </div>
               </>
             ) : (
-              <div className="flex flex-wrap gap-1.5">
-                <button className="s-btn primary" disabled={!!busy || !platforms.length || !resolveMedia(post).url} onClick={doPublishNow} title={platforms.length ? "" : "Pick a platform first"}>{busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Post now</button>
-                <button className="s-btn" disabled={!!busy} onClick={() => { setWhenValue(toLocalInput(null)); setWhenOpen(true); }}>{busy === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />} Schedule</button>
-                <Link href="/studio/plan" className="s-btn ghost">Open the calendar</Link>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button className="s-btn primary justify-center" style={{ height: 42 }} disabled={!!busy || !sending.length || !resolveMedia(post).url} onClick={doPublishNow} title={sending.length ? "" : "Tick where it posts first"}>
+                  {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} {sending.length === 1 ? `Post now to ${platformLabel(sending[0])}` : "Post now"}
+                </button>
+                <button className="s-btn justify-center" style={{ height: 42 }} disabled={!!busy} onClick={() => { setWhenValue(toLocalInput(null)); setWhenOpen(true); }}>{busy === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />} Schedule</button>
+                <Link href="/studio/plan" className="text-[12px] underline sm:col-span-2" style={{ color: "var(--s-mute)" }}>Open the calendar</Link>
               </div>
             )}
             {post.status === "draft" && <button className="s-btn ghost sm justify-self-start -ml-2" disabled={!!busy} onClick={() => setStatus("pending_approval", {}, "Sent for approval.")}><Send className="h-3.5 w-3.5" /> Send for approval first</button>}

@@ -61,7 +61,7 @@ test("captions, removing a sent post, the editor's Export and logo, and Motion a
     await page.goto(`${BASE}/studio/library/${draft!.id}`);
     await expect(page.getByRole("note").getByText(/working title, not a caption/)).toBeVisible({ timeout: 30_000 });
     // The pick is saved straight away (the calendar posts it too).
-    await page.getByRole("button", { name: "Post short" }).click();
+    await page.getByRole("tab", { name: "Short" }).click();
     await expect.poll(async () => (await sb.from("content").select("caption_choice").eq("id", draft!.id).single()).data?.caption_choice).toBe("short");
     await page.getByLabel("Short caption").fill("Fresh oyster mushrooms, picked this morning.");
     await page.getByRole("button", { name: /^Save$/ }).click();

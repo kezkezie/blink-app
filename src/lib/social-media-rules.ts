@@ -87,3 +87,14 @@ export function statusFromResults(results: PostResult[], expected: number): "pos
   if (results.some((r) => r.ok)) return "posted";
   return results.length >= Math.max(1, expected) ? "failed" : null;
 }
+
+/**
+ * The post's working title while it's still in the long caption (2026-10-27): the whole caption
+ * until a real one is written, then creation_metadata.working_title when only the short caption was
+ * written (the post page's tabs write one length at a time).
+ */
+export function workingTitleOf(row: { caption?: string | null; caption_written?: boolean | null; creation_metadata?: unknown }): string | null {
+  if (!row.caption_written) return (row.caption ?? "").trim() || null;
+  const meta = row.creation_metadata && typeof row.creation_metadata === "object" ? (row.creation_metadata as { working_title?: unknown }) : {};
+  return typeof meta.working_title === "string" && meta.working_title.trim() ? meta.working_title.trim() : null;
+}

@@ -10,6 +10,9 @@
  */
 
 export type PfmStatus = "draft" | "scheduled" | "processing" | "processed";
+import { workingTitleOf } from "@/lib/social-media-rules";
+export { workingTitleOf };
+
 export type SocialAccountRow = { postforme_account_id: string | null; platform: string; brand_id?: string | null };
 
 const PFM_BASE = "https://api.postforme.dev/v1";
@@ -53,7 +56,8 @@ export async function cancelPendingPost(apiKey: string, postId: string | null | 
 }
 
 export type CaptionChoice = "long" | "short";
-export type CaptionRow = { caption?: string | null; caption_short?: string | null; hashtags?: string | null; caption_choice?: string | null; caption_written?: boolean | null };
+export type CaptionRow = { caption?: string | null; caption_short?: string | null; hashtags?: string | null; caption_choice?: string | null; caption_written?: boolean | null; creation_metadata?: unknown };
+
 
 /**
  * The caption a post goes out with (2026-10-21). The long/short choice comes from the request,
@@ -66,7 +70,8 @@ export function pickCaption(row: CaptionRow, requested?: unknown): { ok: true; c
   const long = (row.caption ?? "").trim();
   const short = (row.caption_short ?? "").trim();
   const body = choice === "short" ? short || long : long || short;
-  if (!row.caption_written || !body) {
+  const title = workingTitleOf(row);
+  if (!row.caption_written || !body || (title && body === title)) {
     return { ok: false, choice, code: "needs_caption", error: body ? `This post only has its working title ("${body.slice(0, 40)}"), not a caption. Write its caption first.` : "This post has no caption yet. Write its caption first." };
   }
   const text = [body, (row.hashtags ?? "").trim()].filter(Boolean).join("\n\n").slice(0, 2200);

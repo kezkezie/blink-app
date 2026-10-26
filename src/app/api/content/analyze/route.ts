@@ -28,6 +28,7 @@ function isValidAnalyzeRequest(body: Record<string, any>): boolean {
   if (!body || typeof body !== "object") return false;
   if (!isSafeMediaUrl(body.mediaUrl) || !isSafeMediaUrl(body.imageUrl)) return false;
   if (body.lengthPreference !== undefined && !LENGTHS.has(body.lengthPreference)) return false;
+  if (body.only !== undefined && typeof body.only !== "boolean") return false;
   for (const [key, max] of [["brandVoice", 2000], ["context", 4000], ["dos", 2000], ["donts", 2000], ["mediaType", 100]] as const) {
     if (!boundedOrAbsent(body[key], max)) return false;
   }
@@ -117,12 +118,20 @@ export async function POST(req: NextRequest) {
     }
     // ────────────────────────────────────────
 
-    // Both lengths are always written together, about the same thing, so the pair matches
-    // (2026-10-21). lengthPreference only says which one the person is waiting for.
-    const lengthInstruction = `Write TWO captions that say the same thing at two lengths:
-- caption_long: 2-3 short paragraphs that tell the story of this post, then a call to action. 60-150 words.
-- caption_short: ONE or two sentences, under 120 characters, that work on their own as the whole caption. Not the first line of the long one copied, not a title.
+    // Both lengths are written together, about the same thing, so the pair matches (2026-10-21);
+    // lengthPreference says which one the person is waiting for. With only (2026-10-27, the post
+    // page's Short and Long tabs: "if we're on the tab for short... we only write the short one and
+    // the hashtags"), just that one and the hashtags.
+    const only = body.only === true;
+    const LONG_RULE = "2-3 short paragraphs that tell the story of this post, then a call to action. 60-150 words.";
+    const SHORT_RULE = "ONE or two sentences, under 120 characters, that work on their own as the whole caption. Not a title.";
+    const lengthInstruction = only
+      ? `Write ONE caption, the ${lengthPreference} one: ${lengthPreference === "short" ? SHORT_RULE : LONG_RULE} Then the hashtags.`
+      : `Write TWO captions that say the same thing at two lengths:
+- caption_long: ${LONG_RULE}
+- caption_short: ${SHORT_RULE.replace("Not a title.", "Not the first line of the long one copied, not a title.")}
 The person is waiting for the ${lengthPreference} one, so make that one especially good.`;
+    const key = lengthPreference === "short" ? "caption_short" : "caption_long";
 
     // The visual analysis directive is what makes the caption SPECIFIC to this
     // exact post. Brand voice shapes the tone but must NOT override what's shown.
@@ -144,13 +153,17 @@ CRITICAL INSTRUCTION:
 ${lengthInstruction}
 
 You MUST return ONLY a valid JSON object. Do not include markdown formatting like \`\`\`json.
-The JSON object must have EXACTLY these 4 keys:
+${only ? `The JSON object must have EXACTLY these 2 keys:
+{
+  "${key}": "${lengthPreference === "short" ? "One or two sentences under 120 characters that work as the whole caption." : "2-3 short paragraphs, 60-150 words, ending with a call to action."}",
+  "hashtags": "A single string of 3-5 relevant hashtags (e.g., '#viral #trending')."
+}` : `The JSON object must have EXACTLY these 4 keys:
 {
   "caption_long": "2-3 short paragraphs, 60-150 words, ending with a call to action.",
   "caption_short": "One or two sentences under 120 characters that work as the whole caption.",
   "hashtags": "A single string of 3-5 relevant hashtags (e.g., '#viral #trending').",
   "call_to_action": "A 1-sentence Call to Action."
-}`;
+}`}`;
 
     // Vision when media is available. Model/limits: LLM_TASKS.contentAnalyze.
     const content = await complete({
@@ -163,7 +176,8 @@ The JSON object must have EXACTLY these 4 keys:
 
     const result = JSON.parse(content.trim());
 
-    return NextResponse.json(result);
+    // Only the one asked for (and the hashtags), even if the model wrote more.
+    return NextResponse.json(only ? { [key]: result[key], hashtags: result.hashtags } : result);
   } catch (error) {
     console.error("AI Analysis Error:", error);
 
