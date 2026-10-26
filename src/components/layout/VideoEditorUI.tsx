@@ -56,6 +56,8 @@ interface TrackClip {
   trackRow?: number;
   /** Playback speed (2026-10-23, slow-mo): 0.5 plays at half speed and lasts twice as long. */
   speed?: number;
+  /** Its length is a guess until the file says (a new upload or Library add): it then takes the real length. */
+  guessed?: boolean;
 }
 
 interface TextLayer {
@@ -767,12 +769,18 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     }
   }
 
+  // Files from the computer go one after another at the end of the video track, like the Library's +
+  // (2026-10-26: three phone clips uploaded at the playhead landed on top of each other). Several at once is fine.
   function handleManualUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const isAudio = file.type.includes("audio");
-    const trackType = isAudio ? "audio" : file.type.includes("video") ? "video" : "image";
-    processDroppedFile(file, trackType, globalTime, 0);
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    let at = videoClips.length ? Math.max(0, ...videoClips.filter((c) => (c.trackRow ?? 0) === 0).map((c) => c.timelineStart + (span(c)))) : 0;
+    for (const file of files) {
+      const trackType = file.type.includes("audio") ? "audio" : file.type.includes("video") ? "video" : "image";
+      if (trackType === "audio") { processDroppedFile(file, "audio", globalTime, 0); continue; }
+      processDroppedFile(file, trackType, at, 0);
+      at += trackType === "image" ? 5 : 10;
+    }
   }
 
   function processDroppedFile(file: File, trackType: "video" | "audio" | "image", dropTime: number, row: number) {
@@ -805,14 +813,16 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   }
 
   function addClipToTimeline(asset: MediaAsset, trackType: "video" | "audio", dropTime: number, row: number) {
-    const defaultDuration = asset.type === "image" ? 5 : asset.duration || 10;
+    const known = knownLength.current[asset.url];
+    const defaultDuration = asset.type === "image" ? 5 : known || asset.duration || 10;
     const newClip: TrackClip = {
       id: crypto.randomUUID(), assetId: asset.id, url: asset.url, type: asset.type as any, name: asset.name,
       timelineStart: dropTime, trimStart: 0, trimEnd: defaultDuration, maxDuration: defaultDuration,
-      opacity: 100, volume: 100, trackRow: row,
+      opacity: 100, volume: 100, trackRow: row, ...(asset.type !== "image" && !known ? { guessed: true } : {}),
     };
-    if (trackType === "video") setVideoClips([...videoClips, newClip]);
-    else setAudioClips([...audioClips, newClip]);
+    // From the latest timeline: several files added in one go all land (2026-10-26).
+    if (trackType === "video") setVideoClips((prev) => [...prev, newClip]);
+    else setAudioClips((prev) => [...prev, newClip]);
   }
 
   function handleDropOnTrack(e: React.DragEvent, trackType: "video" | "audio", targetRow: number) {
@@ -823,9 +833,13 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     const dropTime = Math.max(0, dropX / PIXELS_PER_SECOND);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      const isAudio = file.type.includes("audio");
-      processDroppedFile(file, isAudio ? "audio" : file.type.includes("video") ? "video" : "image", dropTime, targetRow);
+      // Several files dropped together play one after another from where they were dropped.
+      let at = dropTime;
+      for (const file of Array.from(e.dataTransfer.files)) {
+        const kind = file.type.includes("audio") ? "audio" : file.type.includes("video") ? "video" : "image";
+        processDroppedFile(file, kind, at, targetRow);
+        at += kind === "image" ? 5 : 10;
+      }
       return;
     }
 
@@ -842,8 +856,21 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     const clip = (type === "video" ? videoClips : audioClips).find((c) => c.id === id);
     if (clip && Number.isFinite(duration)) knownLength.current[clip.url] = duration;
     absorbNext.current = true; // the real length joins the current step; it isn't an edit
-    if (type === "video") setVideoClips((prev) => prev.map((c) => c.id === id ? { ...c, maxDuration: duration, trimEnd: Math.min(c.trimEnd, duration) } : c));
-    else setAudioClips((prev) => prev.map((c) => c.id === id ? { ...c, maxDuration: duration, trimEnd: Math.min(c.trimEnd, duration) } : c));
+    // A clip still at its guessed length, untrimmed, takes the whole file (a 24 s phone clip stayed at
+    // the 10 s guess, 2026-10-26), and what comes after it on its row moves along.
+    const real = (prev: TrackClip[]) => {
+      const c = prev.find((x) => x.id === id);
+      if (!c) return prev;
+      if (!(c.guessed && c.trimStart === 0 && c.trimEnd === c.maxDuration && duration > c.trimEnd)) {
+        return prev.map((x) => x.id === id ? { ...x, maxDuration: duration, trimEnd: Math.min(x.trimEnd, duration), guessed: false } : x);
+      }
+      const oldEnd = c.timelineStart + span(c);
+      const grown = { ...c, maxDuration: duration, trimEnd: duration, guessed: false };
+      const move = span(grown) - span(c);
+      return prev.map((x) => x.id === id ? grown : (x.trackRow ?? 0) === (c.trackRow ?? 0) && x.timelineStart >= oldEnd - 0.05 ? { ...x, timelineStart: x.timelineStart + move } : x);
+    };
+    if (type === "video") setVideoClips(real);
+    else setAudioClips(real);
   }
 
   const updateTextLayer = (id: string, updates: Partial<TextLayer>) => setTextLayers(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
@@ -1513,7 +1540,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   {isLoadingDB && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-mute)" }} />}
                   <div className="flex-1" />
                   <button type="button" className="s-btn ghost sm" onClick={() => fileInputRef.current?.click()} title="Upload from this device"><UploadCloud className="h-3.5 w-3.5" /></button>
-                  <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" onChange={handleManualUpload} />
+                  <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" multiple onChange={handleManualUpload} />
                 </div>
                 {rail === "audio" && (
                   <div className="ve-card mx-3 mb-3" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 35%, var(--s-line))" }}>
@@ -1843,7 +1870,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   </button>
                 </div>
 
-                <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" onChange={handleManualUpload} />
+                <input type="file" ref={fileInputRef} className="hidden" accept="video/*,image/*,audio/*" multiple onChange={handleManualUpload} />
                 <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full border-dashed border-2 border-[#57707A]/40 bg-[#191D23]/40 text-[#989DAA] hover:text-[#C5BAC4] hover:border-[#C5BAC4]/50 hover:bg-[#C5BAC4]/5 h-10 font-bold transition-all rounded-xl">
                   <UploadCloud className="w-3.5 h-3.5 mr-2" /> Upload File
                 </Button>

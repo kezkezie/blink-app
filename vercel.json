@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/editor/motion/route.ts": { "supportsCancellation": true },
+    "src/app/api/inspo/video/route.ts": { "supportsCancellation": true },
+    "src/app/api/editor/highlights/route.ts": { "supportsCancellation": true },
+    "src/app/api/voiceover/route.ts": { "supportsCancellation": true }
+  }
+}

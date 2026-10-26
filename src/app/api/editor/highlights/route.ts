@@ -9,6 +9,7 @@ import { AssistantUnavailableError, assistantModelFor, assistantProvider, estima
 import { transcribeCredits, transcriptForModel, validateHighlights, type Segment } from "@/lib/editor/highlights";
 import { requestWorkspace } from "@/lib/brand-access";
 import { brandArg } from "@/lib/credits-meter";
+import { stopGuard } from "@/lib/stop-server";
 import { logAiUsage } from "@/lib/ai-usage";
 
 /**
@@ -53,7 +54,9 @@ export async function POST(request: NextRequest) {
   const label = mode === "highlights" ? "Editor: shorts from a long video" : "Editor: captions";
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: credits, p_operation: "debit", p_description: `${label} (${Math.ceil(seconds / 60)} min)`, ...brandArg(body.brandId) });
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `Not enough credits (this needs ${credits}). Get more in Billing.` }, { status: 402 });
-  const refund = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: `Refund: ${label.toLowerCase()} failed`, ...brandArg(body.brandId) }).then(() => {}, () => {});
+  // Stopped in the browser or failed: the credits come back once (lib/stop-server.ts).
+  const guard = stopGuard(request, () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: `Refund: ${label.toLowerCase()} failed`, ...brandArg(body.brandId) }));
+  const refund = () => guard.fail();
 
   try {
     const got = await safeFetchBytes(audioUrl, { maxBytes: 25_000_000, timeoutMs: 30_000 });
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
     form.append("timestamp_granularities[]", "segment");
     if (hint) form.append("prompt", hint);
     // Stop in the browser ends the calls here too, and the credits come back (2026-10-25).
-    const stopped = () => request.signal.aborted;
+    const stopped = () => guard.stopped;
     const tr = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.any([request.signal, AbortSignal.timeout(240_000)]) }).catch(() => null);
     const data = (await tr?.json().catch(() => ({}))) as { segments?: Array<{ start: number; end: number; text: string }>; duration?: number; error?: { message?: string } } | undefined;
     if (stopped()) { await refund(); return NextResponse.json({ error: "Stopped. Your credits were refunded." }, { status: 499 }); }
@@ -76,8 +79,8 @@ export async function POST(request: NextRequest) {
     }
     const segments: Segment[] = data.segments.map((s) => ({ start: Math.round(s.start * 100) / 100, end: Math.round(s.end * 100) / 100, text: String(s.text || "").trim() })).filter((s) => s.text && s.end > s.start);
     const duration = Number(data.duration) || seconds;
-    if (mode === "captions") return NextResponse.json({ segments, duration, credits });
-    if (!segments.length) return NextResponse.json({ segments, duration, credits, highlights: [], note: "Nobody speaks in this video, so there are no moments to pick from the words. Try Cut to the beat instead." });
+    if (mode === "captions") return guard.done() ? NextResponse.json({ segments, duration, credits }) : NextResponse.json({ error: "Stopped. Your credits were refunded." }, { status: 499 });
+    if (!segments.length) return guard.done() ? NextResponse.json({ segments, duration, credits, highlights: [], note: "Nobody speaks in this video, so there are no moments to pick from the words. Try Cut to the beat instead." }) : NextResponse.json({ error: "Stopped. Your credits were refunded." }, { status: 499 });
 
     // The brand, briefly, so captions sound like it.
     let brandLine = "";
@@ -111,6 +114,7 @@ export async function POST(request: NextRequest) {
     try { raw = (JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)) as { highlights?: unknown }).highlights; } catch { /* handled below */ }
     const highlights = validateHighlights(raw, duration, segments);
     // The transcript was paid for and is useful even if picking failed, so no refund here.
+    if (!guard.done()) return NextResponse.json({ error: "Stopped. Your credits were refunded." }, { status: 499 });
     return NextResponse.json({ segments, duration, credits, highlights, ...(highlights.length ? {} : { note: "The AI couldn't pick clean moments this time. The captions are ready; try again for moments." }) });
   } catch (err) {
     console.error("highlights error", err);

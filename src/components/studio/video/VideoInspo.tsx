@@ -44,14 +44,12 @@ export function VideoInspo() {
   const [frames, setFrames] = useState<Array<string | null>>([]);
   const [framing, setFraming] = useState<number[]>([]);
   const FRAME_CREDITS = IMAGE_ENGINE_REGISTRY.nb2.creditCost;
-  // Stop (2026-10-25): reading, planning and frames each end on Stop; what wasn't delivered isn't charged.
+  // Stop (2026-10-25): reading and planning end on Stop and aren't charged; frames stop starting.
   const readStop = useRef<AbortController | null>(null);
   const motionStop = useRef<AbortController | null>(null);
   const framesStop = useRef<AbortController | null>(null);
   async function makeFrame(i: number) {
     if (!plan || !reading || !clientId || !activeBrand || !kit) return;
-    if (!framesStop.current || framesStop.current.signal.aborted) framesStop.current = new AbortController();
-    const signal = framesStop.current.signal;
     const sc = plan.scenes[i];
     const shot = reading.shots[Math.min(reading.shots.length - 1, sc.shot - 1)];
     setFraming((f) => [...f, i]);
@@ -68,10 +66,10 @@ export function VideoInspo() {
         clientId, brandId: activeBrand.id, kit, plain: true, save: false, style: "plain", engine: "nb2", caption: "",
         prompt: `First frame: ${sc.what || sc.prompt}`.slice(0, 300),
         assembledPrompt: keyframePrompt({ brand: kit.name || name, industry: kit.industry, description: kit.description, colours: [kit.primaryColor, kit.secondaryColor], what: sc.prompt || sc.what, cast: plan.cast, motion: plan.kind === "motion", products: productUrls.length }),
-        references: [still, ...productUrls], aspect: nearestImageAspect(`${reading.width || 9}:${reading.height || 16}`), signal,
+        references: [still, ...productUrls], aspect: nearestImageAspect(`${reading.width || 9}:${reading.height || 16}`),
       });
       setFrames((f) => { const n = [...f]; n[i] = made.url; return n; });
-    } catch (e) { if (!signal.aborted) toast.error(`Scene ${i + 1}: ${generationErrorMessage(e)}`); }
+    } catch (e) { toast.error(`Scene ${i + 1}: ${generationErrorMessage(e)}`); }
     finally { setFraming((f) => f.filter((x) => x !== i)); void refresh?.(); }
   }
   async function makeAllFrames() {
@@ -83,9 +81,11 @@ export function VideoInspo() {
     const signal = framesStop.current.signal;
     await Promise.all(todo.map((i, k) => new Promise((r) => setTimeout(r, k * 1500)).then(() => (signal.aborted ? undefined : makeFrame(i)))));
   }
+  // Stop keeps the frames not started yet from starting (each is a paid picture). One already being
+  // made still lands: it's charged when it starts, so it's kept rather than thrown away.
   function stopFrames() {
     framesStop.current?.abort();
-    toast.info("Stopped. Frames that weren't finished cost nothing.");
+    toast.info("Stopped. No more frames will start; any already being made will still land.");
   }
 
   useEffect(() => () => { if (src?.url.startsWith("blob:")) URL.revokeObjectURL(src.url); }, [src]);
@@ -287,7 +287,7 @@ export function VideoInspo() {
               <button className="s-btn ai" disabled={!!framing.length || !kit || frames.filter(Boolean).length === plan.scenes.length} onClick={() => void makeAllFrames()}>
                 {framing.length ? <><Loader2 className="h-4 w-4 animate-spin" /> Making frames…</> : <><Sparkles className="h-4 w-4" /> Make the first frames</>} <span className="cost">{plan.scenes.filter((_, i) => !frames[i]).length * FRAME_CREDITS} cr</span>
               </button>
-              {framing.length > 0 && <button className="s-btn" onClick={stopFrames} title="Stop: frames that aren't finished cost nothing"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
+              {framing.length > 0 && <button className="s-btn" onClick={stopFrames} title="Stop: no more frames start"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
             </div>
             <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
               {plan.scenes.map((sc, i) => {

@@ -77,15 +77,16 @@ test("stop: a video n8n is making, a motion plan, a video upscale and an AI edit
     // ── 2. The motion planner, stopped from the browser ──
     if (parts.has("2")) {
     const start2 = await balance();
-    const aborted = await page.evaluate(async (brand) => {
-      const ac = new AbortController();
-      const p = fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: brand, prompt: "A 6 second intro for our launch", shape: "9:16" }), signal: ac.signal }).then(() => "answered", () => "aborted");
-      await new Promise((r) => setTimeout(r, 2500));
-      ac.abort();
-      return p;
+    // Started, then stopped only once its 4 credits are taken, so the refund is what's tested.
+    await page.evaluate((brand) => {
+      const w = window as unknown as { __stop: AbortController; __motion: Promise<string> };
+      w.__stop = new AbortController();
+      w.__motion = fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: brand, prompt: "A 6 second intro for our launch", shape: "9:16" }), signal: w.__stop.signal }).then(() => "answered", () => "aborted");
     }, brandId);
+    await expect.poll(balance, { timeout: 30_000, intervals: [500] }).toBe(start2 - 4);
+    const aborted = await page.evaluate(() => { const w = window as unknown as { __stop: AbortController; __motion: Promise<string> }; w.__stop.abort(); return w.__motion; });
     expect(aborted).toBe("aborted");
-    await expect.poll(balance, { timeout: 90_000, intervals: [3000] }).toBe(start2);
+    await expect.poll(balance, { timeout: 60_000, intervals: [2000] }).toBe(start2);
     console.log("motion plan stopped, balance back to", start2);
     }
 
@@ -112,6 +113,7 @@ test("stop: a video n8n is making, a motion plan, a video upscale and an AI edit
     }
 
     // ── 4. Edit with AI, stopped while it renders ──
+    if (parts.has("4")) {
     const { data: pic } = await sb.from("content").insert({ client_id: clientId, brand_id: brandId, content_type: "post_image", status: "draft", caption: "Stop edit source", image_urls: [PICTURE] }).select("id").single();
     const scan = await page.request.post(`${BASE}/api/ai-edit/scan`, { data: { contentId: pic!.id }, timeout: 180_000 });
     expect(scan.status(), await scan.text()).toBe(200);
@@ -133,6 +135,7 @@ test("stop: a video n8n is making, a motion plan, a video upscale and an AI edit
     expect(done4.status).toBe(499);
     expect((await sb.from("content").select("id").eq("id", placeholder)).data ?? []).toEqual([]);
     expect(await balance()).toBe(start4);
+    }
     expect(errors).toEqual([]);
   } finally {
     if (clientId) {

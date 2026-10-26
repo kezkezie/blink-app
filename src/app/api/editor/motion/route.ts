@@ -13,6 +13,7 @@ import { safeFetchBytes } from "@/lib/safe-fetch";
 import { imageSize } from "@/lib/upscale";
 import { pictureKind } from "@/lib/image-refs";
 import { logAiUsage } from "@/lib/ai-usage";
+import { stopGuard } from "@/lib/stop-server";
 
 /**
  * POST { brandId, prompt, shape, pictureId? }: Claude plans a motion graphic from the brand's kit
@@ -68,9 +69,11 @@ export async function POST(request: NextRequest) {
     p_client_id: ws.clientId, p_amount: MOTION_CREDITS, p_operation: "debit", p_description: "Editor: motion graphic", ...brandArg(brandId),
   });
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `A motion is ${MOTION_CREDITS} credits and your balance is lower. Get more in Billing.` }, { status: 402 });
-  const refund = (why: string, status = 502) => supabaseAdmin.rpc("refund_credits", {
+  // Stopped in the browser or failed: the credits come back once (lib/stop-server.ts).
+  const guard = stopGuard(request, () => supabaseAdmin.rpc("refund_credits", {
     p_client_id: ws.clientId, p_amount: MOTION_CREDITS, p_operation: "refund", p_description: "Refund: motion graphic failed", ...brandArg(brandId),
-  }).then(() => NextResponse.json({ error: `${why} Your ${MOTION_CREDITS} credits were refunded.` }, { status }), () => NextResponse.json({ error: why }, { status }));
+  }));
+  const refund = (why: string, status = 502) => guard.fail().then(() => NextResponse.json({ error: `${why} Your ${MOTION_CREDITS} credits were refunded.` }, { status }));
 
   const model = assistantModelFor("chat", provider.name);
   const res = await claudeFetch(provider, {
@@ -94,7 +97,7 @@ export async function POST(request: NextRequest) {
   console.info("motion usage", JSON.stringify({ brand: brandId, model, ok: !!spec, usd: usd === null ? null : Number(usd.toFixed(4)) }));
   logAiUsage({ feature: "motion", provider: provider.name, model, clientId: ws.clientId, userId: auth.value, brandId, usage: data ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens, cacheRead: data.usage?.cache_read_input_tokens, cacheWrite: data.usage?.cache_creation_input_tokens } : null, usd, credits: spec && !request.signal.aborted ? MOTION_CREDITS : 0, ok: !!spec, meta: { screens: screens.length } });
   if (!spec) return refund("The motion plan came back unclear. Try saying it another way.");
-  if (request.signal.aborted) return refund("Stopped.", 499);
+  if (!guard.done()) return NextResponse.json({ error: `Stopped. Your ${MOTION_CREDITS} credits were refunded.` }, { status: 499 });
   // Picture refs become our URLs.
   placePictures(spec, pictures);
   // The handed-off picture plays as the background (the words and shapes animate over it).

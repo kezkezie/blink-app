@@ -45,7 +45,9 @@ test("Stop: an image being made is removed with its credits back; Ask stops mid-
     await expect(page.getByText("Stopped. Your credits are back.")).toBeVisible({ timeout: 20_000 });
     await expect.poll(async () => (await sb.from("content").select("id", { count: "exact", head: true }).eq("client_id", clientId!).eq("content_type", "post_image")).count, { timeout: 20_000 }).toBe(0);
     // n8n may charge just before or just after the stop: either way the balance comes back level.
-    await expect.poll(balance, { timeout: 90_000, intervals: [3000] }).toBe(start);
+    const t0 = Date.now();
+    await expect.poll(balance, { timeout: 300_000, intervals: [5000] }).toBe(start);
+    console.log(`credits back ${Math.round((Date.now() - t0) / 1000)} s after the stop`);
     // And a picture that arrives later lands nowhere.
     await page.waitForTimeout(45_000);
     expect((await sb.from("content").select("id", { count: "exact", head: true }).eq("client_id", clientId!).eq("content_type", "post_image")).count).toBe(0);
