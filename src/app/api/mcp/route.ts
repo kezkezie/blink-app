@@ -4,10 +4,12 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { bearerKey, hashKey, type KeyScope } from "@/lib/mcp/keys";
 import { handleRpc, type RpcReply, type ToolOut } from "@/lib/mcp/protocol";
 import { mcpTools } from "@/lib/mcp/tools";
+import { challenge, originOf } from "@/lib/oauth";
 
 /**
- * BlinkSpot's MCP server (Connect your AI, stage 1, 2026-10-20). Claude Code, Hermes, OpenClaw or
- * any MCP client connects with a key from Settings > AI connections:
+ * BlinkSpot's MCP server (Connect your AI, stage 1, 2026-10-20). Claude (claude.ai, Desktop, mobile)
+ * connects by URL and signs in with BlinkSpot (OAuth, lib/oauth.ts, 2026-10-26); Claude Code, Hermes,
+ * OpenClaw or any MCP client can also use a key from Settings > AI connections:
  *   claude mcp add --transport http blinkspot https://www.blinkspot.io/api/mcp --header "Authorization: Bearer bsk_..."
  * Stateless Streamable HTTP with JSON replies (lib/mcp/protocol.ts). Every call checks the key,
  * the workspace and the brand. Stage 1 (read and price) for every key; stage 2-3 (2026-10-21) make
@@ -16,9 +18,10 @@ import { mcpTools } from "@/lib/mcp/tools";
 export const maxDuration = 120;
 const LIMIT_PER_HOUR = 300;
 
-const unauthorized = (message: string) => NextResponse.json(
+// The 401 also says where to sign in (lib/oauth.ts), so Claude's connectors can start "Sign in with BlinkSpot".
+const unauthorized = (request: NextRequest, message: string) => NextResponse.json(
   { jsonrpc: "2.0", id: null, error: { code: -32001, message } },
-  { status: 401, headers: { "WWW-Authenticate": 'Bearer realm="BlinkSpot", error="invalid_token"' } },
+  { status: 401, headers: { "WWW-Authenticate": challenge(originOf(request)) } },
 );
 
 async function scopeFor(request: NextRequest): Promise<KeyScope | null> {
@@ -36,10 +39,11 @@ async function scopeFor(request: NextRequest): Promise<KeyScope | null> {
 
 export async function POST(request: NextRequest) {
   const scope = await scopeFor(request);
-  if (!scope) return unauthorized("Missing or revoked BlinkSpot key. Create one in BlinkSpot > Settings > AI connections.");
-  const { data: limit } = await supabaseAdmin.rpc("consume_assisted_creation_rate_limit", { p_user_id: scope.keyId, p_operation: "mcp_call", p_limit: LIMIT_PER_HOUR, p_window_seconds: 3600 });
+  if (!scope) return unauthorized(request, "Sign in to BlinkSpot, or use a key from BlinkSpot > Settings > AI connections.");
+  // Per person (the limiter's rows belong to a user; a key id was silently refused, so there was no limit).
+  const { data: limit } = scope.userId ? await supabaseAdmin.rpc("consume_assisted_creation_rate_limit", { p_user_id: scope.userId, p_operation: "mcp_call", p_limit: LIMIT_PER_HOUR, p_window_seconds: 3600 }) : { data: null };
   const row = Array.isArray(limit) ? limit[0] : limit;
-  if (row && row.allowed === false) return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32002, message: `That's ${LIMIT_PER_HOUR} calls this hour for this key. Try again later.` } }, { status: 429 });
+  if (row && row.allowed === false) return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32002, message: `That's ${LIMIT_PER_HOUR} calls this hour. Try again later.` } }, { status: 429 });
 
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400 }); }
@@ -60,8 +64,9 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(Array.isArray(body) ? replies : replies[0], { headers: { "Cache-Control": "no-store" } });
 }
 
-/** No server-to-client stream: every reply comes back on the POST. */
-export async function GET() {
+/** No server-to-client stream: every reply comes back on the POST (asked without a key, it starts sign-in). */
+export async function GET(request: NextRequest) {
+  if (!(await scopeFor(request))) return unauthorized(request, "Sign in to BlinkSpot first.");
   return new NextResponse(null, { status: 405, headers: { Allow: "POST" } });
 }
 export async function DELETE() {

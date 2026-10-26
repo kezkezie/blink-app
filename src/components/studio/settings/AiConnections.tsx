@@ -71,9 +71,24 @@ export function AiConnections() {
         <Bot className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "var(--s-ai)" }} />
         <div className="flex-1">
           <h2 className="text-[16px] font-semibold">AI connections</h2>
-          <p className="text-[12.5px]" style={{ color: "var(--s-mute)" }}>Use BlinkSpot from Claude Code, Hermes, OpenClaw or any MCP app. Each connection gets its own key, only the brands you pick and a monthly credit budget. It can always read your brands, Library and calendar and price things. Turn on making (images, videos, carousels, captions) and posting per connection.</p>
+          <p className="text-[12.5px]" style={{ color: "var(--s-mute)" }}>Use BlinkSpot from Claude, Claude Code, Hermes, OpenClaw or any MCP app. Each connection gets its own key, only the brands you pick and a monthly credit budget. It can always read your brands, Library and calendar and price things. Turn on making (images, videos, carousels, captions) and posting per connection.</p>
         </div>
         {!form && !made && <button className="s-btn sm" onClick={() => setForm({ name: "", all: true, picked: [], budget: 200, perms: ["spend"] })}><Plus className="h-3.5 w-3.5" /> New connection</button>}
+      </div>
+
+      {/* Claude subscribers sign in instead of pasting a key (Kezie, 2026-10-26; lib/oauth.ts). Steps from support.claude.com. */}
+      <div className="rounded-xl p-4 grid gap-2" style={{ border: "1px solid var(--s-line-2)", background: "var(--s-bg)" }} aria-label="Connect Claude">
+        <b className="text-[13.5px]">Have Claude? Connect it, no key needed</b>
+        <p className="text-[12px]" style={{ color: "var(--s-mute)" }}>Claude does the thinking on your own Claude plan (Free has one custom connector; Pro, Max, Team and Enterprise more). Pictures and videos it makes use your BlinkSpot credits.</p>
+        <ol className="grid gap-1.5 text-[12.5px] list-decimal pl-5" style={{ color: "var(--s-soft)" }}>
+          <li>In Claude (claude.ai, the desktop app or the phone app), open <b style={{ color: "var(--s-text)" }}>Customize &gt; Connectors</b>, click <b style={{ color: "var(--s-text)" }}>+ Add</b>, then <b style={{ color: "var(--s-text)" }}>Add custom connector</b>.</li>
+          <li>Name it <b style={{ color: "var(--s-text)" }}>BlinkSpot</b> and paste this URL:
+            <span className="flex items-center gap-2 mt-1"><code className="mono text-[11.5px] px-2 py-1 rounded" style={{ background: "var(--s-raised)" }}>{URL}</code>
+              <button className="s-btn ghost sm" onClick={() => copy(URL, "claude-url")} aria-label="Copy the connector URL">{copied === "claude-url" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}</button></span></li>
+          <li>Click <b style={{ color: "var(--s-text)" }}>Add</b>, then <b style={{ color: "var(--s-text)" }}>Connect</b>. Sign in to BlinkSpot, pick the brands and what Claude may do, and press <b style={{ color: "var(--s-text)" }}>Allow</b>.</li>
+          <li>In a chat, click <b style={{ color: "var(--s-text)" }}>+ &gt; Connectors</b>, turn on BlinkSpot, and ask: &ldquo;Make a launch poster for my brand&rdquo; or &ldquo;Plan next week&apos;s posts&rdquo;.</li>
+        </ol>
+        <p className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>Team and Enterprise: an owner adds it in Organization settings &gt; Connectors first. Claude Code: <span className="mono">claude mcp add --transport http blinkspot {URL}</span>, then sign in from <span className="mono">/mcp</span>. It shows below as &ldquo;Claude (signed in)&rdquo;, with Revoke.</p>
       </div>
 
       {form && (
