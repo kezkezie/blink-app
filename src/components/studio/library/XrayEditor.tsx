@@ -256,7 +256,7 @@ export function XrayEditor({ id, onBack, onContinue }: { id: string; onBack?: ()
                   <Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--s-ai)" }} />
                   <b className="text-[14px]">{scanning ? "Looking at every part of the picture…" : `Making your edit… ${elapsed > 0 ? `${elapsed} s` : ""}`}</b>
                   {applying && <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Usually 30 to 60 seconds. You can leave: it lands in your Library as a new post.</span>}
-                  {applying && <button className="s-btn sm mt-1" disabled={stopping} onClick={() => void stopEdit()} title="Stop: your credits come back">{stopping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" fill="currentColor" />} Stop</button>}
+                  {applying && <button className="s-btn sm mt-1" disabled={stopping} onClick={() => void stopEdit()} title="Stop: what the AI service hasn't already billed comes back">{stopping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" fill="currentColor" />} Stop</button>}
                 </div>
               </div>
             )}

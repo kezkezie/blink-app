@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { brandArg } from "@/lib/credits-meter";
 import { stopImageJobs } from "@/lib/image-jobs-server";
 import { stopVideoJob } from "@/lib/video-rescue-server";
+import { atCostSplit } from "@/lib/stop-refund";
 
 /**
  * Stop anything still being made (Kezie, 2026-10-25: "a way to stop any kind of AI generation",
@@ -14,9 +15,11 @@ import { stopVideoJob } from "@/lib/video-rescue-server";
  *   (billing_state refund_pending) means n8n can't save or refund it again afterwards;
  * - an Edit with AI still being made (its post says "Making your edit" until it's saved): removed
  *   and refunded here; the edit sees its post gone and doesn't save (lib/ai-edit-server.ts).
- * The provider may still finish its render (Kie has no cancel); the result is never saved.
+ * The provider may still finish its render (Kie has no cancel) and bills BlinkSpot for it, so the
+ * credits that pay that bill are kept and the rest comes back (lib/stop-refund.ts, 2026-10-26: "make
+ * sure the stop feature doesn't also take credits from me"). The result is never saved.
  */
-export type StopResult = { stopped: string[]; refunded: number; starting: string[]; notStopped: string[] };
+export type StopResult = { stopped: string[]; refunded: number; kept: number; starting: string[]; notStopped: string[] };
 
 const VIDEO_TYPES = new Set(["video", "reel", "sequence_clip", "raw_clip", "story_sequence"]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -27,7 +30,7 @@ async function videoCharge(clientId: string, id: string) {
   return -(data ?? []).reduce((n, r) => n + (Number(r.amount) || 0), 0);
 }
 
-async function stopN8nVideo(clientId: string, row: { id: string; brand_id: string | null }, waitMs: number): Promise<{ state: "stopped"; credits: number } | { state: "starting" | "gone" }> {
+async function stopN8nVideo(clientId: string, row: { id: string; brand_id: string | null }, waitMs: number): Promise<{ state: "stopped"; credits: number; kept: number } | { state: "starting" | "gone" }> {
   // n8n charges a few seconds after the start. Wait for that charge, so nothing is charged after a stop.
   let charged = await videoCharge(clientId, row.id);
   for (let waited = 0; charged <= 0 && waited < waitMs; waited += 2000) { await sleep(2000); charged = await videoCharge(clientId, row.id); }
@@ -36,13 +39,17 @@ async function stopN8nVideo(clientId: string, row: { id: string; brand_id: strin
     .eq("id", row.id).eq("client_id", clientId).or("generation_state.eq.generating,generation_state.is.null")
     .or("billing_state.is.null,billing_state.in.(not_charged,charged,refund_failed)").select("id");
   if (!claimed?.length) return { state: "gone" };
-  const { error } = await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: charged, p_operation: "refund", p_description: `Refund: video stopped [vid:${row.id}]`, ...brandArg(row.brand_id) });
+  // Kie is rendering and can't be cancelled: its bill stays covered, the rest comes back.
+  const split = atCostSplit(charged);
+  const { error } = split.back > 0
+    ? await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: split.back, p_operation: "refund", p_description: `Refund: video stopped [vid:${row.id}]`, ...brandArg(row.brand_id) })
+    : { error: null };
   if (error) {
     await supabaseAdmin.from("content").update({ billing_state: "refund_failed", updated_at: new Date().toISOString() }).eq("id", row.id);
     return { state: "gone" };
   }
   await supabaseAdmin.from("content").delete().eq("id", row.id).eq("client_id", clientId);
-  return { state: "stopped", credits: charged };
+  return { state: "stopped", credits: split.back, kept: split.kept };
 }
 
 export async function stopJobs(clientId: string, ids: string[], opts: { waitMs?: number } = {}): Promise<StopResult> {
@@ -53,24 +60,25 @@ export async function stopJobs(clientId: string, ids: string[], opts: { waitMs?:
   const isEdit = (r: NonNullable<typeof data>[number]) => meta(r).operation === "ai_edit" && !!r.generation_status_text;
   const rows = (data ?? []).filter((r) => r.generation_state === "generating" || isEdit(r) || (VIDEO_TYPES.has(String(r.content_type)) && !(r.video_urls as string[] | null)?.length));
   const images = rows.filter((r) => meta(r).job).map((r) => r.id as string);
-  const img = images.length ? await stopImageJobs(clientId, images) : { stopped: [], refunded: 0 };
+  const img = images.length ? await stopImageJobs(clientId, images) : { stopped: [], refunded: 0, kept: 0 };
   const stopped = [...img.stopped], starting: string[] = [];
-  let refunded = img.refunded;
+  let refunded = img.refunded, kept = img.kept;
   for (const r of rows) {
     if (meta(r).job) continue;
     if (isEdit(r)) {
       const { data: gone } = await supabaseAdmin.from("content").delete().eq("id", r.id).eq("client_id", clientId).not("generation_status_text", "is", null).select("id");
       if (!gone?.length) continue;
-      const credits = Number(meta(r).credits) || 0;
-      if (credits > 0) await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: `Refund: Edit with AI stopped [post:${String(meta(r).source_content_id ?? r.id)}]`, ...brandArg((r.brand_id as string | null) ?? null) }).then(() => {}, () => {});
-      stopped.push(r.id as string); refunded += credits;
+      // The edit is rendering at the image service, which can't be cancelled: its bill stays covered.
+      const split = atCostSplit(Number(meta(r).credits) || 0);
+      if (split.back > 0) await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: split.back, p_operation: "refund", p_description: `Refund: Edit with AI stopped [post:${String(meta(r).source_content_id ?? r.id)}]`, ...brandArg((r.brand_id as string | null) ?? null) }).then(() => {}, () => {});
+      stopped.push(r.id as string); refunded += split.back; kept += split.kept;
       continue;
     }
     if (meta(r).video_rescue) { if (await stopVideoJob(clientId, r.id as string)) stopped.push(r.id as string); continue; }
     if (!VIDEO_TYPES.has(String(r.content_type))) continue;
     const out = await stopN8nVideo(clientId, { id: r.id as string, brand_id: (r.brand_id as string | null) ?? null }, opts.waitMs ?? 10_000);
-    if (out.state === "stopped") { stopped.push(r.id as string); refunded += out.credits; }
+    if (out.state === "stopped") { stopped.push(r.id as string); refunded += out.credits; kept += out.kept; }
     if (out.state === "starting") starting.push(r.id as string);
   }
-  return { stopped, refunded, starting, notStopped: ids.filter((id) => !stopped.includes(id) && !starting.includes(id)) };
+  return { stopped, refunded, kept, starting, notStopped: ids.filter((id) => !stopped.includes(id) && !starting.includes(id)) };
 }

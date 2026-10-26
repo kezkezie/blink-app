@@ -114,7 +114,7 @@ function PendingNote({ content }: { content: Content }) {
         ? <span className="grid justify-items-center gap-2">
             <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {content.generation_status_text}</span>
             {(content.generation_state === "generating" || (content.creation_metadata as { operation?: unknown } | null)?.operation === "ai_edit") && (
-              <span role="button" tabIndex={0} className="s-btn sm" aria-label="Stop" title="Stop: it's removed and your credits come back"
+              <span role="button" tabIndex={0} className="s-btn sm" aria-label="Stop" title="Stop: what the AI service hasn't already billed comes back"
                 onClick={stop} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") stop(e); }}>
                 {stopping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" fill="currentColor" />} {stopping ? "Stopping…" : "Stop"}
               </span>

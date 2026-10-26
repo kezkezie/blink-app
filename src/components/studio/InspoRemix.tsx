@@ -13,7 +13,7 @@ import { remixPrompt } from "@/lib/inspo";
 import { ImagePicker } from "./ImagePicker";
 import { shortOfCredits, useCredits } from "./hooks";
 import { thumbUrl } from "./media";
-import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage } from "./generate-image";
+import { generateBrandImages, generationErrorMessage, stoppedLine, useBrandKit, type GeneratedImage } from "./generate-image";
 import { SENSITIVE, SENSITIVE_FAILURE } from "@/lib/ai-safe-text";
 
 /**
@@ -108,7 +108,7 @@ export function InspoRemix() {
       setResults((prev) => [...saved, ...prev]);
       toast.success("Remixed for your brand and saved to the Library.");
     } catch (e) {
-      if (ac.signal.aborted) { toast.success("Stopped. Your credits are back."); return; }
+      if (ac.signal.aborted) { toast.success(stoppedLine(e), { duration: 8000 }); return; }
       const msg = generationErrorMessage(e);
       // A refused picture of a medical or intimate subject: say why and what to try (2026-10-14).
       toast.error(SENSITIVE.test(`${kit?.description ?? ""} ${kit?.industry ?? ""}`) && /could not make|couldn't make|refused|safety|internal error/i.test(msg) ? SENSITIVE_FAILURE : msg, { duration: 12000 });
@@ -198,7 +198,7 @@ export function InspoRemix() {
               <button className="s-btn primary lg flex-1" disabled={!inspo || busy || !kit} onClick={remix}>
                 {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Remaking it for {name}… {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Remix for {name} <span className="cost">{cost} cr</span></>}
               </button>
-              {busy && <button className="s-btn lg" onClick={() => stopRef.current?.abort()} aria-label="Stop" title="Stop: it's removed and your credits come back"><Square className="h-3.5 w-3.5" fill="currentColor" /> Stop</button>}
+              {busy && <button className="s-btn lg" onClick={() => stopRef.current?.abort()} aria-label="Stop" title="Stop: what the AI service hasn't already billed comes back"><Square className="h-3.5 w-3.5" fill="currentColor" /> Stop</button>}
             </div>
             <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>
               {busy ? "Usually under a minute at 4K. It saves to your Library." : "Your inspo is only a reference. The result is a new design with your brand, never a copy of theirs."}

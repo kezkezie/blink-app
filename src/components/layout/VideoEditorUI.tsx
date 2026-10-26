@@ -135,7 +135,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   // Stop for the AI tools (2026-10-25): the request ends, and the server refunds the step in progress.
   const aiStop = useRef<AbortController | null>(null);
   const aiStart = (label: string) => { aiStop.current = new AbortController(); setAiBusy(label); return aiStop.current.signal; };
-  const AI_STOPPED = "Stopped. The step that was running isn't charged.";
+  const AI_STOPPED = "Stopped. What the AI service hadn't already billed comes back.";
   const [cutEvery, setCutEvery] = useState<1 | 2 | 4>(2);
   const [beatLength, setBeatLength] = useState(30);
   const [beatMarks, setBeatMarks] = useState<number[]>([]);
@@ -1463,7 +1463,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             ) : rail === "ai" ? (
               <>
                 <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}
-                  {aiBusy && <button className="s-btn sm ml-auto" onClick={() => aiStop.current?.abort()} aria-label="Stop" title="Stop: the step that's running isn't charged"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}</div>
+                  {aiBusy && <button className="s-btn sm ml-auto" onClick={() => aiStop.current?.abort()} aria-label="Stop" title="Stop: what the AI service hasn't already billed comes back"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}</div>
                 <div className="grid gap-2.5 px-3 pb-3">
                   {aiLocked && <div className="ve-card ai text-[12px]" style={{ color: "var(--s-soft)" }}><span>{AI_NEEDS_CREDITS}</span><a href="/studio/account/billing" className="s-btn ai sm justify-center">Get credits</a></div>}
                   <div className="ve-card ai">

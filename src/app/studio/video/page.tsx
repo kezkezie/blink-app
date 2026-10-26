@@ -374,7 +374,7 @@ function RenderView({ v, renderStartedAt }: { v: VideoStudio; renderStartedAt: R
             <div className="flex gap-2">
               {/* Stop it (2026-10-25): what's being made is removed and its credits come back. */}
               {v.runPostIds().length > 0 && (
-                <button className="s-btn" disabled={stopping} title="Stop: it's removed and your credits come back" onClick={async () => {
+                <button className="s-btn" disabled={stopping} title="Stop: what the AI service hasn't already billed comes back" onClick={async () => {
                   setStopping(true);
                   const ids = v.runPostIds();
                   const out = await stopPosts(ids).finally(() => setStopping(false));

@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 
 /**
  * DELETE ?ids=a,b: stop posts still being made, whatever they are (images, videos, scenes,
- * lip-sync; lib/stop-jobs-server.ts). They're removed and what they cost comes back. A video n8n
+ * lip-sync; lib/stop-jobs-server.ts). They're removed and what the provider hasn't billed comes back. A video n8n
  * hasn't charged yet comes back as `starting` (try again in a few seconds). The caller must be able
  * to write to each post's brand.
  */
@@ -25,10 +25,10 @@ export async function DELETE(request: NextRequest) {
     if (!ws || ws.clientId !== r.client_id) continue;
     byWorkspace.set(ws.clientId, [...(byWorkspace.get(ws.clientId) ?? []), r.id as string]);
   }
-  const out = { stopped: [] as string[], refunded: 0, starting: [] as string[], notStopped: [] as string[] };
+  const out = { stopped: [] as string[], refunded: 0, kept: 0, starting: [] as string[], notStopped: [] as string[] };
   for (const [clientId, list] of byWorkspace) {
     const r = await stopJobs(clientId, list);
-    out.stopped.push(...r.stopped); out.starting.push(...r.starting); out.notStopped.push(...r.notStopped); out.refunded += r.refunded;
+    out.stopped.push(...r.stopped); out.starting.push(...r.starting); out.notStopped.push(...r.notStopped); out.refunded += r.refunded; out.kept += r.kept;
   }
   out.notStopped.push(...ids.filter((id) => ![...out.stopped, ...out.starting, ...out.notStopped].includes(id)));
   return NextResponse.json(out);

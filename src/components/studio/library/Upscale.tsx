@@ -106,7 +106,7 @@ export function UpscaleButton({ contentId, mediaUrl, isVideo }: { contentId: str
               </p>
               {/* Stop (2026-10-25): cancelled at Replicate, the credits come back. */}
               {job?.state === "running" && (
-                <button className="s-btn sm" title="Stop: your credits come back" onClick={async () => {
+                <button className="s-btn sm" title="Stop: what the AI service hasn't already billed comes back" onClick={async () => {
                   const r = await fetch(`/api/upscale?job=${job.id}`, { method: "DELETE" }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
                   if (r) finish(r); else toast.error("Couldn't stop it just now. Try again.");
                 }}><Square className="h-3 w-3" fill="currentColor" /> Stop</button>

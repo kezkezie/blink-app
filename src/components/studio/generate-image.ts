@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useWorkflowStore } from "@/app/store/useWorkflowStore";
 import { track } from "@/lib/analytics";
+import { stopMessage } from "@/lib/stop-refund";
 import { BRAND_KIT_COLUMNS, imageRequestPayload, kitFromRow, type BrandKit, type ImageRequest } from "@/lib/image-request";
 export { brandConstraintFor, type BrandKit, type ImageEngine } from "@/lib/image-request";
 
@@ -46,6 +47,10 @@ export type GenerateRequest = ImageRequest & {
 
 /** What generateBrandImages throws when it was stopped. */
 export const STOPPED = "stopped";
+/** A stop, with what came back (lib/stop-refund.ts). */
+class Stopped extends Error { constructor(readonly line: string) { super(STOPPED); } }
+/** The line to show for a stop: what came back, or nothing was charged when it stopped before the picture started. */
+export const stoppedLine = (e: unknown) => (e instanceof Stopped ? e.line : "Stopped. Nothing was charged.");
 
 const IMAGE_ASPECTS = ["1:1", "4:5", "3:4", "9:16", "16:9", "3:2", "2:3"];
 /** The closest aspect the image models accept, for a "w:h" ratio (any numbers, e.g. pixel sizes). */
@@ -87,8 +92,8 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
     const ids = started.data.ids as string[];
     const stopIfAsked = async () => {
       if (!req.signal?.aborted) return;
-      await fetch(`/api/images?ids=${ids.join(",")}`, { method: "DELETE" }).catch(() => null);
-      throw new Error(STOPPED);
+      const out = await fetch(`/api/images?ids=${ids.join(",")}`, { method: "DELETE" }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { refunded?: number; kept?: number } | null;
+      throw new Stopped(out ? stopMessage(out.refunded ?? 0, out.kept ?? 0) : "Stopped.");
     };
     let last: Array<{ id: string; state: string; text: string | null; url: string | null }> = [];
     for (let quiet = 0; ; ) {
@@ -113,7 +118,8 @@ export async function generateBrandImages(req: GenerateRequest): Promise<Generat
 
 /** A friendly message for a failed generation. */
 export function generationErrorMessage(e: unknown) {
-  if (e instanceof Error && e.message === STOPPED) return "Stopped. Your credits are back.";
+  if (e instanceof Stopped) return e.line;
+  if (e instanceof Error && e.message === STOPPED) return "Stopped.";
   const msg = e instanceof Error ? e.message : "";
   if (/upstream_auth/.test(msg)) return "The image service isn't connected right now, so nothing was made and nothing was charged. We've been told; try again a little later.";
   if (/status: 504|timed out/i.test(msg)) return "The render took longer than the connection allowed. It may still finish; check your Library in a minute before trying again.";

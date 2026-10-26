@@ -3095,7 +3095,7 @@ export function StorytellingSetup({
                     <div className="flex flex-wrap gap-2">
                       {/* Stop the render itself (2026-10-25): the scene is removed and its credits come back. */}
                       {sceneJobIds.current[scene.id] && (
-                        <button type="button" className="s-btn sm" title="Stop: the render is removed and your credits come back" onClick={async () => {
+                        <button type="button" className="s-btn sm" title="Stop: what the AI service hasn't already billed comes back" onClick={async () => {
                           const id = sceneJobIds.current[scene.id];
                           const out = await stopPosts([id]);
                           if (out?.stopped.includes(id)) { stopObservingScene(scene.id); delete sceneJobIds.current[scene.id]; updateScene(scene.id, "isGeneratingVideo", false); }

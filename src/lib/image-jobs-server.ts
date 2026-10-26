@@ -12,6 +12,7 @@ import {
 } from "@/lib/image-jobs";
 import { logAiUsage, USD_PER_CREDIT } from "@/lib/ai-usage";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
+import { STOP_COST_USD, atCostSplit, stopSplit } from "@/lib/stop-refund";
 import { kickStamp, stampImageBytes, stampImages, workspaceNeedsStamp } from "@/lib/stamp-server";
 import { stampPending } from "@/lib/stamp";
 
@@ -80,11 +81,9 @@ async function settleFirst(id: string, outcome: RouterOutcome, stoppedRefund?: {
       stampPatch = { creation_metadata: { ...meta, stamp_state: out.failed ? "failed" : "done", stamp_at: new Date().toISOString() } };
     }
     const { data: kept } = await supabaseAdmin.from("content").update({ image_urls: urls, ...stampPatch, generation_state: "succeeded", generation_status_text: null, generation_completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id).select("id");
-    // Stopped meanwhile (the post is gone) but n8n delivered and kept its charge. The stop itself
-    // refunds it now (stopImageJobs, 2026-10-25); this only covers a stop from before that.
-    if (!kept?.length && stoppedRefund && stoppedRefund.credits > 0 && !(await stopRefunded(stoppedRefund.clientId, id))) {
-      await supabaseAdmin.rpc("refund_credits", { p_client_id: stoppedRefund.clientId, p_amount: stoppedRefund.credits, p_operation: "refund", p_description: `Refund: image stopped [post:${id}]`, ...brandArg(stoppedRefund.brandId) }).then(() => {}, () => {});
-    }
+    // Stopped meanwhile (the post is gone): the stop itself settled what comes back (stopImageJobs,
+    // 2026-10-26), so nothing is refunded here; the picture n8n made is simply not kept.
+    if (!kept?.length) console.info("image arrived after a stop", id);
   } else if (outcome.kind === "refused" || outcome.kind === "no_credits") {
     await update(id, { generation_state: "failed", generation_error_code: outcome.kind, generation_status_text: outcome.message || FINAL_FAILURE(0), retry_state: "retry_available", generation_completed_at: new Date().toISOString() });
   } else if (outcome.kind === "waiting") {
@@ -195,35 +194,33 @@ async function secondTry(clientId: string, brandId: string | null, spec: ImageJo
  * from n8n (it refunds when it can't save to the removed post) or from settleFirst (when n8n
  * delivered anyway); a second try's here (charged here; its own failure refund then skips).
  */
-/** Whether a stop already gave this post's credits back (its refund is tagged with the post). */
-async function stopRefunded(clientId: string, id: string) {
-  const { data } = await supabaseAdmin.from("credit_transactions").select("id").eq("client_id", clientId).like("description", `Refund: image stopped [post:${id}]%`).limit(1);
-  return !!data?.length;
-}
-
-export async function stopImageJobs(clientId: string, ids: string[]): Promise<{ stopped: string[]; refunded: number }> {
+export async function stopImageJobs(clientId: string, ids: string[]): Promise<{ stopped: string[]; refunded: number; kept: number }> {
   const { data } = await supabaseAdmin.from("content").select("id, brand_id, generation_state, generation_attempt, billing_state, creation_metadata")
     .eq("client_id", clientId).in("id", ids).eq("generation_state", "generating");
   const stopped: string[] = [];
-  let refunded = 0;
+  let refunded = 0, keptTotal = 0;
   for (const r of data ?? []) {
     const spec = validJobSpec((r.creation_metadata as { job?: unknown } | null)?.job);
     if (!spec) continue;
     const second = (Number(r.generation_attempt) || 1) >= 2;
-    // A first try is charged by n8n as it starts, and nothing else reliably gives it back after a stop
-    // (n8n saves into the removed post without noticing; the function waiting for it may be gone),
-    // so the stop refunds it here, once (settleFirst checks for this refund).
+    // A first try is charged by n8n as it starts, and nothing else reliably settles it after a stop
+    // (n8n saves into the removed post without noticing; the function waiting for it may be gone), so
+    // the stop settles it here, once. The image service has started and can't be cancelled, so what it
+    // bills is kept and the rest comes back (lib/stop-refund.ts, 2026-10-26).
     const firstCost = IMAGE_ENGINE_REGISTRY[spec.engine === "nano-banana-2" ? "nb2" : spec.engine]?.creditCost ?? 0;
-    const credits = second ? (r.billing_state === "charged" ? rescueCredits(spec.engine) : 0) : firstCost;
+    const charged = second ? (r.billing_state === "charged" ? rescueCredits(spec.engine) : 0) : firstCost;
+    const split = second ? stopSplit(charged, STOP_COST_USD.secondTryPicture) : atCostSplit(charged);
+    const credits = split.back;
     const { data: gone } = await supabaseAdmin.from("content").delete().eq("id", r.id).eq("client_id", clientId).eq("generation_state", "generating").select("id");
     if (!gone?.length) continue;
     stopped.push(r.id as string);
+    keptTotal += split.kept;
     if (credits > 0) {
       await supabaseAdmin.rpc("refund_credits", { p_client_id: clientId, p_amount: credits, p_operation: "refund", p_description: `Refund: image stopped [post:${r.id}]`, ...brandArg(r.brand_id as string | null) }).then(() => {}, () => {});
       refunded += credits;
     }
   }
-  return { stopped, refunded };
+  return { stopped, refunded, kept: keptTotal };
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   type UpscaleImageFactor, type UpscaleVideoTarget,
 } from "@/lib/upscale";
 import { brandArg } from "@/lib/credits-meter";
+import { atCostSplit, stopMessage } from "@/lib/stop-refund";
 import { stampIfFree } from "@/lib/stamp-server";
 
 /**
@@ -203,10 +204,16 @@ export async function stopUpscale(jobId: string, clientId: string): Promise<Resu
   const { data: job } = await supabaseAdmin.from("upscale_jobs").select("*").eq("id", jobId).eq("client_id", clientId).maybeSingle();
   if (!job) return fail(404, "Upscale not found.");
   if (job.state !== "running") return { ok: true, value: view(job as Job) };
-  if (job.prediction_id) await fetch(`${REPLICATE}/predictions/${job.prediction_id}/cancel`, { method: "POST", headers: replicateHeaders(), signal: AbortSignal.timeout(15_000) }).catch(() => null);
-  const { data } = await supabaseAdmin.from("upscale_jobs").update({ state: "failed", error: `Stopped. Your ${job.credits} credits are back.`, updated_at: new Date().toISOString() })
+  // Cancelled while still queued, Replicate bills nothing: all of it comes back. Once it's running,
+  // Replicate bills it, so that share is kept and the rest comes back (lib/stop-refund.ts, 2026-10-26).
+  const cancelled = job.prediction_id
+    ? await fetch(`${REPLICATE}/predictions/${job.prediction_id}/cancel`, { method: "POST", headers: replicateHeaders(), signal: AbortSignal.timeout(15_000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { status?: string; started_at?: string | null } | null
+    : null;
+  const queued = !job.prediction_id || (!!cancelled && !cancelled.started_at);
+  const split = queued ? { back: job.credits, kept: 0 } : atCostSplit(job.credits);
+  const { data } = await supabaseAdmin.from("upscale_jobs").update({ state: "failed", error: stopMessage(split.back, split.kept), updated_at: new Date().toISOString() })
     .eq("id", job.id).eq("state", "running").select("*");
-  if (data?.length) await refund(job.client_id, job.credits, `Refund: upscale ${job.kind} stopped`, job.brand_id);
+  if (data?.length && split.back > 0) await refund(job.client_id, split.back, `Refund: upscale ${job.kind} stopped`, job.brand_id);
   const { data: now } = await supabaseAdmin.from("upscale_jobs").select("*").eq("id", job.id).single();
   return { ok: true, value: view((now as Job) ?? (job as Job)) };
 }

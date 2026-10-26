@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { generateBrandImages, generationErrorMessage, nearestImageAspect, useBrandKit } from "@/components/studio/generate-image";
 import { keyframePrompt } from "@/lib/video-inspo/keyframe";
+import { readingStoppedMessage } from "@/lib/stop-refund";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 
 /**
@@ -119,12 +120,14 @@ export function VideoInspo() {
     if (!src || !activeBrand) return;
     const ac = new AbortController();
     readStop.current = ac;
+    let sent = false;
     try {
       setStage("reading"); setProgress(0);
       const r = reading ?? await readVideo(src.url, setProgress);
       setReading(r);
       if (ac.signal.aborted) throw new Error("stopped");
       setStage("thinking");
+      sent = true;
       const res = await fetch("/api/inspo/video", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "remake", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand.id, purpose }),
@@ -135,7 +138,7 @@ export function VideoInspo() {
       setPlan(data.plan); setCredits(data.credits ?? 0); setFrames([]);
       void refresh?.();
       toast.success(`Read ${r.shots.length} shot${r.shots.length === 1 ? "" : "s"} · ${data.credits} credits`);
-    } catch (e) { if (ac.signal.aborted) toast.info("Stopped. Nothing was charged."); else toast.error(e instanceof Error ? e.message : "Couldn't read that video."); }
+    } catch (e) { if (ac.signal.aborted) toast.info(readingStoppedMessage(sent)); else toast.error(e instanceof Error ? e.message : "Couldn't read that video."); }
     finally { setStage(null); readStop.current = null; }
   }
 
@@ -158,7 +161,7 @@ export function VideoInspo() {
       void refresh?.();
       toast.success(`Motion graphics planned · ${data.credits} credits`);
       router.push("/studio/motion?from=inspo");
-    } catch (e) { if (ac.signal.aborted) toast.info("Stopped. Nothing was charged."); else toast.error(e instanceof Error ? e.message : "Couldn't make it as motion graphics."); }
+    } catch (e) { if (ac.signal.aborted) toast.info(readingStoppedMessage(true)); else toast.error(e instanceof Error ? e.message : "Couldn't make it as motion graphics."); }
     finally { setMotionBusy(false); motionStop.current = null; }
   }
 
@@ -228,7 +231,7 @@ export function VideoInspo() {
               : stage === "thinking" ? <><Loader2 className="h-4 w-4 animate-spin" /> Planning it for {name}…</>
               : <><Sparkles className="h-4 w-4" /> {plan ? "Read it again" : `Remake it for ${name}`} <span className="cost">up to 30 cr</span></>}
           </button>
-          {stage && <button className="s-btn w-full" onClick={() => readStop.current?.abort()} title="Stop: nothing is charged"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
+          {stage && <button className="s-btn w-full" onClick={() => readStop.current?.abort()} title="Stop: what the AI service hasn't already billed comes back"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
           <p className="text-[11px] text-center" style={{ color: "var(--s-mute)" }}>{balance !== null && balance < 30 ? "You need a few more credits for this: get more in Billing." : "Charged for what the reading costs, usually 5-15 credits. Your inspo is a reference only: the result uses your brand, never their logo, faces or words."}</p>
         </div>
       </div>
@@ -248,7 +251,7 @@ export function VideoInspo() {
             <div className="s-card p-4 grid gap-2" style={{ borderColor: "color-mix(in oklab, var(--s-ai) 40%, var(--s-line))" }}>
               <b className="text-[14px] flex items-center gap-2"><Sparkles className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> This one is motion graphics</b>
               <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>AI video can&apos;t spell, and it won&apos;t keep shapes clean. Make it as motion graphics instead: the same beats, layout and shapes, your words exact, in {name}&apos;s colours. Your photos go in; where none fits, it leaves a space to add one.</p>
-              {motionBusy && <button className="s-btn justify-self-start" onClick={() => motionStop.current?.abort()} title="Stop: nothing is charged"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
+              {motionBusy && <button className="s-btn justify-self-start" onClick={() => motionStop.current?.abort()} title="Stop: what the AI service hasn't already billed comes back"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}
               <button className="s-btn ai justify-self-start" disabled={motionBusy} onClick={toMotion}>{motionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clapperboard className="h-4 w-4" />} Make it as motion graphics <span className="cost">up to 30 cr</span></button>
             </div>
           )}

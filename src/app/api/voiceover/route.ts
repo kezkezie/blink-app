@@ -8,6 +8,7 @@ import { TTS_VOICES } from "@/lib/video-execution";
 import { voiceoverCredits } from "@/lib/voiceover";
 import { requestWorkspace } from "@/lib/brand-access";
 import { stopGuard } from "@/lib/stop-server";
+import { stopSplit, voiceoverUsd } from "@/lib/stop-refund";
 import { brandArg } from "@/lib/credits-meter";
 
 /**
@@ -44,8 +45,9 @@ export async function POST(request: NextRequest) {
   const { data: deducted, error: deductError } = await supabaseAdmin.rpc("deduct_credits", { p_client_id: client.id, p_amount: credits, p_operation: "debit", p_description: `Voiceover (${text.length} characters)`, ...brandArg(brandId) });
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `Not enough credits (this needs ${credits}). Get more in Billing.` }, { status: 402 });
   // Stopped in the browser or failed: the credits come back once (lib/stop-server.ts).
-  const giveBack = () => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: credits, p_operation: "credit", p_description: "Refund: voiceover failed", ...brandArg(brandId) });
-  const guard = stopGuard(request, giveBack);
+  const giveBack = (amount = credits) => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: amount, p_operation: "credit", p_description: amount === credits ? "Refund: voiceover failed" : "Refund: voiceover stopped", ...brandArg(brandId) });
+  // A stop keeps what the speech service had already cost; a failure gives all of it back.
+  const guard = stopGuard(request, (why) => { const back = why === "fail" ? credits : stopSplit(credits, voiceoverUsd(text.length)).back; return back > 0 ? giveBack(back) : Promise.resolve(); });
   let claimed = false;
   // After the result is claimed a stop can't refund it any more, so a later failure refunds here.
   const refund = () => (claimed ? giveBack().then(() => {}, () => {}) : guard.fail());
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
   try {
     const audio = await openAiSpeech(text, voice);
     // Stopped in the editor while it was being recorded: not saved, and the credits came back (2026-10-25).
-    if (!(claimed = guard.done())) return NextResponse.json({ error: "Stopped. Your credits were refunded." }, { status: 499 });
+    if (!(claimed = guard.done())) return NextResponse.json({ error: "Stopped." }, { status: 499 });
     const path = `videos/${client.id}/voiceover_${Date.now()}.mp3`;
     const { error: upErr } = await supabaseAdmin.storage.from("assets").upload(path, new Uint8Array(audio), { contentType: "audio/mpeg" });
     if (upErr) throw new Error("upload");

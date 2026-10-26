@@ -10,6 +10,8 @@ import { requestWorkspace } from "@/lib/brand-access";
 import { logAiUsage } from "@/lib/ai-usage";
 import { jsonFrom } from "@/lib/brand-research";
 import { MOTION_SYSTEM, motionUserPrompt, validateMotionSpec, type MotionShape } from "@/lib/motion/spec";
+import { stopGuard } from "@/lib/stop-server";
+import { readingStopCredits } from "@/lib/stop-refund";
 import { motionContext, placePictures, shapeOf } from "@/lib/motion/context-server";
 
 /**
@@ -102,6 +104,12 @@ export async function POST(request: NextRequest) {
     }),
   ];
   const model = assistantModelFor("chat", provider.name);
+  // A reading is charged when it's done. Stopped part-way, it still covers what the AI had already
+  // cost (lib/stop-refund.ts, 2026-10-26: stops mustn't cost Kezie); failed, it costs nothing.
+  const guard = stopGuard(request, (why) => {
+    const kept = readingStopCredits(cap);
+    return why === "stop" && kept > 0 ? chargeCredits(client.id, kept, mode === "motion" ? "Motion Inspo: stopped (the AI had already read it)" : "Video Inspo: stopped (the AI had already read it)", brandId) : Promise.resolve();
+  });
   const res = await claudeFetch(provider, {
     method: "POST",
     headers: { ...provider.headers, "Content-Type": "application/json" },
@@ -118,9 +126,9 @@ export async function POST(request: NextRequest) {
   const result = mode === "edit" ? validateRecipe(raw, duration) : mode === "motion" ? motion : validatePlan(raw, shots.length);
   console.info("video inspo usage", JSON.stringify({ client: client.id, mode, shots: shots.length, model, ok: !!result, usd: usd === null ? null : Number(usd.toFixed(4)) }));
   logAiUsage({ feature: "video_inspo", provider: provider.name, model, clientId: client.id, userId: auth.value, brandId, usage: { input: out?.usage?.input_tokens, output: out?.usage?.output_tokens }, usd, credits: res?.ok && result && !request.signal.aborted ? meteredCredits(usd, cap, mode === "edit" ? 2 : 3) : 0, ok: !!result, meta: { mode, shots: shots.length } });
-  if (!res?.ok || !result) return NextResponse.json({ error: "Couldn't read that video this time. Nothing was charged; try again." }, { status: 502 });
-  // Stopped while the answer was on its way: nothing is charged.
-  if (request.signal.aborted) return NextResponse.json({ error: "Stopped. Nothing was charged." }, { status: 499 });
+  if (!res?.ok || !result) { await guard.fail(); return NextResponse.json({ error: "Couldn't read that video this time. Nothing was charged; try again." }, { status: 502 }); }
+  // Stopped while the answer was on its way: the stop already charged what it cost.
+  if (!guard.done()) return NextResponse.json({ error: "Stopped." }, { status: 499 });
 
   const credits = meteredCredits(usd, cap, mode === "edit" ? 2 : 3);
   if (!(await chargeCredits(client.id, credits, mode === "edit" ? "Video Inspo: read the edit" : mode === "motion" ? "Motion Inspo: copy a motion graphic" : "Video Inspo: remake for your brand", brandId))) console.error("video inspo: charge failed", client.id, credits);

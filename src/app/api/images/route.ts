@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ids: started.value.ids }, { status: 202 });
 }
 
-/** DELETE ?ids=a,b: stop images still being made (removed, credits back). The caller must be able to write to each brand. */
+/** DELETE ?ids=a,b: stop images still being made (removed; what the image service hasn't billed comes back). The caller must be able to write to each brand. */
 export async function DELETE(request: NextRequest) {
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -38,9 +38,9 @@ export async function DELETE(request: NextRequest) {
     if (!ws || ws.clientId !== r.client_id) continue;
     byWorkspace.set(ws.clientId, [...(byWorkspace.get(ws.clientId) ?? []), r.id as string]);
   }
-  let stopped: string[] = [], refunded = 0;
-  for (const [clientId, list] of byWorkspace) { const r = await stopImageJobs(clientId, list); stopped = [...stopped, ...r.stopped]; refunded += r.refunded; }
-  return NextResponse.json({ stopped, refunded });
+  let stopped: string[] = [], refunded = 0, kept = 0;
+  for (const [clientId, list] of byWorkspace) { const r = await stopImageJobs(clientId, list); stopped = [...stopped, ...r.stopped]; refunded += r.refunded; kept += r.kept; }
+  return NextResponse.json({ stopped, refunded, kept });
 }
 
 export async function GET(request: NextRequest) {

@@ -15,7 +15,7 @@ import { GENERATE_LOOKS, buildGeneratePrompt, lookForVibes, routerTopic, type Ge
 import type { BrandResearch } from "@/lib/brand-research";
 import type { VisualRefs } from "@/lib/visual-refs";
 import { thumbUrl } from "./media";
-import { generateBrandImages, generationErrorMessage, useBrandKit, type GeneratedImage, type ImageEngine } from "./generate-image";
+import { generateBrandImages, generationErrorMessage, stoppedLine, useBrandKit, type GeneratedImage, type ImageEngine } from "./generate-image";
 import { SensitiveGuide } from "./SensitiveGuide";
 import { shortOfCredits, useCredits } from "./hooks";
 import { useKept } from "@/lib/drafts";
@@ -268,7 +268,7 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
       setDesignNote(note);
       toast.success(`${saved.length} image${saved.length === 1 ? "" : "s"} made and saved to your Library.`);
     } catch (e) {
-      if (ac.signal.aborted) { toast.success("Stopped. Your credits are back."); return; }
+      if (ac.signal.aborted) { toast.success(stoppedLine(e), { duration: 8000 }); return; }
       const msg = generationErrorMessage(e);
       // A refused picture of a medical or intimate subject: say why and what to try (2026-10-14).
       const sensitive = SENSITIVE.test(`${text} ${kit.description ?? ""}`) && /could not make|couldn't make|refused|safety|internal error/i.test(msg);
@@ -410,7 +410,7 @@ export function StudioGenerate({ initialIdea, autoIdeas, autoRun }: { initialIde
             <button className="s-btn primary lg flex-1" disabled={!ready || busy || !kit} onClick={() => void generate()}>
               {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {phase === "refs" ? "Studying references…" : phase === "design" ? "Designing it…" : progress ? `${progress}…` : "Making it…"} {elapsed > 0 && `${elapsed} s`}</> : <><Sparkles className="h-4 w-4" /> Generate <span className="cost">{cost} cr</span></>}
             </button>
-            {busy && <button className="s-btn lg" onClick={() => stopRef.current?.abort()} aria-label="Stop" title="Stop: it's removed and your credits come back"><Square className="h-3.5 w-3.5" fill="currentColor" /> Stop</button>}
+            {busy && <button className="s-btn lg" onClick={() => stopRef.current?.abort()} aria-label="Stop" title="Stop: what the AI service hasn't already billed comes back"><Square className="h-3.5 w-3.5" fill="currentColor" /> Stop</button>}
             </div>
             {/* What it learned from: reference pictures from the brand's category (2026-10-16). */}
             {studying ? (
