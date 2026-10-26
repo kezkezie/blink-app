@@ -8,7 +8,7 @@ import { brandArg } from "@/lib/credits-meter";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
 import { keptSiteRefs } from "@/lib/sites/site-refs-server";
-import { CODE_SYSTEM, MAX_INSPIRATION, SITE_LOOKS, SITE_PAGE_CREDITS, checkHtml, codeUserPrompt, designLetter, extractHtml, fillImages, lookOf, pageTitle } from "@/lib/sites/code";
+import { CODE_SYSTEM, MATCH_NEEDS_PICKS, MAX_INSPIRATION, SITE_LOOKS, SITE_PAGE_CREDITS, checkHtml, codeUserPrompt, designLetter, extractHtml, fillImages, lookOf, pageTitle } from "@/lib/sites/code";
 import { FILM_PROMPT, addFilm, filmGlimpses, filmUrls, parseFilm } from "@/lib/sites/scroll-film";
 import { parseInspirationImageUrl, verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { logAiUsage } from "@/lib/ai-usage";
@@ -67,6 +67,9 @@ export async function POST(request: NextRequest) {
     if (!film || !first?.ok) return NextResponse.json({ error: "That scroll film can't be used. Make it again from the video." }, { status: 400 });
   }
 
+  const refs = await keptSiteRefs(brandId, client.id).catch(() => null);
+  if (look === "match" && !inspiration.length && !refs?.patterns) return NextResponse.json({ error: MATCH_NEEDS_PICKS }, { status: 400 });
+
   let provider;
   try { provider = assistantProvider(); } catch { return NextResponse.json({ error: "The website studio isn't available right now." }, { status: 503 }); }
   if (provider.name !== "anthropic") return NextResponse.json({ error: "The website studio isn't available right now." }, { status: 503 });
@@ -78,7 +81,6 @@ export async function POST(request: NextRequest) {
   if (!isDeductionSuccessful(deducted, deductError)) return NextResponse.json({ error: `A page is ${SITE_PAGE_CREDITS} credits and your balance is lower. Get more in Billing.` }, { status: 402 });
   const refund = (why: string) => supabaseAdmin.rpc("refund_credits", { p_client_id: client.id, p_amount: SITE_PAGE_CREDITS, p_operation: "refund", p_description: `Refund: ${why}`, ...brandArg(brandId) }).then(() => {}, () => {});
 
-  const refs = await keptSiteRefs(brandId, client.id).catch(() => null);
   const images = brain.images.slice(0, MAX_PICTURES);
   const prompt = (designs: boolean) => codeUserPrompt({
     brand: brain, look, brief, patterns: refs?.patterns ?? null,

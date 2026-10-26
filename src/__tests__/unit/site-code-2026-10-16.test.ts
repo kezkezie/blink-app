@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  PAGE_CSP, PUBLISHED_CSP, SLUG, applyEdits, brandLinks, checkHtml, cleanSlug, codeUserPrompt, downloadName, extractHtml, fillImages, lookOf, pageTitle, previewDoc, webImage,
+  MATCH_NEEDS_PICKS, PAGE_CSP, PUBLISHED_CSP, SITE_LOOKS, SLUG, applyEdits, brandLinks, checkHtml, cleanSlug, codeUserPrompt, downloadName, extractHtml, fillImages, lookOf, pageTitle, previewDoc, webImage,
   type BrandForCode,
 } from "@/lib/sites/code";
 import { MAX_SITES_YOU_LIKE, cleanSiteAddress, cleanSiteList, validatePatterns, validateSiteRefs } from "@/lib/sites/site-refs";
@@ -96,6 +96,23 @@ describe("website studio pages", () => {
     expect(SLUG.test("ab")).toBe(false);
     expect(downloadName("Kasi Kicks")).toBe("kasi-kicks.html");
     expect(downloadName("!!!")).toBe("website.html");
+  });
+});
+
+describe("rebuilding a design the owner likes (2026-10-27: \"the exact website but with the brand colors and content\")", () => {
+  it("tells Claude to rebuild it section by section, with the brand's own colours, words and pictures", () => {
+    const text = codeUserPrompt({ brand, look: "match", inspiration: 3 });
+    expect(text).toContain("Designs A to C");
+    expect(text).toContain("the same sections in the same order");
+    expect(text).toContain("the same hero composition");
+    expect(text).toContain("Never copy their text, logos, brand names, prices or photos");
+    expect(text).toContain("the designs win on layout, composition and section order");
+    expect(codeUserPrompt({ brand, look: "minimal" })).toContain("Look: Minimal:");
+  });
+  it("offers Like my picks first, which needs something to follow", () => {
+    expect(SITE_LOOKS[0]).toMatchObject({ id: "match", label: "Like my picks" });
+    expect(lookOf("match")).toBe("match");
+    expect(MATCH_NEEDS_PICKS).toMatch(/add one first/);
   });
 });
 

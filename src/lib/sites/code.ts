@@ -16,8 +16,12 @@ export const SITE_CHANGE_CREDITS = 6;
 export const MAX_LOOKS = 3;
 export const MAX_HTML = 400_000;
 
-export type SiteLook = "cinematic" | "editorial" | "bold" | "minimal" | "warm";
+export type SiteLook = "match" | "cinematic" | "editorial" | "bold" | "minimal" | "warm";
 export const SITE_LOOKS: Array<{ id: SiteLook; label: string; line: string; direction: string }> = [
+  // Kezie, 2026-10-27: "see if it can make the exact website but with the brand colors and content".
+  // No style of its own: the designs and websites the owner likes decide everything.
+  { id: "match", label: "Like my picks", line: "Rebuilds the designs and sites you like",
+    direction: "Like my picks: no look of its own. Rebuild the designs the owner likes as exactly as you can; where they don't decide something, keep it clean and modern." },
   { id: "cinematic", label: "Cinematic", line: "Dark, full-bleed, scroll motion",
     direction: "Cinematic: a dark page; a full-bleed hero (the best photo, or giant type over a deep gradient) that scales or fades as you scroll; sections that reveal as they enter (GSAP ScrollTrigger: fade and rise, image scale-in, words arriving line by line); one pinned moment where a photo or a line of type is held while the page scrolls past; film-like pacing with lots of room." },
   { id: "editorial", label: "Editorial", line: "Light, big serif type, magazine",
@@ -30,6 +34,8 @@ export const SITE_LOOKS: Array<{ id: SiteLook; label: string; line: string; dire
     direction: "Warm: soft background tints from the brand colours, rounded cards and pill buttons, friendly rounded type, photos in rounded frames with a slight tilt, hand-drawn style inline SVG accents, gentle bouncy motion." },
 ];
 export const lookOf = (v: unknown): SiteLook | null => (SITE_LOOKS.some((l) => l.id === v) ? (v as SiteLook) : null);
+/** "Like my picks" needs something to follow: a design or a website the owner likes. */
+export const MATCH_NEEDS_PICKS = "Like my picks rebuilds the designs or websites you like: add one first.";
 
 /** Scripts a page may load (pinned versions, our CSP allows only these hosts). */
 export const GSAP = ["https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/gsap.min.js", "https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/ScrollTrigger.min.js"];
@@ -47,7 +53,7 @@ Tech:
 Craft:
 - Complete at rest: every word and picture is in the markup and visible without JavaScript. Motion only animates FROM that state (gsap.from inside ScrollTrigger), and does nothing when prefers-reduced-motion is set. Call ScrollTrigger.refresh() after document.fonts.ready.
 - Responsive and designed at 390px and at 1440px: fluid type with clamp(), no horizontal scroll (overflow-x: clip on the page), tap targets at least 44px, a simple header (logo or name, 3 to 5 anchor links, one button) that collapses on phones.
-- A clear hierarchy: the hero says what the brand gives in at most 8 words, with one main button. Then the sections that sell THIS kind of business, in the best order, ending with a contact or visit section and a small footer.
+- A clear hierarchy: the hero says what the brand gives in at most 8 words, with one main button. Then the sections that sell THIS kind of business, in the best order, ending with a contact or visit section and a small footer. When the owner gives designs to follow, their sections, order and composition come first.
 - The brand's colours exactly as given, used with intent; body text at least 4.5:1 contrast on its background. The brand's fonts (headings and body).
 - Copy in the brand's voice, short and specific. Use ONLY the facts given: the brief, the brand facts, the products, the links, and words printed on the brand's own pictures. Never invent prices, dates or launch days, phone numbers, addresses, opening hours, stock levels, reviews, testimonials, statistics, awards or client names; leave a thing out when it isn't given.
 - <title>, meta description, meta viewport, theme-color, Open Graph tags (og:image is the hero picture), alt text on every picture.
@@ -94,7 +100,12 @@ export const MAX_INSPIRATION = 4;
 export const designLetter = (n: number) => String.fromCharCode(65 + n);
 export function inspirationPrompt(count: number) {
   const names = count > 1 ? `Designs A to ${designLetter(count - 1)}` : "Design A";
-  return `${names}, shown above after the brand's pictures, ${count > 1 ? "are designs" : "is a design"} the owner loves. Follow ${count > 1 ? "them" : "it"} closely: the layout and grid, section order and rhythm, type scale, weight and pairing, spacing, colour blocking, picture crops and treatments, buttons, and the motion feel. Make it the brand's own: the brand's colours and fonts (unless the owner's brief says otherwise), the brand's words and the brand's pictures. Never copy their text, logos, brand names, prices or photos, and never put them on the page (they are not {{img:N}} pictures).`;
+  return `${names}, shown above after the brand's pictures, ${count > 1 ? "are designs" : "is a design"} the owner loves (often screenshots of one website, top to bottom). Rebuild ${count > 1 ? "them" : "it"} for this brand as closely as you can, section by section:
+- the same sections in the same order;
+- the same hero composition: where the photo sits and how big it is (full-bleed or framed), where the headline, line and buttons sit, and their size and style;
+- the same header layout, grids and column counts, card shapes, picture crops and where labels sit on them;
+- the same spacing rhythm, type scale and weights, light or dark, and colour blocking.
+Make it the brand's own: the brand's colours and fonts (unless the owner's brief says otherwise), the brand's words and the brand's pictures (reuse a picture, or use colour and type, when the design shows more photos than the brand has; leave out a part the brand has nothing for). Never copy their text, logos, brand names, prices or photos, and never put them on the page (they are not {{img:N}} pictures).`;
 }
 
 export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?: string; patterns?: string | null; captions?: string[]; inspiration?: number; film?: string }) {
@@ -111,7 +122,7 @@ export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?:
     links.length ? `Real links:\n${links.join("\n")}` : "Real links: none on file, so the buttons go to #sections.",
     i.captions?.length ? `Past post captions (for the voice):\n${i.captions.slice(0, 8).map((c) => `- ${c}`).join("\n")}` : "",
     i.patterns ? `What the websites the owner likes do (follow their patterns, never copy their words, names or pictures):\n${i.patterns}` : "",
-    `Look: ${look.direction}`,
+    i.inspiration ? `Look (only the mood where the designs below don't decide; the designs win on layout, composition and section order): ${look.direction}` : `Look: ${look.direction}`,
     i.inspiration ? inspirationPrompt(Math.min(MAX_INSPIRATION, i.inspiration)) : "",
     i.film ?? "",
     i.brief ? `The owner's brief: ${i.brief}` : "",

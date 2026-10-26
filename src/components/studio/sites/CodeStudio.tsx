@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, Code2, Copy, Download, ExternalLink, Eye, Globe, LayoutList, Laptop, Loader2, Maximize2, RefreshCw, Smartphone, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useBrandStore } from "@/app/store/useBrandStore";
-import { MAX_LOOKS, SITE_CHANGE_CREDITS, SITE_LOOKS, SITE_PAGE_CREDITS, cleanSlug, downloadName, type SiteLook } from "@/lib/sites/code";
+import { MATCH_NEEDS_PICKS, MAX_LOOKS, SITE_CHANGE_CREDITS, SITE_LOOKS, SITE_PAGE_CREDITS, cleanSlug, downloadName, type SiteLook } from "@/lib/sites/code";
 import type { FilmInput } from "@/lib/sites/scroll-film";
 import { useKept } from "@/lib/drafts";
 import { useClient } from "@/hooks/useClient";
@@ -130,6 +130,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
 
   async function write() {
     if (!brandId || !looks.length || filmBusy || studying) return;
+    if (looks.includes("match") && !inspiration.length && !refs?.sites.length) { toast(MATCH_NEEDS_PICKS); return; }
     const text = brief.trim();
     const extras: Extras = { inspiration, film };
     const started: Job[] = looks.map((look) => ({ key: `${look}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, look, code: "", text, extras }));
@@ -184,6 +185,8 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
 
   const n = looks.length;
   const sitesLiked = refs?.sites.length ?? 0;
+  const hasPicks = inspiration.length > 0 || sitesLiked > 0;
+  const matchWaits = looks.includes("match") && !hasPicks;
   const uses = [inspiration.length ? `${inspiration.length} design${inspiration.length === 1 ? "" : "s"} you like` : "", sitesLiked ? `${sitesLiked} website${sitesLiked === 1 ? "" : "s"} you like` : "", film ? "your scroll film" : ""].filter(Boolean);
   return (
     <div className="max-w-[1180px] mx-auto pt-2 md:pt-6 pb-10">
@@ -200,13 +203,15 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
         </label>
         <div>
           <span className="s-label">Looks (one page each, up to {MAX_LOOKS})</span>
-          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
             {SITE_LOOKS.map((l) => {
               const on = looks.includes(l.id);
+              const waits = l.id === "match" && !hasPicks;
               return (
-                <button key={l.id} type="button" aria-pressed={on} className="rounded-xl p-3 text-left" style={{ background: on ? "color-mix(in oklab, var(--s-accent) 10%, var(--s-bg))" : "var(--s-bg)", border: `1px solid ${on ? "var(--s-accent)" : "var(--s-line)"}` }}
+                <button key={l.id} type="button" aria-pressed={on} className="rounded-xl p-3 text-left" style={{ background: on ? "color-mix(in oklab, var(--s-accent) 10%, var(--s-bg))" : "var(--s-bg)", border: `1px solid ${on ? "var(--s-accent)" : "var(--s-line)"}`, opacity: waits && !on ? 0.6 : 1 }}
+                  title={waits ? MATCH_NEEDS_PICKS : undefined}
                   onClick={() => setLooks((cur) => (on ? cur.filter((x) => x !== l.id) : cur.length >= MAX_LOOKS ? [...cur.slice(1), l.id] : [...cur, l.id]))}>
-                  <b className="text-[13px] block">{l.label}</b><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{l.line}</span>
+                  <b className="text-[13px] block">{l.label}</b><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{waits ? "Add a design or website you like below" : l.line}</span>
                 </button>
               );
             })}
@@ -220,7 +225,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
         </div>
         <SitesYouLikeBox key={activeBrand.id} brandId={activeBrand.id} refs={refs} setRefs={setRefs} setBusy={setStudying} />
         <div className="flex flex-wrap items-center gap-3">
-          <button className="s-btn primary" disabled={!n || studying || filmBusy} onClick={() => void write()}>
+          <button className="s-btn primary" disabled={!n || studying || filmBusy || matchWaits} title={matchWaits ? MATCH_NEEDS_PICKS : undefined} onClick={() => void write()}>
             {studying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {studying ? "Studying your websites…" : `Write ${n === 1 ? "the page" : `${n} pages`}`} <span className="cost">{n * SITE_PAGE_CREDITS} cr</span>
           </button>
