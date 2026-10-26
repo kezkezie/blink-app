@@ -3,7 +3,7 @@ import {
   MATCH_NEEDS_PICKS, PAGE_CSP, PUBLISHED_CSP, SITE_LOOKS, SLUG, applyEdits, brandLinks, checkHtml, cleanSlug, codeUserPrompt, downloadName, extractHtml, fillImages, lookOf, pageTitle, previewDoc, webImage,
   type BrandForCode,
 } from "@/lib/sites/code";
-import { MAX_SITES_YOU_LIKE, cleanSiteAddress, cleanSiteList, validatePatterns, validateSiteRefs } from "@/lib/sites/site-refs";
+import { MAX_DESIGNS, MAX_SITES_YOU_LIKE, cleanSiteAddress, cleanSiteList, designsToFollow, validatePatterns, validateSiteRefs } from "@/lib/sites/site-refs";
 
 /** Website studio (2026-10-16): one-file pages, edit blocks, sandboxed preview, website research. */
 const page = `<!doctype html>
@@ -108,6 +108,14 @@ describe("rebuilding a design the owner likes (2026-10-27: \"the exact website b
     expect(text).toContain("Never copy their text, logos, brand names, prices or photos");
     expect(text).toContain("the designs win on layout, composition and section order");
     expect(codeUserPrompt({ brand, look: "minimal" })).toContain("Look: Minimal:");
+  });
+  it("shows Claude the owner's uploads, then the liked sites' screens (all of the first site's)", () => {
+    const shot = (h: string, n: number) => `https://x.supabase.co/storage/v1/object/public/assets/images/c/site_like_${h}_${n}.jpg`;
+    const refs = { sites: [{ host: "on.com", shots: [shot("on", 0), shot("on", 1), shot("on", 2)] }, { host: "kith.com", shots: [shot("kith", 0), shot("kith", 1)] }, { host: "x.com" }] } as never;
+    expect(designsToFollow([], refs)).toEqual([shot("on", 0), shot("on", 1), shot("on", 2), shot("kith", 0)]);
+    expect(designsToFollow(["https://a/1.jpg", "https://a/2.jpg", "https://a/3.jpg"], refs)).toHaveLength(MAX_DESIGNS);
+    expect(designsToFollow(["https://a/1.jpg"], null)).toEqual(["https://a/1.jpg"]);
+    expect(validateSiteRefs({ sites: [{ url: "https://on.com/", host: "on.com", shots: [shot("on", 0), "javascript:x"] }], patterns: "- a", picked: true })?.sites[0].shots).toEqual([shot("on", 0)]);
   });
   it("offers Like my picks first, which needs something to follow", () => {
     expect(SITE_LOOKS[0]).toMatchObject({ id: "match", label: "Like my picks" });

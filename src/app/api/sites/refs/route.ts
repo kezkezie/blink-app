@@ -11,7 +11,7 @@ import { keptSiteRefs, studySites } from "@/lib/sites/site-refs-server";
  * POST { brandId, sites: ["stripe.com", ...] }: study that list (it replaces the last one; empty
  * clears it). No credits, like the picture references; rate-limited with them.
  */
-export const maxDuration = 120;
+export const maxDuration = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: NextRequest) {

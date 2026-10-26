@@ -5,11 +5,13 @@ import { jsonFrom, validateResearch } from "@/lib/brand-research";
 import { extractInspiration } from "./inspiration";
 import { PATTERNS_SYSTEM, patternsPrompt, validatePatterns, validateSiteRefs, type SiteRefs } from "./site-refs";
 import { logAiUsage } from "@/lib/ai-usage";
+import { dropShots, shootSites } from "./site-shots-server";
 
 /**
  * Websites you like, server side (lib/sites/site-refs.ts). The owner's sites are opened SSRF-safe,
- * their shapes read, and one Claude call writes the patterns. Kept on the brand until the list
- * changes; no credits, like the picture references (a few cents a study).
+ * their shapes read, and one Claude call writes the patterns; each new site's first screens are
+ * photographed (site-shots-server.ts) so the page writer can rebuild its layout. Kept on the brand
+ * until the list changes; no credits, like the picture references (a few cents a study).
  */
 const UA = "Mozilla/5.0 (compatible; BlinkSpotBot/1.0; +https://www.blinkspot.io)";
 
@@ -25,11 +27,17 @@ export async function keptSiteRefs(brandId: string, clientId: string): Promise<S
 /** Study the owner's sites (already cleaned) and keep the result on the brand. An empty list clears it. */
 export async function studySites(brandId: string, clientId: string, sites: Array<{ url: string; host: string }>): Promise<SiteRefsOutcome> {
   const { data: brand } = await supabaseAdmin.from("brand_profiles")
-    .select("brand_name, company_name, industry, research")
+    .select("brand_name, company_name, industry, research, site_refs")
     .eq("id", brandId).eq("client_id", clientId).maybeSingle();
   if (!brand) return { ok: false, status: 404, error: "Brand not found." };
+  // Screens already taken are kept for the sites still on the list; the others' leave storage.
+  const before = validateSiteRefs(brand.site_refs);
+  const hadShots = new Map((before?.picked ? before.sites : []).map((s) => [s.host, s.shots ?? []]));
+  const keptHosts = new Set(sites.map((s) => s.host));
+  const dropped = [...hadShots].filter(([host]) => !keptHosts.has(host)).flatMap(([, urls]) => urls);
   if (!sites.length) {
     await supabaseAdmin.from("brand_profiles").update({ site_refs: null, site_refs_at: null }).eq("id", brandId).eq("client_id", clientId);
+    await dropShots(dropped);
     return { ok: true, value: { sites: [], patterns: "", at: new Date().toISOString(), picked: true }, skipped: [] };
   }
 
@@ -43,6 +51,8 @@ export async function studySites(brandId: string, clientId: string, sites: Array
   const shapes = opened.filter((x): x is NonNullable<typeof x> => !!x);
   const skipped = sites.filter((_, n) => !opened[n]).map((s) => s.host);
   if (!shapes.length) return { ok: false, status: 422, error: `Couldn't open ${skipped.join(", ")}. Check the address, or try another site (some sites block visitors like us).` };
+  const toShoot = shapes.filter((x) => !hadShots.get(x.host)?.length).map((x) => ({ url: x.ref.url, host: x.host }));
+  const shot = await shootSites(toShoot, clientId);
 
   let provider;
   try { provider = assistantProvider(); } catch { return { ok: false, status: 503, error: "Studying sites isn't available right now." }; }
@@ -59,9 +69,13 @@ export async function studySites(brandId: string, clientId: string, sites: Array
   logAiUsage({ feature: "site_refs", provider: provider.name, model, brandId, usd, ok: !!patterns, meta: { picked: sites.length, opened: shapes.length } });
   if (!patterns) return { ok: false, status: 502, error: "Couldn't read those websites this time. Try again." };
   const value: SiteRefs = {
-    sites: shapes.map(({ ref, shape, host }) => ({ ...ref, host, dark: shape.dark, fonts: shape.fonts })),
+    sites: shapes.map(({ ref, shape, host }) => {
+      const shots = hadShots.get(host)?.length ? hadShots.get(host)! : shot.get(host) ?? [];
+      return { ...ref, host, dark: shape.dark, fonts: shape.fonts, ...(shots.length ? { shots } : {}) };
+    }),
     patterns, at: new Date().toISOString(), picked: true,
   };
   await supabaseAdmin.from("brand_profiles").update({ site_refs: value, site_refs_at: value.at }).eq("id", brandId).eq("client_id", clientId);
+  await dropShots(dropped);
   return { ok: true, value, skipped };
 }

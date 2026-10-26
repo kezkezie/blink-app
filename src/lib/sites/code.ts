@@ -10,6 +10,7 @@
 import type { SiteContact, SiteImage, SiteProduct, SiteTheme } from "./spec";
 import { whatsappLink } from "./spec";
 import { APP_ORIGIN, throughOurFonts } from "@/lib/google-fonts";
+import { MAX_DESIGNS } from "./site-refs";
 
 export const SITE_PAGE_CREDITS = 30;
 export const SITE_CHANGE_CREDITS = 6;
@@ -123,7 +124,7 @@ export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?:
     i.captions?.length ? `Past post captions (for the voice):\n${i.captions.slice(0, 8).map((c) => `- ${c}`).join("\n")}` : "",
     i.patterns ? `What the websites the owner likes do (follow their patterns, never copy their words, names or pictures):\n${i.patterns}` : "",
     i.inspiration ? `Look (only the mood where the designs below don't decide; the designs win on layout, composition and section order): ${look.direction}` : `Look: ${look.direction}`,
-    i.inspiration ? inspirationPrompt(Math.min(MAX_INSPIRATION, i.inspiration)) : "",
+    i.inspiration ? inspirationPrompt(Math.min(MAX_DESIGNS, i.inspiration)) : "",
     i.film ?? "",
     i.brief ? `The owner's brief: ${i.brief}` : "",
     "Write the page.",

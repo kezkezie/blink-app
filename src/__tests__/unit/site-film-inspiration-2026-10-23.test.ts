@@ -118,7 +118,8 @@ describe("designs you like (2026-10-23)", () => {
     expect(full).toMatch(/Designs A to B/);
     expect(full).toContain("data-scroll-film");
     expect(full.indexOf("Designs A to B")).toBeLessThan(full.indexOf("The owner's brief"));
-    expect(codeUserPrompt({ brand, look: "bold", inspiration: 9 })).toMatch(/Designs A to D/);
+    // Up to six: the owner's uploads plus the liked websites' screens (2026-10-27).
+    expect(codeUserPrompt({ brand, look: "bold", inspiration: 9 })).toMatch(/Designs A to F/);
   });
 
   it("tells the change writer to keep a scroll film", () => {

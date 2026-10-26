@@ -13,8 +13,9 @@ const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
   // The stamp on free accounts' videos (2026-10-25) runs ffmpeg in /api/stamp only: the binary is
   // loaded from node_modules at run time and shipped with that one function.
-  serverExternalPackages: ["ffmpeg-static"],
-  outputFileTracingIncludes: { "/api/stamp": ["./node_modules/ffmpeg-static/ffmpeg"] },
+  serverExternalPackages: ["ffmpeg-static", "@sparticuz/chromium", "puppeteer-core"],
+  // The headless Chrome that photographs websites people like (lib/sites/site-shots-server.ts).
+  outputFileTracingIncludes: { "/api/stamp": ["./node_modules/ffmpeg-static/ffmpeg"], "/api/sites/refs": ["./node_modules/@sparticuz/chromium/bin/**"] },
   allowedDevOrigins: ["http://72.61.194.197:3001", "http://72.61.194.197:3000"],
   images: {
     remotePatterns: [

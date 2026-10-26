@@ -11,7 +11,8 @@ import type { Inspiration } from "./inspiration";
 
 export type SiteRef = { url: string; name: string; why: string };
 /** picked: chosen by the owner (only these are shown and followed). */
-export type SiteRefs = { sites: Array<SiteRef & { host: string; dark: boolean | null; fonts: string[] }>; patterns: string; at: string; picked?: boolean };
+/** shots: the site's first screens in the owner's storage (lib/sites/site-shots-server.ts). */
+export type SiteRefs = { sites: Array<SiteRef & { host: string; dark: boolean | null; fonts: string[]; shots?: string[] }>; patterns: string; at: string; picked?: boolean };
 
 export const MAX_SITES_YOU_LIKE = 5;
 
@@ -72,6 +73,16 @@ export function patternsPrompt(name: string, industry: string | null | undefined
   ].join("\n\n");
 }
 
+/**
+ * What the page writer looks at, in order: the designs the owner uploaded, then the liked sites'
+ * screens (all of the first site's, the first screen of the others), at most MAX_DESIGNS.
+ */
+export const MAX_DESIGNS = 6;
+export function designsToFollow(uploaded: string[], refs: Pick<SiteRefs, "sites"> | null): string[] {
+  const shots = (refs?.sites ?? []).flatMap((s, n) => (s.shots ?? []).slice(0, n === 0 ? 3 : 1));
+  return [...new Set([...uploaded, ...shots])].slice(0, MAX_DESIGNS);
+}
+
 /** A line no longer than max, ending on a whole word ("…" when cut): "our own photogra" read badly. */
 const wholeWords = (l: string, max: number) => (l.length <= max ? l : `${l.slice(0, l.lastIndexOf(" ", max - 1)).replace(/[,;:]$/, "")}…`);
 
@@ -91,7 +102,8 @@ export function validateSiteRefs(raw: unknown): SiteRefs | null {
     if (!s || typeof s !== "object") return [];
     const x = s as Record<string, unknown>;
     if (typeof x.url !== "string" || !x.url.startsWith("https://")) return [];
-    return [{ url: x.url, name: str(x.name, 60), why: str(x.why, 240), host: str(x.host, 80), dark: typeof x.dark === "boolean" ? x.dark : null, fonts: Array.isArray(x.fonts) ? x.fonts.map(String).slice(0, 4) : [] }];
+    const shots = Array.isArray(x.shots) ? x.shots.filter((u): u is string => typeof u === "string" && u.startsWith("https://")).slice(0, 3) : [];
+    return [{ url: x.url, name: str(x.name, 60), why: str(x.why, 240), host: str(x.host, 80), dark: typeof x.dark === "boolean" ? x.dark : null, fonts: Array.isArray(x.fonts) ? x.fonts.map(String).slice(0, 4) : [], ...(shots.length ? { shots } : {}) }];
   }) : [];
   return patterns && sites.length ? { sites, patterns, at: typeof r.at === "string" ? r.at : new Date(0).toISOString(), ...(r.picked === true ? { picked: true } : {}) } : null;
 }

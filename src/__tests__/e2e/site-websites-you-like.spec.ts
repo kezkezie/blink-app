@@ -27,7 +27,8 @@ test("the owner picks the websites the page follows", async ({ page }) => {
     const old = { sites: [{ url: "https://flux-academy.com/", name: "Flux", why: "", host: "flux-academy.com", dark: true, fonts: [] }], patterns: "- Old automatic pattern one here\n- two\n- three", at: new Date().toISOString() };
     const { data: b } = await sb.from("brand_profiles").insert({ client_id: clientId, brand_name: "Kasi Kicks", industry: "Streetwear sneakers", is_active: true, site_refs: old, site_refs_at: old.at }).select("*").single();
     const brandId = b!.id as string;
-    const refs = async () => (await sb.from("brand_profiles").select("site_refs").eq("id", brandId).single()).data?.site_refs as { picked?: boolean; sites: Array<{ host: string }>; patterns: string } | null;
+    const refs = async () => (await sb.from("brand_profiles").select("site_refs").eq("id", brandId).single()).data?.site_refs as { picked?: boolean; sites: Array<{ host: string; shots?: string[] }>; patterns: string } | null;
+    const shotFiles = async () => ((await sb.storage.from("assets").list(`images/${clientId}`, { limit: 100 })).data ?? []).filter((f) => f.name.startsWith("site_like_")).map((f) => f.name);
 
     await page.addInitScript((brand) => { localStorage.setItem("blink-active-brand", JSON.stringify({ state: { activeBrand: brand }, version: 0 })); localStorage.setItem("blink.tourDone", "1"); }, b);
     await page.goto(`${BASE}/login`);
@@ -60,6 +61,13 @@ test("the owner picks the websites the page follows", async ({ page }) => {
     const kept = await refs();
     expect(kept?.picked).toBe(true);
     expect(kept?.sites.map((s) => s.host).sort()).toEqual(["aimeleondore.com", "kith.com"]);
+    // Each site's first screens, photographed for the page writer (2026-10-27), are real pictures.
+    for (const s of kept!.sites) expect(s.shots?.length ?? 0, s.host).toBeGreaterThan(0);
+    const first = await fetch(kept!.sites[0].shots![0]);
+    expect(first.headers.get("content-type")).toBe("image/jpeg");
+    expect((await first.arrayBuffer()).byteLength).toBeGreaterThan(20_000);
+    const files = await shotFiles();
+    expect(files.length).toBe(kept!.sites.reduce((n, s) => n + (s.shots?.length ?? 0), 0));
     await expect(page.getByText(/Using 2 websites you like/)).toBeVisible();
 
     // Kept on the brand.
@@ -70,11 +78,18 @@ test("the owner picks the websites the page follows", async ({ page }) => {
     await box.getByRole("button", { name: "Remove kith.com" }).click();
     await expect(box.getByRole("link", { name: /kith\.com/ })).toHaveCount(0, { timeout: 120_000 });
     await expect(box.getByRole("link", { name: /aimeleondore\.com/ })).toBeVisible();
+    // The kept site isn't photographed again, and the removed one's pictures are gone.
+    const left = await refs();
+    expect(left?.sites[0].shots).toEqual(kept!.sites.find((s) => s.host === "aimeleondore.com")!.shots);
+    expect((await shotFiles()).every((f) => f.includes("aimeleondore.com"))).toBe(true);
     await box.getByRole("button", { name: "Remove aimeleondore.com" }).click();
     await expect(box.getByRole("link", { name: /aimeleondore\.com/ })).toHaveCount(0, { timeout: 60_000 });
     expect(await refs()).toBeNull();
+    expect(await shotFiles()).toEqual([]);
   } finally {
     if (clientId) {
+      const { data: files } = await sb.storage.from("assets").list(`images/${clientId}`, { limit: 100 });
+      if (files?.length) await sb.storage.from("assets").remove(files.map((f) => `images/${clientId}/${f.name}`));
       await sb.from("brand_profiles").delete().eq("client_id", clientId);
       await sb.from("credit_balances").delete().eq("client_id", clientId);
       await sb.from("clients").delete().eq("id", clientId);

@@ -8,6 +8,7 @@ import { brandArg } from "@/lib/credits-meter";
 import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
 import { keptSiteRefs } from "@/lib/sites/site-refs-server";
+import { designsToFollow } from "@/lib/sites/site-refs";
 import { CODE_SYSTEM, MATCH_NEEDS_PICKS, MAX_INSPIRATION, SITE_LOOKS, SITE_PAGE_CREDITS, checkHtml, codeUserPrompt, designLetter, extractHtml, fillImages, lookOf, pageTitle } from "@/lib/sites/code";
 import { FILM_PROMPT, addFilm, filmGlimpses, filmUrls, parseFilm } from "@/lib/sites/scroll-film";
 import { parseInspirationImageUrl, verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
@@ -23,6 +24,7 @@ import { logAiUsage } from "@/lib/ai-usage";
  * 2026-10-23: inspiration is up to 4 designs the owner likes (their own uploads, Pinterest pins
  * imported to their storage, or Library pictures), which Claude follows; film is a scroll film
  * the studio cut and uploaded (lib/sites/scroll-film.ts), added to the page after it is written.
+ * 2026-10-27: the websites the owner likes add their screenshots to those designs (designsToFollow).
  */
 export const maxDuration = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -69,6 +71,8 @@ export async function POST(request: NextRequest) {
 
   const refs = await keptSiteRefs(brandId, client.id).catch(() => null);
   if (look === "match" && !inspiration.length && !refs?.patterns) return NextResponse.json({ error: MATCH_NEEDS_PICKS }, { status: 400 });
+  // The owner's uploads, then the liked websites' screens (2026-10-27): all of them are designs to follow.
+  const follow = designsToFollow(inspiration, refs);
 
   let provider;
   try { provider = assistantProvider(); } catch { return NextResponse.json({ error: "The website studio isn't available right now." }, { status: 503 }); }
@@ -85,11 +89,11 @@ export async function POST(request: NextRequest) {
   const prompt = (designs: boolean) => codeUserPrompt({
     brand: brain, look, brief, patterns: refs?.patterns ?? null,
     captions: brain.chunks.filter((c) => c.kind === "post").map((c) => c.text),
-    inspiration: designs ? inspiration.length : 0, film: film ? FILM_PROMPT : undefined,
+    inspiration: designs ? follow.length : 0, film: film ? FILM_PROMPT : undefined,
   });
   const image = (url: string) => ({ type: "image", source: { type: "url", url } });
   const pictures = images.flatMap((im, n) => [{ type: "text", text: `Picture ${n + 1}:` }, image(thumb(im.url))]);
-  const designs = inspiration.flatMap((u, n) => [{ type: "text", text: `Design ${designLetter(n)} (a design the owner likes, not a picture for the page):` }, image(thumb(u, 1200))]);
+  const designs = follow.flatMap((u, n) => [{ type: "text", text: `Design ${designLetter(n)} (a design the owner likes, not a picture for the page):` }, image(thumb(u, 1200))]);
   const glimpses = film ? filmGlimpses(film).flatMap((u, n) => [{ type: "text", text: `Film frame (${["start", "middle", "end"][n]}):` }, image(u)] ) : [];
   const ask = (content: unknown) => claudeFetch(provider, {
     method: "POST",
