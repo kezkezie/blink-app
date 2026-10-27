@@ -51,14 +51,14 @@ test("website studio: a site you like, write, edit, change, publish, download", 
     // 1. Research, then one Editorial page, its code streaming into the card and the editor.
     await page.goto(`${BASE}/studio/sites`);
     await expect(page.getByRole("heading", { name: "Websites you can edit by sections or as code" })).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("button", { name: /^Cinematic/ }).click(); // leaves Editorial
+    await page.getByRole("button", { name: /^Editorial/ }).click(); // one website, Editorial
     await page.getByLabel("What the site is for").fill("A launch page for our Runner 01 sneaker with a WhatsApp order button");
     // A website the owner likes (2026-10-27: picked, never searched for them); the page follows it.
     const liked = page.getByRole("group", { name: "Websites you like" });
     await liked.getByLabel("Website address").fill("kith.com");
     await liked.getByRole("button", { name: "Add", exact: true }).click();
     await expect(liked.getByRole("link", { name: /kith\.com/ })).toBeVisible({ timeout: 120_000 });
-    await page.getByRole("button", { name: /Write the page/ }).click();
+    await page.getByRole("button", { name: /Write the website/ }).click();
     const card = page.getByRole("button", { name: "Editorial page, writing" });
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.getByText(/Writing… \d+ KB/)).toBeVisible({ timeout: 90_000 });

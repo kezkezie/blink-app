@@ -55,11 +55,9 @@ test("your own words, from a PDF and a text file, go on the page as written", as
     await expect(words).toHaveValue(new RegExp(STORY.slice(0, 40).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     await expect(page.getByText(/Using your own words/)).toBeVisible();
 
-    // One page, Minimal.
-    await page.getByRole("button", { name: /^Cinematic/ }).click();
-    await page.getByRole("button", { name: /^Editorial/ }).click();
+    // One website, Minimal (picking a look replaces the one before).
     await page.getByRole("button", { name: /^Minimal/ }).click();
-    await page.getByRole("button", { name: /Write the page/ }).click();
+    await page.getByRole("button", { name: /Write the website/ }).click();
     await expect(page.getByText(/page ready/)).toBeVisible({ timeout: 420_000 });
     const { data: rows } = await sb.from("site_pages").select("html").eq("client_id", clientId);
     expect(rows).toHaveLength(1);

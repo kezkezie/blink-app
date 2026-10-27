@@ -81,7 +81,7 @@ test("designs you like and a scroll film, cut in the browser", async ({ page }) 
     const t0 = Date.now();
     await film.getByLabel("Scroll film video file").setInputFiles(video);
     await expect(film.getByText(/Cutting and saving frames/)).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("button", { name: /Write 2 pages/ })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /Write the website/ })).toBeDisabled();
     const scrub = film.getByLabel("Try the scroll film");
     await expect(scrub).toBeVisible({ timeout: 180_000 });
     console.log(`film cut and saved in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
@@ -102,8 +102,8 @@ test("designs you like and a scroll film, cut in the browser", async ({ page }) 
     await expect(page.getByRole("group", { name: "Designs you like" }).getByRole("img", { name: "Design B" })).toBeVisible();
 
     if (writing) {
-      await page.getByRole("button", { name: /^Editorial/ }).click();
-      await page.getByRole("button", { name: /Write the page/ }).click();
+      // One website, in the Cinematic look it starts on.
+      await page.getByRole("button", { name: /Write the website/ }).click();
       await expect(page.getByText(/page ready/)).toBeVisible({ timeout: 330_000 });
       const { data: rows } = await sb.from("site_pages").select("id, html").eq("client_id", clientId);
       expect(rows!.length).toBe(1);

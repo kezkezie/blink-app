@@ -63,8 +63,11 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
   // From Ask BlinkSpot (2026-10-17): the brief and looks come in the link, and "start now" writes at once.
   const [looks, setLooks] = useState<SiteLook[]>(() => {
     const asked = (initialLooks ?? "").split(",").filter((l): l is SiteLook => SITE_LOOKS.some((x) => x.id === l)).slice(0, MAX_LOOKS);
-    return asked.length ? asked : ["cinematic", "editorial"];
+    return asked.length ? asked : ["cinematic"];
   });
+  // One website in one look, unless you choose to compare (Kezie, 2026-10-27: people read the ticked
+  // looks as parts of one site). Comparing writes a separate website per look, up to three.
+  const [compare, setCompare] = useState(looks.length > 1);
   const [brief, setBrief] = useState(initialBrief?.slice(0, 1500) ?? "");
   const autoStarted = useRef(false);
   const [refs, setRefs] = useState<SitesYouLike | null>(null);
@@ -194,7 +197,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
       {fullPage && <SiteFullscreen html={fullPage.html} title={fullPage.title} onClose={() => setFullPage(null)} />}
       <p className="text-sm mb-1" style={{ color: "var(--s-soft)" }}>Website · for {activeBrand.brand_name}</p>
       <h2 className="text-[26px] md:text-[34px] font-semibold tracking-tight leading-tight">Websites you can edit by sections or as code</h2>
-      <p className="text-[14.5px] mt-2 max-w-[680px]" style={{ color: "var(--s-soft)" }}>Pick the looks you want and BlinkSpot writes a complete page for each, from your Brand page, products and Library pictures. Edit it by sections (click any words or picture) or as code, ask for changes, download the .html or publish it.</p>
+      <p className="text-[14.5px] mt-2 max-w-[680px]" style={{ color: "var(--s-soft)" }}>Pick a look and BlinkSpot writes a complete website in it, from your Brand page, products and Library pictures (or compare up to {MAX_LOOKS} looks, one website each). Edit it by sections (click any words or picture) or as code, ask for changes, download the .html or publish it.</p>
 
       <div className="s-card p-4 mt-6 grid gap-4">
         <label className="grid gap-1.5">
@@ -203,21 +206,41 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
             placeholder="e.g. a launch page for our new weekend menu: big food photos, a WhatsApp order button, our opening story" aria-label="What the site is for" />
         </label>
         <WordsBox words={words} setWords={setWords} />
-        <div>
-          <span className="s-label">Looks (one page each, up to {MAX_LOOKS})</span>
+        <div role="group" aria-label="Look">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <span className="s-label !mb-0">{compare ? `Looks to compare (up to ${MAX_LOOKS})` : "Pick a look"}</span>
+            <div className="s-seg" role="group" aria-label="How many websites">
+              <button type="button" aria-pressed={!compare} onClick={() => { setCompare(false); setLooks((cur) => cur.slice(0, 1)); }}>One website</button>
+              <button type="button" aria-pressed={compare} onClick={() => setCompare(true)}><Copy className="h-3.5 w-3.5" /> Compare looks</button>
+            </div>
+          </div>
+          <p className="text-[12px] mb-2" style={{ color: "var(--s-mute)" }}>
+            {compare
+              ? "Each look you tick becomes its own separate website, so you can see them side by side and keep the one you like. Looks are never mixed into one site."
+              : "You get one website, in the look you pick. To try a few looks, choose Compare looks: you'll get a separate website for each."}
+          </p>
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
             {SITE_LOOKS.map((l) => {
               const on = looks.includes(l.id);
+              const nth = looks.indexOf(l.id) + 1;
               const waits = l.id === "match" && !hasPicks;
               return (
-                <button key={l.id} type="button" aria-pressed={on} className="rounded-xl p-3 text-left" style={{ background: on ? "color-mix(in oklab, var(--s-accent) 10%, var(--s-bg))" : "var(--s-bg)", border: `1px solid ${on ? "var(--s-accent)" : "var(--s-line)"}`, opacity: waits && !on ? 0.6 : 1 }}
+                <button key={l.id} type="button" aria-pressed={on} className="relative rounded-xl p-3 text-left" style={{ background: on ? "color-mix(in oklab, var(--s-accent) 10%, var(--s-bg))" : "var(--s-bg)", border: `1px solid ${on ? "var(--s-accent)" : "var(--s-line)"}`, opacity: waits && !on ? 0.6 : 1 }}
                   title={waits ? MATCH_NEEDS_PICKS : undefined}
-                  onClick={() => setLooks((cur) => (on ? cur.filter((x) => x !== l.id) : cur.length >= MAX_LOOKS ? [...cur.slice(1), l.id] : [...cur, l.id]))}>
-                  <b className="text-[13px] block">{l.label}</b><span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{waits ? "Add a design or website you like below" : l.line}</span>
+                  onClick={() => setLooks((cur) => (!compare ? [l.id] : on ? cur.filter((x) => x !== l.id) : cur.length >= MAX_LOOKS ? [...cur.slice(1), l.id] : [...cur, l.id]))}>
+                  <b className="text-[13px] block pr-5">{l.label}</b><span className="text-[11.5px] block" style={{ color: "var(--s-mute)" }}>{waits ? "Add a design or website you like below" : l.line}</span>
+                  {on && (compare
+                    ? <span className="s-badge mt-2 inline-flex" style={{ color: "var(--s-accent)" }}>Website {nth}</span>
+                    : <Check className="absolute top-2.5 right-2.5 h-4 w-4" style={{ color: "var(--s-accent)" }} aria-hidden />)}
                 </button>
               );
             })}
           </div>
+          {compare && n > 0 && (
+            <p className="text-[12.5px] mt-2" style={{ color: "var(--s-soft)" }}>
+              You&apos;ll get <b style={{ color: "var(--s-text)" }}>{n === 1 ? "1 website" : `${n} separate websites`}</b>: {looks.map((id, i) => `${i + 1}. ${lookLabel(id)}`).join(", ")}.{n === 1 ? " Tick another look to compare." : " One of each, to compare."}
+            </p>
+          )}
         </div>
         <div className="grid gap-3 lg:grid-cols-2 items-start">
           <InspirationBox urls={inspiration} setUrls={setInspiration} clientId={clientId} />
@@ -229,7 +252,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
         <div className="flex flex-wrap items-center gap-3">
           <button className="s-btn primary" disabled={!n || studying || filmBusy || matchWaits} title={matchWaits ? MATCH_NEEDS_PICKS : undefined} onClick={() => void write()}>
             {studying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {studying ? "Studying your websites…" : `Write ${n === 1 ? "the page" : `${n} pages`}`} <span className="cost">{n * SITE_PAGE_CREDITS} cr</span>
+            {studying ? "Studying your websites…" : `Write ${n === 1 ? "the website" : `${n} websites`}`} <span className="cost">{n * SITE_PAGE_CREDITS} cr</span>
           </button>
           <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{filmBusy ? "Waiting for the film's frames…" : `About 1 to 3 minutes. Watch the code come in on each card.${uses.length ? ` Using ${uses.join(", ").replace(/, ([^,]*)$/, " and $1")}.` : ""}`}</span>
         </div>
@@ -242,7 +265,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
       {!pages ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Loading your pages">{[0, 1, 2].map((i) => <div key={i} className="s-skel" style={{ aspectRatio: "16 / 12" }} />)}</div>
       ) : !jobs.length && !groups.length ? (
-        <div className="s-empty"><h3>No pages yet</h3><p className="text-sm">Pick a look or two above and press Write.</p></div>
+        <div className="s-empty"><h3>No pages yet</h3><p className="text-sm">Pick a look above and press Write.</p></div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {jobs.map((j) => (
