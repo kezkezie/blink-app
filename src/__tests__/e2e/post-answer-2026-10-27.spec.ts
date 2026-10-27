@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { test, expect } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
@@ -27,7 +28,7 @@ test("the post page waits for YouTube's answer and shows the refusal in plain wo
     const account = `spc_test_youtube_${stamp}`, sent = `sp_test_${stamp}`;
     await sb.from("social_accounts").insert({ client_id: clientId, brand_id: b!.id, platform: "youtube", account_name: "Nuf YouTube", postforme_account_id: account, is_active: true });
     const { data: post } = await sb.from("content").insert({
-      client_id: clientId, brand_id: b!.id, content_type: "video", status: "approved", caption: "Our farm at sunrise", caption_written: true,
+      client_id: clientId, brand_id: b!.id, content_type: "video", status: "approved", caption: "Our farm at sunrise", caption_written: true, hashtags: "#nuffarms #kenya",
       video_urls: [`${EX}/kasi-reveal.mp4`], target_platforms: { youtube: { enabled: true, format: "standard" } }, postforme_tracking_id: sent,
       creation_metadata: { post_sent: { id: sent, platforms: ["youtube"], accounts: 1, skipped: [], at: new Date().toISOString() }, post_results: {} },
     }).select("id").single();
@@ -60,6 +61,18 @@ test("the post page waits for YouTube's answer and shows the refusal in plain wo
     await expect(page.locator(".s-badge", { hasText: /^Failed$/ })).toBeVisible();
     const { data: row } = await sb.from("content").select("status").eq("id", post!.id).single();
     expect(row!.status).toBe("failed");
+
+    // Auto-posting is in beta (2026-10-27), so posting it yourself is right there: the file and the caption.
+    await expect(page.getByRole("region", { name: "Where it posts" }).getByLabel("Beta")).toBeVisible();
+    const yourself = when.getByRole("group", { name: "Post it yourself" });
+    await expect(yourself.getByText(/Auto-posting is in beta/)).toBeVisible();
+    const [file] = await Promise.all([page.waitForEvent("download"), yourself.getByRole("button", { name: "Download the video" }).click()]);
+    expect(file.suggestedFilename()).toBe("nuf-test-farm.mp4");
+    expect((await fs.promises.stat((await file.path())!)).size).toBeGreaterThan(100_000);
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin });
+    await yourself.getByRole("button", { name: "Copy the caption" }).click();
+    await expect(page.getByText("Long caption and hashtags copied.")).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("Our farm at sunrise\n\n#nuffarms #kenya");
   } finally {
     if (clientId) {
       await sb.from("content").delete().eq("client_id", clientId);

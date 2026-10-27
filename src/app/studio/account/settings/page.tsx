@@ -10,6 +10,7 @@ import { isSharedBrand, useBrandStore } from "@/app/store/useBrandStore";
 import { Modal } from "@/components/studio/Modal";
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { FormSkeleton } from "@/components/studio/Skeletons";
+import { AutoPostBetaNote, BetaTag } from "@/components/studio/AutoPostBeta";
 import { track } from "@/lib/analytics";
 import { AiConnections } from "@/components/studio/settings/AiConnections";
 
@@ -155,13 +156,14 @@ function SettingsPage() {
       <section id="socials" className="scroll-mt-24">
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <div>
-            <h2 className="text-[18px] font-semibold">Social accounts</h2>
+            <h2 className="text-[18px] font-semibold flex items-center gap-2">Social accounts <BetaTag /></h2>
             <p className="text-[13px]" style={{ color: "var(--s-soft)" }}>{shared ? <>For <b style={{ color: "var(--s-text)" }}>{activeBrand.brand_name}</b>, shared with you by {activeBrand.owner_name || "its owner"}. Only they can connect or remove its accounts; you can post to the ones below.</> : activeBrand ? <>For <b style={{ color: "var(--s-text)" }}>{activeBrand.brand_name}</b>. Each brand has its own accounts, and posts only go to their own brand&apos;s.</> : "Pick a brand in the top bar first."}</p>
           </div>
           <div className="flex-1" />
           <span className="s-pill"><b>{connectedCount}</b> connected</span>
           {!shared && <button className="s-btn sm" disabled={syncing || !activeBrand} onClick={() => void sync()}>{syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Sync</button>}
         </div>
+        <AutoPostBetaNote className="mb-3 -mt-1" />
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
           {PLATFORMS.map((p) => {
             const accounts = byPlatform(p.id);

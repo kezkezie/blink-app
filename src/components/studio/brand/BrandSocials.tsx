@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Share2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
+import { AutoPostBetaNote, BetaTag } from "@/components/studio/AutoPostBeta";
 
 /**
  * Where this brand posts (2026-10-20: auto-posting has to follow the brand). The accounts
@@ -35,8 +36,9 @@ export function BrandSocials({ brandId, brandName, shared }: { brandId: string; 
     <section id="socials" className="s-card p-5 md:p-6 scroll-mt-24">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex-1 min-w-[220px]">
-          <h3 className="text-[16px] font-semibold flex items-center gap-2"><Share2 className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Where {brandName} posts</h3>
+          <h3 className="text-[16px] font-semibold flex items-center gap-2"><Share2 className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Where {brandName} posts <BetaTag /></h3>
           <p className="text-[13px] mt-1" style={{ color: "var(--s-soft)" }}>Posts on the calendar go out by themselves to this brand&apos;s own accounts, and only to them. Each brand connects its own.</p>
+          <AutoPostBetaNote className="mt-1.5" />
         </div>
         {!shared && <Link href="/studio/account/settings#socials" className="s-btn primary sm">Connect accounts</Link>}
       </div>

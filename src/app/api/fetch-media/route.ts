@@ -16,7 +16,8 @@ export async function GET(request: Request) {
 
     try {
         const urlNode = new URL(targetUrl);
-        if (!ALLOWED_DOMAINS.some(domain => urlNode.hostname.endsWith(domain))) {
+        // The host itself or a real subdomain of it (a bare endsWith let "evilres.cloudinary.com"-style names through).
+        if (urlNode.protocol !== "https:" || !ALLOWED_DOMAINS.some(domain => urlNode.hostname === domain || urlNode.hostname.endsWith(`.${domain}`))) {
             return new NextResponse("Forbidden Destination Domain", { status: 403 });
         }
     } catch {

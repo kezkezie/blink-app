@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, CalendarPlus, Check, Clapperboard, Clock, Film, LayoutTemplate, Loader2, MessageSquareWarning, RefreshCw, Save, Send, Sparkles, Trash2, Wand2, X, ZoomIn, Zap } from "lucide-react";
+import { ArrowLeft, CalendarPlus, Check, Clapperboard, Clock, Copy, Download, Film, LayoutTemplate, Loader2, MessageSquareWarning, RefreshCw, Save, Send, Sparkles, Trash2, Wand2, X, ZoomIn, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -20,6 +20,7 @@ import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, publishNo
 import { UpscaleButton } from "./Upscale";
 import { VIDEO_ONLY, VIDEO_ONLY_LINE, awaitingAnswers, platformLabel, postResults, resultLine, skippedLine, workingTitleOf } from "@/lib/social-media-rules";
 import { DetailSkeleton } from "@/components/studio/Skeletons";
+import { AutoPostBetaNote, BetaTag } from "@/components/studio/AutoPostBeta";
 
 /**
  * A post in the studio look (2026-10-11; the classic page stays at /dashboard/content/[id]).
@@ -202,6 +203,35 @@ export function PostDetail({ id }: { id: string }) {
     toast.success(`Sent to ${sent.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}. Waiting for ${sent.length === 1 ? "its" : "their"} answer here.${r.note ? ` ${r.note}` : ""}${ig ? " If it doesn't show on Instagram in 5 minutes, check the account's status." : ""}`, { duration: 8000 });
     await load();
   }
+  /** Post it yourself: the file(s), through our media proxy so any stored file downloads (not opens). */
+  async function downloadMedia() {
+    if (!media?.url) return;
+    setBusy("download");
+    try {
+      const urls = isVideo ? [media.url] : media.images.length ? media.images : [media.url];
+      const base = (kit?.name || "post").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "post";
+      for (const [i, u] of urls.entries()) {
+        const res = await fetch(`/api/fetch-media?url=${encodeURIComponent(u)}`);
+        if (!res.ok) throw new Error();
+        const blob = await res.blob();
+        const ext = ({ "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as Record<string, string>)[blob.type] ?? (u.split("?")[0].split(".").pop() || "bin");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${base}${urls.length > 1 ? `-${i + 1}` : ""}.${ext}`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      }
+    } catch { toast.error("Couldn't download it. Try again."); }
+    finally { setBusy(null); }
+  }
+  /** The caption on the tab you're on, with the hashtags, ready to paste into the app. */
+  async function copyCaption() {
+    const body = (choice === "short" ? short : caption).trim() || (short || caption).trim();
+    const text = hashtags.trim() ? `${body}\n\n${hashtags.trim()}` : body;
+    try { await navigator.clipboard.writeText(text); toast.success(`${choice === "short" ? "Short" : "Long"} caption and hashtags copied.`); }
+    catch { toast.error("Couldn't copy it. Select the caption and copy it yourself."); }
+  }
+
   async function doSchedule() {
     if (!post || !clientId || !whenValue) return;
     const at = new Date(whenValue);
@@ -400,7 +430,7 @@ export function PostDetail({ id }: { id: string }) {
           {/* 2. Where it posts: one clear row per account, ticked or not, and what that adds up to. */}
           <section className="s-card p-4 grid gap-3" aria-label="Where it posts">
             <div className="flex items-center justify-between gap-2">
-              <Step n={2}>Where it posts</Step>
+              <span className="flex items-center gap-2"><Step n={2}>Where it posts</Step><BetaTag /></span>
               <Link href="/studio/account/settings" className="text-[12px] underline" style={{ color: "var(--s-mute)" }}>Manage accounts</Link>
             </div>
             {connected.length === 0 ? (
@@ -483,6 +513,15 @@ export function PostDetail({ id }: { id: string }) {
               </div>
             )}
             {platforms.includes("instagram") && <button className="text-[11.5px] justify-self-start" style={{ color: "var(--s-mute)" }} onClick={() => setIgHelp(true)}>Posted but not showing on Instagram? →</button>}
+            {/* While auto-posting is in beta, posting it yourself is always one tap away. */}
+            <div className="grid gap-2 pt-3" style={{ borderTop: "1px solid var(--s-line)" }} aria-label="Post it yourself" role="group">
+              <span className="text-[12px] font-semibold" style={{ color: "var(--s-soft)" }}>Or post it yourself</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button className="s-btn sm" disabled={!media?.url || busy === "download"} onClick={() => void downloadMedia()}>{busy === "download" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download {isVideo ? "the video" : (media?.images.length ?? 0) > 1 ? `the ${media!.images.length} pictures` : "the picture"}</button>
+                <button className="s-btn sm" disabled={!caption.trim() && !short.trim()} onClick={() => void copyCaption()}><Copy className="h-3.5 w-3.5" /> Copy the caption</button>
+              </div>
+              <AutoPostBetaNote />
+            </div>
           </section>
 
           {canEdit && (
