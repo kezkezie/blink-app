@@ -69,7 +69,7 @@ test("the post page waits for YouTube's answer and shows the refusal in plain wo
     const [file] = await Promise.all([page.waitForEvent("download"), yourself.getByRole("button", { name: "Download the video" }).click()]);
     expect(file.suggestedFilename()).toBe("nuf-test-farm.mp4");
     expect((await fs.promises.stat((await file.path())!)).size).toBeGreaterThan(100_000);
-    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(BASE).origin });
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(page.url()).origin }); // www. on production
     await yourself.getByRole("button", { name: "Copy the caption" }).click();
     await expect(page.getByText("Long caption and hashtags copied.")).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("Our farm at sunrise\n\n#nuffarms #kenya");

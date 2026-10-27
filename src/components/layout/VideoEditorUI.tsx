@@ -12,7 +12,7 @@ import { inspoPatternKey, type EditRecipe, type InspoPattern } from "@/lib/video
 import { VOICES, voiceoverCredits } from "@/lib/voiceover";
 import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
-import { cutPoints, fitToRhythm, keepRanges, relayout, type Material, type Range, type Word } from "@/lib/editor/cleanup";
+import { cutPoints, dropByRule, fitToRhythm, keepRanges, relayout, type Material, type Range, type Word } from "@/lib/editor/cleanup";
 import { PIECE_AUDIO_ARGS, PIECE_VIDEO_ARGS, canvasSize, drawtextFilter, frameAt, normalizeFilter, overlayFilter, overlayStep, pieceAudioFilter, pieceSilence, webmDecoder, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
 import { SPEEDS, sourceAt, span, speedLabel, speedOf, withSpeed } from "@/lib/editor/speed";
 import { GIVE_UP_AFTER, MASTER_OFF, START_GUESS, endOfEdit, isActiveAt, isUpcomingAt, learnLatency, masterAt, nextTime, shouldPreroll, shouldSeek } from "@/lib/editor/playback";
@@ -60,6 +60,8 @@ interface TrackClip {
   speed?: number;
   /** Its length is a guess until the file says (a new upload or Library add): it then takes the real length. */
   guessed?: boolean;
+  /** Cleaned up (2026-10-27): the words it kept, in seconds of its file, so later cuts can land between them without hearing it again. */
+  words?: Word[];
 }
 
 interface TextLayer {
@@ -1397,13 +1399,15 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       const from = Math.min(...group.map((c) => c.trimStart)), to = Math.max(...group.map((c) => c.trimEnd));
       const audioUrl = await extractAudioToStorage(url, from, to - from);
       if (signal.aborted) throw new Error(AI_STOPPED);
-      const r = (await transcribe({ mode: "clean", audioUrl, seconds: to - from }, signal)) as unknown as { words?: Word[]; drop?: number[]; credits?: number };
+      const r = (await transcribe({ mode: "clean", audioUrl, seconds: to - from }, signal)) as unknown as { words?: Word[]; drop?: number[]; marked?: number[]; credits?: number };
       credits += r.credits ?? 0;
-      const words = r.words ?? [], drop = new Set(r.drop ?? []);
+      const words = r.words ?? [], marked = new Set(r.marked ?? []);
       for (const c of group) {
         const lo = c.trimStart - from, hi = c.trimEnd - from;
         const mine = words.map((w, k) => ({ w, k })).filter(({ w }) => w.start >= lo - 0.05 && w.end <= hi + 0.05);
-        const own = new Set(mine.flatMap(({ k }, j) => (drop.has(k) ? [j] : [])));
+        // The rules on this clip's own words (a repeat must be inside the clip, not reach into footage that
+        // isn't on the timeline: a live test lost a kept "we" that way), plus what Claude marked.
+        const own = new Set([...dropByRule(mine.map(({ w }) => w)), ...mine.flatMap(({ k }, j) => (marked.has(k) ? [j] : []))]);
         // Counted per clip: what this clip loses (a file heard again after a clean-up isn't counted twice).
         cut += own.size;
         heard.set(c.id, { words: mine.map(({ w }) => ({ ...w, start: Math.max(0, w.start - lo), end: Math.max(0, w.end - lo) })), drop: own, len: hi - lo });
@@ -1453,7 +1457,16 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       if (!keep.size) { toast.info(`Nobody speaks in ${targets.length === 1 ? "this clip" : "these clips"}, so there's nothing to clean up. ${spent} credits used.`); return; }
       aiStep("Cutting it into one clean take…", 0.97);
       snapshot();
-      const { clips, map } = relayout(row, keep, () => crypto.randomUUID());
+      const laid = relayout(row, keep, () => crypto.randomUUID());
+      const map = laid.map;
+      // Each piece keeps the words it plays (seconds of its file): Edit like a video cuts between them later without hearing it again.
+      const old = new Set(row.map((c) => c.id));
+      const clips = laid.clips.map((p) => {
+        if (old.has(p.id)) return p;
+        const h = heard.find((x) => x.clip.url === p.url && p.trimStart >= x.clip.trimStart - 1e-6 && p.trimEnd <= x.clip.trimEnd + 1e-6);
+        const words = h ? h.words.filter((_, i) => !h.drop.has(i)).map((w) => ({ word: w.word, start: h.clip.trimStart + w.start, end: h.clip.trimStart + w.end })).filter((w) => w.start >= p.trimStart - 0.01 && w.end <= p.trimEnd + 0.01) : [];
+        return words.length ? { ...p, words } : p;
+      });
       const before = Math.max(0, ...row.map((c) => c.timelineStart + span(c)));
       const after = Math.max(0, ...clips.map((c) => c.timelineStart + span(c)));
       setVideoClips((prev) => [...prev.filter((c) => (c.trackRow ?? 0) !== 0).map((c) => ({ ...c, timelineStart: map(c.timelineStart) })), ...clips]);
@@ -1493,7 +1506,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       if (!res.ok || !data.recipe) throw new Error(data.error || "Couldn't read that video's editing.");
       const recipe = data.recipe as EditRecipe;
       // Your clips, in your order: talking ones cleaned up first and cut only between words.
-      const talkers = likeClean ? vids.filter((v) => v.type === "video") : [];
+      // Already cleaned clips carry their words: no hearing again, no credits.
+      const talkers = likeClean ? vids.filter((v) => v.type === "video" && !v.words?.length) : [];
       const got = talkers.length ? await hearClips(talkers, signal, (i, n) => aiStep(`Step 3 of 3 · Cleaning up your clips${n > 1 ? ` (${i + 1} of ${n})` : ""}: ums, pauses, repeats…`, 0.55 + (0.4 * i) / n)) : { heard: new Map<string, { words: Word[]; drop: Set<number>; len: number }>(), credits: 0, cut: 0 };
       const credits = (Number(data.credits) || 0) + got.credits, cut = got.cut;
       const heard = new Map([...got.heard].filter(([, h]) => h.words.length >= 3));
@@ -1501,7 +1515,9 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       const material: Material[] = [];
       for (const v of vids) {
         const h = heard.get(v.id);
+        const own = v.words?.filter((w) => w.start >= v.trimStart - 0.01 && w.end <= v.trimEnd + 0.01) ?? [];
         if (h) for (const rg of keepRanges(h.words, h.drop, h.len)) material.push({ sourceId: v.id, start: v.trimStart + rg.start, end: v.trimStart + rg.end, points: cutPoints(h.words, h.drop, rg).map((p) => v.trimStart + p) });
+        else if (own.length) material.push({ sourceId: v.id, start: v.trimStart, end: v.trimEnd, points: cutPoints(own, new Set(), { start: v.trimStart, end: v.trimEnd }) });
         else material.push({ sourceId: v.id, start: v.trimStart, end: v.trimEnd, points: null });
       }
       const pieces = fitToRhythm(material, recipe.cuts);
@@ -1518,7 +1534,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       setCanvasAspect(recipe.aspect); setFitMode("fill");
       setBeatMarks(laid.slice(1).map((c) => c.timelineStart));
       seekTo(0);
-      toast.success(`Edited like the inspo: ${laid.length} cuts${heard.size ? `, all between words, ${cut} ums, repeats and false starts out` : ""}${recipe.texts.length ? `, ${recipe.texts.length} lines of text` : ""} (${recipe.pace || "same pace"}) · ${credits} credits. Undo is one click.`, { duration: 9000 });
+      toast.success(`Edited like the inspo: ${laid.length} cuts${material.some((m) => m.points) ? ", all between words" : ""}${cut ? `, ${cut} ums, repeats and false starts out` : ""}${recipe.texts.length ? `, ${recipe.texts.length} lines of text` : ""} (${recipe.pace || "same pace"}) · ${credits} credits. Undo is one click.`, { duration: 9000 });
     } catch (e) { if (signal.aborted) toast.info(AI_STOPPED); else toast.error(e instanceof Error ? e.message : "Couldn't read that video's editing."); }
     finally { URL.revokeObjectURL(url); setAiBusy(null); setAiPct(null); }
   }

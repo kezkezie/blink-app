@@ -75,8 +75,14 @@ test("clean up the talking, then edit it like a video you love", async ({ page }
   let heard: { words: Word[]; drop: Set<number> } | null = null;
   page.on("response", async (r) => {
     if (!r.url().includes("/api/editor/highlights") || heard) return;
-    const j = await r.json().catch(() => null) as { words?: Word[]; drop?: number[] } | null;
+    const j = await r.json().catch(() => null) as { words?: Word[]; drop?: number[]; error?: string; note?: string } | null;
+    console.log("highlights", r.status(), j?.error ?? j?.note ?? `${j?.words?.length ?? "?"} words`);
     if (j?.words) heard = { words: j.words, drop: new Set(j.drop ?? []) };
+  });
+  // Every toast, as it appears (they're gone by the time a failure is reported).
+  await page.exposeFunction("__toast", (t: string) => console.log("toast:", t.slice(0, 200)));
+  await page.addInitScript(() => {
+    new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n instanceof HTMLElement && n.matches?.("[data-sonner-toast]")) (window as unknown as { __toast: (t: string) => void }).__toast(n.innerText); }).observe(document, { childList: true, subtree: true });
   });
   try {
     const { data: c } = await sb.from("clients").insert({ user_id: u.user!.id, company_name: "Nuf Farms Test", contact_name: "Cleanup Test", contact_email: email, plan_tier: "starter", onboarding_status: "active" }).select("id").single();

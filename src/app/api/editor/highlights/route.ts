@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
       const byRule = drop.size;
       // Claude marks false starts, retakes and asides (not charged, like picking shorts). If it's
       // unavailable or answers badly, the rule clean-up still stands.
-      let byClaude = 0;
+      let byClaude = 0, marked = new Set<number>();
       try {
         const provider = assistantProvider();
         const model = assistantModelFor("chat", provider.name);
@@ -139,12 +139,13 @@ export async function POST(request: NextRequest) {
         const text = (out?.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
         let raw: unknown = [];
         try { raw = (JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)) as { cut?: unknown }).cut; } catch { /* the rules stand */ }
-        const marked = validateDrops(raw, words.length);
-        const both = new Set([...drop, ...marked]);
-        if (both.size <= words.length * 0.7) { byClaude = both.size - drop.size; for (const i of marked) drop.add(i); }
+        const got = validateDrops(raw, words.length);
+        const both = new Set([...drop, ...got]);
+        if (both.size <= words.length * 0.7) { byClaude = both.size - drop.size; marked = got; for (const i of got) drop.add(i); }
       } catch (e) { if (!(e instanceof AssistantUnavailableError)) console.error("clean-up pass", e); }
       if (!guard.done()) return NextResponse.json({ error: "Stopped." }, { status: 499 });
-      return NextResponse.json({ words, drop: [...drop].sort((x, y) => x - y), duration, credits, byRule, byClaude });
+      // marked: Claude's alone, so a clip that's only part of the file can redo the rules on its own words.
+      return NextResponse.json({ words, drop: [...drop].sort((x, y) => x - y), marked: [...marked].sort((x, y) => x - y), duration, credits, byRule, byClaude });
     }
     if (!segments.length) return guard.done() ? NextResponse.json({ segments, duration, credits, highlights: [], note: "Nobody speaks in this video, so there are no moments to pick from the words. Try Cut to the beat instead." }) : NextResponse.json({ error: "Stopped." }, { status: 499 });
 
