@@ -12,6 +12,7 @@ import { inspoPatternKey, type EditRecipe, type InspoPattern } from "@/lib/video
 import { VOICES, voiceoverCredits } from "@/lib/voiceover";
 import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
+import { cutPoints, fitToRhythm, keepRanges, relayout, type Material, type Range, type Word } from "@/lib/editor/cleanup";
 import { PIECE_AUDIO_ARGS, PIECE_VIDEO_ARGS, canvasSize, drawtextFilter, frameAt, normalizeFilter, overlayFilter, overlayStep, pieceAudioFilter, pieceSilence, webmDecoder, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
 import { SPEEDS, sourceAt, span, speedLabel, speedOf, withSpeed } from "@/lib/editor/speed";
 import { GIVE_UP_AFTER, MASTER_OFF, START_GUESS, endOfEdit, isActiveAt, isUpcomingAt, learnLatency, masterAt, nextTime, shouldPreroll, shouldSeek } from "@/lib/editor/playback";
@@ -233,7 +234,14 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   // Stop for the AI tools (2026-10-25): the request ends, and the server refunds the step in progress.
   const aiStop = useRef<AbortController | null>(null);
-  const aiStart = (label: string) => { aiStop.current = new AbortController(); setAiBusy(label); return aiStop.current.signal; };
+  // How far along the AI tool is (0-1), or null while it can't tell; shown with the step it's on (2026-10-27:
+  // "you don't get a feedback or a loading screen" while the magic cutter read the video).
+  const [aiPct, setAiPct] = useState<number | null>(null);
+  const aiStart = (label: string) => { aiStop.current = new AbortController(); setAiBusy(label); setAiPct(null); return aiStop.current.signal; };
+  const aiStep = (label: string, pct: number | null) => { setAiBusy(label); setAiPct(pct); };
+  // Clean up the talking: first in Edit like a video (on by default), and captions from the words it heard.
+  const [likeClean, setLikeClean] = useState(true);
+  const [cleanCaptions, setCleanCaptions] = useState<TextLayer[] | null>(null);
   const AI_STOPPED = "Stopped. What the AI service hadn't already billed comes back.";
   const [cutEvery, setCutEvery] = useState<1 | 2 | 4>(2);
   const [beatLength, setBeatLength] = useState(30);
@@ -1375,42 +1383,144 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   }
 
   /**
+   * Clean-up hearing for clips: each file is heard once over the part its clips use (so a clip cut into
+   * pieces costs no more than the whole), and every clip gets its own words (seconds from its own
+   * start) and the ones to cut.
+   */
+  async function hearClips(clips: TrackClip[], signal: AbortSignal, step: (i: number, n: number) => void) {
+    const byUrl = new Map<string, TrackClip[]>();
+    for (const c of clips) byUrl.set(c.url, [...(byUrl.get(c.url) ?? []), c]);
+    const heard = new Map<string, { words: Word[]; drop: Set<number>; len: number }>();
+    let credits = 0, cut = 0, i = 0;
+    for (const [url, group] of byUrl) {
+      step(i++, byUrl.size);
+      const from = Math.min(...group.map((c) => c.trimStart)), to = Math.max(...group.map((c) => c.trimEnd));
+      const audioUrl = await extractAudioToStorage(url, from, to - from);
+      if (signal.aborted) throw new Error(AI_STOPPED);
+      const r = (await transcribe({ mode: "clean", audioUrl, seconds: to - from }, signal)) as unknown as { words?: Word[]; drop?: number[]; credits?: number };
+      credits += r.credits ?? 0;
+      const words = r.words ?? [], drop = new Set(r.drop ?? []);
+      for (const c of group) {
+        const lo = c.trimStart - from, hi = c.trimEnd - from;
+        const mine = words.map((w, k) => ({ w, k })).filter(({ w }) => w.start >= lo - 0.05 && w.end <= hi + 0.05);
+        const own = new Set(mine.flatMap(({ k }, j) => (drop.has(k) ? [j] : [])));
+        // Counted per clip: what this clip loses (a file heard again after a clean-up isn't counted twice).
+        cut += own.size;
+        heard.set(c.id, { words: mine.map(({ w }) => ({ ...w, start: Math.max(0, w.start - lo), end: Math.max(0, w.end - lo) })), drop: own, len: hi - lo });
+      }
+    }
+    return { heard, credits, cut };
+  }
+
+  /** Captions from the words a clean-up kept, at their new places (free: they're already heard). */
+  function captionsFrom(heard: Array<{ clip: TrackClip; words: Word[]; drop: Set<number>; ranges: Range[] }>, map: (t: number) => number): TextLayer[] {
+    const segs: Segment[] = [];
+    for (const h of heard) {
+      const at = (sec: number) => map(h.clip.timelineStart + sec / speedOf(h.clip));
+      for (const r of h.ranges) {
+        const kept = h.words.filter((w, i) => !h.drop.has(i) && w.start >= r.start - 0.01 && w.end <= r.end + 0.01);
+        if (kept.length) segs.push({ start: at(kept[0].start), end: at(kept[kept.length - 1].end), text: kept.map((w) => w.word.trim()).join(" ") });
+      }
+    }
+    return captionChunks(segs, 0, Number.MAX_SAFE_INTEGER).map((ch) => ({ id: crypto.randomUUID(), text: ch.text, x: 50, y: 82, fontSize: 34, color: "#FFFFFF", style: "caption" as const, timelineStart: ch.start, trimStart: 0, trimEnd: Math.max(0.3, ch.end - ch.start), maxDuration: 3600, opacity: 100, trackRow: 0 }));
+  }
+
+  /**
+   * Clean up the talking (Kezie, 2026-10-27: "cut pauses, cut awkward stares... remove repetition of
+   * words and all that stuff and make the whole video look seamless"): the ums, stutters, false starts,
+   * retakes and long pauses come out of the selected clip, or every talking clip on the video track,
+   * cut only between words. Everything after moves up with it. Undo puts it back.
+   */
+  async function cleanUpTalking() {
+    const row = videoClips.filter((c) => (c.trackRow ?? 0) === 0);
+    const sel = selectedElement?.type === "video" ? row.find((c) => c.id === selectedElement.id && c.type === "video") : undefined;
+    const targets = sel ? [sel] : row.filter((c) => c.type === "video");
+    if (!targets.length) { toast.info("Add a video of someone talking to the video track first."); return; }
+    const signal = aiStart("Getting the sound ready…");
+    try {
+      const keep = new Map<string, Range[]>();
+      const heard: Array<{ clip: TrackClip; words: Word[]; drop: Set<number>; ranges: Range[] }> = [];
+      const got = await hearClips(targets, signal, (i, n) => aiStep(n > 1 ? `Listening to video ${i + 1} of ${n}: every word, um and pause…` : "Listening to every word, um and pause…", i / n));
+      const spent = got.credits, cut = got.cut;
+      for (const c of targets) {
+        const h = got.heard.get(c.id);
+        if (!h?.words.length) continue;
+        const ranges = keepRanges(h.words, h.drop, h.len);
+        if (!ranges.length) continue;
+        keep.set(c.id, ranges.map((r) => ({ start: c.trimStart + r.start, end: c.trimStart + r.end })));
+        heard.push({ clip: c, words: h.words, drop: h.drop, ranges });
+      }
+      if (!keep.size) { toast.info(`Nobody speaks in ${targets.length === 1 ? "this clip" : "these clips"}, so there's nothing to clean up. ${spent} credits used.`); return; }
+      aiStep("Cutting it into one clean take…", 0.97);
+      snapshot();
+      const { clips, map } = relayout(row, keep, () => crypto.randomUUID());
+      const before = Math.max(0, ...row.map((c) => c.timelineStart + span(c)));
+      const after = Math.max(0, ...clips.map((c) => c.timelineStart + span(c)));
+      setVideoClips((prev) => [...prev.filter((c) => (c.trackRow ?? 0) !== 0).map((c) => ({ ...c, timelineStart: map(c.timelineStart) })), ...clips]);
+      setTextLayers((prev) => prev.map((l) => ({ ...l, timelineStart: map(l.timelineStart) })));
+      setAudioClips((prev) => prev.map((a) => ({ ...a, timelineStart: map(a.timelineStart) })));
+      const caps = captionsFrom(heard, map);
+      setCleanCaptions(caps.length ? caps : null);
+      seekTo(0);
+      toast.success(`Cleaned up: ${cut} ums, repeats and false starts out, and the long pauses. ${(before - after).toFixed(1)} s shorter · ${spent} credits. Undo is one click.`, {
+        duration: 10_000,
+        ...(caps.length ? { action: { label: "Add captions (free)", onClick: () => { snapshot(); setTextLayers((p) => [...p, ...caps]); setCleanCaptions(null); } } } : {}),
+      });
+    } catch (e) { if (signal.aborted) toast.info(AI_STOPPED); else toast.error(e instanceof Error ? e.message : "Couldn't clean it up."); }
+    finally { setAiBusy(null); setAiPct(null); }
+  }
+
+  /**
    * Edit like a video (Kezie, 2026-10-12: "edit a video for me that looks like this"): read the
    * inspo's editing (each cut's length, its words on screen), then recut the user's own clips to
    * the same rhythm and add those words, rewritten for the brand. Undo puts it back.
+   * 2026-10-27 (Kezie: "it just cuts videos and starts them again randomly"): talking clips are
+   * cleaned up first, the clips stay in your order, every cut lands between words, and nothing
+   * starts over (lib/editor/cleanup.ts fitToRhythm). Each step shows as it happens.
    */
   async function editLikeVideo(file: File) {
     const vids = videoClips.filter((c) => (c.trackRow ?? 0) === 0).sort((a, b) => a.timelineStart - b.timelineStart);
     if (!vids.length) { toast.info("Add your own clips or photos to the video track first, then pick the video to copy."); return; }
     const url = URL.createObjectURL(file);
-    const signal = aiStart("Reading the inspo's editing…");
+    const signal = aiStart("Opening the video you love…");
     try {
-      const r = await readVideo(url, (p) => setAiBusy(`Reading the inspo · ${Math.round(p * 100)}%`));
+      const r = await readVideo(url, (p) => aiStep(`Step 1 of 3 · Reading its cuts · ${Math.round(p * 100)}%`, p * 0.45));
       if (signal.aborted) throw new Error(AI_STOPPED);
       if (r.shots.length < 2) { toast.info("That video is one long shot, so there's no editing to copy. Try one with cuts."); return; }
-      setAiBusy("Working out the edit…");
+      aiStep(`Step 2 of 3 · Working out its editing (${r.shots.length} shots)…`, 0.5);
       const res = await fetch("/api/inspo/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "edit", shots: r.shots.map(({ start, end, data }) => ({ start, end, data })), duration: r.duration, width: r.width, height: r.height, brandId: activeBrand?.id }), signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.recipe) throw new Error(data.error || "Couldn't read that video's editing.");
       const recipe = data.recipe as EditRecipe;
-      const cutTimes: number[] = [];
-      let t = 0;
-      for (const c of recipe.cuts.slice(0, -1)) { t += c; cutTimes.push(Math.round(t * 1000) / 1000); }
-      const total = recipe.cuts.reduce((n, c) => n + c, 0);
-      const pieces = beatCut(vids.map((v) => ({ id: v.id, maxDuration: v.type === "image" ? 3600 : v.maxDuration, trimStart: v.trimStart })), cutTimes, { from: 0, to: total, every: 1 });
+      // Your clips, in your order: talking ones cleaned up first and cut only between words.
+      const talkers = likeClean ? vids.filter((v) => v.type === "video") : [];
+      const got = talkers.length ? await hearClips(talkers, signal, (i, n) => aiStep(`Step 3 of 3 · Cleaning up your clips${n > 1 ? ` (${i + 1} of ${n})` : ""}: ums, pauses, repeats…`, 0.55 + (0.4 * i) / n)) : { heard: new Map<string, { words: Word[]; drop: Set<number>; len: number }>(), credits: 0, cut: 0 };
+      const credits = (Number(data.credits) || 0) + got.credits, cut = got.cut;
+      const heard = new Map([...got.heard].filter(([, h]) => h.words.length >= 3));
+      aiStep("Cutting your clips to its rhythm…", 0.97);
+      const material: Material[] = [];
+      for (const v of vids) {
+        const h = heard.get(v.id);
+        if (h) for (const rg of keepRanges(h.words, h.drop, h.len)) material.push({ sourceId: v.id, start: v.trimStart + rg.start, end: v.trimStart + rg.end, points: cutPoints(h.words, h.drop, rg).map((p) => v.trimStart + p) });
+        else material.push({ sourceId: v.id, start: v.trimStart, end: v.trimEnd, points: null });
+      }
+      const pieces = fitToRhythm(material, recipe.cuts);
       if (!pieces.length) { toast.info("Couldn't fit your clips to that edit. Add a few more clips and try again."); return; }
-      snapshot();
       const byId = new Map(vids.map((v) => [v.id, v]));
-      setVideoClips((prev) => [...prev.filter((c) => (c.trackRow ?? 0) !== 0), ...pieces.map((p) => ({ ...byId.get(p.sourceId)!, id: crypto.randomUUID(), timelineStart: p.timelineStart, trimStart: p.trimStart, trimEnd: p.trimEnd, trackRow: 0 }))]);
+      let t = 0;
+      const laid = pieces.map((p) => { const src = byId.get(p.sourceId)!; const clip = { ...src, id: crypto.randomUUID(), timelineStart: Math.round(t * 1000) / 1000, trimStart: p.trimStart, trimEnd: p.trimEnd, trackRow: 0 }; t += (p.trimEnd - p.trimStart) / speedOf(src); return clip; });
+      snapshot();
+      setVideoClips((prev) => [...prev.filter((c) => (c.trackRow ?? 0) !== 0), ...laid]);
       const size = { big: 60, medium: 44, small: 30 } as const;
       if (recipe.texts.length) {
-        setTextLayers((prev) => [...prev, ...recipe.texts.filter((x) => x.at < total).map((x) => ({ id: crypto.randomUUID(), text: x.text, x: 50, y: x.y, fontSize: size[x.size], color: "#FFFFFF", style: x.style, timelineStart: x.at, trimStart: 0, trimEnd: Math.min(x.duration, total - x.at), maxDuration: 3600, opacity: 100, trackRow: 1 }))]);
+        setTextLayers((prev) => [...prev, ...recipe.texts.filter((x) => x.at < t).map((x) => ({ id: crypto.randomUUID(), text: x.text, x: 50, y: x.y, fontSize: size[x.size], color: "#FFFFFF", style: x.style, timelineStart: x.at, trimStart: 0, trimEnd: Math.min(x.duration, t - x.at), maxDuration: 3600, opacity: 100, trackRow: 1 }))]);
       }
       setCanvasAspect(recipe.aspect); setFitMode("fill");
-      setBeatMarks(cutTimes);
-      toast.success(`Edited like the inspo: ${pieces.length} cuts${recipe.texts.length ? `, ${recipe.texts.length} lines of text` : ""} (${recipe.pace || "same pace"}) · ${data.credits} credits. Undo is one click.`, { duration: 8000 });
+      setBeatMarks(laid.slice(1).map((c) => c.timelineStart));
+      seekTo(0);
+      toast.success(`Edited like the inspo: ${laid.length} cuts${heard.size ? `, all between words, ${cut} ums, repeats and false starts out` : ""}${recipe.texts.length ? `, ${recipe.texts.length} lines of text` : ""} (${recipe.pace || "same pace"}) · ${credits} credits. Undo is one click.`, { duration: 9000 });
     } catch (e) { if (signal.aborted) toast.info(AI_STOPPED); else toast.error(e instanceof Error ? e.message : "Couldn't read that video's editing."); }
-    finally { URL.revokeObjectURL(url); setAiBusy(null); }
+    finally { URL.revokeObjectURL(url); setAiBusy(null); setAiPct(null); }
   }
 
   async function addCaptions() {
@@ -1565,9 +1675,21 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
               </>
             ) : rail === "ai" ? (
               <>
-                <div className="ve-bin-h"><b className="text-[13px]">AI tools</b>{aiBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "var(--s-ai)" }} />}
-                  {aiBusy && <button className="s-btn sm ml-auto" onClick={() => aiStop.current?.abort()} aria-label="Stop" title="Stop: what the AI service hasn't already billed comes back"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>}</div>
+                <div className="ve-bin-h"><b className="text-[13px]">AI tools</b></div>
                 <div className="grid gap-2.5 px-3 pb-3">
+                  {aiBusy && (
+                    <div className="ve-card ai ve-progress" role="status" aria-live="polite" aria-label="AI progress">
+                      <span className="flex items-start gap-2 text-[12.5px]" style={{ color: "var(--s-text)" }}><Loader2 className="h-3.5 w-3.5 mt-0.5 shrink-0 animate-spin" style={{ color: "var(--s-ai)" }} /><span className="flex-1">{aiBusy}</span></span>
+                      <span className="ve-bar" aria-hidden><span className={aiPct === null ? "indet" : ""} style={aiPct === null ? undefined : { width: `${Math.round(aiPct * 100)}%` }} /></span>
+                      <button className="s-btn sm justify-self-start" onClick={() => aiStop.current?.abort()} title="Stop: what the AI service hasn't already billed comes back"><Square className="h-3 w-3" fill="currentColor" /> Stop</button>
+                    </div>
+                  )}
+                  <div className="ve-card ai">
+                    <b className="text-[13px] flex items-center gap-1.5"><Wand2 className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Clean up the talking</b>
+                    <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Cuts the ums, hmms, stutters, repeated words, false starts, retakes and long pauses, only between words, so it plays as one confident take. {selVideo?.type === "video" ? "For the selected clip." : "For every talking clip on the video track."}</span>
+                    <button type="button" className="s-btn ai sm" disabled={!!aiBusy || aiLocked || captionSeconds <= 0} onClick={() => void cleanUpTalking()}><Wand2 className="h-3.5 w-3.5" /> Clean it up <span className="cost">{captionSeconds > 0 ? transcribeCredits(captionSeconds) : 0} cr</span></button>
+                    {cleanCaptions && !aiBusy && <button type="button" className="s-btn sm" onClick={() => { snapshot(); setTextLayers((p) => [...p, ...cleanCaptions]); setCleanCaptions(null); }}><Subtitles className="h-3.5 w-3.5" /> Add captions from the words <span className="cost">free</span></button>}
+                  </div>
                   {aiLocked && <div className="ve-card ai text-[12px]" style={{ color: "var(--s-soft)" }}><span>{AI_NEEDS_CREDITS}</span><a href="/studio/account/billing" className="s-btn ai sm justify-center">Get credits</a></div>}
                   <div className="ve-card ai">
                     <b className="text-[13px] flex items-center gap-1.5"><AudioLines className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Cut to the beat</b>
@@ -1594,7 +1716,11 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   )}
                   <div className="ve-card ai">
                     <b className="text-[13px] flex items-center gap-1.5"><Copy className="h-4 w-4" style={{ color: "var(--s-ai)" }} /> Edit like a video you love</b>
-                    <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Pick a Reel or ad whose editing you like. Your clips are recut to its rhythm and its words on screen are rewritten for your brand.</span>
+                    <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>Pick a Reel or ad whose editing you like. Your clips are recut to its pace, in your order, and its words on screen are rewritten for your brand.</span>
+                    <label className="flex items-start gap-2 text-[12px] cursor-pointer" style={{ color: "var(--s-soft)" }}>
+                      <input type="checkbox" className="mt-0.5" checked={likeClean} onChange={(e) => setLikeClean(e.target.checked)} />
+                      <span>Clean up the talking first: ums, pauses and repeats out, every cut between words{likeClean && captionSeconds > 0 ? ` (+${transcribeCredits(videoClips.filter((c) => (c.trackRow ?? 0) === 0 && c.type === "video").reduce((n, c) => n + c.trimEnd - c.trimStart, 0))} cr)` : ""}</span>
+                    </label>
                     <label className={`s-btn ai sm cursor-pointer${aiBusy || aiLocked ? " opacity-50 pointer-events-none" : ""}`}><Sparkles className="h-3.5 w-3.5" /> Pick the video to copy <span className="cost">≤20 cr</span>
                       <input type="file" accept="video/*" className="hidden" aria-label="Video to copy the editing of" disabled={!!aiBusy || aiLocked} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void editLikeVideo(f); }} />
                     </label>
@@ -1697,6 +1823,15 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                 {buffering && (
                   <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] pointer-events-none" style={{ zIndex: 90, background: "rgba(0,0,0,.62)", color: "#fff" }} role="status">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading the clip…
+                  </div>
+                )}
+                {/* The AI tool at work, over the preview too: on an iPad the panel is often closed. */}
+                {aiBusy && rail !== "ai" && (
+                  <div className="ve-aipill" role="status" aria-live="polite" onClick={(e) => e.stopPropagation()}>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" style={{ color: "var(--s-ai)" }} />
+                    <span className="min-w-0 truncate">{aiBusy}</span>
+                    {aiPct !== null && <span className="mono shrink-0">{Math.round(aiPct * 100)}%</span>}
+                    <button type="button" className="s-btn sm shrink-0" style={{ height: 24 }} onClick={() => aiStop.current?.abort()}>Stop</button>
                   </div>
                 )}
                 {!videoClips.some((clip) => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip))) && (
