@@ -77,6 +77,7 @@ test("captions, removing a sent post, the editor's Export and logo, and Motion a
 
     // 2. The calendar takes off a post that already went out.
     await page.goto(`${BASE}/studio/plan`);
+    await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Month" }).click({ timeout: 30_000 }); // Week is the default since 2026-10-27
     if (yesterday.getMonth() !== new Date().getMonth()) await page.getByRole("button", { name: /Previous month/ }).click();
     await page.locator(".cal-day", { has: page.locator(`[title^="${sentCaption}"]`) }).click({ timeout: 30_000 });
     const card = page.locator(".cal-side div.rounded-xl", { hasText: sentCaption });

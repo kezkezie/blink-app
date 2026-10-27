@@ -60,7 +60,8 @@ test("calendar: schedule and take off a post; the post page saves captions; bill
     expect(new Date(placed!.scheduled_at!).getHours()).toBe(10);
     expect(placed!.postforme_tracking_id).toBeNull();
 
-    // It shows on that day; take it off again from the day panel.
+    // It shows on that day (Month: the calendar opens on Week since 2026-10-27); take it off again from the day panel.
+    await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Month" }).click();
     await page.locator(".cal-day", { has: page.locator(`[title^="${caption}"]`) }).click();
     const inPanel = page.locator(".cal-side").getByText(caption);
     await expect(inPanel).toBeVisible();

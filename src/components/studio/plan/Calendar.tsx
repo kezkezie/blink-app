@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarPlus, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, Loader2, MessageCircle, Send, X } from "lucide-react";
 import { toast } from "sonner";
@@ -10,28 +10,28 @@ import { useBrandStore } from "@/app/store/useBrandStore";
 import { useAskStore } from "@/components/studio/ask-store";
 import { Modal } from "@/components/studio/Modal";
 import { MediaThumb, NOT_STORYBOARD_FRAME, PART_TYPES, STATUS_LABEL, cleanCaption, resolveMedia } from "@/components/studio/media";
+import { BetaTag } from "@/components/studio/AutoPostBeta";
+import { useKept } from "@/lib/drafts";
 import { PlatformGlyph } from "./PlatformGlyph";
 import { VIDEO_ONLY, VIDEO_ONLY_LINE } from "@/lib/social-media-rules";
-import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, savePlatforms, takeOffCalendar, toLocalInput, whenLabel, type CalRow, type PlaceResult, type PostState } from "./schedule";
+import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, savePlatforms, takeOffCalendar, toLocalInput, whenLabel, type CalRow, type PlaceResult } from "./schedule";
+import { daysOf, fromKey, hhmm, keyOf, rangeLabel, shift, startOfDay, type CalView } from "./calendar-time";
+import { ListView, MonthView, WeekView, movable, toneColor } from "./CalendarViews";
+import { PostCard } from "./PostCard";
 import "./calendar.css";
 import { CalendarSkeleton } from "@/components/studio/Skeletons";
 
 /**
- * The calendar in the studio look (2026-10-11; the classic one stays at /dashboard/calendar).
- * Drag a ready post onto a day, or press Schedule (works on phones too). "Magic Auto-Schedule"
- * (one post a day at 10:00) is gone: Ask BlinkSpot plans the dates and times instead.
- * A post's state is shown honestly: queued with PostForMe, on the calendar but not queued
- * (pick platforms, or the queueing failed), or already sent.
+ * The calendar in the studio look (2026-10-11; the classic one stays at /dashboard/calendar),
+ * redesigned 2026-10-27 from Kezie's two picks: a header with the time and date, Week (a time grid
+ * with a "now" line and picture blocks), Month and List (day chips, the next post lit up). Tap a post
+ * for its card; tap an empty time in Week, then a ready post, to put it there (drag works too, but
+ * not on an iPad). A post's state is shown honestly: queued with PostForMe, on the calendar but not
+ * queued (pick platforms, or the queueing failed), or already sent. Auto-posting is in beta.
  */
 
 const COLS = "id, client_id, brand_id, caption, caption_short, content_type, status, image_urls, video_urls, reference_image_url, scheduled_at, target_platforms, postforme_tracking_id, created_at";
-const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const pad = (n: number) => String(n).padStart(2, "0");
-const keyOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const fromKey = (k: string) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
-const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-
-const toneColor = (t: PostState["tone"]) => (t === "ok" ? "var(--s-ok)" : t === "warn" ? "var(--s-warn)" : t === "danger" ? "var(--s-danger)" : "var(--s-mute)");
+const VIEWS: Array<{ id: CalView; label: string }> = [{ id: "week", label: "Week" }, { id: "month", label: "Month" }, { id: "list", label: "List" }];
 
 /** Where a post dropped on `day` lands: its own time of day, else 10:00; never in the past. */
 function timeOnDay(day: Date, existing?: string | null) {
@@ -45,10 +45,19 @@ function timeOnDay(day: Date, existing?: string | null) {
   return d;
 }
 
+/** The time now, ticking each half minute (the header clock and the week's "now" line). */
+function useNow(every = 30_000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), every); return () => clearInterval(t); }, [every]);
+  return now;
+}
+
 export function Calendar() {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
-  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const now = useNow();
+  const [view, setView] = useKept<CalView>("plan:view", "week");
+  const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const [scheduled, setScheduled] = useState<CalRow[] | null>(null);
   const [ready, setReady] = useState<CalRow[] | null>(null);
   const [readyLimit, setReadyLimit] = useState(24);
@@ -57,19 +66,21 @@ export function Calendar() {
   const [selected, setSelected] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  const [overAt, setOverAt] = useState<Date | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [whenFor, setWhenFor] = useState<CalRow | null>(null);
   const [whenValue, setWhenValue] = useState("");
   const [platformsFor, setPlatformsFor] = useState<CalRow | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
+  const [confirmOff, setConfirmOff] = useState<string | null>(null);
+  // Tap-to-place (Week): an empty time picked, waiting for a ready post.
+  const [slot, setSlot] = useState<Date | null>(null);
+  // The opened post: floating next to it, or a sheet on phones.
+  const [card, setCard] = useState<{ id: string; x: number; y: number; sheet: boolean } | null>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  const side = useRef<HTMLElement>(null);
 
-  // Six rows of Monday-first weeks around the month.
-  const days = useMemo(() => {
-    const first = new Date(month);
-    const start = new Date(first); start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
-    const weeks = Math.ceil((((first.getDay() + 6) % 7) + new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate()) / 7);
-    return Array.from({ length: weeks * 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
-  }, [month]);
+  const days = useMemo(() => daysOf(view, anchor), [view, anchor]);
 
   const load = useCallback(async () => {
     if (!activeBrand) return;
@@ -103,7 +114,7 @@ export function Calendar() {
     return m;
   }, [scheduled]);
   const all = useMemo(() => [...(scheduled ?? []), ...(ready ?? [])], [scheduled, ready]);
-  const today = startOfToday();
+  const today = startOfDay(now);
 
   function report(r: PlaceResult, iso: string, item: CalRow) {
     if (!r.ok) { toast.error(r.error || "Couldn't schedule it."); return; }
@@ -122,6 +133,7 @@ export function Calendar() {
     setBusy(item.id);
     const r = await placeOnCalendar(clientId, item, iso);
     setBusy(null);
+    setSlot(null);
     report(r, iso, item);
     await load();
   }
@@ -130,11 +142,11 @@ export function Calendar() {
     const r = await takeOffCalendar(item.id, evenIfPosted);
     setBusy(null);
     setConfirmOff(null);
+    setCard(null);
     if (!r.ok) { toast.error(r.error || "Couldn't take it off the calendar."); return; }
     toast.success(evenIfPosted ? "Taken off the calendar. It's still in your Library, and still on the platform it went to." : "Taken off the calendar. It's back in Ready.");
     await load();
   }
-  const [confirmOff, setConfirmOff] = useState<string | null>(null);
   function openWhen(item: CalRow) { setWhenFor(item); setWhenValue(toLocalInput(item.scheduled_at)); }
   // A picture can't go to YouTube (videos only), so it isn't picked for one.
   function openPlatforms(item: CalRow) { const video = resolveMedia(item).isVideo; setPlatformsFor(item); setPicked(enabledPlatforms(item.target_platforms).filter((p) => connected.includes(p) && (video || !VIDEO_ONLY.has(p)))); }
@@ -152,95 +164,138 @@ export function Calendar() {
     await load();
   }
 
-  function onDropDay(e: React.DragEvent, day: Date) {
-    e.preventDefault(); setOver(null);
-    const id = e.dataTransfer.getData("text/blink-post") || dragId; setDragId(null);
-    const item = all.find((p) => p.id === id);
+  const dragged = (e: React.DragEvent) => { const id = e.dataTransfer.getData("text/blink-post") || dragId; setDragId(null); setOver(null); setOverAt(null); return all.find((p) => p.id === id) ?? null; };
+  function dropDay(e: React.DragEvent, day: Date) {
+    e.preventDefault();
+    const item = dragged(e);
     if (!item) return;
     if (day < today) { toast.info("That day has passed."); return; }
     void place(item, timeOnDay(day, item.scheduled_at));
   }
+  function dropAt(e: React.DragEvent, at: Date) {
+    e.preventDefault();
+    const item = dragged(e);
+    if (item) void place(item, at);
+  }
   function onDropReady(e: React.DragEvent) {
-    e.preventDefault(); setOver(null);
-    const id = e.dataTransfer.getData("text/blink-post") || dragId; setDragId(null);
-    const item = (scheduled ?? []).find((p) => p.id === id);
-    if (item) void unschedule(item);
+    e.preventDefault();
+    const item = dragged(e);
+    if (item && (scheduled ?? []).some((p) => p.id === item.id)) void unschedule(item);
   }
   const dragProps = (p: CalRow, enabled = true) => enabled ? {
     draggable: true,
-    onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData("text/blink-post", p.id); e.dataTransfer.effectAllowed = "move"; setDragId(p.id); },
-    onDragEnd: () => { setDragId(null); setOver(null); },
+    onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData("text/blink-post", p.id); e.dataTransfer.effectAllowed = "move"; setDragId(p.id); setCard(null); },
+    onDragEnd: () => { setDragId(null); setOver(null); setOverAt(null); },
   } : {};
+
+  /** Open a post's card next to what was tapped (inside the calendar), or as a sheet on a phone. */
+  const openCard = useCallback((p: CalRow, el: HTMLElement) => {
+    setConfirmOff(null);
+    const box = wrap.current?.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    if (!box || window.matchMedia("(max-width: 639px)").matches) { setCard({ id: p.id, x: 0, y: 0, sheet: true }); return; }
+    const W = 304;
+    let x = r.right - box.left + 10;
+    if (x + W > box.width) x = r.left - box.left - W - 10;
+    if (x < 8) x = Math.max(8, Math.min(box.width - W - 8, r.left - box.left));
+    const y = Math.max(8, Math.min(r.top - box.top - 20, Math.max(8, box.height - 420)));
+    setCard((c) => (c?.id === p.id ? null : { id: p.id, x, y, sheet: false }));
+  }, []);
+  const closeCard = useCallback(() => { setCard(null); setConfirmOff(null); }, []);
+
+  function pickSlot(at: Date) {
+    setCard(null);
+    if (at.getTime() < Date.now() + 5 * 60_000) { toast.info("That time has passed. Pick a later one."); return; }
+    setSelected(null);
+    setSlot(at);
+    if (window.matchMedia("(max-width: 1099px)").matches) side.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function selectDay(d: Date) { setSlot(null); setCard(null); setSelected(keyOf(d)); }
+  function go(by: 1 | -1) { setCard(null); setAnchor((a) => shift(view, a, by)); }
+  function goToday() { setCard(null); const d = startOfDay(new Date()); setAnchor(d); setSelected(keyOf(d)); }
 
   if (!activeBrand) return <div className="s-empty"><h3>No brand open</h3><p className="text-[13px]">Pick a brand in the top bar to see its calendar.</p></div>;
   if (!scheduled || !ready) return <CalendarSkeleton />;
 
-  const monthName = month.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-  const inMonth = scheduled.filter((p) => p.scheduled_at && new Date(p.scheduled_at).getMonth() === month.getMonth()).length;
+  const range = rangeLabel(view, anchor);
+  const shown = scheduled.filter((p) => p.scheduled_at && (view !== "month" || new Date(p.scheduled_at).getMonth() === anchor.getMonth()));
+  const queued = shown.filter((p) => postState(p).label === "Queued").length;
+  const needs = shown.filter((p) => ["Pick platforms", "Not queued"].includes(postState(p).label)).length;
   const selectedPosts = selected ? byDay.get(selected) ?? [] : [];
   const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; } })();
   const draggingScheduled = !!dragId && scheduled.some((p) => p.id === dragId);
+  const opened = card ? scheduled.find((p) => p.id === card.id) ?? null : null;
+  const unit = view === "week" ? "this week" : view === "month" ? "this month" : "in these four weeks";
 
   // A plain call (not a component defined in render), so thumbnails aren't remounted on every render.
   const thumb = (p: CalRow) => { const m = resolveMedia(p); return <MediaThumb url={m.url} isVideo={m.isVideo} poster={m.poster} />; };
+  const common = { byDay, now, dragId, openCard, cardId: card?.id ?? null, dragProps };
 
   return (
     <div className="cal">
-      <div className="s-card overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--s-line)" }}>
-          <h2 className="text-[16px] font-semibold mr-1">{monthName}</h2>
-          <button className="s-btn ghost sm" style={{ width: 28, padding: 0 }} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
-          <button className="s-btn ghost sm" style={{ width: 28, padding: 0 }} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
-          <button className="s-btn sm" onClick={() => { const d = new Date(); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); setSelected(keyOf(d)); }}>Today</button>
+      <div className="s-card overflow-hidden relative calx" ref={wrap}>
+        <div className="calx-head">
+          <div className="grid gap-0.5 min-w-0">
+            <span className="calx-clock" aria-label={`It's ${hhmm(now)}`}>{hhmm(now)}</span>
+            <span className="calx-date">{now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}{tz ? <span className="mono"> · {tz}</span> : null}</span>
+          </div>
           <div className="flex-1" />
-          <span className="text-[12px] mono" style={{ color: "var(--s-mute)" }}>{inMonth} on the calendar this month{tz ? ` · times in ${tz}` : ""}</span>
+          <div className="grid gap-2 justify-items-start sm:justify-items-end">
+            <div className="s-seg calx-seg" role="group" aria-label="View">
+              {VIEWS.map((v) => <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => { setCard(null); setSlot(null); setView(v.id); }}>{v.label}</button>)}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button className="s-btn sm" onClick={goToday}>Today</button>
+              <button className="s-btn ghost sm" style={{ width: 28, padding: 0 }} onClick={() => go(-1)} aria-label={`Previous ${view === "list" ? "weeks" : view}`}><ChevronLeft className="h-4 w-4" /></button>
+              <button className="s-btn ghost sm" style={{ width: 28, padding: 0 }} onClick={() => go(1)} aria-label={`Next ${view === "list" ? "weeks" : view}`}><ChevronRight className="h-4 w-4" /></button>
+              <h2 className="text-[15px] font-semibold ml-1 whitespace-nowrap">{range}</h2>
+            </div>
+          </div>
         </div>
-        <div className="cal-grid" role="grid" aria-label={`Calendar for ${monthName}`}>
-          {DOW.map((d) => <div key={d} className="cal-dow">{d}</div>)}
-          {days.map((d) => {
-            const k = keyOf(d);
-            const posts = byDay.get(k) ?? [];
-            const cls = ["cal-day", d.getMonth() !== month.getMonth() && "out", d < today && "past", k === keyOf(today) && "today", selected === k && "sel", over === k && "over"].filter(Boolean).join(" ");
-            return (
-              <div
-                key={k}
-                role="gridcell"
-                tabIndex={0}
-                aria-label={`${d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}, ${posts.length} post${posts.length === 1 ? "" : "s"}`}
-                className={cls}
-                onClick={() => setSelected(k)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(k); } }}
-                onDragOver={(e) => { if (d >= today) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (over !== k) setOver(k); } }}
-                onDragLeave={() => setOver((o) => (o === k ? null : o))}
-                onDrop={(e) => onDropDay(e, d)}
-              >
-                <span className="cal-n">{d.getDate()}</span>
-                {posts.slice(0, 3).map((p) => {
-                  const st = postState(p);
-                  const movable = p.status !== "posted" && (!p.scheduled_at || new Date(p.scheduled_at).getTime() > Date.now());
-                  return (
-                    <div key={p.id} className={`cal-chip${dragId === p.id ? " drag" : ""}`} {...dragProps(p, movable)} title={`${cleanCaption(p.caption) || "Post"} · ${st.label}`}>
-                      <span className="th">{thumb(p)}</span>
-                      <span className="t">{new Date(p.scheduled_at!).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span>
-                      <span className="p">{enabledPlatforms(p.target_platforms).slice(0, 2).map((x) => <PlatformGlyph key={x} platform={x} size={11} />)}</span>
-                      <span className="cal-dot" style={{ background: toneColor(st.tone) }} aria-label={st.label} />
-                    </div>
-                  );
-                })}
-                {posts.length > 3 && <span className="cal-more">+{posts.length - 3} more</span>}
-                {posts.length > 0 && <span className="cal-dots">{posts.slice(0, 4).map((p) => <span key={p.id} className="cal-dot" style={{ background: toneColor(postState(p).tone) }} />)}</span>}
-              </div>
-            );
-          })}
+        <div className="calx-sub">
+          <span><b>{shown.length}</b> {unit}</span>
+          {queued > 0 && <span className="flex items-center gap-1"><span className="cal-dot" style={{ background: "var(--s-ok)" }} /><b>{queued}</b> queued</span>}
+          {needs > 0 && <span className="flex items-center gap-1"><span className="cal-dot" style={{ background: "var(--s-warn)" }} /><b>{needs}</b> need{needs === 1 ? "s" : ""} platforms</span>}
+          <span className="flex-1" />
+          <span className="flex items-center gap-1.5">Auto-posting <BetaTag /></span>
         </div>
+
+        {view === "week" && <WeekView {...common} days={days} slot={slot} pickSlot={pickSlot} overAt={overAt} setOverAt={setOverAt} dropAt={dropAt} selectDay={selectDay} />}
+        {view === "month" && <MonthView {...common} days={days} month={anchor.getMonth()} selected={selected} selectDay={selectDay} over={over} setOver={setOver} dropDay={dropDay} />}
+        {view === "list" && <ListView byDay={byDay} now={now} openCard={openCard} cardId={card?.id ?? null} days={days} selected={selected} selectDay={selectDay} onPlan={() => useAskStore.getState().ask("Plan my ready posts on the calendar for the next two weeks, at the best times for my audience")} />}
+
+        {opened && card && !card.sheet && (
+          <PostCard post={opened} at={card} busy={busy === opened.id} confirmOff={confirmOff === opened.id} setConfirmOff={(v) => setConfirmOff(v ? opened.id : null)}
+            onTime={() => { closeCard(); openWhen(opened); }} onPlatforms={() => { closeCard(); openPlatforms(opened); }} onRemove={(even) => void unschedule(opened, even)} onClose={closeCard} />
+        )}
       </div>
 
-      <aside
+      <aside ref={side}
         className={`s-card cal-side${draggingScheduled && !selected ? " drop" : ""}`}
         onDragOver={(e) => { if (draggingScheduled && !selected) e.preventDefault(); }}
         onDrop={(e) => { if (!selected) onDropReady(e); }}
       >
-        {selected ? (
+        {slot ? (
+          <>
+            <div className="p-4 grid gap-1" style={{ borderBottom: "1px solid var(--s-line)" }}>
+              <button className="s-btn ghost sm justify-self-start -ml-2" onClick={() => setSlot(null)}><X className="h-3.5 w-3.5" /> Cancel</button>
+              <b className="text-[15px]">Put a post at {whenLabel(slot.toISOString())}</b>
+              <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{ready.length ? "Pick one of your ready posts." : "Nothing ready yet. Make something, then come back."}</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 grid gap-2 content-start" role="list" aria-label="Ready posts">
+              {ready.map((p) => (
+                <div key={p.id} role="listitem" className="cal-ready">
+                  <div className="th">{thumb(p)}</div>
+                  <div className="min-w-0 grid gap-1 content-start">
+                    <p className="text-[12.5px] leading-snug line-clamp-2" style={{ color: p.caption ? "var(--s-text)" : "var(--s-mute)" }}>{cleanCaption(p.caption) || "No caption yet"}</p>
+                    <button className="s-btn primary sm justify-self-start" style={{ height: 26 }} disabled={busy === p.id} onClick={() => void place(p, slot)}>{busy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarPlus className="h-3 w-3" />} Put it at {hhmm(slot)}</button>
+                  </div>
+                </div>
+              ))}
+              {ready.length === 0 && <Link href="/studio" className="s-btn sm justify-self-center mt-2">Create</Link>}
+            </div>
+          </>
+        ) : selected ? (
           <>
             <div className="p-4 grid gap-1" style={{ borderBottom: "1px solid var(--s-line)" }}>
               <button className="s-btn ghost sm justify-self-start -ml-2" onClick={() => setSelected(null)}><ArrowLeft className="h-3.5 w-3.5" /> Ready to schedule</button>
@@ -250,7 +305,7 @@ export function Calendar() {
             <div className="flex-1 overflow-y-auto p-3 grid gap-2 content-start">
               {selectedPosts.map((p) => {
                 const st = postState(p);
-                const editable = p.status !== "posted" && !!p.scheduled_at && new Date(p.scheduled_at).getTime() > Date.now();
+                const editable = movable(p) && !!p.scheduled_at;
                 const plats = enabledPlatforms(p.target_platforms);
                 return (
                   <div key={p.id} className="rounded-xl p-2.5 grid gap-2" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line)" }} {...dragProps(p, editable)}>
@@ -258,7 +313,7 @@ export function Calendar() {
                       <div className="relative h-[52px] w-[52px] rounded-lg overflow-hidden bg-black [&_img]:h-full [&_img]:w-full [&_img]:object-cover [&_video]:h-full [&_video]:w-full [&_video]:object-cover">{thumb(p)}</div>
                       <div className="min-w-0 grid gap-1 content-start">
                         <div className="flex items-center gap-1.5">
-                          <span className="mono text-[12px]">{new Date(p.scheduled_at!).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span>
+                          <span className="mono text-[12px]">{hhmm(new Date(p.scheduled_at!))}</span>
                           <span className="s-badge" style={{ color: toneColor(st.tone), background: `color-mix(in oklab, ${toneColor(st.tone)} 14%, transparent)` }}>{st.label}</span>
                         </div>
                         <p className="text-[12.5px] leading-snug line-clamp-2" style={{ color: p.caption ? "var(--s-text)" : "var(--s-mute)" }}>{cleanCaption(p.caption) || "No caption yet"}</p>
@@ -291,7 +346,7 @@ export function Calendar() {
           <>
             <div className="p-4 grid gap-1" style={{ borderBottom: "1px solid var(--s-line)" }}>
               <div className="flex items-center gap-2"><b className="text-[15px]">Ready to schedule</b><span className="s-badge">{ready.length}{moreReady ? "+" : ""}</span></div>
-              <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{draggingScheduled ? "Drop here to take it off the calendar." : "Drag a post onto a day, or press Schedule."}</span>
+              <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>{draggingScheduled ? "Drop here to take it off the calendar." : view === "week" ? "Drag a post onto a time, tap a time then a post, or press Schedule." : "Drag a post onto a day, or press Schedule."}</span>
               <button className="s-btn ghost sm justify-self-start -ml-2 mt-1" onClick={() => useAskStore.getState().ask("Plan my ready posts on the calendar for the next two weeks, at the best times for my audience")}>
                 <MessageCircle className="h-3.5 w-3.5" style={{ color: "var(--s-ai)" }} /> Ask BlinkSpot to plan them
               </button>
@@ -326,6 +381,13 @@ export function Calendar() {
         )}
       </aside>
 
+      <Modal open={!!(opened && card?.sheet)} onClose={closeCard} label="Post on the calendar" width={420}>
+        {opened && card?.sheet && (
+          <PostCard sheet post={opened} at={null} busy={busy === opened.id} confirmOff={confirmOff === opened.id} setConfirmOff={(v) => setConfirmOff(v ? opened.id : null)}
+            onTime={() => { closeCard(); openWhen(opened); }} onPlatforms={() => { closeCard(); openPlatforms(opened); }} onRemove={(even) => void unschedule(opened, even)} onClose={closeCard} />
+        )}
+      </Modal>
+
       <Modal open={!!whenFor} onClose={() => setWhenFor(null)} label="Pick a date and time" width={420} padded>
         <div className="flex items-center justify-between mb-3"><b className="text-sm">When should it go out?</b><button className="s-btn ghost sm" onClick={() => setWhenFor(null)} aria-label="Close"><X className="h-4 w-4" /></button></div>
         <input type="datetime-local" className="s-input" value={whenValue} min={toLocalInput(new Date(Date.now() + 10 * 60_000).toISOString())} onChange={(e) => setWhenValue(e.target.value)} aria-label="Date and time" style={{ colorScheme: "dark" }} />
@@ -337,7 +399,7 @@ export function Calendar() {
       </Modal>
 
       <Modal open={!!platformsFor} onClose={() => setPlatformsFor(null)} label="Where it posts" width={440} padded>
-        <div className="flex items-center justify-between mb-1"><b className="text-sm">Where should it post?</b><button className="s-btn ghost sm" onClick={() => setPlatformsFor(null)} aria-label="Close"><X className="h-4 w-4" /></button></div>
+        <div className="flex items-center justify-between mb-1"><b className="text-sm flex items-center gap-2">Where should it post? <BetaTag /></b><button className="s-btn ghost sm" onClick={() => setPlatformsFor(null)} aria-label="Close"><X className="h-4 w-4" /></button></div>
         <p className="text-[12px] mb-3" style={{ color: "var(--s-mute)" }}>Accounts connected to {activeBrand.brand_name}.</p>
         {connected.length === 0 ? (
           <div className="s-empty" style={{ padding: "24px 16px" }}><p className="text-[13px]">No social accounts connected for this brand yet.</p><Link href="/studio/account/settings" className="s-btn sm mt-3">Connect accounts</Link></div>
