@@ -66,5 +66,14 @@ export function shouldSeek(currentTime: number, expected: number, opts: { playin
   return !opts.seeking && off > 0.3 * (opts.speed ?? 1);
 }
 
+/**
+ * How long this device takes to get a video moving after play() (seconds), learned each time a clip
+ * starts. An iPad takes a moment, which showed as a freeze at every cut, so the next clip is started
+ * (silent, unseen) that much before its cut and is already moving when it's shown.
+ */
+export const START_GUESS = 0.12;
+export const learnLatency = (prev: number, sample: number) => Math.min(0.8, Math.max(0, prev * 0.6 + sample * 0.4));
+export const shouldPreroll = (c: Clip, t: number, latency: number) => { const toCut = c.timelineStart - t; return toCut > 0 && toCut <= latency + 0.02; };
+
 /** Where the whole edit ends (at least 5 s, like before). */
 export const endOfEdit = (...tracks: Clip[][]) => Math.max(5, ...tracks.flat().map((c) => c.timelineStart + span(c)));

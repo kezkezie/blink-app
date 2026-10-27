@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GIVE_UP_AFTER, endOfEdit, isUpcomingAt, masterAt, nextTime, shouldSeek, timelineAt } from "@/lib/editor/playback";
+import { GIVE_UP_AFTER, START_GUESS, endOfEdit, isUpcomingAt, learnLatency, masterAt, nextTime, shouldPreroll, shouldSeek, timelineAt } from "@/lib/editor/playback";
 
 /**
  * The editor's preview playback (Kezie, 2026-10-27: footage skipped on an iPad, worst with uploaded
@@ -58,6 +58,16 @@ describe("editor playback", () => {
     expect(shouldSeek(5, 5.2, { playing: true, seeking: false })).toBe(false);
     expect(shouldSeek(5, 5.4, { playing: true, seeking: false })).toBe(true);
     expect(shouldSeek(5, 5.4, { playing: true, seeking: true })).toBe(false);
+  });
+
+  it("starts the next clip early by the device's own start delay, learned as clips start", () => {
+    let l = START_GUESS;
+    for (let i = 0; i < 6; i++) l = learnLatency(l, 0.25); // an iPad taking a quarter second
+    expect(l).toBeGreaterThan(0.24);
+    expect(learnLatency(0.2, 5)).toBe(0.8); // a one-off stall doesn't start clips seconds early
+    expect(shouldPreroll(next, 10 - 0.2, 0.25)).toBe(true);
+    expect(shouldPreroll(next, 10 - 0.5, 0.25)).toBe(false);
+    expect(shouldPreroll(next, 10, 0.25)).toBe(false);
   });
 
   it("knows where the edit ends", () => {

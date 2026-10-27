@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useSyncExternalStore } from "react";
+import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Play, Pause, SkipBack, Trash2, Plus, Video, Type, Music, Image as ImageIcon, UploadCloud, Settings, Download, ZoomIn, ZoomOut, Loader2, X, SlidersHorizontal, ArrowUp, ArrowDown, ChevronDown, Layers, Film, Mic, Magnet, Check, Maximize2, Minimize2, Scissors, Copy, Sparkles, Wand2, Undo2, Redo2, AudioLines, Subtitles, Clapperboard, Gauge, Square } from "lucide-react";
 import { toast } from "sonner";
@@ -14,7 +14,7 @@ import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
 import { PIECE_AUDIO_ARGS, PIECE_VIDEO_ARGS, canvasSize, drawtextFilter, frameAt, normalizeFilter, overlayFilter, overlayStep, pieceAudioFilter, pieceSilence, webmDecoder, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
 import { SPEEDS, sourceAt, span, speedLabel, speedOf, withSpeed } from "@/lib/editor/speed";
-import { GIVE_UP_AFTER, MASTER_OFF, endOfEdit, isActiveAt, isUpcomingAt, masterAt, nextTime, shouldSeek } from "@/lib/editor/playback";
+import { GIVE_UP_AFTER, MASTER_OFF, START_GUESS, endOfEdit, isActiveAt, isUpcomingAt, learnLatency, masterAt, nextTime, shouldPreroll, shouldSeek } from "@/lib/editor/playback";
 import { commit, emptyHistory, isRedoKey, isUndoKey, redoStep, undoStep, type History } from "@/lib/editor/history";
 import "./video-editor.css";
 import { Button } from "@/components/ui/button";
@@ -78,12 +78,31 @@ interface TextLayer {
   style?: "plain" | "caption";
 }
 
-/** Plays in flight (not asked twice) and clips the browser wouldn't play with sound (playing silent). */
-type MediaState = { pending: WeakSet<HTMLMediaElement>; blocked: WeakSet<HTMLMediaElement>; toasted: boolean };
+/**
+ * Plays in flight (not asked twice), clips the browser wouldn't play with sound (playing silent),
+ * clips already started once inside a tap, and how long this device takes to start one (starting
+ * holds each start until its picture moves; latency is the learned delay, lib/editor/playback.ts).
+ */
+type MediaState = {
+  pending: WeakSet<HTMLMediaElement>; blocked: WeakSet<HTMLMediaElement>; unlocked: WeakSet<HTMLMediaElement>; toasted: boolean;
+  starting: Map<HTMLMediaElement, { at: number; from: number }>; latency: number;
+};
+
+/** Learn the start delay from the clips that just got moving. */
+function learnStarts(media: MediaState, now: number) {
+  for (const [el, s] of media.starting) {
+    if (el.paused || now - s.at > 3000) { media.starting.delete(el); continue; }
+    const moved = el.currentTime - s.from;
+    if (moved <= 0.02) continue;
+    media.latency = learnLatency(media.latency, (now - s.at) / 1000 - moved / (el.playbackRate || 1));
+    media.starting.delete(el);
+  }
+}
 
 function startPlaying(el: HTMLMediaElement, media: MediaState) {
   if (media.pending.has(el)) return;
   media.pending.add(el);
+  if (el instanceof HTMLVideoElement) media.starting.set(el, { at: performance.now(), from: el.currentTime });
   el.play().then(() => { media.pending.delete(el); }, (err: unknown) => {
     media.pending.delete(el);
     // iPad and iPhone refuse sound on a clip that wasn't started by a tap: play it silent, not stuck.
@@ -100,11 +119,21 @@ function startPlaying(el: HTMLMediaElement, media: MediaState) {
  * video is only moved when it's clearly off (a cut or a jump); the rest follow it, and wait with it
  * while it loads. The next clip is lined up on its first frame before its cut.
  */
-function syncMedia({ t, playing, holding, masterId, clips, videos, audios, media }: {
+function syncMedia({ t, playing, holding, masterId, clips, videos, audios, boxes, media }: {
   t: number; playing: boolean; holding: boolean; masterId: string | null; clips: { videoClips: TrackClip[]; audioClips: TrackClip[] };
-  videos: Record<string, HTMLVideoElement | null>; audios: Record<string, HTMLVideoElement | HTMLAudioElement | null>; media: MediaState;
+  videos: Record<string, HTMLVideoElement | null>; audios: Record<string, HTMLVideoElement | HTMLAudioElement | null>;
+  boxes: Record<string, HTMLDivElement | null>; media: MediaState;
 }) {
   for (const clip of clips.videoClips) {
+    // Shown or hidden right here, on the frame of the cut, not when the editor next redraws (a busy
+    // iPad redrew late, so the last clip's final frame hung on while the next one had started).
+    const box = boxes[clip.id];
+    if (box) {
+      const active = isActiveAt(clip, t), lined = !active && isUpcomingAt(clip, t);
+      const opacity = active ? String((clip.opacity ?? 100) / 100) : "0", display = active || lined ? "block" : "none";
+      if (box.style.opacity !== opacity) box.style.opacity = opacity;
+      if (box.style.display !== display) box.style.display = display;
+    }
     const el = videos[clip.id];
     if (!el || clip.type !== "video") continue;
     const rate = speedOf(clip);
@@ -118,6 +147,13 @@ function syncMedia({ t, playing, holding, masterId, clips, videos, audios, media
       if (isMaster ? !el.seeking && Math.abs(el.currentTime - expected) > MASTER_OFF * rate : shouldSeek(el.currentTime, expected, { playing, seeking: el.seeking, speed: rate })) el.currentTime = expected;
       if (playing && (isMaster || !holding)) { if (el.paused) startPlaying(el, media); }
       else if (!el.paused) el.pause();
+    } else if (playing && !holding && shouldPreroll(clip, t, media.latency)) {
+      // Just before its cut: started silent and unseen, so it's moving when it's shown.
+      if (el.paused && !el.seeking && Math.abs(el.currentTime - clip.trimStart) <= 0.05) {
+        el.muted = true;
+        if (el.playbackRate !== rate) el.playbackRate = rate;
+        startPlaying(el, media);
+      }
     } else {
       if (!el.paused) el.pause();
       if (isUpcomingAt(clip, t) && !el.seeking && Math.abs(el.currentTime - clip.trimStart) > 0.05) el.currentTime = clip.trimStart;
@@ -469,12 +505,15 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   const playRef = useRef({ videoClips, audioClips, textLayers });
   useEffect(() => { playRef.current = { videoClips, audioClips, textLayers }; }, [videoClips, audioClips, textLayers]);
   const timeRef = useRef(0);
-  const ownTimeRef = useRef(0);
-  const mediaRef = useRef<MediaState>({ pending: new WeakSet(), blocked: new WeakSet(), toasted: false });
+  const mediaRef = useRef<MediaState>({ pending: new WeakSet(), blocked: new WeakSet(), unlocked: new WeakSet(), toasted: false, starting: new Map(), latency: START_GUESS });
+  const boxRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [buffering, setBuffering] = useState(false);
 
-  // The playhead moved by a click, a drag, a key or Back to start (not by playback): play on from there.
-  useEffect(() => { if (globalTime !== ownTimeRef.current) timeRef.current = globalTime; }, [globalTime]);
+  // The playhead moved by a click, a drag, a key or Back to start: the loop's time moves with it, here.
+  // (2026-10-27: it used to pick that up by comparing the screen's time with its own after each
+  // redraw; on a busy iPad a late redraw handed it an older time, and the video jumped back at
+  // every cut, "like it replays again".)
+  const seekTo = useCallback((t: number) => { const at = Math.max(0, t); timeRef.current = at; setGlobalTime(at); }, []);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -502,11 +541,12 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       const end = endOfEdit(clips.videoClips, clips.audioClips, clips.textLayers);
       const t = Math.min(r.time, end);
       timeRef.current = t;
-      syncMedia({ t, playing: t < end, holding: r.holding, masterId: master?.clip.id ?? null, clips, videos: videoRefs.current, audios: audioRefs.current, media: mediaRef.current });
+      learnStarts(mediaRef.current, now);
+      syncMedia({ t, playing: t < end, holding: r.holding, masterId: master?.clip.id ?? null, clips, videos: videoRefs.current, audios: audioRefs.current, boxes: boxRefs.current, media: mediaRef.current });
       const nowBuffering = heldSince !== null && now - heldSince > 300;
       if (nowBuffering !== wasBuffering) { wasBuffering = nowBuffering; setBuffering(nowBuffering); }
-      if (t >= end) { ownTimeRef.current = t; setGlobalTime(t); setIsPlaying(false); return; }
-      if (now - lastSet >= every) { lastSet = now; ownTimeRef.current = t; setGlobalTime(t); }
+      if (t >= end) { setGlobalTime(t); setIsPlaying(false); return; }
+      if (now - lastSet >= every) { lastSet = now; setGlobalTime(t); }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
@@ -516,7 +556,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
   // Paused: every video and sound on the exact frame at the playhead, so scrubbing shows that frame.
   useEffect(() => {
     if (isPlaying) return;
-    syncMedia({ t: globalTime, playing: false, holding: false, masterId: null, clips: { videoClips, audioClips }, videos: videoRefs.current, audios: audioRefs.current, media: mediaRef.current });
+    timeRef.current = globalTime;
+    syncMedia({ t: globalTime, playing: false, holding: false, masterId: null, clips: { videoClips, audioClips }, videos: videoRefs.current, audios: audioRefs.current, boxes: boxRefs.current, media: mediaRef.current });
   }, [globalTime, videoClips, audioClips, isPlaying]);
 
   function togglePlay() {
@@ -524,17 +565,19 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       setIsPlaying(false);
       Object.values(videoRefs.current).forEach(el => el?.pause());
       Object.values(audioRefs.current).forEach(el => el?.pause());
-      ownTimeRef.current = timeRef.current; setGlobalTime(timeRef.current);
+      setGlobalTime(timeRef.current);
     } else {
-      // iPad and iPhone play sound only on media started by a tap. Start (and at once pause) every
-      // clip inside this tap, so each one can play with sound when the playhead reaches it.
+      // iPad and iPhone play sound only on media started by a tap. Start (and at once pause) each
+      // clip once inside a tap, so it can play with sound when the playhead reaches it.
+      const media = mediaRef.current;
       for (const el of [...Object.values(videoRefs.current), ...Object.values(audioRefs.current)]) {
-        if (!el) continue;
-        mediaRef.current.blocked.delete(el);
+        if (!el || (media.unlocked.has(el) && !media.blocked.has(el))) continue;
+        media.unlocked.add(el);
+        media.blocked.delete(el);
         if (el.paused) { el.muted = false; el.play().catch(() => { }); el.pause(); }
       }
       // At the end: from the start again.
-      if (timeRef.current >= endOfEdit(videoClips, audioClips, textLayers) - 0.05) { timeRef.current = 0; ownTimeRef.current = 0; setGlobalTime(0); }
+      if (timeRef.current >= endOfEdit(videoClips, audioClips, textLayers) - 0.05) seekTo(0);
       setIsPlaying(true);
     }
   }
@@ -950,7 +993,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft;
     // Calculate raw X within the timeline container
     if (clickX >= 0) {
-      setGlobalTime(clickX / PIXELS_PER_SECOND);
+      seekTo(clickX / PIXELS_PER_SECOND);
       setIsDraggingPlayhead(true);
       setIsScrubbingUI(true);
     }
@@ -985,7 +1028,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
         // Add scroll position to get true timeline position
         const absoluteX = rawX + timelineRef.current.scrollLeft;
 
-        setGlobalTime(absoluteX / PIXELS_PER_SECOND);
+        seekTo(absoluteX / PIXELS_PER_SECOND);
       }
 
       // 2. Handle Text Overlay Dragging on Canvas
@@ -1081,7 +1124,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [PIXELS_PER_SECOND, isMagnetEnabled, videoClips, audioClips, textLayers, isDraggingPlayhead]);
+  }, [PIXELS_PER_SECOND, isMagnetEnabled, videoClips, audioClips, textLayers, isDraggingPlayhead, seekTo]);
 
 
   function addTextLayer() {
@@ -1187,8 +1230,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       else if (e.key === "s" || e.key === "S") { e.preventDefault(); splitAtPlayhead(); }
       else if (e.key === "d" || e.key === "D") { e.preventDefault(); duplicateSelected(); }
       else if ((e.key === "Delete" || e.key === "Backspace") && selectedElement) { e.preventDefault(); deleteSelected(); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); setGlobalTime((t) => t + (e.shiftKey ? 1 : 1 / 30)); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); setGlobalTime((t) => Math.max(0, t - (e.shiftKey ? 1 : 1 / 30))); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); seekTo(timeRef.current + (e.shiftKey ? 1 : 1 / 30)); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); seekTo(timeRef.current - (e.shiftKey ? 1 : 1 / 30)); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1423,7 +1466,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     const caps: TextLayer[] = captionChunks(shorts.segments, h.start, h.end).map((ch) => ({ id: crypto.randomUUID(), text: ch.text, x: 50, y: 80, fontSize: 40, color: "#FFFFFF", style: "caption", timelineStart: ch.start, trimStart: 0, trimEnd: Math.max(0.3, ch.end - ch.start), maxDuration: 3600, opacity: 100, trackRow: 0 }));
     const hook: TextLayer[] = h.hook ? [{ id: crypto.randomUUID(), text: h.hook.length > 34 ? `${h.hook.slice(0, 33)}…` : h.hook, x: 50, y: 14, fontSize: 44, color: "#FFFFFF", style: "caption", timelineStart: 0, trimStart: 0, trimEnd: Math.min(2.6, len), maxDuration: 3600, opacity: 100, trackRow: 1 }] : [];
     setTextLayers([...caps, ...hook]);
-    setCanvasAspect("9:16"); setFitMode("fill"); setGlobalTime(0); setSelectedElement(null);
+    setCanvasAspect("9:16"); setFitMode("fill"); seekTo(0); setSelectedElement(null);
     toast.success(`"${h.title}" is on the timeline as a 9:16 short with captions. Export when it looks right.`);
   }
 
@@ -1644,7 +1687,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                   // The next clip is laid out (unseen) before its cut, so its first frame is decoded and ready.
                   const lined = !isActive && isUpcomingAt(clip, globalTime);
                   return (
-                    <div key={`canvas-${clip.id}`} className="absolute inset-0 pointer-events-none" style={{ opacity: isActive ? (clip.opacity ?? 100) / 100 : 0, zIndex: clip.trackRow || 0, display: isActive || lined ? "block" : "none" }}>
+                    <div key={`canvas-${clip.id}`} ref={(b) => { boxRefs.current[clip.id] = b; }} className="absolute inset-0 pointer-events-none" style={{ opacity: isActive ? (clip.opacity ?? 100) / 100 : 0, zIndex: clip.trackRow || 0, display: isActive || lined ? "block" : "none" }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       {clip.type === "image" ? <img src={clip.url} alt="" className="w-full h-full" style={{ objectFit }} />
                         : <video ref={(el) => { videoRefs.current[clip.id] = el; }} src={clip.url} className="w-full h-full" style={{ objectFit }} playsInline preload={isActive || lined ? "auto" : "metadata"} />}
@@ -1683,7 +1726,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             </div>
             <div className="ve-transport" onClick={(e) => e.stopPropagation()}>
               <span className="mono text-[12px] w-[72px] text-right">{fmt(globalTime)}</span>
-              <button type="button" className="s-btn ghost sm" style={{ width: 30, padding: 0 }} onClick={() => setGlobalTime(0)} aria-label="Back to start"><SkipBack className="h-4 w-4" /></button>
+              <button type="button" className="s-btn ghost sm" style={{ width: 30, padding: 0 }} onClick={() => seekTo(0)} aria-label="Back to start"><SkipBack className="h-4 w-4" /></button>
               <button type="button" className="ve-play" onClick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"}>{isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current ml-0.5" />}</button>
               <span className="mono text-[12px] w-[72px]" style={{ color: "var(--s-mute)" }}>{fmt(totalLength)}</span>
             </div>
@@ -2053,6 +2096,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                 return (
                   <div
                     key={`canvas-${clip.id}`}
+                    ref={(b) => { boxRefs.current[clip.id] = b; }}
                     className="absolute inset-0 pointer-events-none transition-opacity duration-150"
                     style={{
                       opacity: isActive ? (clip.opacity ?? 100) / 100 : 0,
@@ -2129,7 +2173,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
 
           <div className={cn("bg-[#2A2F38] border-t border-[#57707A]/30 flex items-center justify-center gap-6 shrink-0 z-10", studio ? "h-12" : "h-14")}>
             <span className="text-xs font-mono font-bold w-16 text-right text-[#DEDCDC]/50">{globalTime.toFixed(1)}s</span>
-            <button onClick={() => setGlobalTime(0)} className="p-2.5 text-[#DEDCDC]/50 hover:bg-[#191D23] hover:text-[#DEDCDC] rounded-full transition-colors"><SkipBack className="w-4 h-4" /></button>
+            <button onClick={() => seekTo(0)} className="p-2.5 text-[#DEDCDC]/50 hover:bg-[#191D23] hover:text-[#DEDCDC] rounded-full transition-colors"><SkipBack className="w-4 h-4" /></button>
             <button onClick={togglePlay} className="p-3.5 bg-[#C5BAC4] text-[#191D23] hover:bg-white rounded-full transition-colors shadow-lg shadow-[#C5BAC4]/10">
               {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
             </button>

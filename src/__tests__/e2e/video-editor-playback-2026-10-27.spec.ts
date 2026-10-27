@@ -9,7 +9,8 @@ import path from "node:path";
  * Editor playback of uploaded phone footage (Kezie, 2026-10-27: "the video editor is skipping a lot of
  * footage while pressing play... especially when you upload a video from your local machine... iPad").
  * Two 12 s 1080p60 clips at 18 Mb/s with 5 s between keyframes (like phone video) are uploaded from
- * the computer and played with the CPU slowed 4x (standing in for the iPad). Every 50 ms it notes
+ * the computer, the first is split at 6 s (a cut that starts between keyframes), and it's played
+ * with the CPU slowed 4x (PB_THROTTLE=12 for a busy iPad; that's where the playhead used to jump back). Every 50 ms it notes
  * where the playing video is: a skip is the picture jumping ahead of real time. Real Chrome (Chromium
  * can't play H.264); a throwaway account, deleted after; nothing is saved or spent.
  *   PLAYWRIGHT_BASE_URL=http://localhost:3000 npx playwright test video-editor-playback --workers=1
@@ -45,7 +46,7 @@ function ipadMedia(timing: { start: number; seek: number }) {
   proto.play = function (this: HTMLMediaElement) { if (this.paused && this instanceof HTMLVideoElement) stall(this, timing.start, false); return play.call(this); };
 }
 
-type Sample = { wall: number; src: number | null; el: number };
+type Sample = { wall: number; src: number | null; el: number; head: number };
 
 function phoneClip(file: string, tone: number) {
   execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=60:duration=12", "-f", "lavfi", "-i", `sine=frequency=${tone}:duration=12`,
@@ -83,6 +84,14 @@ test("uploaded phone clips play through without skipping", async ({ page }) => {
     await expect(page.locator(".ve-clip.video")).toHaveCount(2, { timeout: 30_000 });
     await page.waitForFunction(() => [...document.querySelectorAll(".ve-canvas video")].every((v) => (v as HTMLVideoElement).readyState >= 1), null, { timeout: 30_000 });
     await page.waitForTimeout(1500); // the clips take their real 12 s lengths
+    // Split the first clip at 6 s, so one cut starts mid-file, between keyframes (the hardest cut).
+    const pps = await page.evaluate(() => { const r = document.querySelector(".ve-ruler span:nth-child(2)") as HTMLElement | null; return r ? parseFloat(r.style.left) / 5 : 4; });
+    const ruler = (await page.locator(".ve-ruler").boundingBox())!;
+    await page.mouse.click(ruler.x + pps * 6, ruler.y + 10);
+    await page.locator(".ve-stage").click({ position: { x: 20, y: 20 } });
+    await page.keyboard.press("s");
+    await expect(page.locator(".ve-clip.video")).toHaveCount(3);
+    await page.getByRole("button", { name: "Back to start" }).click();
 
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
@@ -94,7 +103,8 @@ test("uploaded phone clips play through without skipping", async ({ page }) => {
       const t0 = performance.now();
       const tick = () => {
         const playing = vids.find((v) => !v.paused);
-        w.__pb.samples.push({ wall: (performance.now() - t0) / 1000, src: playing ? playing.currentTime : null, el: playing ? vids.indexOf(playing) : -1 });
+        const head = parseFloat((document.querySelector(".ve-head") as HTMLElement | null)?.style.left ?? "0");
+        w.__pb.samples.push({ wall: (performance.now() - t0) / 1000, src: playing ? playing.currentTime : null, el: playing ? vids.indexOf(playing) : -1, head });
         if (w.__pb.samples.length < 1500) setTimeout(tick, 50);
       };
       tick();
@@ -109,7 +119,9 @@ test("uploaded phone clips play through without skipping", async ({ page }) => {
 
     // Seen moving: footage that played at about real speed. Skips: the picture jumping further than
     // the time that passed. Still: the picture standing still while it's meant to play.
-    let moving = 0, skips = 0, skipped = 0, still = 0;
+    // Backs: the picture or the playhead going backwards while playing (a jerk "like it replays").
+    let moving = 0, skips = 0, skipped = 0, still = 0, backs = 0, headBacks = 0;
+    for (let i = 1; i < samples.length; i++) if (samples[i].head < samples[i - 1].head - 0.5 && samples[i].head > 0) headBacks++;
     const seen = new Set<number>();
     for (let i = 1; i < samples.length; i++) {
       const a = samples[i - 1], z = samples[i];
@@ -119,13 +131,16 @@ test("uploaded phone clips play through without skipping", async ({ page }) => {
       if (moved > 0.005 && moved <= wall * 1.5 + 0.02) moving += moved;
       if (moved > wall * 1.5 + 0.1) { skips++; skipped += moved - wall; }
       if (moved < 0.005) still += wall;
+      if (moved < -0.05) backs++;
     }
-    const report = { throttle: THROTTLE, ipadTiming: process.env.PB_IPAD !== "0", took: +took.toFixed(1), footage: 24, seenMoving: +moving.toFixed(1), seeksWhilePlaying: seeks, skips, skippedSeconds: +skipped.toFixed(2), stillSeconds: +still.toFixed(2), clipsSeenPlaying: seen.size };
+    const report = { throttle: THROTTLE, ipadTiming: process.env.PB_IPAD !== "0", took: +took.toFixed(1), footage: 24, seenMoving: +moving.toFixed(1), seeksWhilePlaying: seeks, backs, headBacks, skips, skippedSeconds: +skipped.toFixed(2), stillSeconds: +still.toFixed(2), clipsSeenPlaying: seen.size };
     console.log("playback", JSON.stringify(report));
     fs.writeFileSync(path.join("test-results", `playback-${stamp}.json`), JSON.stringify({ report, samples }, null, 1));
     expect(errors).toEqual([]);
-    expect(seen.size).toBe(2);
+    expect(seen.size).toBe(3);
     expect(skips).toBe(0);
+    expect(backs).toBe(0);
+    expect(headBacks).toBe(0);
     expect(seeks).toBeLessThanOrEqual(4);
     expect(moving).toBeGreaterThan(22.5); // of 24 s (the sampler misses a little at each cut)
     expect(still).toBeLessThan(1.5);
