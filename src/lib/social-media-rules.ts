@@ -80,19 +80,55 @@ export function postResults(row: { creation_metadata?: unknown; postforme_tracki
  * The networks' refusals we've seen, in plain words (2026-10-27: a Nuf Farms motion graphic came back
  * as a wall of JSON: YouTube's daily upload quota on PostForMe's shared Google project was used up).
  */
+const QUOTA = /quota exceeded|video uploads per day|RESOURCE_EXHAUSTED|\b429\b/i;
 const KNOWN_REFUSALS: Array<[RegExp, string]> = [
-  [/quota exceeded|video uploads per day|RESOURCE_EXHAUSTED|\b429\b/i, "YouTube's daily upload limit on our posting service was reached. It resets every day, so post it again later."],
+  [QUOTA, "YouTube's daily upload limit on our posting service was reached."],
   [/only videos are supported/i, "it only takes videos, and this post is a picture."],
   [/user access is restricted/i, "the account is restricted on Instagram. Open the Instagram app to see why, then try again."],
   [/token|reauth|re-auth|expired|unauthori[sz]ed|invalid_grant/i, "the connection to the account expired. Reconnect it in Settings, then try again."],
 ];
 
+/**
+ * When YouTube's daily upload quota resets: midnight US Pacific time, Google's quota day
+ * (2026-10-27: Kezie reposted the same morning and hit the same limit; "later" wasn't enough).
+ */
+export function youtubeQuotaReset(now = new Date()): Date {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", timeZoneName: "shortOffset" }).formatToParts(now).map((p) => [p.type, p.value]));
+  const off = /GMT([+-]\d+)/.exec(String(parts.timeZoneName ?? ""));
+  const hours = off ? Number(off[1]) : -8;
+  return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) + 1) - hours * 3_600_000);
+}
+
 /** A failure as people read it: a known reason in plain words, else the network's own (short). */
-export function resultLine(r: PostResult, label: (p: string) => string = (p) => p) {
+export function resultLine(r: PostResult, label: (p: string) => string = (p) => p, now = new Date()) {
   const raw = (r.error ?? "").replace(/^Failed to post to [^:]+:\s*/i, "").trim();
   const known = KNOWN_REFUSALS.find(([re]) => re.test(raw))?.[1];
   const why = known ?? raw.split(/[{\n]/)[0].trim().slice(0, 160);
-  return `${label(r.platform)} didn't post${why ? `: ${why}` : "."}`;
+  // The reset in the reader's own time, counted from when it was refused.
+  const at = new Date(r.at);
+  const reset = QUOTA.test(raw) ? ` It resets ${youtubeQuotaReset(Number.isNaN(at.getTime()) ? now : at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })} your time, so post it again after that.` : "";
+  return `${label(r.platform)} didn't post${why ? `: ${why}` : "."}${reset}`;
+}
+
+/**
+ * The networks that haven't answered a post sent in the last 15 minutes. PostForMe's answer comes by
+ * webhook 30-60 s after "Post now" (2026-10-27: Kezie reposted to YouTube, the page said nothing more,
+ * and the refusal sat unseen), so the post page waits for these and says what each one said.
+ */
+export function awaitingAnswers(row: { creation_metadata?: unknown; postforme_tracking_id?: string | null }, now = Date.now()): string[] {
+  const meta = (row.creation_metadata && typeof row.creation_metadata === "object" ? row.creation_metadata : {}) as { post_sent?: { id?: unknown; at?: unknown; platforms?: unknown; accounts?: unknown } };
+  const sent = meta.post_sent;
+  if (!sent || typeof sent.id !== "string" || typeof sent.at !== "string") return [];
+  if (row.postforme_tracking_id && sent.id !== row.postforme_tracking_id) return [];
+  const age = now - Date.parse(sent.at);
+  // (A few minutes' grace either way for a device clock that's off.)
+  if (!(age > -5 * 60_000 && age < 15 * 60_000)) return [];
+  const results = postResults(row);
+  if (results.length >= Math.max(1, typeof sent.accounts === "number" ? sent.accounts : 1)) return [];
+  const platforms = Array.isArray(sent.platforms) ? sent.platforms.filter((p): p is string => typeof p === "string") : [];
+  const answered = new Set(results.map((r) => r.platform));
+  const left = platforms.filter((p) => !answered.has(p));
+  return left.length ? left : platforms;
 }
 
 /** The post's status once its results are in: posted if any network took it, failed if every one refused. */

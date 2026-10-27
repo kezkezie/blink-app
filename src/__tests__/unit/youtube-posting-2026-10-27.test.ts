@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isAiVideo, platformsFor, postMedia, postResults, resultLine, skippedLine, statusFromResults, youtubeTitle } from "@/lib/social-media-rules";
+import { awaitingAnswers, isAiVideo, platformsFor, postMedia, postResults, resultLine, skippedLine, statusFromResults, youtubeQuotaReset, youtubeTitle } from "@/lib/social-media-rules";
 
 /**
  * YouTube posting (Kezie, 2026-10-27: "we're having an issue with YouTube. We can't be able to post
@@ -67,12 +67,33 @@ describe("what each network accepts", () => {
     expect(resultLine(fail, () => "YouTube")).toBe("YouTube didn't post: it only takes videos, and this post is a picture.");
     // The Nuf Farms motion graphic (2026-10-27): YouTube's quota on PostForMe's shared project, as JSON.
     const quota = { ...fail, error: "Failed to post to Youtube: Failed to start YouTube resumable upload session: 429 Too Many Requests. {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"Quota exceeded for quota metric 'Video Uploads'" };
-    expect(resultLine(quota, () => "YouTube")).toBe("YouTube didn't post: YouTube's daily upload limit on our posting service was reached. It resets every day, so post it again later.");
+    const reset = youtubeQuotaReset(new Date(quota.at)).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+    expect(resultLine(quota, () => "YouTube")).toBe(`YouTube didn't post: YouTube's daily upload limit on our posting service was reached. It resets ${reset} your time, so post it again after that.`);
     expect(resultLine({ ...fail, error: "Failed to post to X: something odd happened {\"a\":1}" }, () => "X")).toBe("X didn't post: something odd happened");
     expect(statusFromResults([fail], 2)).toBeNull();
     expect(statusFromResults([fail, { ...fail, platform: "instagram" }], 2)).toBe("failed");
     expect(statusFromResults([fail, { platform: "instagram", ok: true, at: "x" }], 2)).toBe("posted");
     expect(postResults({ creation_metadata: { post_sent: { id: "sp_old" }, post_results: { a: fail } }, postforme_tracking_id: "sp_new" })).toEqual([]);
+  });
+  it("knows when YouTube's quota resets: the next midnight US Pacific, in summer and winter time", () => {
+    // Kezie's repost, 27 Oct 15:10 UTC (08:10 in California): resets 28 Oct 07:00 UTC, 10:00 in Nairobi.
+    expect(youtubeQuotaReset(new Date("2026-10-27T15:10:43Z")).toISOString()).toBe("2026-10-28T07:00:00.000Z");
+    // Late evening in California is still the same quota day.
+    expect(youtubeQuotaReset(new Date("2026-10-28T06:30:00Z")).toISOString()).toBe("2026-10-28T07:00:00.000Z");
+    // Winter time (PST, UTC-8) from 1 Nov.
+    expect(youtubeQuotaReset(new Date("2026-12-01T12:00:00Z")).toISOString()).toBe("2026-12-02T08:00:00.000Z");
+  });
+  it("waits for each network's answer for 15 minutes after a send, then stops", () => {
+    const sentAt = "2026-10-27T15:09:56.956Z";
+    const now = Date.parse(sentAt) + 20_000;
+    const row = (results: Record<string, unknown>, at = sentAt) => ({ postforme_tracking_id: "sp_1", creation_metadata: { post_sent: { id: "sp_1", at, platforms: ["youtube", "instagram"], accounts: 2 }, post_results: results } });
+    expect(awaitingAnswers(row({}), now)).toEqual(["youtube", "instagram"]);
+    expect(awaitingAnswers(row({ a: { platform: "youtube", ok: false, error: "x", at: sentAt } }), now)).toEqual(["instagram"]);
+    expect(awaitingAnswers(row({ a: { platform: "youtube", ok: false, error: "x", at: sentAt }, b: { platform: "instagram", ok: true, at: sentAt } }), now)).toEqual([]);
+    expect(awaitingAnswers(row({}), Date.parse(sentAt) + 16 * 60_000)).toEqual([]);
+    // A post sent again: the old send's id no longer matches, so nothing is awaited from it.
+    expect(awaitingAnswers({ ...row({}), postforme_tracking_id: "sp_2" }, now)).toEqual([]);
+    expect(awaitingAnswers({ creation_metadata: {} }, now)).toEqual([]);
   });
 });
 

@@ -18,7 +18,7 @@ import { InstagramTroubleshootModal } from "@/components/publishing/InstagramTro
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { PLATFORM_LABEL, enabledPlatforms, placeOnCalendar, postState, publishNow, settingsFor, takeOffCalendar, toLocalInput, whenLabel, type CalRow } from "@/components/studio/plan/schedule";
 import { UpscaleButton } from "./Upscale";
-import { VIDEO_ONLY, VIDEO_ONLY_LINE, platformLabel, postResults, resultLine, skippedLine, workingTitleOf } from "@/lib/social-media-rules";
+import { VIDEO_ONLY, VIDEO_ONLY_LINE, awaitingAnswers, platformLabel, postResults, resultLine, skippedLine, workingTitleOf } from "@/lib/social-media-rules";
 import { DetailSkeleton } from "@/components/studio/Skeletons";
 
 /**
@@ -106,6 +106,31 @@ export function PostDetail({ id }: { id: string }) {
     return () => { clearTimeout(t); void supabase.removeChannel(channel); };
   }, [processing, id, load, router]);
 
+  // Just sent: each network answers by webhook within a minute or so. Wait for it and say what it said,
+  // instead of leaving "Sent" on screen while YouTube refuses it unseen (2026-10-27).
+  const waitingFor = useMemo(() => (post ? awaitingAnswers(post) : []), [post]);
+  const waitingKey = waitingFor.join(",");
+  useEffect(() => {
+    if (!waitingKey || !clientId) return;
+    let stopped = false;
+    const check = async () => {
+      const { data } = await supabase.from("content").select("status, creation_metadata, postforme_tracking_id").eq("id", id).eq("client_id", clientId).maybeSingle();
+      if (stopped || !data) return;
+      const row = data as Pick<Post, "status" | "creation_metadata" | "postforme_tracking_id">;
+      if (awaitingAnswers(row).length) return;
+      stopped = true;
+      setPost((p) => (p ? { ...p, ...row } : p));
+      const answers = postResults(row);
+      if (!answers.length) toast.info(`No answer from ${waitingKey.split(",").map(platformLabel).join(" or ")} yet. It can take a few more minutes; open this post again later to see.`, { duration: 9000 });
+      for (const r of answers) {
+        if (r.ok) toast.success(`Posted on ${platformLabel(r.platform)}.`);
+        else toast.error(resultLine(r, platformLabel), { duration: 15000 });
+      }
+    };
+    const t = setInterval(() => void check(), 5000);
+    return () => { stopped = true; clearInterval(t); };
+  }, [waitingKey, clientId, id]);
+
   const media = useMemo(() => (post ? resolveMedia(post) : null), [post]);
   const isVideo = !!media?.isVideo;
 
@@ -174,7 +199,7 @@ export function PostDetail({ id }: { id: string }) {
     if (!r.ok) { toast.error(r.error || "Couldn't publish it."); await load(); return; }
     const ig = platforms.includes("instagram");
     const sent = platforms.filter((p) => isVideo || !VIDEO_ONLY.has(p));
-    toast.success(`Sent to ${sent.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}.${r.note ? ` ${r.note}` : ""}${ig ? " If it doesn't show on Instagram in 5 minutes, check the account's status." : ""}`, { duration: 8000 });
+    toast.success(`Sent to ${sent.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")}. Waiting for ${sent.length === 1 ? "its" : "their"} answer here.${r.note ? ` ${r.note}` : ""}${ig ? " If it doesn't show on Instagram in 5 minutes, check the account's status." : ""}`, { duration: 8000 });
     await load();
   }
   async function doSchedule() {
@@ -410,6 +435,11 @@ export function PostDetail({ id }: { id: string }) {
           {/* 3. When: what each network said, then post now or schedule. */}
           <section className="s-card p-4 grid gap-3" aria-label="When">
             <Step n={3}>When</Step>
+            {waitingFor.length > 0 && (
+              <p className="text-[12.5px] flex items-center gap-1.5" role="status" style={{ color: "var(--s-soft)" }}>
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" /> Sent. Waiting for {waitingFor.map(platformLabel).join(" and ")} to say it&apos;s posted. This usually takes under a minute.
+              </p>
+            )}
             {results.length > 0 && (
               <ul className="grid gap-1 text-[12.5px]" aria-label="What each platform said">
                 {results.map((r) => (
@@ -437,7 +467,7 @@ export function PostDetail({ id }: { id: string }) {
               </>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
-                <button className="s-btn primary justify-center" style={{ height: 42 }} disabled={!!busy || !sending.length || !resolveMedia(post).url} onClick={doPublishNow} title={sending.length ? "" : "Tick where it posts first"}>
+                <button className="s-btn primary justify-center" style={{ height: 42 }} disabled={!!busy || !sending.length || !resolveMedia(post).url || waitingFor.length > 0} onClick={doPublishNow} title={sending.length ? "" : "Tick where it posts first"}>
                   {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} {sending.length === 1 ? `Post now to ${platformLabel(sending[0])}` : "Post now"}
                 </button>
                 <button className="s-btn justify-center" style={{ height: 42 }} disabled={!!busy} onClick={() => { setWhenValue(toLocalInput(null)); setWhenOpen(true); }}>{busy === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />} Schedule</button>
