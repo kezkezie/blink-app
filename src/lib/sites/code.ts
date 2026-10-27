@@ -98,6 +98,20 @@ export function brandLinks(b: BrandForCode) {
 
 /** Designs the owner likes (2026-10-23): shown to Claude after the brand's pictures as Design A, B... */
 export const MAX_INSPIRATION = 4;
+/** The owner's own words for the page (2026-10-27): their story, services, menu, an article. */
+export const MAX_OWN_WORDS = 12_000;
+
+/**
+ * Kezie, 2026-10-27: "a way on how we can be able to post our written personal written content
+ * for the website", with "What the site is for". Their words go on the page as written.
+ */
+export function ownWordsPrompt(words: string) {
+  return `The owner's own words for this page (they wrote them; put them on the page):
+"""
+${words.slice(0, MAX_OWN_WORDS)}
+"""
+Use these words as written: keep their wording, names, prices, lists and the order of their ideas. Split them into the page's sections and add a short heading only where they have none; fix only clear typos. Don't summarise them, don't rewrite them in another voice, and don't add facts they don't give. A long piece (a story, an article) gets its own easy-to-read section rather than being cut.`;
+}
 export const designLetter = (n: number) => String.fromCharCode(65 + n);
 export function inspirationPrompt(count: number) {
   const names = count > 1 ? `Designs A to ${designLetter(count - 1)}` : "Design A";
@@ -109,7 +123,7 @@ export function inspirationPrompt(count: number) {
 Make it the brand's own: the brand's colours and fonts (unless the owner's brief says otherwise), the brand's words and the brand's pictures (reuse a picture, or use colour and type, when the design shows more photos than the brand has; leave out a part the brand has nothing for). Never copy their text, logos, brand names, prices or photos, and never put them on the page (they are not {{img:N}} pictures).`;
 }
 
-export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?: string; patterns?: string | null; captions?: string[]; inspiration?: number; film?: string }) {
+export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?: string; patterns?: string | null; captions?: string[]; inspiration?: number; film?: string; words?: string }) {
   const b = i.brand, t = b.theme;
   const look = SITE_LOOKS.find((l) => l.id === i.look)!;
   const links = brandLinks(b);
@@ -126,6 +140,7 @@ export function codeUserPrompt(i: { brand: BrandForCode; look: SiteLook; brief?:
     i.inspiration ? `Look (only the mood where the designs below don't decide; the designs win on layout, composition and section order): ${look.direction}` : `Look: ${look.direction}`,
     i.inspiration ? inspirationPrompt(Math.min(MAX_DESIGNS, i.inspiration)) : "",
     i.film ?? "",
+    i.words?.trim() ? ownWordsPrompt(i.words.trim()) : "",
     i.brief ? `The owner's brief: ${i.brief}` : "",
     "Write the page.",
   ].filter(Boolean).join("\n\n");

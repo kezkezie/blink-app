@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Clapperboard, ExternalLink, Globe, ImagePlus, Link2, Loader2, Palette, Upload, X } from "lucide-react";
+import { Clapperboard, ExternalLink, FileText, Globe, ImagePlus, Link2, Loader2, Palette, PenLine, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import { MAX_INSPIRATION } from "@/lib/sites/code";
+import { MAX_INSPIRATION, MAX_OWN_WORDS } from "@/lib/sites/code";
+import { docKind, docxText, pdfText } from "@/lib/doc-text";
 import type { FilmInput } from "@/lib/sites/scroll-film";
 import { MAX_SITES_YOU_LIKE, SITE_GALLERIES, cleanSiteAddress, type SiteRefs } from "@/lib/sites/site-refs";
 import type { Content } from "@/types/database";
@@ -20,6 +21,61 @@ import { filmFrameUrl, makeFilm, type FilmProgress } from "./film-frames";
  * - Scroll film: "we split the video into a sequence, and as we're scrolling... the video plays
  *   back", as on the Nuf Farms site. A Library video or an upload, cut into frames here.
  */
+
+/**
+ * Your own words (Kezie, 2026-10-27: "a way on how we can be able to post our written personal
+ * written content for the website... in combination with the what it's for input"). Typed, pasted,
+ * or read from a PDF, Word or text file in the browser (the file never leaves the device); the page
+ * writer puts them on the page as written (lib/sites/code.ts ownWordsPrompt).
+ */
+export function WordsBox({ words, setWords }: { words: string; setWords: (next: string) => void }) {
+  const [reading, setReading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const left = MAX_OWN_WORDS - words.length;
+
+  async function read(files: FileList | null) {
+    const list = [...(files ?? [])];
+    if (!list.length) return;
+    setReading(true);
+    try {
+      let next = words.trim();
+      for (const f of list) {
+        const kind = docKind(f.name);
+        if (!kind) { toast.error(`${f.name}: use a PDF, Word (.docx) or text file.`); continue; }
+        if (f.size > 15_000_000) { toast.error(`${f.name} is over 15 MB.`); continue; }
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const got = kind === "pdf" ? await pdfText(bytes) : kind === "docx" ? (() => { const t = docxText(bytes); return t ? { text: t, pages: 0 } : null; })() : { text: new TextDecoder().decode(bytes), pages: 0 };
+        const text = got?.text.trim() ?? "";
+        if (!text) { toast.error(`Couldn't find any words in ${f.name}${kind === "pdf" ? " (a scanned PDF is pictures, not text)" : ""}.`); continue; }
+        next = [next, text].filter(Boolean).join("\n\n");
+        toast.success(`Added the words from ${f.name}${got?.pages ? ` (${got.pages} page${got.pages === 1 ? "" : "s"})` : ""}. Check them below.`);
+      }
+      if (next.length > MAX_OWN_WORDS) toast(`That's more than ${MAX_OWN_WORDS.toLocaleString("en-US")} characters, so the end was left out.`);
+      setWords(next.slice(0, MAX_OWN_WORDS));
+    } finally { setReading(false); }
+  }
+
+  return (
+    <div className="grid gap-1.5" role="group" aria-label="Your own words">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="s-label !mb-0 flex items-center gap-1.5"><PenLine className="h-3.5 w-3.5" /> Your own words (optional)</span>
+        <span className="text-[12px]" style={{ color: "var(--s-mute)" }}>Your story, services, menu and prices, an article: the page uses them as you wrote them.</span>
+        <div className="flex-1" />
+        <button type="button" className="s-btn ghost sm" onClick={() => fileRef.current?.click()} disabled={reading}>{reading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} Add from a file</button>
+      </div>
+      <textarea className="s-input s-grow" rows={6} style={{ ["--min-lines" as string]: 4, ["--max-lines" as string]: 18 }} value={words} maxLength={MAX_OWN_WORDS}
+        onChange={(e) => setWords(e.target.value.slice(0, MAX_OWN_WORDS))} aria-label="Your own words"
+        placeholder={"e.g.\nOur story\nWe started baking in my mum's kitchen in Kisumu in 2019...\n\nMenu\nSourdough loaf, KES 450\nCinnamon rolls (6), KES 600"} />
+      <div className="flex items-center gap-2 text-[11.5px]" style={{ color: left < 500 ? "var(--s-warn)" : "var(--s-mute)" }}>
+        <span>PDF, Word or text files are read on your device.</span>
+        <div className="flex-1" />
+        {words && <button type="button" className="underline" onClick={() => setWords("")}>Clear</button>}
+        <span>{words.length.toLocaleString("en-US")} / {MAX_OWN_WORDS.toLocaleString("en-US")}</span>
+      </div>
+      <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md,.markdown,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" multiple className="hidden" aria-label="Files with your words" onChange={(e) => { void read(e.target.files); e.target.value = ""; }} />
+    </div>
+  );
+}
 
 /** The sites the owner likes, as the studio shows them (lib/sites/site-refs.ts). */
 export type SitesYouLike = Pick<SiteRefs, "sites" | "patterns">;

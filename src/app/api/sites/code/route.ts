@@ -9,7 +9,7 @@ import { isDeductionSuccessful } from "@/lib/credit-deduction";
 import { loadBrandBrain } from "@/lib/sites/brain";
 import { keptSiteRefs } from "@/lib/sites/site-refs-server";
 import { designsToFollow } from "@/lib/sites/site-refs";
-import { CODE_SYSTEM, MATCH_NEEDS_PICKS, MAX_INSPIRATION, SITE_LOOKS, SITE_PAGE_CREDITS, checkHtml, codeUserPrompt, designLetter, extractHtml, fillImages, lookOf, pageTitle } from "@/lib/sites/code";
+import { CODE_SYSTEM, MATCH_NEEDS_PICKS, MAX_INSPIRATION, MAX_OWN_WORDS, SITE_LOOKS, SITE_PAGE_CREDITS, checkHtml, codeUserPrompt, designLetter, extractHtml, fillImages, lookOf, pageTitle } from "@/lib/sites/code";
 import { FILM_PROMPT, addFilm, filmGlimpses, filmUrls, parseFilm } from "@/lib/sites/scroll-film";
 import { parseInspirationImageUrl, verifyOwnedInspirationImage } from "@/lib/assisted-creation-server";
 import { logAiUsage } from "@/lib/ai-usage";
@@ -36,14 +36,16 @@ type Usage = { input_tokens?: number; output_tokens?: number };
 const thumb = (u: string, size = 320) => (u.includes("res.cloudinary.com") && u.includes("/upload/") ? u.replace("/upload/", `/upload/w_${size},h_${size},c_limit,f_jpg,q_70/`) : u);
 
 export async function POST(request: NextRequest) {
-  if (!isExecutionBodySizeAllowed(request, 12_000)) return NextResponse.json({ error: "Request too large" }, { status: 413 });
+  if (!isExecutionBodySizeAllowed(request, 60_000)) return NextResponse.json({ error: "Request too large" }, { status: 413 });
   const auth = await authenticateExecutionRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  let body: { brandId?: unknown; look?: unknown; brief?: unknown; inspiration?: unknown; film?: unknown };
+  let body: { brandId?: unknown; look?: unknown; brief?: unknown; inspiration?: unknown; film?: unknown; words?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   const brandId = typeof body.brandId === "string" && UUID.test(body.brandId) ? body.brandId : null;
   const look = lookOf(body.look);
   const brief = typeof body.brief === "string" ? body.brief.replace(/\s+/g, " ").trim().slice(0, 1500) : "";
+  // The owner's own words (2026-10-27): line breaks kept, they shape the sections.
+  const words = typeof body.words === "string" ? body.words.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, MAX_OWN_WORDS) : "";
   if (!brandId || !look) return NextResponse.json({ error: "Pick a brand and a look." }, { status: 400 });
 
   const client = await requestWorkspace(request, auth.value, brandId);
@@ -87,7 +89,7 @@ export async function POST(request: NextRequest) {
 
   const images = brain.images.slice(0, MAX_PICTURES);
   const prompt = (designs: boolean) => codeUserPrompt({
-    brand: brain, look, brief, patterns: refs?.patterns ?? null,
+    brand: brain, look, brief, words, patterns: refs?.patterns ?? null,
     captions: brain.chunks.filter((c) => c.kind === "post").map((c) => c.text),
     inspiration: designs ? follow.length : 0, film: film ? FILM_PROMPT : undefined,
   });

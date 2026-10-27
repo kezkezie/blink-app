@@ -11,7 +11,7 @@ import type { FilmInput } from "@/lib/sites/scroll-film";
 import { useKept } from "@/lib/drafts";
 import { useClient } from "@/hooks/useClient";
 import { Modal } from "../Modal";
-import { FilmBox, InspirationBox, SitesYouLikeBox, type SitesYouLike } from "./DesignInputs";
+import { FilmBox, InspirationBox, SitesYouLikeBox, WordsBox, type SitesYouLike } from "./DesignInputs";
 import { SiteFullscreen, SitePreview, SiteThumb } from "./SitePreview";
 import { SectionsEditor } from "./SectionsEditor";
 import { track } from "@/lib/analytics";
@@ -29,7 +29,7 @@ const CodeEditor = dynamic(() => import("./CodeEditor").then((m) => m.CodeEditor
 
 type Page = { id: string; brand_id: string; name: string; html: string; brief: string | null; notes: string | null; parent_id: string | null; slug: string | null; published_at: string | null; created_at: string; updated_at: string };
 /** What a page is written from besides the brief: designs the owner likes and a scroll film (2026-10-23). */
-type Extras = { inspiration: string[]; film: FilmInput | null };
+type Extras = { inspiration: string[]; film: FilmInput | null; words: string };
 type Job = { key: string; look: SiteLook; code: string; error?: string; text: string; extras: Extras };
 type View = { kind: "gallery" } | { kind: "page"; id: string } | { kind: "job"; key: string };
 
@@ -53,6 +53,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
   // Kept on this device per brand: the pictures and frames are in the owner's storage.
   const [inspiration, setInspiration] = useKept<string[]>(brandId ? `sites:${brandId}:inspiration` : null, []);
   const [film, setFilm] = useKept<FilmInput | null>(brandId ? `sites:${brandId}:film` : null, null);
+  const [words, setWords] = useKept<string>(brandId ? `sites:${brandId}:words` : null, "");
   const [filmBusy, setFilmBusy] = useState(false);
   const filmRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -98,7 +99,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
     const fail = (error: string) => setJobs((list) => list.map((j) => (j.key === key ? { ...j, error } : j)));
     try {
       track("site_page_started", { look, designs: extras.inspiration.length, film: !!extras.film });
-      const res = await fetch("/api/sites/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, look, brief: text, inspiration: extras.inspiration, film: extras.film }) });
+      const res = await fetch("/api/sites/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId, look, brief: text, inspiration: extras.inspiration, film: extras.film, ...(extras.words.trim() ? { words: extras.words } : {}) }) });
       if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); fail(d.error || "Couldn't write the page."); return; }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -132,7 +133,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
     if (!brandId || !looks.length || filmBusy || studying) return;
     if (looks.includes("match") && !inspiration.length && !refs?.sites.length) { toast(MATCH_NEEDS_PICKS); return; }
     const text = brief.trim();
-    const extras: Extras = { inspiration, film };
+    const extras: Extras = { inspiration, film, words };
     const started: Job[] = looks.map((look) => ({ key: `${look}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, look, code: "", text, extras }));
     setJobs((list) => [...started, ...list]);
     started.forEach((j) => void runJob(j.key, j.look, text, extras));
@@ -187,7 +188,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
   const sitesLiked = refs?.sites.length ?? 0;
   const hasPicks = inspiration.length > 0 || sitesLiked > 0;
   const matchWaits = looks.includes("match") && !hasPicks;
-  const uses = [inspiration.length ? `${inspiration.length} design${inspiration.length === 1 ? "" : "s"} you like` : "", sitesLiked ? `${sitesLiked} website${sitesLiked === 1 ? "" : "s"} you like` : "", film ? "your scroll film" : ""].filter(Boolean);
+  const uses = [words.trim() ? "your own words" : "", inspiration.length ? `${inspiration.length} design${inspiration.length === 1 ? "" : "s"} you like` : "", sitesLiked ? `${sitesLiked} website${sitesLiked === 1 ? "" : "s"} you like` : "", film ? "your scroll film" : ""].filter(Boolean);
   return (
     <div className="max-w-[1180px] mx-auto pt-2 md:pt-6 pb-10">
       {fullPage && <SiteFullscreen html={fullPage.html} title={fullPage.title} onClose={() => setFullPage(null)} />}
@@ -201,6 +202,7 @@ export function CodeStudio({ initialBrief, initialLooks, autoStart, wantFilm }: 
           <textarea className="s-input s-grow" rows={5} style={{ ["--min-lines" as string]: 3, ["--max-lines" as string]: 10 }} value={brief} onChange={(e) => setBrief(e.target.value.slice(0, 1500))}
             placeholder="e.g. a launch page for our new weekend menu: big food photos, a WhatsApp order button, our opening story" aria-label="What the site is for" />
         </label>
+        <WordsBox words={words} setWords={setWords} />
         <div>
           <span className="s-label">Looks (one page each, up to {MAX_LOOKS})</span>
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">

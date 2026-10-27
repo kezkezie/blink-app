@@ -1,7 +1,9 @@
-import { unzipSync, strFromU8 } from "fflate";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import type { AgentMessage } from "./agent";
 import type { AskFile } from "./request";
+import { docxText } from "@/lib/doc-text";
+
+export { docxText };
 
 /**
  * Files in Ask BlinkSpot (2026-10-20): a brand deck, a menu, a price list, a brief. PDFs go to
@@ -12,16 +14,6 @@ import type { AskFile } from "./request";
 const MAX_TEXT = 120_000;
 const MAX_PDF = 15_000_000;
 
-/** The words in a .docx (paragraphs kept, formatting dropped). */
-export function docxText(bytes: Uint8Array): string | null {
-  try {
-    const files = unzipSync(bytes);
-    const xml = files["word/document.xml"];
-    if (!xml) return null;
-    return strFromU8(xml).replace(/<w:tab\/>/g, "\t").replace(/<\/w:p>/g, "\n").replace(/<[^>]+>/g, "")
-      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/\n{3,}/g, "\n\n").trim();
-  } catch { return null; }
-}
 
 async function block(f: AskFile): Promise<object | null> {
   if (f.kind === "pdf") {
