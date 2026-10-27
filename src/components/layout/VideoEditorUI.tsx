@@ -14,6 +14,7 @@ import { beatCut, detectBeats, waveformPeaks } from "@/lib/editor/beats";
 import { captionChunks, transcribeCredits, type Highlight, type Segment } from "@/lib/editor/highlights";
 import { PIECE_AUDIO_ARGS, PIECE_VIDEO_ARGS, canvasSize, drawtextFilter, frameAt, normalizeFilter, overlayFilter, overlayStep, pieceAudioFilter, pieceSilence, webmDecoder, type CanvasAspect, type FitMode } from "@/lib/editor/export-graph";
 import { SPEEDS, sourceAt, span, speedLabel, speedOf, withSpeed } from "@/lib/editor/speed";
+import { GIVE_UP_AFTER, MASTER_OFF, endOfEdit, isActiveAt, isUpcomingAt, masterAt, nextTime, shouldSeek } from "@/lib/editor/playback";
 import { commit, emptyHistory, isRedoKey, isUndoKey, redoStep, undoStep, type History } from "@/lib/editor/history";
 import "./video-editor.css";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,68 @@ interface TextLayer {
   trackRow?: number;
   /** "caption": outlined, for words people read along (studio, 2026-10-11). */
   style?: "plain" | "caption";
+}
+
+/** Plays in flight (not asked twice) and clips the browser wouldn't play with sound (playing silent). */
+type MediaState = { pending: WeakSet<HTMLMediaElement>; blocked: WeakSet<HTMLMediaElement>; toasted: boolean };
+
+function startPlaying(el: HTMLMediaElement, media: MediaState) {
+  if (media.pending.has(el)) return;
+  media.pending.add(el);
+  el.play().then(() => { media.pending.delete(el); }, (err: unknown) => {
+    media.pending.delete(el);
+    // iPad and iPhone refuse sound on a clip that wasn't started by a tap: play it silent, not stuck.
+    if ((err as { name?: string } | null)?.name !== "NotAllowedError" || el.muted) return;
+    media.blocked.add(el);
+    el.muted = true;
+    el.play().catch(() => { });
+    if (!media.toasted) { media.toasted = true; toast.info("Your browser muted a clip to keep it playing. Press pause, then play, to hear it."); }
+  });
+}
+
+/**
+ * Every video and sound to where it should be at timeline time t (lib/editor/playback.ts). The master
+ * video is only moved when it's clearly off (a cut or a jump); the rest follow it, and wait with it
+ * while it loads. The next clip is lined up on its first frame before its cut.
+ */
+function syncMedia({ t, playing, holding, masterId, clips, videos, audios, media }: {
+  t: number; playing: boolean; holding: boolean; masterId: string | null; clips: { videoClips: TrackClip[]; audioClips: TrackClip[] };
+  videos: Record<string, HTMLVideoElement | null>; audios: Record<string, HTMLVideoElement | HTMLAudioElement | null>; media: MediaState;
+}) {
+  for (const clip of clips.videoClips) {
+    const el = videos[clip.id];
+    if (!el || clip.type !== "video") continue;
+    const rate = speedOf(clip);
+    if (isActiveAt(clip, t)) {
+      el.volume = Math.min(1, Math.max(0, (clip.volume ?? 100) / 100));
+      // iOS ignores volume, so a clip turned all the way down is muted instead.
+      el.muted = (clip.volume ?? 100) === 0 || media.blocked.has(el);
+      if (el.playbackRate !== rate) el.playbackRate = rate;
+      const expected = sourceAt(clip, t);
+      const isMaster = playing && clip.id === masterId;
+      if (isMaster ? !el.seeking && Math.abs(el.currentTime - expected) > MASTER_OFF * rate : shouldSeek(el.currentTime, expected, { playing, seeking: el.seeking, speed: rate })) el.currentTime = expected;
+      if (playing && (isMaster || !holding)) { if (el.paused) startPlaying(el, media); }
+      else if (!el.paused) el.pause();
+    } else {
+      if (!el.paused) el.pause();
+      if (isUpcomingAt(clip, t) && !el.seeking && Math.abs(el.currentTime - clip.trimStart) > 0.05) el.currentTime = clip.trimStart;
+    }
+  }
+  for (const clip of clips.audioClips) {
+    const el = audios[clip.id];
+    if (!el) continue;
+    if (isActiveAt(clip, t)) {
+      el.volume = Math.min(1, Math.max(0, (clip.volume ?? 100) / 100));
+      el.muted = (clip.volume ?? 100) === 0 || media.blocked.has(el);
+      const expected = clip.trimStart + (t - clip.timelineStart);
+      if (shouldSeek(el.currentTime, expected, { playing, seeking: el.seeking })) el.currentTime = expected;
+      if (playing && !holding) { if (el.paused) startPlaying(el, media); }
+      else if (!el.paused) el.pause();
+    } else {
+      if (!el.paused) el.pause();
+      if (isUpcomingAt(clip, t) && !el.seeking && Math.abs(el.currentTime - clip.trimStart) > 0.05) el.currentTime = clip.trimStart;
+    }
+  }
 }
 
 /**
@@ -400,63 +463,60 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
     setAssets([]);
   };
 
-  useEffect(() => {
-    let animationFrameId: number;
-    let lastTime = performance.now();
+  // Playback (2026-10-27, lib/editor/playback.ts): the video at the playhead sets the time and the
+  // playhead follows it, waiting while it loads; gaps, photos and text run on the clock. The loop
+  // reads the clips from a ref, so edits made while it plays are picked up without restarting it.
+  const playRef = useRef({ videoClips, audioClips, textLayers });
+  useEffect(() => { playRef.current = { videoClips, audioClips, textLayers }; }, [videoClips, audioClips, textLayers]);
+  const timeRef = useRef(0);
+  const ownTimeRef = useRef(0);
+  const mediaRef = useRef<MediaState>({ pending: new WeakSet(), blocked: new WeakSet(), toasted: false });
+  const [buffering, setBuffering] = useState(false);
 
-    function updatePlayhead(time: number) {
-      if (isPlaying) {
-        const deltaSeconds = (time - lastTime) / 1000;
-        lastTime = time;
-
-        setGlobalTime((prev) => {
-          const nextTime = prev + deltaSeconds;
-          const maxVideo = videoClips.length > 0 ? Math.max(...videoClips.map((c) => c.timelineStart + (span(c)))) : 0;
-          const maxAudio = audioClips.length > 0 ? Math.max(...audioClips.map((c) => c.timelineStart + (span(c)))) : 0;
-          const maxText = textLayers.length > 0 ? Math.max(...textLayers.map((c) => c.timelineStart + (span(c)))) : 0;
-          const maxTime = Math.max(maxVideo, maxAudio, maxText, 5);
-
-          if (nextTime >= maxTime) { setIsPlaying(false); return maxTime; }
-          return nextTime;
-        });
-        animationFrameId = requestAnimationFrame(updatePlayhead);
-      }
-    }
-    if (isPlaying) animationFrameId = requestAnimationFrame(updatePlayhead);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, videoClips, audioClips, textLayers]);
+  // The playhead moved by a click, a drag, a key or Back to start (not by playback): play on from there.
+  useEffect(() => { if (globalTime !== ownTimeRef.current) timeRef.current = globalTime; }, [globalTime]);
 
   useEffect(() => {
-    videoClips.forEach(clip => {
-      const el = videoRefs.current[clip.id];
-      if (!el) return;
-      const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip));
-      if (isActive) {
-        el.volume = (clip.volume ?? 100) / 100;
-        // Slow-mo (2026-10-23): the source second at this time, played at the clip's speed.
-        const rate = speedOf(clip);
-        if (el.playbackRate !== rate) el.playbackRate = rate;
-        const expectedTime = sourceAt(clip, globalTime);
-        if (Math.abs(el.currentTime - expectedTime) > 0.25 * rate) el.currentTime = expectedTime;
-        if (isPlaying && el.paused) el.play().catch(() => { });
-      } else {
-        if (!el.paused) el.pause();
-      }
-    });
+    if (!isPlaying) return;
+    let raf = 0, last = performance.now(), lastSet = 0, heldSince: number | null = null, wasBuffering = false;
+    // A video that wouldn't play for GIVE_UP_AFTER seconds: the clock leads (it follows, like an
+    // overlay) until it's playing in step again. Without this it held, gave up for a frame, and held again.
+    let stuck: string | null = null;
+    // A touch screen redraws the editor 30 times a second while playing, not 60 (an iPad spent its
+    // time redrawing the whole editor instead of decoding the video).
+    const every = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? 32 : 0;
+    const step = (now: number) => {
+      const wall = Math.min(0.25, Math.max(0, (now - last) / 1000));
+      last = now;
+      const clips = playRef.current;
+      const prev = timeRef.current;
+      const found = masterAt(clips.videoClips, prev);
+      const el = found ? videoRefs.current[found.id] : null;
+      const state = found && el ? { clip: found, currentTime: el.currentTime, ready: el.readyState >= 3 && !el.seeking && !el.paused, ended: el.ended } : null;
+      if (stuck && (stuck !== found?.id || (state?.ready && Math.abs(state.currentTime - sourceAt(state.clip, prev)) < 0.1))) stuck = null;
+      const master = stuck ? null : state;
+      const heldFor = heldSince === null ? 0 : (now - heldSince) / 1000;
+      const r = nextTime(prev, wall, master, heldFor);
+      if (master && heldFor >= GIVE_UP_AFTER) stuck = master.clip.id;
+      heldSince = r.holding ? heldSince ?? now : null;
+      const end = endOfEdit(clips.videoClips, clips.audioClips, clips.textLayers);
+      const t = Math.min(r.time, end);
+      timeRef.current = t;
+      syncMedia({ t, playing: t < end, holding: r.holding, masterId: master?.clip.id ?? null, clips, videos: videoRefs.current, audios: audioRefs.current, media: mediaRef.current });
+      const nowBuffering = heldSince !== null && now - heldSince > 300;
+      if (nowBuffering !== wasBuffering) { wasBuffering = nowBuffering; setBuffering(nowBuffering); }
+      if (t >= end) { ownTimeRef.current = t; setGlobalTime(t); setIsPlaying(false); return; }
+      if (now - lastSet >= every) { lastSet = now; ownTimeRef.current = t; setGlobalTime(t); }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => { cancelAnimationFrame(raf); setBuffering(false); };
+  }, [isPlaying]);
 
-    audioClips.forEach(clip => {
-      const el = audioRefs.current[clip.id];
-      if (!el) return;
-      const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip));
-      if (isActive) {
-        el.volume = (clip.volume ?? 100) / 100;
-        const expectedTime = clip.trimStart + (globalTime - clip.timelineStart);
-        if (Math.abs(el.currentTime - expectedTime) > 0.25) el.currentTime = expectedTime;
-        if (isPlaying && el.paused) el.play().catch(() => { });
-      } else {
-        if (!el.paused) el.pause();
-      }
-    });
+  // Paused: every video and sound on the exact frame at the playhead, so scrubbing shows that frame.
+  useEffect(() => {
+    if (isPlaying) return;
+    syncMedia({ t: globalTime, playing: false, holding: false, masterId: null, clips: { videoClips, audioClips }, videos: videoRefs.current, audios: audioRefs.current, media: mediaRef.current });
   }, [globalTime, videoClips, audioClips, isPlaying]);
 
   function togglePlay() {
@@ -464,7 +524,17 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
       setIsPlaying(false);
       Object.values(videoRefs.current).forEach(el => el?.pause());
       Object.values(audioRefs.current).forEach(el => el?.pause());
+      ownTimeRef.current = timeRef.current; setGlobalTime(timeRef.current);
     } else {
+      // iPad and iPhone play sound only on media started by a tap. Start (and at once pause) every
+      // clip inside this tap, so each one can play with sound when the playhead reaches it.
+      for (const el of [...Object.values(videoRefs.current), ...Object.values(audioRefs.current)]) {
+        if (!el) continue;
+        mediaRef.current.blocked.delete(el);
+        if (el.paused) { el.muted = false; el.play().catch(() => { }); el.pause(); }
+      }
+      // At the end: from the start again.
+      if (timeRef.current >= endOfEdit(videoClips, audioClips, textLayers) - 0.05) { timeRef.current = 0; ownTimeRef.current = 0; setGlobalTime(0); }
       setIsPlaying(true);
     }
   }
@@ -1570,15 +1640,22 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             <div className="ve-canvaswrap">
               <div ref={canvasRef} className="ve-canvas" style={{ aspectRatio: String(shape), width: `min(100cqw, calc(100cqh * ${shape}))`, ["--cw" as string]: String(canvasW) }}>
                 {[...videoClips].sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
-                  const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip));
+                  const isActive = isActiveAt(clip, globalTime);
+                  // The next clip is laid out (unseen) before its cut, so its first frame is decoded and ready.
+                  const lined = !isActive && isUpcomingAt(clip, globalTime);
                   return (
-                    <div key={`canvas-${clip.id}`} className="absolute inset-0 pointer-events-none" style={{ opacity: isActive ? (clip.opacity ?? 100) / 100 : 0, zIndex: clip.trackRow || 0, display: isActive ? "block" : "none" }}>
+                    <div key={`canvas-${clip.id}`} className="absolute inset-0 pointer-events-none" style={{ opacity: isActive ? (clip.opacity ?? 100) / 100 : 0, zIndex: clip.trackRow || 0, display: isActive || lined ? "block" : "none" }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       {clip.type === "image" ? <img src={clip.url} alt="" className="w-full h-full" style={{ objectFit }} />
-                        : <video ref={(el) => { videoRefs.current[clip.id] = el; }} src={clip.url} className="w-full h-full" style={{ objectFit }} playsInline />}
+                        : <video ref={(el) => { videoRefs.current[clip.id] = el; }} src={clip.url} className="w-full h-full" style={{ objectFit }} playsInline preload={isActive || lined ? "auto" : "metadata"} />}
                     </div>
                   );
                 })}
+                {buffering && (
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] pointer-events-none" style={{ zIndex: 90, background: "rgba(0,0,0,.62)", color: "#fff" }} role="status">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading the clip…
+                  </div>
+                )}
                 {!videoClips.some((clip) => globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip))) && (
                   <div className="absolute inset-0 grid place-items-center text-center px-4" style={{ color: "var(--s-mute)" }}>
                     <span className="grid justify-items-center gap-2 text-[12.5px]"><Film className="h-7 w-7" />{videoClips.length ? "Nothing at the playhead" : "Drag clips from the left onto the timeline"}</span>
@@ -1971,7 +2048,8 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
             <div ref={canvasRef} className="relative aspect-video max-w-full max-h-full h-full w-auto mx-auto bg-[#000000] rounded-lg shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden ring-1 ring-[#57707A]/50 z-10">
 
               {videoClips.sort((a, b) => (a.trackRow || 0) - (b.trackRow || 0)).map((clip) => {
-                const isActive = globalTime >= clip.timelineStart && globalTime < clip.timelineStart + (span(clip));
+                const isActive = isActiveAt(clip, globalTime);
+                const lined = !isActive && isUpcomingAt(clip, globalTime);
                 return (
                   <div
                     key={`canvas-${clip.id}`}
@@ -1979,7 +2057,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                     style={{
                       opacity: isActive ? (clip.opacity ?? 100) / 100 : 0,
                       zIndex: clip.trackRow || 0,
-                      display: isActive ? 'block' : 'none'
+                      display: isActive || lined ? 'block' : 'none'
                     }}
                   >
                     {clip.type === "image" ? (
@@ -1990,6 +2068,7 @@ export function VideoEditorUI({ variant = "classic" }: { variant?: "classic" | "
                         src={clip.url}
                         className="w-full h-full object-contain"
                         playsInline
+                        preload={isActive || lined ? "auto" : "metadata"}
                       />
                     )}
                   </div>
