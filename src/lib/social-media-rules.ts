@@ -76,9 +76,22 @@ export function postResults(row: { creation_metadata?: unknown; postforme_tracki
     .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
-/** A failure as people read it: PostForMe's prefix off, the reason kept. */
+/**
+ * The networks' refusals we've seen, in plain words (2026-10-27: a Nuf Farms motion graphic came back
+ * as a wall of JSON: YouTube's daily upload quota on PostForMe's shared Google project was used up).
+ */
+const KNOWN_REFUSALS: Array<[RegExp, string]> = [
+  [/quota exceeded|video uploads per day|RESOURCE_EXHAUSTED|\b429\b/i, "YouTube's daily upload limit on our posting service was reached. It resets every day, so post it again later."],
+  [/only videos are supported/i, "it only takes videos, and this post is a picture."],
+  [/user access is restricted/i, "the account is restricted on Instagram. Open the Instagram app to see why, then try again."],
+  [/token|reauth|re-auth|expired|unauthori[sz]ed|invalid_grant/i, "the connection to the account expired. Reconnect it in Settings, then try again."],
+];
+
+/** A failure as people read it: a known reason in plain words, else the network's own (short). */
 export function resultLine(r: PostResult, label: (p: string) => string = (p) => p) {
-  const why = (r.error ?? "").replace(/^Failed to post to [^:]+:\s*/i, "").trim();
+  const raw = (r.error ?? "").replace(/^Failed to post to [^:]+:\s*/i, "").trim();
+  const known = KNOWN_REFUSALS.find(([re]) => re.test(raw))?.[1];
+  const why = known ?? raw.split(/[{\n]/)[0].trim().slice(0, 160);
   return `${label(r.platform)} didn't post${why ? `: ${why}` : "."}`;
 }
 

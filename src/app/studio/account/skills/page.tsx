@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, ChevronDown, Link2, Loader2, Plus, Trash2 } from "lucide-react";
+import { BookOpen, ChevronDown, Link2, Loader2, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ListSkeleton } from "@/components/studio/Skeletons";
 
@@ -36,7 +36,10 @@ export default function SkillsPage() {
       if (!res.ok) throw new Error(d.error || "Couldn't add the skill.");
       setMine((m) => [...m, d.skill]);
       setUrl(""); setDraft({ name: "", description: "", body: "" });
-      toast.success(`"${d.skill.name}" added. Ask uses it when a request fits.`);
+      // What the safety check did (lib/assistant/skill-safety.ts), so nothing changes silently.
+      const removed = Array.isArray(d.removed) && d.removed.length ? ` We removed ${d.removed.join(" and ")} from it.` : "";
+      const links = Array.isArray(d.links) && d.links.length ? ` It mentions ${d.links.slice(0, 4).join(", ")}${d.links.length > 4 ? " and more" : ""}: Ask never opens links from skills.` : "";
+      toast.success(`"${d.skill.name}" added. Ask uses it when a request fits.${removed}${links}`, { duration: removed || links ? 10000 : 4000 });
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't add the skill."); }
     finally { setBusy(false); }
   }
@@ -60,7 +63,7 @@ export default function SkillsPage() {
         <div className="flex-1 min-w-0">
           <b className="text-[14px]">{s.name}</b>
           <p className="text-[12.5px] mt-0.5" style={{ color: "var(--s-soft)" }}>{s.description}</p>
-          {own && s.source_url && <p className="text-[11px] mt-1 truncate" style={{ color: "var(--s-mute)" }}>From {s.source_url}</p>}
+          {own && s.source_url && <p className="text-[11px] mt-1 truncate" style={{ color: "var(--s-mute)" }} title={s.source_url}>Imported from {(() => { try { return new URL(s.source_url).hostname; } catch { return s.source_url; } })()}</p>}
         </div>
         {own && (
           <div className="flex items-center gap-1.5 shrink-0">
@@ -80,7 +83,11 @@ export default function SkillsPage() {
     <div className="grid gap-8 s-reading">
       <div>
         <h2 className="text-[20px] font-semibold">Ask skills</h2>
-        <p className="text-[13px] mt-1 max-w-2xl" style={{ color: "var(--s-soft)" }}>Playbooks Ask BlinkSpot reads when your request needs one: how to design a poster, plan motion graphics, build a page that sells. Add your own and Ask follows them for this account. A skill only changes how Ask answers; it can never spend credits or publish.</p>
+        <p className="text-[13px] mt-1 max-w-2xl" style={{ color: "var(--s-soft)" }}>Playbooks Ask BlinkSpot reads when your request needs one: how to design a poster, plan motion graphics, build a page that sells. Add your own and Ask follows them for this account.</p>
+        <div className="flex items-start gap-2 rounded-xl p-3 mt-3 max-w-2xl text-[12.5px]" style={{ background: "var(--s-bg)", border: "1px solid var(--s-line)", color: "var(--s-soft)" }}>
+          <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--s-ok)" }} />
+          <span>Skills are text only and private to your account: nothing in them ever runs. We check each one when you add it, remove hidden characters, and refuse code or instructions that try to take over Ask. When Ask reads one of your skills, it shows you buttons to press instead of making, writing or scheduling anything on its own, and it never opens links from a skill. Only add skills from people you trust.</span>
+        </div>
       </div>
 
       <section className="s-card p-5 grid gap-3">

@@ -64,7 +64,11 @@ describe("what each network accepts", () => {
   });
   it("reads results: posted if any network took it, failed only when every one refused", () => {
     const fail = { platform: "youtube", ok: false, error: "Failed to post to Youtube: Only videos are supported for YouTube posts", at: "2026-10-27T10:00:00Z" };
-    expect(resultLine(fail, () => "YouTube")).toBe("YouTube didn't post: Only videos are supported for YouTube posts");
+    expect(resultLine(fail, () => "YouTube")).toBe("YouTube didn't post: it only takes videos, and this post is a picture.");
+    // The Nuf Farms motion graphic (2026-10-27): YouTube's quota on PostForMe's shared project, as JSON.
+    const quota = { ...fail, error: "Failed to post to Youtube: Failed to start YouTube resumable upload session: 429 Too Many Requests. {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"Quota exceeded for quota metric 'Video Uploads'" };
+    expect(resultLine(quota, () => "YouTube")).toBe("YouTube didn't post: YouTube's daily upload limit on our posting service was reached. It resets every day, so post it again later.");
+    expect(resultLine({ ...fail, error: "Failed to post to X: something odd happened {\"a\":1}" }, () => "X")).toBe("X didn't post: something odd happened");
     expect(statusFromResults([fail], 2)).toBeNull();
     expect(statusFromResults([fail, { ...fail, platform: "instagram" }], 2)).toBe("failed");
     expect(statusFromResults([fail, { platform: "instagram", ok: true, at: "x" }], 2)).toBe("posted");

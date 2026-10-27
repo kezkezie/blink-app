@@ -3,11 +3,14 @@ import { authenticateExecutionRequest } from "@/lib/execution-security";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { safeFetchBytes } from "@/lib/safe-fetch";
 import { BUILTIN_SKILLS, SKILL_LIMITS, parseSkillMarkdown, rawSkillUrl, skillId } from "@/lib/assistant/skills";
+import { checkSkill } from "@/lib/assistant/skill-safety";
 
 /**
  * Ask BlinkSpot skills for this account (2026-10-12): list the built-in ones and your own; add one
- * by pasting it or importing a SKILL.md from a link; switch one off; delete it. A skill only
- * changes how Ask answers for this account; it can't spend credits or publish (Ask can't either).
+ * by pasting it or importing a SKILL.md from a link; switch one off; delete it. A skill is text
+ * only and private to this account. Every add and edit passes lib/assistant/skill-safety.ts (hidden
+ * characters removed; web code, encoded blobs and instructions aimed at Ask refused), and once Ask
+ * loads one, nothing runs on its own for the rest of that message (2026-10-27).
  */
 async function clientFor(request: NextRequest) {
   const auth = await authenticateExecutionRequest(request);
@@ -52,6 +55,9 @@ export async function POST(request: NextRequest) {
   }
   if (!name || !description || !text) return NextResponse.json({ error: "A skill needs a name, when to use it, and the instructions." }, { status: 400 });
   if (text.length > SKILL_LIMITS.body) return NextResponse.json({ error: `The instructions are too long (${text.length.toLocaleString("en-US")} characters; ${SKILL_LIMITS.body.toLocaleString("en-US")} at most).` }, { status: 400 });
+  const checked = checkSkill({ name: name.slice(0, SKILL_LIMITS.name), description: description.slice(0, SKILL_LIMITS.description), body: text });
+  if (!checked.ok) return NextResponse.json({ error: checked.error, code: "unsafe_skill" }, { status: 400 });
+  ({ name, description } = checked.skill); text = checked.skill.body;
 
   let slug = skillId(name);
   if (BUILTIN_SKILLS.some((k) => k.id === slug)) slug = `my-${slug}`.slice(0, 40);
@@ -62,7 +68,7 @@ export async function POST(request: NextRequest) {
     client_id: c.clientId, slug, name: name.slice(0, SKILL_LIMITS.name), description: description.slice(0, SKILL_LIMITS.description), body: text, source_url: source,
   }).select("id, slug, name, description, body, source_url, enabled, created_at").single();
   if (error) return NextResponse.json({ error: "Couldn't save the skill." }, { status: 500 });
-  return NextResponse.json({ skill: data });
+  return NextResponse.json({ skill: data, removed: checked.removed, links: checked.links });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -79,9 +85,21 @@ export async function PATCH(request: NextRequest) {
     if (body.body.length > SKILL_LIMITS.body) return NextResponse.json({ error: "The instructions are too long." }, { status: 400 });
     patch.body = body.body.trim();
   }
+  // An edit is checked like a new skill (with the parts it doesn't change).
+  let checks: { removed: string[]; links: string[] } = { removed: [], links: [] };
+  if ("name" in patch || "description" in patch || "body" in patch) {
+    const { data: now } = await supabaseAdmin.from("assistant_skills").select("name, description, body").eq("id", body.id).eq("client_id", c.clientId).maybeSingle();
+    if (!now) return NextResponse.json({ error: "Skill not found" }, { status: 404 });
+    const checked = checkSkill({ name: String(patch.name ?? now.name), description: String(patch.description ?? now.description), body: String(patch.body ?? now.body) });
+    if (!checked.ok) return NextResponse.json({ error: checked.error, code: "unsafe_skill" }, { status: 400 });
+    if ("name" in patch) patch.name = checked.skill.name;
+    if ("description" in patch) patch.description = checked.skill.description;
+    if ("body" in patch) patch.body = checked.skill.body;
+    checks = { removed: checked.removed, links: checked.links };
+  }
   const { data, error } = await supabaseAdmin.from("assistant_skills").update(patch).eq("id", body.id).eq("client_id", c.clientId).select("id, slug, name, description, body, source_url, enabled, created_at").maybeSingle();
   if (error || !data) return NextResponse.json({ error: "Skill not found" }, { status: 404 });
-  return NextResponse.json({ skill: data });
+  return NextResponse.json({ skill: data, ...checks });
 }
 
 export async function DELETE(request: NextRequest) {
