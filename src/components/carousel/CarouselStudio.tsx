@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Thumbnail } from "@remotion/player";
 import { ArrowLeft, ArrowRight, Check, GalleryHorizontal, ImagePlus, Images, Loader2, Pencil, Sparkles, Trash2, X } from "lucide-react";
@@ -17,6 +17,10 @@ import { CarouselSlide, type SlideBrand } from "./CarouselSlide";
 import { IMAGE_ENGINE_REGISTRY } from "@/lib/image-engine-pricing";
 import { paletteFor, type Palette } from "@/lib/motion/spec";
 import { MAX_SLIDES, PLAN_CREDITS, SLIDE_SIZE, seamlessPlan, sliceRects, type SlideShape, type TopicCarousel, type TopicSlide } from "@/lib/carousel";
+import { canvasBlob, fitTo, loadImage, type Fit } from "@/lib/carousel-fit";
+import { cleanCaption, picturesOf, thumbUrl } from "@/components/studio/media";
+import type { PickedImage } from "@/components/studio/ImagePicker";
+import type { Content } from "@/types/database";
 
 /**
  * Make a carousel (2026-10-16). Seamless: one wide picture, cut into 2 or 3 slides so it flows as
@@ -31,22 +35,9 @@ const WAYS: Array<{ id: Way; label: string; line: string }> = [
   { id: "pictures", label: "From pictures", line: "Up to 10 of yours, in your order" },
 ];
 
-const loadImage = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => {
-  const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => resolve(im); im.onerror = () => reject(new Error("picture")); im.src = url;
-});
-const canvasBlob = (c: HTMLCanvasElement) => new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error("encode"))), "image/jpeg", 0.92));
+type Pic = { url: string; title: string; contentId?: string | null };
 
-/** A picture cropped (centred) to the slide shape. */
-async function cropTo(url: string, shape: SlideShape) {
-  const im = await loadImage(url);
-  const { w, h } = SLIDE_SIZE[shape];
-  const [r] = sliceRects(im.naturalWidth, im.naturalHeight, 1, shape);
-  const c = document.createElement("canvas"); c.width = w; c.height = h;
-  c.getContext("2d")!.drawImage(im, r.sx, r.sy, r.sw, r.sh, 0, 0, w, h);
-  return canvasBlob(c);
-}
-
-export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
+export function CarouselStudio({ initialTopic, initialPictures }: { initialTopic?: string; /** Library posts picked for one carousel, in order (2026-10-28). */ initialPictures?: string[] }) {
   const { clientId } = useClient();
   const { activeBrand } = useBrandStore();
   const kit = useBrandKit(activeBrand?.id, activeBrand?.brand_name ?? undefined);
@@ -63,10 +54,30 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
   const [paletteEdit, setPaletteEdit] = useState<Palette | null>(null);
   const [brief, setBrief] = useKept(keep && `${keep}:brief`, initialTopic ?? "", !!initialTopic);
   const [panels, setPanels] = useKept(keep && `${keep}:panels`, 3);
-  const [pics, setPics] = useKept<Array<{ url: string; title: string }>>(keep && `${keep}:pics`, []);
+  const [pics, setPics] = useKept<Pic[]>(keep && `${keep}:pics`, []);
+  const [fit, setFit] = useKept<Fit>(keep && `${keep}:fit`, "whole");
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [made, setMade] = useState<{ id: string; slides: string[] } | null>(null);
+
+  // Pictures picked in the Library: straight in, in the order picked; a carousel brings its slides.
+  const handedOff = useRef(false);
+  useEffect(() => {
+    if (!initialPictures?.length || handedOff.current) return;
+    handedOff.current = true;
+    void supabase.from("content").select("id, caption, image_urls, video_urls, reference_image_url").in("id", initialPictures).then(({ data }) => {
+      const byId = new Map(((data ?? []) as unknown as Content[]).map((r) => [r.id, r]));
+      const all = initialPictures.flatMap((id) => {
+        const r = byId.get(id);
+        if (!r) return [];
+        const title = cleanCaption(r.caption).split("\n")[0].slice(0, 80);
+        return picturesOf(r).map((url): Pic => ({ url, title, contentId: r.id }));
+      });
+      if (all.length < 2) { toast.error("Pick at least two pictures for a carousel."); return; }
+      setWay("pictures"); setMade(null); setPics(all.slice(0, MAX_SLIDES));
+      if (all.length > MAX_SLIDES) toast.info(`A carousel takes up to ${MAX_SLIDES} slides, so the first ${MAX_SLIDES} are in. Swap any below.`);
+    });
+  }, [initialPictures, setWay, setPics]);
 
   const palette = useMemo(() => paletteEdit ?? paletteFor({}, { primary: kit?.primaryColor, secondary: kit?.secondaryColor }), [paletteEdit, kit]);
   const brand: SlideBrand = { name: kit?.name || name, font: kit?.primaryFont ?? null, logoUrl: kit?.logoUrl ?? null, handle };
@@ -148,28 +159,32 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
     finally { setBusy(null); }
   }
 
-  async function addPicture(p: { url: string; title: string }) {
-    setPicking(false);
+  // Several at once (2026-10-28): the picker stays open, and tapping a picked one takes it out. A
+  // photo from this device shows at once, in its place, and is copied to storage behind the scenes.
+  async function addPicture(p: PickedImage) {
+    const have = p.contentId ? pics.findIndex((x) => x.contentId === p.contentId) : -1;
+    if (have >= 0) { setPics((x) => x.filter((_, j) => j !== have)); return; }
     if (pics.length >= MAX_SLIDES) { toast.error(`Up to ${MAX_SLIDES} slides.`); return; }
-    if (p.url.startsWith("blob:")) {
-      try {
-        const blob = await (await fetch(p.url)).blob();
-        const path = `images/${clientId}/carousel_src_${Date.now()}.${blob.type.includes("png") ? "png" : "jpg"}`;
-        const { error } = await supabase.storage.from("assets").upload(path, blob, { contentType: blob.type || "image/jpeg" });
-        if (error) throw error;
-        p = { url: supabase.storage.from("assets").getPublicUrl(path).data.publicUrl, title: p.title };
-      } catch { toast.error("Couldn't add that photo."); return; }
-    }
-    setPics((x) => [...x, p]);
+    setPics((x) => (x.length >= MAX_SLIDES ? x : [...x, { url: p.url, title: p.title, contentId: p.contentId }]));
+    if (!p.url.startsWith("blob:")) return;
+    try {
+      const blob = await (await fetch(p.url)).blob();
+      const path = `images/${clientId}/carousel_src_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${blob.type.includes("png") ? "png" : "jpg"}`;
+      const { error } = await supabase.storage.from("assets").upload(path, blob, { contentType: blob.type || "image/jpeg" });
+      if (error) throw error;
+      const kept = supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+      setPics((x) => x.map((q) => (q.url === p.url ? { ...q, url: kept } : q)));
+    } catch { toast.error("Couldn't add that photo."); setPics((x) => x.filter((q) => q.url !== p.url)); }
   }
   const movePic = (i: number, by: number) => setPics((x) => { const n = [...x]; const [p] = n.splice(i, 1); n.splice(Math.max(0, Math.min(n.length, i + by)), 0, p); return n; });
   async function makeFromPictures() {
     if (pics.length < 2 || !clientId) return;
     try {
       const urls: string[] = [];
-      for (const [i, p] of pics.entries()) { setBusy(`Fitting slide ${i + 1} of ${pics.length}…`); urls.push(await upload(await cropTo(p.url, shape), i)); }
+      for (const [i, p] of pics.entries()) { setBusy(`Fitting slide ${i + 1} of ${pics.length}…`); urls.push(await upload(await fitTo(p.url, SLIDE_SIZE[shape], fit), i)); }
       setBusy("Saving…");
-      await save(urls, "pictures", pics.map((p) => p.title).filter(Boolean)[0] || "Carousel");
+      const from = [...new Set(pics.map((p) => p.contentId).filter((id): id is string => !!id))];
+      await save(urls, "pictures", pics.map((p) => p.title).filter(Boolean)[0] || "Carousel", { fit, ...(from.length ? { from } : {}) });
     } catch { toast.error("Couldn't fit one of the pictures. Try another."); }
     finally { setBusy(null); }
   }
@@ -266,11 +281,23 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
 
       {way === "pictures" && (
         <div className="s-card p-4 grid gap-3">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="s-seg" role="group" aria-label="How each picture fits">
+              <button aria-pressed={fit === "whole"} onClick={() => setFit("whole")} title="Nothing is cut off: the space around it is a soft blur of the picture">Show it whole</button>
+              <button aria-pressed={fit === "fill"} onClick={() => setFit("fill")} title="Fills the slide edge to edge; the edges that don't fit are cropped">Fill the slide</button>
+            </div>
+            <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{fit === "whole" ? "Nothing gets cut off, good for posters and words." : "Edge to edge; the edges that don't fit are cropped."}</span>
+          </div>
+          <div className="flex flex-wrap gap-2" role="list" aria-label="Slides">
             {pics.map((p, i) => (
-              <div key={`${p.url}-${i}`} className="grid gap-1 justify-items-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.url} alt={p.title} className="rounded-lg object-cover" style={{ width: 110, aspectRatio: `${w} / ${h}`, border: "1px solid var(--s-line)" }} />
+              <div key={`${p.url}-${i}`} role="listitem" className="grid gap-1 justify-items-center">
+                <div className="relative rounded-lg overflow-hidden" style={{ width: 110, aspectRatio: `${w} / ${h}`, border: "1px solid var(--s-line)", background: "#000" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {fit === "whole" && <img src={thumbUrl(p.url, 320)} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover" style={{ filter: "blur(10px) brightness(.82)", transform: "scale(1.2)" }} />}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumbUrl(p.url, 320)} alt={p.title || `Slide ${i + 1}`} className={`relative h-full w-full ${fit === "whole" ? "object-contain" : "object-cover"}`} />
+                  <span className="s-badge absolute top-1.5 left-1.5" style={{ background: "rgba(12,13,15,.7)", color: "#fff" }}>{i === 0 ? "Cover" : i + 1}</span>
+                </div>
                 <div className="flex gap-1">
                   <button className="s-btn ghost sm" disabled={i === 0} onClick={() => movePic(i, -1)} aria-label="Move left"><ArrowLeft className="h-3.5 w-3.5" /></button>
                   <button className="s-btn ghost sm" onClick={() => setPics((x) => x.filter((_, j) => j !== i))} aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -280,14 +307,14 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
             ))}
             {pics.length < MAX_SLIDES && (
               <button className="rounded-lg grid place-items-center gap-1 text-[12px]" style={{ width: 110, aspectRatio: `${w} / ${h}`, border: "1px dashed var(--s-line-2)", color: "var(--s-soft)" }} onClick={() => setPicking(true)}>
-                <ImagePlus className="h-5 w-5" /> Add a picture
+                <ImagePlus className="h-5 w-5" /> Add pictures
               </button>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{pics.length}/{MAX_SLIDES} slides · each is fitted to {shape}, centred.</span>
+            <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{pics.length}/{MAX_SLIDES} slides, all {shape} · the first is the cover · X and Bluesky show the first 4, Pinterest the first one.</span>
             <div className="flex-1" />
-            <button className="s-btn primary" disabled={!!busy || pics.length < 2} onClick={makeFromPictures}>{busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {busy}</> : <><Images className="h-4 w-4" /> Make the carousel <span className="cost">free</span></>}</button>
+            <button className="s-btn primary" disabled={!!busy || pics.length < 2 || !clientId} onClick={makeFromPictures}>{busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {busy}</> : <><Images className="h-4 w-4" /> Make the carousel <span className="cost">free</span></>}</button>
           </div>
         </div>
       )}
@@ -307,9 +334,14 @@ export function CarouselStudio({ initialTopic }: { initialTopic?: string }) {
         </div>
       )}
 
-      <Modal open={picking} onClose={() => setPicking(false)} label="Add a picture" width={860} padded>
-        <div className="flex items-center justify-between mb-3"><b className="text-sm">Add a picture</b><button className="s-btn ghost sm" onClick={() => setPicking(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
-        <ImagePicker onPick={(p) => void addPicture({ url: p.url, title: p.title })} />
+      <Modal open={picking} onClose={() => setPicking(false)} label="Add pictures" width={860} padded>
+        <div className="flex items-center gap-2 mb-3">
+          <b className="text-sm">Add pictures</b>
+          <span className="text-[12px]" style={{ color: "var(--s-soft)" }}>{pics.length}/{MAX_SLIDES} · tap as many as you like, in order; tap again to take one out</span>
+          <div className="flex-1" />
+          <button className="s-btn primary sm" onClick={() => setPicking(false)}>Done</button>
+        </div>
+        <ImagePicker multiple selectedIds={pics.map((p) => p.contentId)} onPick={(p) => void addPicture(p)} />
       </Modal>
     </div>
   );

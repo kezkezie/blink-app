@@ -110,8 +110,11 @@ function ImageStudioInner() {
     toast.info(`Opened in ${own.brand_name}, the brand this post belongs to.`);
   }, [pickedBrand, availableBrands]);
 
+  // Pictures picked in the Library for one carousel (2026-10-28), read once like the idea.
+  const [pictureIds] = useState(() => (params.get("pictures") ?? "").split(",").filter((s) => /^[0-9a-f-]{36}$/i.test(s)).slice(0, 40));
   useEffect(() => {
     if (params.get("prompt")) router.replace("/studio/image", { scroll: false });
+    else if (params.get("pictures")) router.replace("/studio/image?mode=carousel", { scroll: false });
   }, [params, router]);
 
   if (!activeBrand) {
@@ -135,7 +138,7 @@ function ImageStudioInner() {
 
       {mode === "generate" && <StudioGenerate initialIdea={initialIdea} autoIdeas={!!initialIdea && !autoRun} autoRun={autoRun} />}
 
-      {mode === "carousel" && <CarouselStudio initialTopic={initialIdea} />}
+      {mode === "carousel" && <CarouselStudio initialTopic={initialIdea} initialPictures={pictureIds} />}
 
       {mode === "pro" && (
         <div className="p-4 md:p-6 mx-auto w-full max-w-[1320px]">

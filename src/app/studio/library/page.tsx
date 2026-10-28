@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckSquare, Film, Loader2, Search, Trash2, Upload, Wand2, X, LayoutTemplate } from "lucide-react";
+import { CheckSquare, Film, GalleryHorizontal, Loader2, Search, Trash2, Upload, Wand2, X, LayoutTemplate } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { queueForEditor } from "@/components/studio/queue-clips";
@@ -10,7 +10,8 @@ import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import type { Content } from "@/types/database";
-import { MediaCard, NOT_STORYBOARD_FRAME, PART_TYPES, VIDEO_TYPES, resolveMedia } from "@/components/studio/media";
+import { MediaCard, NOT_STORYBOARD_FRAME, PART_TYPES, VIDEO_TYPES, picturesOf, resolveMedia } from "@/components/studio/media";
+import { MAX_SLIDES } from "@/lib/carousel";
 import { LibraryViewer } from "@/components/studio/library/LibraryViewer";
 
 type Kind = "all" | "videos" | "images" | "parts";
@@ -154,6 +155,14 @@ export default function LibraryPage() {
     router.push("/studio/video?tab=editor");
   }
 
+  // Pictures picked one by one become one post, as slides in the order picked (Kezie, 2026-10-28:
+  // "pick pictures that are not in a carousel form, but then post it as carousels"). A picked
+  // carousel brings all its slides. Carousel Studio fits them to one shape and saves the post.
+  const order = [...selected];
+  const pickedPictures = order.map((id) => rows.find((r) => r.id === id)).filter((r): r is Content => !!r && picturesOf(r).length > 0);
+  const pickedSlides = pickedPictures.reduce((n, r) => n + picturesOf(r).length, 0);
+  const makeCarousel = () => router.push(`/studio/image?mode=carousel&pictures=${pickedPictures.map((r) => r.id).join(",")}`);
+
   async function remove(ids: string[]): Promise<boolean> {
     if (ids.length === 0) return false;
     if (!confirm(ids.length === 1 ? "Delete this from your library?" : `Delete ${ids.length} items from your library?`)) return false;
@@ -202,9 +211,16 @@ export default function LibraryPage() {
             <button className="s-btn sm" onClick={() => setSelected(() => (selected.size === shown.length ? new Set() : new Set(shown.map((r) => r.id))))}>
               {selected.size === shown.length && shown.length > 0 ? "Clear" : "Select all"}
             </button>
-            <button className="s-btn primary sm" disabled={!selectedVideos.length || stacking} onClick={editTogether} title="Open the selected clips in the editor, in order">
-              {stacking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />} Edit together{selectedVideos.length ? ` (${selectedVideos.length})` : ""}
-            </button>
+            {kind !== "parts" && kind !== "videos" && (
+              <button className={`s-btn sm${pickedSlides >= 2 ? " primary" : ""}`} disabled={pickedSlides < 2} onClick={makeCarousel} title="One post, with the picked pictures as slides in the order you picked them">
+                <GalleryHorizontal className="h-3.5 w-3.5" /> Make a carousel{pickedSlides ? ` (${Math.min(pickedSlides, MAX_SLIDES)})` : ""}
+              </button>
+            )}
+            {kind !== "images" && (
+              <button className={`s-btn sm${selectedVideos.length || kind === "parts" ? " primary" : ""}`} disabled={!selectedVideos.length || stacking} onClick={editTogether} title="Open the selected clips in the editor, in order">
+                {stacking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />} Edit together{selectedVideos.length ? ` (${selectedVideos.length})` : ""}
+              </button>
+            )}
             <button className="s-btn sm" style={{ color: "var(--s-danger)" }} disabled={selected.size === 0 || deleting} onClick={() => remove([...selected])}>
               {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Delete
             </button>
@@ -255,6 +271,7 @@ export default function LibraryPage() {
                     href={`/studio/library/${c.id}`}
                     onOpen={selecting ? undefined : () => setViewing(shown.indexOf(c))}
                     selected={selected.has(c.id)}
+                    pick={selecting && kind !== "parts" ? pickedPictures.indexOf(c) + 1 || undefined : undefined}
                     actions={!selecting && (
                       <>
                         {image && <Link href={`/studio/image?mode=design&content=${c.id}`} className="s-btn sm" title="Design with type and logo"><LayoutTemplate className="h-3.5 w-3.5" /></Link>}

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { accountsForPost, cancelPendingPost, pfmApiKey, pickCaption } from "@/lib/social-schedule";
-import { isAiVideo, platformLabel, platformsFor, postMedia, skippedLine, youtubeTitle } from "@/lib/social-media-rules";
+import { CAROUSEL_MAX, isAiVideo, pictureLimit, picturesTrimmed, platformLabel, platformsFor, postMedia, skippedLine, trimmedLine, youtubeTitle } from "@/lib/social-media-rules";
+import { toPfmPlatform } from "@/lib/postforme";
 
 /**
  * Sending one post to Post For Me (2026-10-21: moved out of /api/social-posts/schedule so the MCP's
@@ -143,7 +144,7 @@ export async function sendPost(workspaceId: string, i: { contentId: string; sche
 
     // Our own storage holds PNG and WebP: those get a JPEG copy (lib/image-refs.ts).
     const { jpegForPosting } = await import("@/lib/image-refs");
-    const sendMedia = media.kind === "video" ? mediaUrls : await Promise.all(mediaUrls.map(async (url) => (url.includes("res.cloudinary.com") ? ensureJpeg(url) : await jpegForPosting(workspaceId, url))));
+    const sendMedia = media.kind === "video" ? mediaUrls : await Promise.all(mediaUrls.slice(0, CAROUSEL_MAX).map(async (url) => (url.includes("res.cloudinary.com") ? ensureJpeg(url) : await jpegForPosting(workspaceId, url))));
     const postPayload: Record<string, unknown> = {
       social_accounts: accountIds,
       caption: finalCaption,
@@ -158,6 +159,15 @@ export async function sendPost(workspaceId: string, i: { contentId: string; sche
       postPayload.platform_configurations = {
         youtube: { title: youtubeTitle(content.caption_short || finalCaption), privacy_status: "public", made_for_kids: false, ...(isAiVideo(content.ai_model) ? { contains_synthetic_media: true } : {}) },
       };
+    }
+
+    // A carousel: a network that takes fewer pictures (X 4, a Pinterest pin 1) gets the first ones,
+    // instead of refusing the whole post (lib/social-media-rules.ts pictureLimit).
+    const trimmed = media.kind === "image" ? picturesTrimmed(activePlatforms, sendMedia.length) : [];
+    if (trimmed.length) {
+      const configs = (postPayload.platform_configurations ?? {}) as Record<string, Record<string, unknown>>;
+      for (const t of trimmed) { const k = toPfmPlatform(t.platform); configs[k] = { ...(configs[k] ?? {}), media: sendMedia.slice(0, pictureLimit(t.platform)).map((url) => ({ url })) }; }
+      postPayload.platform_configurations = configs;
     }
 
     // Validate and attach scheduled_at
@@ -234,7 +244,7 @@ export async function sendPost(workspaceId: string, i: { contentId: string; sche
     return reply({
       success: true,
       message: scheduledAt ? "Post scheduled successfully" : "Post published successfully",
-      ...(skipped.length ? { skipped, note: skippedLine(skipped, label) } : {}),
+      ...(skipped.length || trimmed.length ? { ...(skipped.length ? { skipped } : {}), note: [skipped.length ? skippedLine(skipped, label) : "", trimmedLine(trimmed, label)].filter(Boolean).join(" ") } : {}),
       data: pfmData,
     }, 200);
   } catch (error) {

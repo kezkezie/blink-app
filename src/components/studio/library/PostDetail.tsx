@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, CalendarPlus, Check, Clapperboard, Clock, Copy, Download, Film, LayoutTemplate, Loader2, MessageSquareWarning, RefreshCw, Save, Send, Sparkles, Trash2, Wand2, X, ZoomIn, Zap } from "lucide-react";
+import { ArrowLeft, CalendarPlus, Check, ChevronLeft, ChevronRight, Clapperboard, Clock, Copy, Download, Film, GalleryHorizontal, ImagePlus, LayoutTemplate, Loader2, MessageSquareWarning, RefreshCw, Save, Send, Sparkles, Trash2, Wand2, X, ZoomIn, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useClient } from "@/hooks/useClient";
@@ -12,7 +12,9 @@ import { cloudinaryStreamUrl, cloudinaryVideoPoster } from "@/lib/utils";
 import { MARKETING_STYLES } from "@/lib/marketing-styles";
 import { Modal } from "@/components/studio/Modal";
 import { ImagePicker } from "@/components/studio/ImagePicker";
-import { STATUS_LABEL, cleanCaption, resolveMedia, thumbUrl } from "@/components/studio/media";
+import { STATUS_LABEL, cleanCaption, picturesOf, resolveMedia, thumbUrl } from "@/components/studio/media";
+import { MAX_SLIDES, slideSizeLike } from "@/lib/carousel";
+import { fitTo, measureImage } from "@/lib/carousel-fit";
 import { useBrandKit, generateBrandImages, generationErrorMessage, nearestImageAspect, type ImageEngine } from "@/components/studio/generate-image";
 import { InstagramTroubleshootModal } from "@/components/publishing/InstagramTroubleshootModal";
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
@@ -134,6 +136,12 @@ export function PostDetail({ id }: { id: string }) {
 
   const media = useMemo(() => (post ? resolveMedia(post) : null), [post]);
   const isVideo = !!media?.isVideo;
+  // A carousel: every slide, one at a time, with its order to change here (2026-10-28).
+  const slides = useMemo(() => (post ? picturesOf(post) : []), [post]);
+  const multi = slides.length > 1;
+  const [slideAt, setSlideAt] = useState(0);
+  const at = Math.min(slideAt, Math.max(0, slides.length - 1));
+  const [addingSlide, setAddingSlide] = useState(false);
 
   async function save(quiet = false) {
     if (!post || !clientId) return false;
@@ -279,6 +287,36 @@ export function PostDetail({ id }: { id: string }) {
     router.push("/studio/library");
   }
 
+  // The slides in a new order, one taken out, or one added. Saved at once; Undo puts them back.
+  async function saveSlides(next: string[], done: string, show = at) {
+    if (!post || next.length < 1) return;
+    const before = post.image_urls;
+    const { error } = await supabase.from("content").update({ image_urls: next, content_type: next.length > 1 ? "carousel" : post.content_type, updated_at: new Date().toISOString() } as Record<string, unknown>).eq("id", post.id);
+    if (error) { toast.error("Couldn't save the slides."); return; }
+    setSlideAt(Math.max(0, Math.min(show, next.length - 1)));
+    toast.success(done, { action: { label: "Undo", onClick: () => { void supabase.from("content").update({ image_urls: before } as Record<string, unknown>).eq("id", post.id).then(() => load()); } } });
+    await load();
+  }
+  const moveSlide = (i: number, by: number) => {
+    const n = [...slides]; const [u] = n.splice(i, 1); const to = Math.max(0, Math.min(n.length, i + by)); n.splice(to, 0, u);
+    void saveSlides(n, `Slide moved to ${to === 0 ? "the cover" : `number ${to + 1}`}.`, to);
+  };
+  // A new slide takes the cover's shape, shown whole (nothing cut off), like Carousel Studio does.
+  async function addSlide(p: { url: string }) {
+    setAddingSlide(false);
+    if (!post || !slides.length || slides.length >= MAX_SLIDES) return;
+    setBusy("slide");
+    try {
+      const cover = await measureImage(slides[0]);
+      const blob = await fitTo(p.url, slideSizeLike(cover.w, cover.h), "whole");
+      const path = `images/${post.client_id ?? clientId}/slide_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const { error } = await supabase.storage.from("assets").upload(path, blob, { contentType: "image/jpeg" });
+      if (error) throw error;
+      await saveSlides([...slides, supabase.storage.from("assets").getPublicUrl(path).data.publicUrl], `Added as slide ${slides.length + 1}.`, slides.length);
+    } catch { toast.error("Couldn't add that picture. Try another."); }
+    finally { setBusy(null); }
+  }
+
   function openRemake() {
     setPrompt(""); setExtraRefs([]); setUseCurrent(true); setEngine("nb2"); setStyle("studio"); setRemakeOpen(true);
   }
@@ -314,11 +352,13 @@ export function PostDetail({ id }: { id: string }) {
   const status = STATUS_LABEL[post.status] ?? { label: post.status };
   const scheduledFuture = !!post.scheduled_at && new Date(post.scheduled_at).getTime() > Date.now();
   const st = post.scheduled_at ? postState(post) : null;
-  const image = !isVideo ? media?.url ?? null : null;
+  const image = !isVideo ? (multi ? slides[at] : media?.url) ?? null : null;
   const title = cleanCaption(short || caption).split("\n")[0].slice(0, 80) || (isVideo ? "Video" : "Image");
   const canEdit = post.status !== "posted";
   const results = postResults(post);
   const viewOnly = isSharedBrand(activeBrand) && activeBrand.role === "viewer";
+  // Slides change here until it's queued: the networks already hold a queued post's pictures.
+  const slidesEditable = !isVideo && !!image && canEdit && !viewOnly && !post.postforme_tracking_id;
 
   // Where it posts, in words: what you'll see happen when you press the button.
   // In the order of the rows below, and only accounts that are connected (others can't post).
@@ -350,33 +390,71 @@ export function PostDetail({ id }: { id: string }) {
               ) : (
                 <button className="group relative w-full h-full grid place-items-center" onClick={() => setZoom(true)} aria-label="View full size">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={thumbUrl(media.url, 1600)} alt={title} className="max-w-full object-contain" style={{ maxHeight: "72dvh" }} />
+                  <img src={thumbUrl(image ?? media.url, 1600)} alt={multi ? `${title} · slide ${at + 1} of ${slides.length}` : title} className="max-w-full object-contain" style={{ maxHeight: "72dvh" }} />
                   <span className="s-pill absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"><ZoomIn className="h-3.5 w-3.5" /> Full size</span>
                 </button>
               )
             ) : <span className="text-[13px] py-24" style={{ color: "var(--s-mute)" }}>No media yet</span>}
+            {multi && !isVideo && (
+              <>
+                <span className="s-badge absolute top-3 left-3 flex items-center gap-1" style={{ background: "rgba(12,13,15,.7)", color: "#fff" }} aria-live="polite"><GalleryHorizontal className="h-3 w-3" /> {at + 1} / {slides.length}</span>
+                <button className="s-btn sm absolute left-3 top-1/2 -translate-y-1/2" disabled={at === 0} onClick={() => setSlideAt(at - 1)} aria-label="Previous slide"><ChevronLeft className="h-4 w-4" /></button>
+                <button className="s-btn sm absolute right-3 top-1/2 -translate-y-1/2" disabled={at === slides.length - 1} onClick={() => setSlideAt(at + 1)} aria-label="Next slide"><ChevronRight className="h-4 w-4" /></button>
+              </>
+            )}
             {(processing || busy === "remake") && (
               <div className="absolute inset-0 grid place-items-center" style={{ background: "rgba(12,13,15,.72)", backdropFilter: "blur(6px)" }}>
                 <div className="grid gap-2 justify-items-center text-center px-6"><Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--s-ai)" }} /><b className="text-[14px]">{busy === "remake" ? "Making the new image…" : "Applying your edit…"}</b><span className="text-[12px]" style={{ color: "var(--s-soft)" }}>This usually takes under a minute.</span></div>
               </div>
             )}
           </div>
+          {/* The slides in order: tap one to see it; move, take out or add while it can change. */}
+          {multi && !isVideo && (
+            <div className="grid gap-1.5" role="group" aria-label="Slides">
+              <div className="flex gap-2 overflow-x-auto pb-1" role="list">
+                {slides.map((u, i) => (
+                  <div key={`${u}-${i}`} role="listitem" className="grid gap-1 shrink-0 justify-items-center">
+                    <button className="relative rounded-lg overflow-hidden" style={{ width: 72, height: 90, outline: i === at ? "2px solid var(--s-accent)" : "1px solid var(--s-line)", outlineOffset: -1, background: "#000" }} onClick={() => setSlideAt(i)} aria-label={`Show slide ${i + 1}`} aria-current={i === at}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={thumbUrl(u, 200)} alt="" className="h-full w-full object-cover" loading="lazy" />
+                      <span className="absolute bottom-1 left-1 text-[10px] font-semibold px-1 rounded" style={{ background: "rgba(12,13,15,.72)", color: "#fff" }}>{i === 0 ? "Cover" : i + 1}</span>
+                    </button>
+                    {slidesEditable && (
+                      <div className="flex">
+                        <button className="s-btn ghost sm !px-1" disabled={i === 0 || !!busy} onClick={() => moveSlide(i, -1)} aria-label={`Move slide ${i + 1} left`}><ChevronLeft className="h-3.5 w-3.5" /></button>
+                        <button className="s-btn ghost sm !px-1" disabled={!!busy} onClick={() => void saveSlides(slides.filter((_, j) => j !== i), `Slide ${i + 1} taken out.`, Math.min(i, slides.length - 2))} aria-label={`Take out slide ${i + 1}`}><X className="h-3.5 w-3.5" /></button>
+                        <button className="s-btn ghost sm !px-1" disabled={i === slides.length - 1 || !!busy} onClick={() => moveSlide(i, 1)} aria-label={`Move slide ${i + 1} right`}><ChevronRight className="h-3.5 w-3.5" /></button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {slidesEditable && slides.length < MAX_SLIDES && (
+                  <button className="rounded-lg grid place-items-center gap-0.5 text-[11px] shrink-0 text-center" style={{ width: 72, height: 90, border: "1px dashed var(--s-line-2)", color: "var(--s-soft)" }} disabled={!!busy} onClick={() => setAddingSlide(true)}>
+                    {busy === "slide" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} Add a slide
+                  </button>
+                )}
+              </div>
+              <span className="text-[11.5px]" style={{ color: "var(--s-mute)" }}>{slides.length} slides, the first is the cover. X and Bluesky show the first 4, Pinterest the first one.{post.postforme_tracking_id && canEdit ? " It's queued, so the slides are fixed; take it off the calendar to change them." : ""}</span>
+            </div>
+          )}
           {(image || (media?.url && !viewOnly)) && (
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Edit the media">
               {image && (
                 <>
-                  <Link href={`/studio/library/${post.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>
-                  <Link href={`/studio/image?mode=design&content=${post.id}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> Open in Editor</Link>
+                  {!multi && <Link href={`/studio/library/${post.id}/edit`} className="s-btn sm"><Wand2 className="h-3.5 w-3.5" /> Edit with AI</Link>}
+                  <Link href={`/studio/image?mode=design&content=${post.id}${multi ? `&slide=${at}` : ""}`} className="s-btn sm"><LayoutTemplate className="h-3.5 w-3.5" /> {multi ? `Edit slide ${at + 1}` : "Open in Editor"}</Link>
                   <Link href={`/studio/motion?picture=${post.id}&brief=${encodeURIComponent(`Animate this picture${post.caption ? `: ${cleanCaption(post.caption).slice(0, 120)}` : ""}`)}`} className="s-btn sm" title="Animate this picture: your words and brand shapes move over it"><Clapperboard className="h-3.5 w-3.5" /> Motion graphic</Link>
                   <Link href={`/studio/video?mode=showcase&start=${encodeURIComponent(image)}`} className="s-btn sm"><Film className="h-3.5 w-3.5" /> Animate</Link>
                 </>
               )}
-              {media?.url && !viewOnly && <UpscaleButton contentId={post.id} mediaUrl={media.url} isVideo={isVideo} />}
-              {image && canEdit && <button className="s-btn ai sm" disabled={!!busy} onClick={openRemake}><RefreshCw className="h-3.5 w-3.5" /> Remake</button>}
+              {!multi && slidesEditable && <button className="s-btn sm" disabled={!!busy} onClick={() => setAddingSlide(true)} title="Add more pictures after this one: one post people swipe through">{busy === "slide" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GalleryHorizontal className="h-3.5 w-3.5" />} Make it a carousel</button>}
+              {/* One-picture tools; a carousel's slides are edited one by one in the Editor. */}
+              {media?.url && !viewOnly && !multi && <UpscaleButton contentId={post.id} mediaUrl={media.url} isVideo={isVideo} />}
+              {image && canEdit && !multi && <button className="s-btn ai sm" disabled={!!busy} onClick={openRemake}><RefreshCw className="h-3.5 w-3.5" /> Remake</button>}
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2 text-[12px] mono" style={{ color: "var(--s-mute)" }}>
-            <span>{isVideo ? "Video" : "Picture"}</span>·<span>made {new Date(post.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+            <span>{isVideo ? "Video" : multi ? `Carousel · ${slides.length} slides` : "Picture"}</span>·<span>made {new Date(post.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
             {post.ai_model && <>·<span>{post.ai_model}</span></>}
           </div>
         </div>
@@ -539,6 +617,12 @@ export function PostDetail({ id }: { id: string }) {
           {image && <img src={image} alt={title} className="max-w-full object-contain" style={{ maxHeight: "86dvh" }} />}
           <button className="s-btn sm absolute top-3 right-3" onClick={() => setZoom(false)} aria-label="Close"><X className="h-4 w-4" /></button>
         </div>
+      </Modal>
+
+      <Modal open={addingSlide} onClose={() => setAddingSlide(false)} label="Add a slide" width={860} padded>
+        <div className="flex items-center justify-between mb-3"><b className="text-sm">{multi ? `Add slide ${slides.length + 1}` : "Add the second slide"}</b><button className="s-btn ghost sm" onClick={() => setAddingSlide(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
+        <p className="text-[12px] mb-3" style={{ color: "var(--s-soft)" }}>It takes the cover&apos;s shape and is shown whole, so nothing gets cut off. For many at once, select them in the Library and tap Make a carousel.</p>
+        <ImagePicker onPick={(p) => void addSlide(p)} />
       </Modal>
 
       <Modal open={whenOpen} onClose={() => setWhenOpen(false)} label="Schedule" width={420} padded>

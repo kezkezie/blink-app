@@ -41,6 +41,13 @@ export function resolveMedia(c: Pick<Content, "video_urls" | "image_urls" | "ref
   return { url, isVideo, poster: isVideo ? cloudinaryVideoPoster(url) : undefined, images: images.filter((u) => !isVideoUrl(u)) };
 }
 
+/** A post's pictures in order: a carousel's slides, or its one picture (none for a video). */
+export function picturesOf(c: Pick<Content, "video_urls" | "image_urls" | "reference_image_url">) {
+  const m = resolveMedia(c);
+  if (m.isVideo) return [];
+  return m.images.length ? m.images : m.url ? [m.url] : [];
+}
+
 /**
  * A resized preview of a Cloudinary image (the originals are 4K PNGs, often 10 MB+, so grids were
  * black for seconds). Exports and editors keep the original URL.
@@ -125,11 +132,13 @@ function PendingNote({ content }: { content: Content }) {
   );
 }
 
-export function MediaCard({ content, href, actions, selected, aspect = "4 / 3", onOpen }: {
+export function MediaCard({ content, href, actions, selected, pick, aspect = "4 / 3", onOpen }: {
   content: Content;
   href: string;
   actions?: React.ReactNode;
   selected?: boolean;
+  /** Its place in a picked order (making a carousel, 2026-10-28): shown big on the picture. */
+  pick?: number;
   aspect?: string;
   /** Opens the post in a viewer instead of going to its page (the Library, 2026-10-16). */
   onOpen?: () => void;
@@ -161,6 +170,7 @@ export function MediaCard({ content, href, actions, selected, aspect = "4 / 3", 
               </>
             )}
             {!media.url && content.generation_status_text && <PendingNote content={content} />}
+            {pick ? <span className="s-pick" aria-label={`Picked ${pick}`}>{pick}</span> : null}
             <div className="tl">
               {media.isVideo && <span className="s-badge"><Play className="inline h-2.5 w-2.5 -mt-px" /> VIDEO</span>}
               <span className={`s-badge ${status.tone ?? ""}`}>{status.label}</span>

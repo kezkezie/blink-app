@@ -12,6 +12,23 @@ export const PLATFORM_LABEL: Record<string, string> = {
 };
 export const platformLabel = (p: string) => PLATFORM_LABEL[p] ?? p;
 
+/**
+ * Pictures in one post (2026-10-28, Kezie: pick separate pictures and "post it as carousels... different
+ * slides, of different images in one post"). Instagram, Facebook, LinkedIn, Threads and TikTok take a
+ * carousel of up to CAROUSEL_MAX (Instagram's API limit); X and Bluesky take 4; a Pinterest pin takes
+ * one. A network over its limit gets the first ones (PostForMe's per-platform media), and says so.
+ */
+export const CAROUSEL_MAX = 10;
+const PICTURE_LIMIT: Record<string, number> = { twitter: 4, bluesky: 4, pinterest: 1 };
+export const pictureLimit = (platform: string) => PICTURE_LIMIT[platform] ?? CAROUSEL_MAX;
+export function picturesTrimmed(platforms: string[], count: number): Array<{ platform: string; keeps: number }> {
+  return platforms.filter((p) => !VIDEO_ONLY.has(p) && count > pictureLimit(p)).map((p) => ({ platform: p, keeps: pictureLimit(p) }));
+}
+export function trimmedLine(trimmed: Array<{ platform: string; keeps: number }>, label: (p: string) => string = (p) => p) {
+  if (!trimmed.length) return "";
+  return `${trimmed.map((t) => (t.keeps === 1 ? `${label(t.platform)} takes one picture, so it gets the first` : `${label(t.platform)} takes up to ${t.keeps} pictures, so it gets the first ${t.keeps}`)).join("; ")}.`;
+}
+
 /** Networks that take videos only. */
 export const VIDEO_ONLY = new Set(["youtube"]);
 export const VIDEO_ONLY_LINE = "Videos only";

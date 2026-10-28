@@ -9,8 +9,11 @@ import { NOT_STORYBOARD_FRAME, PART_TYPES, VIDEO_TYPES, cleanCaption, resolveMed
 
 export type PickedImage = { url: string; contentId: string | null; title: string; /** A carousel's slide (2026-10-16): the Editor can save back to it. */ slide?: number };
 
-/** The brand's images from the Library, plus "upload from this device". */
-export function ImagePicker({ onPick, allowUpload = true, selectedId }: { onPick: (img: PickedImage) => void; allowUpload?: boolean; selectedId?: string | null }) {
+/**
+ * The brand's images from the Library, plus "upload from this device". `multiple` (a carousel,
+ * 2026-10-28): several files from the device at once, each passed to onPick in order.
+ */
+export function ImagePicker({ onPick, allowUpload = true, selectedId, selectedIds, multiple = false }: { onPick: (img: PickedImage) => void; allowUpload?: boolean; selectedId?: string | null; selectedIds?: Array<string | null | undefined>; multiple?: boolean }) {
   const { activeBrand } = useBrandStore();
   const [items, setItems] = useState<Content[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -50,8 +53,9 @@ export function ImagePicker({ onPick, allowUpload = true, selectedId }: { onPick
             return (
               <button
                 key={c.id}
-                className={`s-media${selectedId === c.id ? " sel" : ""}`}
+                className={`s-media${selectedId === c.id || selectedIds?.includes(c.id) ? " sel" : ""}`}
                 title={title}
+                aria-pressed={selectedIds ? selectedIds.includes(c.id) : undefined}
                 onClick={() => onPick({ url: m.url!, contentId: c.id, title })}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -65,10 +69,10 @@ export function ImagePicker({ onPick, allowUpload = true, selectedId }: { onPick
         ref={fileRef}
         type="file"
         accept="image/*"
+        multiple={multiple}
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onPick({ url: URL.createObjectURL(f), contentId: null, title: f.name.replace(/\.[^.]+$/, "") });
+          for (const f of Array.from(e.target.files ?? []).slice(0, multiple ? 20 : 1)) onPick({ url: URL.createObjectURL(f), contentId: null, title: f.name.replace(/\.[^.]+$/, "") });
           e.target.value = "";
         }}
       />

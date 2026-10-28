@@ -41,6 +41,26 @@ export function sliceRects(imgW: number, imgH: number, slides: number, shape: Sl
   return Array.from({ length: slides }, (_, i) => ({ sx: Math.round(x0 + i * sw), sy: y0, sw: Math.round(sw), sh: ch, out: { w, h } }));
 }
 
+/** The part of a picture that fills a w×h slide (cropped, centred). */
+export function coverRect(imgW: number, imgH: number, w: number, h: number) {
+  const s = Math.max(w / imgW, h / imgH);
+  const sw = Math.round(w / s), sh = Math.round(h / s);
+  return { sx: Math.round((imgW - sw) / 2), sy: Math.round((imgH - sh) / 2), sw, sh };
+}
+
+/** Where a whole picture sits on a w×h slide (fitted inside it, centred), when it isn't cropped. */
+export function wholeRect(imgW: number, imgH: number, w: number, h: number) {
+  const s = Math.min(w / imgW, h / imgH);
+  const dw = Math.round(imgW * s), dh = Math.round(imgH * s);
+  return { dx: Math.round((w - dw) / 2), dy: Math.round((h - dh) / 2), dw, dh };
+}
+
+/** The slide size that matches a carousel's cover (1080 wide, kept between 16:9 and 9:16). */
+export function slideSizeLike(coverW: number, coverH: number) {
+  const ratio = Math.min(16 / 9, Math.max(9 / 16, coverW / coverH));
+  return { w: 1080, h: Math.round(1080 / ratio) };
+}
+
 /**
  * The seamless brief. Telling the model the picture "will be cut into slides" made it draw three
  * separate panels (the skyline repeated in each; judged 3/10). Asking for one continuous panorama

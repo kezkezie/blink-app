@@ -131,6 +131,18 @@ describe("sending a post to PostForMe", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("a carousel: every picture to Instagram, the first 4 to X, saying so (2026-10-28)", async () => {
+    db.social_accounts.push({ client_id: "c1", brand_id: "b1", platform: "twitter", postforme_account_id: "spc_x", is_active: true });
+    const pics = Array.from({ length: 6 }, (_, i) => `https://x.supabase.co/storage/v1/object/public/assets/images/c/slide-${i + 1}.jpg`);
+    db.content = [post({ content_type: "carousel", image_urls: pics, target_platforms: { instagram: { enabled: true, format: "feed" }, twitter: { enabled: true, format: "post" } } })];
+    const { sendPost } = await import("@/lib/social-post-server");
+    const r = await sendPost("c1", { contentId: "post-1" });
+    expect(r.status).toBe(200);
+    expect(sent[0].media).toEqual(pics.map((url) => ({ url })));
+    expect(sent[0].platform_configurations).toEqual({ x: { media: pics.slice(0, 4).map((url) => ({ url })) } });
+    expect(r.body.note).toBe("X takes up to 4 pictures, so it gets the first 4.");
+  });
+
   it("a video goes to YouTube as the video, with a title and the AI label", async () => {
     db.content = [post({ image_urls: [COVER], video_urls: [VIDEO], ai_model: "kling-3.0/video" })];
     const { sendPost } = await import("@/lib/social-post-server");
