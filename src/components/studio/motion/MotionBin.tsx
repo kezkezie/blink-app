@@ -11,6 +11,7 @@ import { useKept } from "@/lib/drafts";
 import { useBrandStore } from "@/app/store/useBrandStore";
 import { useBrandKit } from "@/components/studio/generate-image";
 import { MOTION_CREDITS, type MotionShape, type MotionSpec } from "@/lib/motion/spec";
+import { applyLook } from "@/lib/motion/looks";
 import type { AddedMotion, MotionPlace } from "./MotionStudio";
 import { track } from "@/lib/analytics";
 import { STOP_COST_USD, readingStoppedMessage, stopMessage, stopSplit } from "@/lib/stop-refund";
@@ -53,7 +54,7 @@ async function shrinkScreen(file: File): Promise<Blob> {
  * The Motion panel in the video editor's rail (2026-10-15): say what it's for (or tap a start),
  * Claude plans it (4 credits), the studio opens with the live preview.
  */
-export function MotionBin({ clientId, shape, initialPrompt, initialScreens, initialPlan, pictureId, onAdded, standalone = false }: {
+export function MotionBin({ clientId, shape, initialPrompt, initialScreens, initialPlan, pictureId, onAdded, standalone = false, look = null, seconds = null, loop = false, brandColors = null }: {
   clientId: string | null; shape: MotionShape; initialPrompt?: string | null; pictureId?: string | null;
   /** A plan made elsewhere (Video Inspo's "Make it as motion graphics", 2026-10-21): opens straight in the studio. */
   initialPlan?: { spec: MotionSpec; pictures: Array<{ url: string; title: string }>; concept?: string } | null;
@@ -62,6 +63,13 @@ export function MotionBin({ clientId, shape, initialPrompt, initialScreens, init
   onAdded: (m: AddedMotion, where: MotionPlace) => void;
   /** On its own page (Create → Motion graphics): saves to the Library instead of the timeline. */
   standalone?: boolean;
+  /**
+   * The Motion page's choices (2026-10-28, from Kezie's references: pick a style first, say how long,
+   * decide if it loops): a look (lib/motion/looks.ts) the plan is dressed in, a total length, a loop.
+   */
+  look?: string | null; seconds?: number | null; loop?: boolean;
+  /** The brand's colours when the page already has them (this box's own kit may still be loading). */
+  brandColors?: { primary: string | null; secondary: string | null } | null;
 }) {
   const { activeBrand } = useBrandStore();
   const router = useRouter();
@@ -138,12 +146,14 @@ export function MotionBin({ clientId, shape, initialPrompt, initialScreens, init
     const ac = new AbortController();
     stopRef.current = ac;
     try {
-      const brief = text;
+      const brief = `${text.trim()}${seconds ? ` About ${seconds} seconds long in total.` : ""}${loop ? " It loops: it should end the way it began, so it can play on repeat." : ""}`;
       const res = await fetch("/api/editor/motion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brandId: activeBrand.id, prompt: brief.slice(0, 600), shape, ...(picture ? { pictureId: picture } : {}), ...(screens.length ? { screens } : {}), ...(source.trim() ? { source: source.trim().slice(0, 8000) } : {}) }), signal: ac.signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't plan the motion.");
-      setSpec(data.spec); setPictures(data.pictures ?? []); setOpen(true);
-      track("motion_planned", { screens: screens.length, source: !!source.trim() });
+      const planned = data.spec as MotionSpec;
+      const dressed = look ? applyLook(planned, look, brandColors ?? { primary: kit?.primaryColor ?? null, secondary: kit?.secondaryColor ?? null }) : planned;
+      setSpec(loop && dressed.kind === "full" ? { ...dressed, loop: true } : dressed); setPictures(data.pictures ?? []); setOpen(true);
+      track("motion_planned", { screens: screens.length, source: !!source.trim(), look: look ?? "brand", seconds: seconds ?? 0, loop });
     } catch (e) { if (ac.signal.aborted) { const split = stopSplit(MOTION_CREDITS, STOP_COST_USD.motion); toast.info(stopMessage(split.back, split.kept), { duration: 8000 }); } else toast.error(e instanceof Error ? e.message : "Couldn't plan the motion."); }
     finally { setBusy(false); stopRef.current = null; }
   }

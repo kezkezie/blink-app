@@ -1,0 +1,60 @@
+/* The Motion page's gallery (2026-10-28): the fan of looks, the stacking cards, the examples. */
+@layer components {
+  /* Fan: cards drifting along a gentle curve (Kezie's pitch-deck pin), the middle one playing. */
+  .mg-fan { position: relative; display: grid; gap: 10px; }
+  .mg-fan-stage { position: relative; overflow: hidden; touch-action: pan-y; cursor: grab; user-select: none;
+    mask-image: linear-gradient(90deg, transparent 0, #000 9%, #000 91%, transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 9%, #000 91%, transparent 100%); }
+  .mg-fan-stage:active { cursor: grabbing; }
+  .mg-card { position: absolute; left: 50%; top: 44%; border-radius: 16px; overflow: hidden; padding: 0; background: #000; will-change: transform;
+    border: 1px solid rgba(255,255,255,.08); box-shadow: 0 24px 60px rgba(0,0,0,.55), 0 2px 0 rgba(255,255,255,.04) inset; transition: box-shadow .2s, border-color .2s; }
+  .mg-card:hover { border-color: rgba(255,255,255,.28); }
+  .mg-card.on { border-color: var(--s-accent); box-shadow: 0 0 0 2px var(--s-accent), 0 24px 60px rgba(0,0,0,.55); }
+  .mg-card-name { position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px;
+    font: 600 11px var(--s-ui); color: #fff; background: rgba(12,13,15,.66); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); pointer-events: none; }
+  .mg-card.on .mg-card-name { background: var(--s-accent); color: var(--s-accent-ink); }
+  .mg-preview { position: absolute; inset: 0; pointer-events: none; }
+  .mg-fan-caption { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px; text-align: center; min-height: 34px; }
+  .mg-fan-caption b { font-size: 15px; }
+  .mg-fan-caption > span { font-size: 13px; color: var(--s-soft); }
+  .mg-picked { display: inline-flex; align-items: center; gap: 5px; font: 600 12.5px var(--s-ui); color: var(--s-accent); }
+
+  /* Stack: each card sticks a little lower than the last as you scroll (the services pin). */
+  .mg-stack { display: grid; gap: 22px; padding-bottom: 40px; }
+  .mg-stack-card { position: sticky; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; padding: 28px; border-radius: 22px;
+    background: color-mix(in oklab, #fff var(--shade), #0B0C0E); border: 1px solid rgba(255,255,255,.07); box-shadow: 0 -18px 50px rgba(0,0,0,.45); min-height: 300px; }
+  .mg-stack-text { display: grid; gap: 12px; align-content: center; max-width: 520px; padding-left: clamp(0px, 3vw, 36px); }
+  .mg-stack-text h3 { display: grid; font: 600 clamp(28px, 3.4vw, 44px)/1.02 var(--s-ui); letter-spacing: -.025em; }
+  .mg-stack-text h3 span:last-child { color: color-mix(in oklab, var(--s-text) 52%, transparent); }
+  .mg-stack-text p { font-size: 14px; color: var(--s-soft); }
+  .mg-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mg-tags span { font: 500 11px var(--s-mono); padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); color: var(--s-soft); }
+  .mg-stack-preview { position: relative; border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
+  .mg-stack-preview.tall { width: 220px; aspect-ratio: 9 / 16; }
+  .mg-stack-preview.square { width: 300px; aspect-ratio: 1; }
+  .mg-stack-preview.wide { width: 460px; aspect-ratio: 16 / 9; }
+  .mg-stack-empty { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 8px; padding: 16px; text-align: center; font-size: 12px; color: var(--s-mute); }
+  @media (max-width: 760px) {
+    .mg-stack-card { grid-template-columns: 1fr; padding: 20px; position: relative; top: auto !important; }
+    .mg-stack-preview.tall { width: 150px; } .mg-stack-preview.square { width: 200px; } .mg-stack-preview.wide { width: 100%; }
+  }
+
+  /* Examples */
+  .mg-seg-wrap { display: flex; flex-wrap: wrap; max-width: 100%; }
+  .mg-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+  .mg-grid.wide { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .mg-ex { display: grid; gap: 8px; align-content: start; }
+  .mg-ex-media { position: relative; width: 100%; border-radius: 14px; overflow: hidden; background: #000; border: 1px solid var(--s-line); padding: 0; transition: transform .18s, border-color .18s; }
+  .mg-ex-media:hover, .mg-ex-media:focus-visible { transform: translateY(-2px); border-color: var(--s-line-2); }
+  .mg-ex-media.tall { aspect-ratio: 9 / 16; } .mg-ex-media.square { aspect-ratio: 1; } .mg-ex-media.wide { aspect-ratio: 16 / 9; }
+  .mg-badge { position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font: 600 10.5px var(--s-ui); color: #fff; background: rgba(12,13,15,.7); }
+
+  /* The brief, as steps (Jack Roberts' five questions) */
+  .mg-steps { display: grid; gap: 10px; }
+  .mg-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; }
+  .mg-step > i { font: 700 12px var(--s-ui); font-style: normal; width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; background: var(--s-raised); border: 1px solid var(--s-line-2); color: var(--s-soft); margin-top: 2px; }
+  .mg-step b { font-size: 13.5px; }
+  .mg-steps .s-seg { display: flex; flex-wrap: wrap; width: 100%; }
+  .mg-steps .s-seg > button { flex: 1 0 auto; padding: 0 8px; justify-content: center; }
+  @media (prefers-reduced-motion: reduce) { .mg-ex-media { transition: none; } }
+}

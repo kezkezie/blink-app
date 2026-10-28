@@ -900,6 +900,16 @@ function StampMark() {
   return <Img src="/brand/stamp.png" style={{ position: "absolute", left: b.left, top: b.top, width: b.width, height: b.height }} />;
 }
 
+/** A loop: everything on the page eases away in the last half second, back to how the clip began. */
+function LoopFade({ on, children }: { on: boolean; children: ReactNode }) {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  if (!on) return <>{children}</>;
+  const fade = Math.min(15, Math.floor(durationInFrames / 4));
+  const opacity = interpolate(frame, [durationInFrames - fade - 1, durationInFrames - 1], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.cubic) });
+  return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
+}
+
 export function MotionVideo({ spec, brand: brandIn }: MotionProps) {
   // A look brings its typeface (and the user can pick another): it is the font every template uses.
   const brand = spec.font ? { ...brandIn, font: spec.font } : brandIn;
@@ -908,13 +918,15 @@ export function MotionVideo({ spec, brand: brandIn }: MotionProps) {
     <LookContext.Provider value={look}>
     <AbsoluteFill>
       <Frame palette={spec.palette} transparent={spec.kind === "overlay"} background={spec.kind === "overlay" ? undefined : spec.background} look={look}>
-        <Series>
-          {spec.scenes.map((s, i) => (
-            <Series.Sequence key={i} durationInFrames={sceneFrames(s)}>
-              <Scene scene={s} palette={spec.palette} brand={brand} />
-            </Series.Sequence>
-          ))}
-        </Series>
+        <LoopFade on={!!spec.loop}>
+          <Series>
+            {spec.scenes.map((s, i) => (
+              <Series.Sequence key={i} durationInFrames={sceneFrames(s)}>
+                <Scene scene={s} palette={spec.palette} brand={brand} />
+              </Series.Sequence>
+            ))}
+          </Series>
+        </LoopFade>
       </Frame>
       {brand.stamp && <StampMark />}
     </AbsoluteFill>

@@ -114,7 +114,12 @@ export function cleanParts(raw: unknown, template: MotionTemplate): Record<strin
  * plays over, with a slow ken-burns move and a scrim so text stays readable — the motion-graphics
  * look on an AI frame or any photo. The scenes animate on top of it.
  */
-export type MotionSpec = { kind: "full" | "overlay"; shape: MotionShape; palette: Palette; scenes: MotionScene[]; background?: string; look?: string; font?: string };
+/**
+ * loop (2026-10-28, from Kezie's motion references: "a loop just means that the last and first frame
+ * are exactly the same"): the clip eases back to its empty page in the last half second, the way it
+ * began, so it can play on repeat behind a website, a pitch deck or a post.
+ */
+export type MotionSpec = { kind: "full" | "overlay"; shape: MotionShape; palette: Palette; scenes: MotionScene[]; background?: string; look?: string; font?: string; loop?: boolean };
 
 const HTTPS = /^https:\/\/[^\s"'<>]+$/i;
 
@@ -333,7 +338,7 @@ export function validateMotionSpec(raw: unknown, ctx: { shape: MotionShape; bran
   // A look (lib/motion/looks.ts) and its typeface: names only, checked by shape (an unknown look draws plain).
   const look = typeof r.look === "string" && /^[a-z0-9-]{2,24}$/.test(r.look) ? r.look : undefined;
   const font = typeof r.font === "string" && /^[A-Za-z0-9 ]{2,40}$/.test(r.font.trim()) ? r.font.trim() : undefined;
-  return { kind: overlay ? "overlay" : "full", shape: ctx.shape, palette: paletteFor(r.palette, ctx.brand), scenes: overlay ? kept.slice(0, 1) : kept, ...(bg && !overlay ? { background: bg } : {}), ...(look ? { look } : {}), ...(font ? { font } : {}) };
+  return { kind: overlay ? "overlay" : "full", shape: ctx.shape, palette: paletteFor(r.palette, ctx.brand), scenes: overlay ? kept.slice(0, 1) : kept, ...(bg && !overlay ? { background: bg } : {}), ...(look ? { look } : {}), ...(font ? { font } : {}), ...(r.loop === true && !overlay ? { loop: true } : {}) };
 }
 
 /**
