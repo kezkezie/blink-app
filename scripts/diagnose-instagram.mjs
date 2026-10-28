@@ -14,10 +14,10 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const POSTFORME_API_KEY = "pfm_live_Fvnv7viUB3MuSxBxYLFD94";
-const SUPABASE_URL = "https://hzkufspjozkgmloznkvp.supabase.co";
-const SUPABASE_SERVICE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh6a3Vmc3Bqb3prZ21sb3pua3ZwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODcyNSwiZXhwIjoyMDg2MzI0NzI1fQ.LDz1EhuESwMxzWY9cdupa9Ym0ox6nt6FyASrmNIg5cQ";
+const POSTFORME_API_KEY = process.env.POSTFORME_API_KEY; // never in the file (2026-10-28: this repo is public)
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!POSTFORME_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) { console.error("Run with: node --env-file=.env.local scripts/diagnose-instagram.mjs"); process.exit(1); }
 
 // A safe public test image (Unsplash — publicly accessible, no copyright issues)
 const TEST_IMAGE_URL =

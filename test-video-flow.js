@@ -35,7 +35,7 @@ if (fs.existsSync(envPath)) {
 const SUPABASE_URL     = envVars.NEXT_PUBLIC_SUPABASE_URL  || 'https://hzkufspjozkgmloznkvp.supabase.co';
 const SERVICE_KEY      = envVars.SUPABASE_SERVICE_ROLE_KEY;
 const N8N_BASE         = envVars.NEXT_PUBLIC_N8N_WEBHOOK_BASE || 'https://n8n.srv1166077.hstgr.cloud/webhook';
-const N8N_MCP_TOKEN    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ZmMwMzAyYy03Yzg5LTQ5YjUtYmY3MC0wZTEyMTQ3NjZlNzciLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6IjZkY2ViYTFmLWMxZGUtNGQzNC1hYWUzLTNhYjhmY2U4M2Q2NiIsImlhdCI6MTc3ODg1NjU5MX0.TmNxGuFZfcMW5PVHIMnB5ycZehdpZ3tN6_J8J99RGHc';
+const N8N_MCP_TOKEN    = envVars.N8N_MCP_TOKEN || process.env.N8N_MCP_TOKEN || ''; // never in the file (2026-10-28: this repo is public)
 
 // Test anchors (from most-recent Playwright test run)
 const CLIENT_ID   = '948be4f8-9aba-4a3f-8c60-7bc4803d3fcf';

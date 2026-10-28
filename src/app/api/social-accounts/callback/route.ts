@@ -1,71 +1,22 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
-// Initialize a Supabase admin client to bypass RLS during the server-side callback
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Make sure this is in your .env.local!
-);
-
+/**
+ * Back from PostForMe's connect screen. Only sends people back to Settings.
+ *
+ * 2026-10-28 (launch security check): this used to save the connection itself, with the admin key,
+ * from whatever client_id and account id were in the link, so anyone could open it with someone
+ * else's client_id and swap which account their posts go to. Nothing linked to it any more (the
+ * studio's Settings syncs connections from PostForMe for the signed-in person, by the brand tag on
+ * the connection: /api/social-accounts/sync), but PostForMe's dashboard may still send people here,
+ * so it stays as a plain redirect with the outcome.
+ */
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
-  // Extract params sent back from Post For Me + our custom pass-through params
-  const clientId = searchParams.get("client_id");
-  const platform = searchParams.get("platform");
-  const error = searchParams.get("error");
-
-  // Post For Me usually passes back the new ID in the query string
-  // It might be called 'account_id' or 'id'. We check for both.
-  const postForMeAccountId =
-    searchParams.get("account_id") || searchParams.get("id");
-  const accountName =
-    searchParams.get("username") ||
-    searchParams.get("account_name") ||
-    `${platform} account`;
-
-  // Handle User Denied / Errors
-  if (error) {
-    return NextResponse.redirect(
-      `${baseUrl}/dashboard/settings?error=${encodeURIComponent(error)}`
-    );
-  }
-
-  if (!clientId || !platform || !postForMeAccountId) {
-    return NextResponse.redirect(
-      `${baseUrl}/dashboard/settings?error=missing_callback_data`
-    );
-  }
-
-  try {
-    // Save the connected account to your Supabase Database matching your exact schema!
-    const { error: dbError } = await supabaseAdmin
-      .from("social_accounts")
-      .upsert(
-        {
-          client_id: clientId,
-          platform: platform,
-          account_name: `@${accountName.replace("@", "")}`,
-          postforme_account_id: postForMeAccountId,
-          is_active: true,
-          connected_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "client_id,platform",
-        }
-      );
-
-    if (dbError) throw dbError;
-
-    // Redirect the user back to frontend with the success flag
-    return NextResponse.redirect(
-      `${baseUrl}/dashboard/settings?success=account_connected`
-    );
-  } catch (err) {
-    console.error("Callback Save Error:", err);
-    return NextResponse.redirect(
-      `${baseUrl}/dashboard/settings?error=database_save_failed`
-    );
-  }
+  const params = new URL(request.url).searchParams;
+  const base = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+  const failed = params.get("error") || params.get("success") === "false";
+  const to = new URL("/studio/account/settings", base);
+  if (failed) to.searchParams.set("error", (params.get("error") || "connect_failed").slice(0, 120));
+  else to.searchParams.set("success", "account_connected");
+  to.hash = "socials";
+  return NextResponse.redirect(to);
 }
