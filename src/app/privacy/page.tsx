@@ -123,7 +123,7 @@ export default function PrivacyPage() {
                     <li>not be treated differently for using these rights.</li>
                 </ul>
                 <p>
-                    Much of this you can do in the app: edit your profile and brands, delete content from your Library, disconnect social accounts, revoke AI connections in Settings &gt; AI connections, and cancel your plan in Billing. For anything else, including closing your account, email <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a> from your account&apos;s email address. We reply within one month.
+                    Much of this you can do in the app: edit your profile and brands, delete content from your Library, disconnect social accounts, revoke AI connections in Settings &gt; AI connections, cancel your plan in Billing, and delete your account and everything in it in Settings &gt; Delete my account. For anything else, email <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a> from your account&apos;s email address. We reply within one month.
                 </p>
                 <p>
                     You can also complain to a data protection authority: in Kenya, the Office of the Data Protection Commissioner (<a href="https://www.odpc.go.ke" target="_blank" rel="noopener noreferrer">odpc.go.ke</a>); in the EU or EEA, the authority where you live or work; in the UK, the ICO (<a href="https://ico.org.uk" target="_blank" rel="noopener noreferrer">ico.org.uk</a>). We&apos;d like the chance to fix it first, so please write to us.

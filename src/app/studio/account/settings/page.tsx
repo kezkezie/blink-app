@@ -11,6 +11,7 @@ import { Modal } from "@/components/studio/Modal";
 import { PlatformGlyph } from "@/components/studio/plan/PlatformGlyph";
 import { FormSkeleton } from "@/components/studio/Skeletons";
 import { AutoPostBetaNote, BetaTag } from "@/components/studio/AutoPostBeta";
+import { DeleteAccount } from "@/components/studio/settings/DeleteAccount";
 import { track } from "@/lib/analytics";
 import { AiConnections } from "@/components/studio/settings/AiConnections";
 
@@ -206,6 +207,8 @@ function SettingsPage() {
         <label className="grid gap-1.5"><span className="s-label" style={{ margin: 0 }}>Phone</span><input className="s-input" inputMode="tel" value={profile.contact_phone} onChange={(e) => setProfile({ ...profile, contact_phone: e.target.value })} placeholder="Optional" aria-label="Phone" /></label>
         <button className="s-btn primary justify-self-start" disabled={!profileDirty || saving} onClick={saveProfile}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save</button>
       </section>
+
+      <DeleteAccount />
 
       <Modal open={!!auth} onClose={() => setAuth(null)} label="Connect an account" width={460} padded>
         {auth && (

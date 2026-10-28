@@ -101,7 +101,7 @@ export default function TermsPage() {
 
                 <h2>12. Ending your account</h2>
                 <ul>
-                    <li>You can stop using BlinkSpot and ask us to close your account any time.</li>
+                    <li>You can stop using BlinkSpot any time, and delete your account yourself in Settings &gt; Delete my account (or ask us to).</li>
                     <li>We may suspend or close an account that breaks these terms, the Acceptable Use Policy or the law, that puts other users or BlinkSpot at risk, or when the law requires it. Where we can, we tell you why and give you a chance to fix it.</li>
                     <li>If we close a paid account for no such reason, we tell you in advance and refund the unused part of what you paid.</li>
                     <li>When an account closes, its content is deleted as our Privacy Policy describes. Download what you want to keep first.</li>
